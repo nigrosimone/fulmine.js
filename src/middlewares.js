@@ -181,10 +181,6 @@ function createBodyParser(defaultType, beforeReturn) {
             }
 
             const length = req.headers['content-length'];
-            // skip reading empty body
-            if(length == '0') {
-                return next();
-            }
 
             if(options.simpleType) {
                 const semicolonIndex = type.indexOf(';');
@@ -202,6 +198,13 @@ function createBodyParser(defaultType, beforeReturn) {
                         return next();
                     }
                 }
+            }
+
+            // an empty body still has to produce this parser's empty value the way express does -
+            // {} for json and urlencoded, '' for text, an empty Buffer for raw - rather than leaving
+            // req.body as the placeholder object. there is nothing to read, so run the tail directly
+            if(length == '0') {
+                return beforeReturn(req, res, next, options, Buffer.alloc(0));
             }
 
             // skip reading too large body
