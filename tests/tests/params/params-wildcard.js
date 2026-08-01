@@ -5,33 +5,29 @@ const express = require("express");
 const app = express();
 const router = express.Router();
 
-app.get("/par/a(hmm)e", (req, res) => {
-    res.send("par: " + JSON.stringify(req.params));
-});
-
-router.get("/test/*", (req, res) => {
+router.get("/test/*splat", (req, res) => {
     res.send("router: " + JSON.stringify(req.params));
 });
 
-router.get("/*", (req, res) => {
+router.get("/*splat", (req, res) => {
     res.send("router2: " + JSON.stringify(req.params));
 });
 
 app.use("/router/:param", router);
 
-app.get("/hi/*", (req, res) => {
+app.get("/hi/*splat", (req, res) => {
     res.send("once: " + JSON.stringify(req.params));
 });
 
-app.get("/twice/*/wow/*", (req, res) => {
+app.get("/twice/*first/wow/*second", (req, res) => {
     res.send("twice: " + JSON.stringify(req.params));
 });
 
-app.get("/after/:name/*", (req, res) => {
+app.get("/after/:name/*splat", (req, res) => {
     res.send("name: " + JSON.stringify(req.params));
 });
 
-app.get("/*", (req, res) => {
+app.get("/*splat", (req, res) => {
     res.send("none: " + JSON.stringify(req.params));
 });
 
@@ -39,9 +35,6 @@ app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
     const outputs = await Promise.all([
-        fetch("http://localhost:13333/par/ahmme").then((res) => res.text()),
-        fetch("http://localhost:13333/par/ae").then((res) => res.text()),
-
         fetch("http://localhost:13333/router/param/test/123").then((res) => res.text()),
         fetch("http://localhost:13333/router/param/test/123/456").then((res) => res.text()),
         fetch("http://localhost:13333/router/param/123/456/789").then((res) => res.text()),

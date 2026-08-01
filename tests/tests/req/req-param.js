@@ -1,4 +1,4 @@
-// must support req.param()
+// must reject the removed req.param() and read from params, body and query instead
 
 const express = require("express");
 
@@ -7,59 +7,43 @@ const app = express();
 app.set("body methods", ["POST", "PUT", "PATCH", "DELETE"]);
 app.use(express.json());
 
-app.delete("/delete", (req, res) => {
-    console.log(req.param("test"));
-    console.log(req.param("test", "default"));
-    res.send("post");
+// req.param() was deprecated in Express 4 and removed in Express 5. The replacement is
+// reading from the three places it used to search, in whichever one the value belongs.
+app.get("/removed", (req, res) => {
+    let threw = false;
+    try {
+        req.param("test");
+    } catch (e) {
+        threw = true;
+    }
+    res.send("threw: " + threw);
 });
 
-app.all("/test", (req, res) => {
-    console.log(req.param("test"));
-    console.log(req.param("test", "default"));
-    res.send("test");
+app.get("/params/:test", (req, res) => {
+    res.send(String(req.params.test));
 });
 
-app.get("/test/:test", (req, res) => {
-    console.log(req.param("test"));
-    console.log(req.param("test", "default"));
-    res.send("test");
+app.get("/query", (req, res) => {
+    res.send(String(req.query.test));
 });
 
-app.post("/falsy", (req, res) => {
-    const results = [req.param("zero"), req.param("empty"), req.param("missing", "fallback")];
-    res.json(results);
+app.delete("/body", (req, res) => {
+    res.send(String(req.body.test));
 });
 
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    await fetch("http://localhost:13333/delete", {
-        method: "DELETE",
-        body: JSON.stringify({ test: "aaa" }),
-        headers: {
-            "Content-Type": "application/json"
-        }
-    }).then((res) => res.text());
-    await fetch("http://localhost:13333/delete", {
-        method: "DELETE",
-        body: JSON.stringify({}),
-        headers: {
-            "Content-Type": "application/json"
-        }
-    }).then((res) => res.text());
-
-    await fetch("http://localhost:13333/test?test=test").then((res) => res.text());
-    await fetch("http://localhost:13333/test?test=test&test2=test2").then((res) => res.text());
-    await fetch("http://localhost:13333/test?asdf").then((res) => res.text());
-    await fetch("http://localhost:13333/test/test").then((res) => res.text());
-    await fetch("http://localhost:13333/test/test/test").then((res) => res.text());
-
-    const falsy = await fetch("http://localhost:13333/falsy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ zero: 0, empty: "" })
-    }).then((res) => res.text());
-    console.log("falsy:", falsy);
+    console.log(await fetch("http://localhost:13333/removed").then((res) => res.text()));
+    console.log(await fetch("http://localhost:13333/params/abc").then((res) => res.text()));
+    console.log(await fetch("http://localhost:13333/query?test=qqq").then((res) => res.text()));
+    console.log(
+        await fetch("http://localhost:13333/body", {
+            method: "DELETE",
+            body: JSON.stringify({ test: "bbb" }),
+            headers: { "Content-Type": "application/json" }
+        }).then((res) => res.text())
+    );
 
     process.exit(0);
 });

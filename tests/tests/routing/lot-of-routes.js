@@ -13,7 +13,7 @@ for (let i = 0; i < 1000; i++) {
     });
 }
 
-app.use("/rou+ter", router);
+app.use("/router", router);
 
 for (let i = 0; i < 1000; i++) {
     router2.get(`/${i}`, (req, res) => {

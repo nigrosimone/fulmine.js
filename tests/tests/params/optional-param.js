@@ -4,12 +4,12 @@ const express = require("express");
 
 const app = express();
 
-app.get("/category/:nome?", (req, res) => {
+app.get("/category{/:nome}", (req, res) => {
     const nome = req.params.nome || "default";
     res.send(`category: ${nome}`);
 });
 
-app.get("/category2/:nome?/adf", (req, res) => {
+app.get("/category2{/:nome}/adf", (req, res) => {
     const nome = req.params.nome || "default";
     res.send(`category: ${nome}`);
 });

@@ -1,14 +1,14 @@
-// must support /* in routes
+// must support named splats in routes
 
 const express = require("express");
 
 const app = express();
 
-app.get("/test/*", (req, res) => {
+app.get("/test/*splat", (req, res) => {
     res.send("test");
 });
 
-app.get("/*", (req, res) => {
+app.get("/*splat", (req, res) => {
     res.send("*");
 });
 

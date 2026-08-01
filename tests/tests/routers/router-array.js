@@ -1,11 +1,9 @@
 // must support array of routers in use
 
 const express = require("express");
-require("express-async-errors");
 
 const app = express();
 app.set("env", "production");
-app.set("catch async errors", true);
 
 const router = express.Router();
 router.get("/test", async (req, res) => {
