@@ -1,6 +1,7 @@
 // must parse bodies identically whether they arrive in one chunk, many chunks, or compressed
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 const zlib = require("zlib");
 const crypto = require("crypto");
 
@@ -21,7 +22,7 @@ app.post("/raw", (req, res) => {
 });
 
 function post(path, body, headers = {}) {
-    return fetch(`http://localhost:13333${path}`, { method: "POST", body, headers });
+    return fetchTest(`http://localhost:13333${path}`, { method: "POST", body, headers });
 }
 
 app.listen(13333, async () => {
@@ -51,7 +52,7 @@ app.listen(13333, async () => {
             controller.close();
         }
     });
-    const chunkedResponse = await fetch("http://localhost:13333/json", {
+    const chunkedResponse = await fetchTest("http://localhost:13333/json", {
         method: "POST",
         body: chunked,
         duplex: "half",

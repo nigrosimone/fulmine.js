@@ -1,6 +1,7 @@
 // must support routers
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 const router = express.Router();
@@ -34,11 +35,11 @@ app.use((req, res, next) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const output1 = await fetch("http://localhost:13333/test").then((res) => res.text());
-    const output2 = await fetch("http://localhost:13333/asdf/asdf").then((res) => res.text());
-    const output3 = await fetch("http://localhost:13333/asdf/test").then((res) => res.text());
-    const output4 = await fetch("http://localhost:13333/meow").then((res) => res.text());
-    const output5 = await fetch("http://localhost:13333/gaa").then((res) => res.text());
+    const output1 = await fetchTest("http://localhost:13333/test").then((res) => res.text());
+    const output2 = await fetchTest("http://localhost:13333/asdf/asdf").then((res) => res.text());
+    const output3 = await fetchTest("http://localhost:13333/asdf/test").then((res) => res.text());
+    const output4 = await fetchTest("http://localhost:13333/meow").then((res) => res.text());
+    const output5 = await fetchTest("http://localhost:13333/gaa").then((res) => res.text());
 
     console.log(output1, output2, output3, output4, output5);
     process.exit(0);

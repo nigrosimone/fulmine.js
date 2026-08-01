@@ -1,6 +1,7 @@
 // must support body parser type
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -24,7 +25,7 @@ app.post(
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const response = await fetch("http://localhost:13333/abc", {
+    const response = await fetchTest("http://localhost:13333/abc", {
         method: "POST",
         body: JSON.stringify({
             abc: 123
@@ -37,7 +38,7 @@ app.listen(13333, async () => {
     console.log(response.headers.get("content-type"));
     console.log(text);
 
-    const response2 = await fetch("http://localhost:13333/abc", {
+    const response2 = await fetchTest("http://localhost:13333/abc", {
         method: "POST",
         body: JSON.stringify({
             abc: 123
@@ -50,7 +51,7 @@ app.listen(13333, async () => {
     console.log(response2.headers.get("content-type"));
     console.log(text2);
 
-    const response3 = await fetch("http://localhost:13333/def", {
+    const response3 = await fetchTest("http://localhost:13333/def", {
         method: "POST",
         body: JSON.stringify({
             abc: 123

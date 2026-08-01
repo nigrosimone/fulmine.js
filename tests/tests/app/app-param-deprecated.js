@@ -1,6 +1,7 @@
 // must reject app.param(fn) and keep app.param(name, fn) working
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -29,7 +30,7 @@ app.get("/item/:itemId", function (req, res) {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const response = await fetch("http://localhost:13333/item/abc");
+    const response = await fetchTest("http://localhost:13333/item/abc");
     console.log("status:", response.status);
     console.log(await response.text());
 

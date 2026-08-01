@@ -52,6 +52,15 @@ let nextLine = 0;
 let flushedUpTo = 0;
 const heldLines = new Map();
 
+// A header value can carry an HTTP date: Set-Cookie has Expires, and anything computed from the
+// clock will land a second apart between the two runs. Only the time of day is masked, so a wrong
+// date, a wrong day of the week or a missing Expires still shows up.
+const HTTP_TIME = /\d{2}:\d{2}:\d{2} GMT/g;
+
+function maskClockTime(value) {
+    return value.replace(HTTP_TIME, "xx:xx:xx GMT");
+}
+
 function printInCallOrder(index, line) {
     heldLines.set(index, line);
     while (heldLines.has(flushedUpTo)) {
@@ -79,7 +88,7 @@ async function fetchTest(input, init) {
         // getSetCookie keeps several Set-Cookie headers apart, which get() would join
         const value = name === "set-cookie" ? response.headers.getSetCookie().join(" | ") : response.headers.get(name);
         if (value !== null && value !== "") {
-            shown.push(`${name}: ${value}`);
+            shown.push(`${name}: ${maskClockTime(value)}`);
         }
     }
     for (const name of PRESENCE_ONLY_HEADERS) {

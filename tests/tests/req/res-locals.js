@@ -1,6 +1,7 @@
 // test res.locals as object for response-level local variables
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 const path = require("path");
 
 const app = express();
@@ -77,25 +78,25 @@ app.listen(13333, async () => {
 
     // Test 1: res.locals is available in middleware and route handlers
     console.log("--- Test middleware access ---");
-    await fetch("http://localhost:13333/test-middleware?id=123");
+    await fetchTest("http://localhost:13333/test-middleware?id=123");
 
     // Test 2: res.locals can be set in route handler
     console.log("--- Test route access ---");
-    await fetch("http://localhost:13333/test-route");
+    await fetchTest("http://localhost:13333/test-route");
 
     // Test 3: res.locals is passed to templates during rendering
     console.log("--- Test template rendering ---");
-    const renderResponse = await fetch("http://localhost:13333/test-render").then((r) => r.text());
+    const renderResponse = await fetchTest("http://localhost:13333/test-render").then((r) => r.text());
     console.log("render contains locals:", renderResponse.includes("locals-in-template"));
 
     // Test 4: res.locals propagates through middleware chain
     console.log("--- Test middleware chain ---");
-    await fetch("http://localhost:13333/test-chain");
+    await fetchTest("http://localhost:13333/test-chain");
 
     // Test 5: res.locals is request-scoped (different for each request)
     console.log("--- Test request scope ---");
-    await fetch("http://localhost:13333/test-scope?value=request1");
-    await fetch("http://localhost:13333/test-scope?value=request2");
+    await fetchTest("http://localhost:13333/test-scope?value=request1");
+    await fetchTest("http://localhost:13333/test-scope?value=request2");
 
     process.exit(0);
 });

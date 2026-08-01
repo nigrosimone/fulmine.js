@@ -1,6 +1,7 @@
 // must support req.range()
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -19,28 +20,28 @@ app.get("/test", (req, res) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    await fetch("http://localhost:13333/test").then((res) => res.text());
-    await fetch("http://localhost:13333/test", {
+    await fetchTest("http://localhost:13333/test").then((res) => res.text());
+    await fetchTest("http://localhost:13333/test", {
         headers: {
             Range: "bytes=100-200"
         }
     }).then((res) => res.text());
-    await fetch("http://localhost:13333/test", {
+    await fetchTest("http://localhost:13333/test", {
         headers: {
             Range: "bytes=100-200, 300-400"
         }
     }).then((res) => res.text());
-    await fetch("http://localhost:13333/test", {
+    await fetchTest("http://localhost:13333/test", {
         headers: {
             Range: "bytes=100-200, 300-400, 500-600"
         }
     }).then((res) => res.text());
-    await fetch("http://localhost:13333/test", {
+    await fetchTest("http://localhost:13333/test", {
         headers: {
             Range: "bytes=100-200, 300-400, 500-600, 100-800"
         }
     }).then((res) => res.text());
-    await fetch("http://localhost:13333/test", {
+    await fetchTest("http://localhost:13333/test", {
         headers: {
             Range: "asdf"
         }

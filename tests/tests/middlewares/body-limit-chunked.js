@@ -1,6 +1,7 @@
 // must reject a chunked body over the limit without responding twice
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -27,7 +28,7 @@ app.listen(13333, async () => {
         }
     });
 
-    const response = await fetch("http://localhost:13333/abc", {
+    const response = await fetchTest("http://localhost:13333/abc", {
         method: "POST",
         body,
         duplex: "half",
@@ -40,7 +41,7 @@ app.listen(13333, async () => {
     console.log(await response.text());
 
     // the server must still be answering after rejecting the oversized body
-    const after = await fetch("http://localhost:13333/abc", {
+    const after = await fetchTest("http://localhost:13333/abc", {
         method: "POST",
         body: '{"a":1}',
         headers: {

@@ -1,6 +1,7 @@
 // must support correct redirect
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -16,7 +17,7 @@ app.use((req, res, next) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const response = await fetch("http://localhost:13333/trailing", {
+    const response = await fetchTest("http://localhost:13333/trailing", {
         redirect: "manual",
         headers: {
             accept: "text/html"
@@ -31,7 +32,7 @@ app.listen(13333, async () => {
         await response.text()
     );
 
-    const response2 = await fetch("http://localhost:13333/trailing", {
+    const response2 = await fetchTest("http://localhost:13333/trailing", {
         redirect: "manual",
         headers: {
             accept: "text/plain"

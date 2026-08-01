@@ -1,6 +1,7 @@
 // must support express-fast-json-stringify
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 const { fastJsonSchema } = require("express-fast-json-stringify");
 
 const app = express();
@@ -33,7 +34,7 @@ app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
     for (const path of ["/user", "/created", "/extra"]) {
-        const response = await fetch(`http://localhost:13333${path}`);
+        const response = await fetchTest(`http://localhost:13333${path}`);
         console.log(path, response.status, response.headers.get("content-type"));
         console.log(await response.text());
     }

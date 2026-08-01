@@ -1,6 +1,7 @@
 // must support empty routers
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 const router = express.Router();
@@ -18,7 +19,7 @@ app.use((req, res, next) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const output1 = await fetch("http://localhost:13333/test").then((res) => res.text());
+    const output1 = await fetchTest("http://localhost:13333/test").then((res) => res.text());
 
     console.log(output1);
     process.exit(0);

@@ -1,6 +1,7 @@
 // must match nested params express behavior
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 const router = express.Router();
@@ -17,7 +18,7 @@ router3.get("/:test/:test2", (req, res) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const res = await fetch("http://localhost:13333/1/test/2/test/asdf");
+    const res = await fetchTest("http://localhost:13333/1/test/2/test/asdf");
     console.log(await res.text());
 
     process.exit(0);

@@ -1,6 +1,7 @@
 // must support socket.io
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 const { Server } = require("socket.io");
 const { io } = require("socket.io-client");
 
@@ -28,7 +29,7 @@ if (app.uwsApp) {
 (async () => {
     await new Promise((resolve) => setTimeout(resolve, 300));
 
-    console.log(await fetch("http://localhost:13333/http").then((res) => res.text()));
+    console.log(await fetchTest("http://localhost:13333/http").then((res) => res.text()));
 
     const client = io("http://localhost:13333", { transports: ["websocket"] });
     const reply = await new Promise((resolve) => {

@@ -1,6 +1,7 @@
 // express.urlencoded() must default to extended:false
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 app.use(express.urlencoded());
@@ -13,7 +14,7 @@ app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
     // With extended:false, nested objects/arrays are not parsed
-    const response = await fetch("http://localhost:13333/test", {
+    const response = await fetchTest("http://localhost:13333/test", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: "name=test&value=123"
@@ -21,7 +22,7 @@ app.listen(13333, async () => {
     console.log(response);
 
     // Nested syntax should not be parsed with simple parser
-    const response2 = await fetch("http://localhost:13333/test", {
+    const response2 = await fetchTest("http://localhost:13333/test", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: "a[b]=c&a[d]=e"

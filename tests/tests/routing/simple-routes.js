@@ -1,6 +1,7 @@
 // must support simple routes
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 app.set("etag", false);
@@ -20,11 +21,11 @@ app.get("/test/testy", (req, res) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const r1 = await fetch("http://localhost:13333/").then((res) => res.text());
-    const r2 = await fetch("http://localhost:13333/test").then((res) => res.text());
-    const r3 = await fetch("http://localhost:13333/testy").then((res) => res.text());
-    const r4 = await fetch("http://localhost:13333/test/testy").then((res) => res.text());
+    const r1 = await fetchTest("http://localhost:13333/").then((res) => res.text());
+    const r2 = await fetchTest("http://localhost:13333/test").then((res) => res.text());
+    const r3 = await fetchTest("http://localhost:13333/testy").then((res) => res.text());
+    const r4 = await fetchTest("http://localhost:13333/test/testy").then((res) => res.text());
 
-    console.log(r1, r2, r3, r4, (await fetch("http://localhost:13333/")).headers.get("etag"));
+    console.log(r1, r2, r3, r4, (await fetchTest("http://localhost:13333/")).headers.get("etag"));
     process.exit(0);
 });

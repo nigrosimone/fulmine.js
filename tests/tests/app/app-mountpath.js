@@ -1,6 +1,7 @@
 // must support app.mountpath for mounted sub-applications
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 const admin = express();
@@ -34,16 +35,16 @@ app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
     // Verify routes work
-    const adminRes = await fetch("http://localhost:13333/admin").then((res) => res.text());
+    const adminRes = await fetchTest("http://localhost:13333/admin").then((res) => res.text());
     console.log("admin response:", adminRes);
 
-    const apiRes = await fetch("http://localhost:13333/api").then((res) => res.text());
+    const apiRes = await fetchTest("http://localhost:13333/api").then((res) => res.text());
     console.log("api response:", apiRes);
 
-    const multi1Res = await fetch("http://localhost:13333/multi1").then((res) => res.text());
+    const multi1Res = await fetchTest("http://localhost:13333/multi1").then((res) => res.text());
     console.log("multi1 response:", multi1Res);
 
-    const multi2Res = await fetch("http://localhost:13333/multi2").then((res) => res.text());
+    const multi2Res = await fetchTest("http://localhost:13333/multi2").then((res) => res.text());
     console.log("multi2 response:", multi2Res);
 
     process.exit(0);

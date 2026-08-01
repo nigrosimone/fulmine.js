@@ -2,6 +2,7 @@
 
 const net = require("net");
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 async function sendRequest(method, url, customHost) {
     // arrayHeaders is an array of [key, value] pairs
@@ -45,7 +46,7 @@ app.listen(13333, async () => {
 
         let res;
 
-        res = await fetch("http://localhost:13333/test");
+        res = await fetchTest("http://localhost:13333/test");
         console.log(await res.text());
 
         // host with port

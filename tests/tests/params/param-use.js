@@ -1,6 +1,7 @@
 // must support param on use
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 const router = express.Router();
@@ -26,10 +27,10 @@ app.use((req, res, next) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const response = await fetch("http://localhost:13333/1/test");
+    const response = await fetchTest("http://localhost:13333/1/test");
     console.log(await response.text());
 
-    const response2 = await fetch("http://localhost:13333/555/test");
+    const response2 = await fetchTest("http://localhost:13333/555/test");
     console.log(await response2.text());
 
     process.exit(0);

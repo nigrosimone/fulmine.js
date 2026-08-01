@@ -1,6 +1,7 @@
 // must emit 'mount' when using subapp
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 const student = express();
@@ -36,9 +37,9 @@ app.use("/teacher", teacher);
 app.listen(13333, async (err) => {
     console.log("Server is running on port 13333");
 
-    const output = await fetch("http://localhost:13333/teacher").then((res) => res.text());
+    const output = await fetchTest("http://localhost:13333/teacher").then((res) => res.text());
     console.log(output);
-    await fetch("http://localhost:13333/teacher/student");
+    await fetchTest("http://localhost:13333/teacher/student");
 
     process.exit(0);
 });

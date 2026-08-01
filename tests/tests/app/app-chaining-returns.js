@@ -1,6 +1,7 @@
 // must return the same thing Express returns from every chainable method
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 const lines = [];
@@ -59,4 +60,4 @@ app.get("/x", (req, res) => {
     process.exit(0);
 });
 
-app.listen(13333, () => fetch("http://localhost:13333/x"));
+app.listen(13333, () => fetchTest("http://localhost:13333/x"));

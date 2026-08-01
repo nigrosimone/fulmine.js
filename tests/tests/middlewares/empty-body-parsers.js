@@ -1,6 +1,7 @@
 // must give an empty body the same shape express does, for every body parser
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -21,7 +22,7 @@ app.post("/raw", express.raw(), (req, res) => {
 });
 
 function empty(path, contentType) {
-    return fetch(`http://localhost:13333${path}`, {
+    return fetchTest(`http://localhost:13333${path}`, {
         method: "POST",
         body: "",
         headers: { "Content-Type": contentType }
@@ -37,7 +38,7 @@ app.listen(13333, async () => {
     console.log(await empty("/raw", "application/octet-stream"));
 
     // a non-empty body must still parse the same way afterwards
-    const after = await fetch("http://localhost:13333/json", {
+    const after = await fetchTest("http://localhost:13333/json", {
         method: "POST",
         body: '{"a":1}',
         headers: { "Content-Type": "application/json" }

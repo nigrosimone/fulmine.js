@@ -1,6 +1,7 @@
 // must support req.route for accessing current route information
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -38,16 +39,16 @@ app.get("/check-defined", (req, res) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    await fetch("http://localhost:13333/simple").then((res) => res.text());
+    await fetchTest("http://localhost:13333/simple").then((res) => res.text());
 
-    await fetch("http://localhost:13333/users/123").then((res) => res.text());
+    await fetchTest("http://localhost:13333/users/123").then((res) => res.text());
 
-    await fetch("http://localhost:13333/posts/1/comments/2").then((res) => res.text());
+    await fetchTest("http://localhost:13333/posts/1/comments/2").then((res) => res.text());
 
-    await fetch("http://localhost:13333/resource").then((res) => res.text());
-    await fetch("http://localhost:13333/resource", { method: "POST" }).then((res) => res.text());
+    await fetchTest("http://localhost:13333/resource").then((res) => res.text());
+    await fetchTest("http://localhost:13333/resource", { method: "POST" }).then((res) => res.text());
 
-    await fetch("http://localhost:13333/check-defined").then((res) => res.text());
+    await fetchTest("http://localhost:13333/check-defined").then((res) => res.text());
 
     process.exit(0);
 });

@@ -258,7 +258,11 @@ class Application extends Router {
                     // routes were registered in. same shape as the router's own OPTIONS reply
                     const allowedMethods = Array.from(request._matchedMethods).sort().join(", ");
                     response.setHeader("Allow", allowedMethods);
-                    response.send(allowedMethods);
+                    // the router package answers this one itself, with a plain-text body, the
+                    // nosniff header and end() rather than send(), so no ETag comes with it
+                    response.setHeader("Content-Type", "text/plain");
+                    response.setHeader("X-Content-Type-Options", "nosniff");
+                    response.end(allowedMethods);
                     return;
                 }
                 response.status(404);

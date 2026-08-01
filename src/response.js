@@ -569,6 +569,13 @@ module.exports = class Response extends Writable {
             this.req.noEtag = true;
         }
 
+        // announced before the conditional checks, because those can return early and the header
+        // still belongs on the response. send does it in the same order, so a 412 or a 416 still
+        // tells the client that ranges are available.
+        if (options.acceptRanges) {
+            this.headers["accept-ranges"] = "bytes";
+        }
+
         // conditional requests
         if (isPreconditionFailure(this.req, this)) {
             this.status(412);
@@ -580,7 +587,6 @@ module.exports = class Response extends Writable {
             len = stat.size,
             ranged = false;
         if (options.acceptRanges) {
-            this.headers["accept-ranges"] = "bytes";
             if (this.req.headers.range) {
                 let ranges = this.req.range(stat.size, {
                     combine: true

@@ -1,6 +1,7 @@
 // router must be a function
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 const router = express.Router();
@@ -20,8 +21,8 @@ app.get("/test2", (req, res) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const output1 = await fetch("http://localhost:13333/test").then((res) => res.text());
-    const output2 = await fetch("http://localhost:13333/test2").then((res) => res.text());
+    const output1 = await fetchTest("http://localhost:13333/test").then((res) => res.text());
+    const output2 = await fetchTest("http://localhost:13333/test2").then((res) => res.text());
 
     console.log(output1, output2);
     process.exit(0);

@@ -1,6 +1,7 @@
 // must support simple routers
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 const router = express.Router();
@@ -25,11 +26,11 @@ app.listen(13333, async () => {
     console.log("Server is running on port 13333");
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
-    const output1 = await fetch("http://localhost:13333/test");
+    const output1 = await fetchTest("http://localhost:13333/test");
     console.log(await output1.text());
-    const output2 = await fetch("http://localhost:13333/asdf/asdf");
+    const output2 = await fetchTest("http://localhost:13333/asdf/asdf");
     console.log(await output2.text());
-    const output3 = await fetch("http://localhost:13333/asdf/test");
+    const output3 = await fetchTest("http://localhost:13333/asdf/test");
     console.log(await output3.text());
 
     process.exit(0);

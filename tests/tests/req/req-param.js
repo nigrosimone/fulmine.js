@@ -1,6 +1,7 @@
 // must reject the removed req.param() and read from params, body and query instead
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -34,11 +35,11 @@ app.delete("/body", (req, res) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    console.log(await fetch("http://localhost:13333/removed").then((res) => res.text()));
-    console.log(await fetch("http://localhost:13333/params/abc").then((res) => res.text()));
-    console.log(await fetch("http://localhost:13333/query?test=qqq").then((res) => res.text()));
+    console.log(await fetchTest("http://localhost:13333/removed").then((res) => res.text()));
+    console.log(await fetchTest("http://localhost:13333/params/abc").then((res) => res.text()));
+    console.log(await fetchTest("http://localhost:13333/query?test=qqq").then((res) => res.text()));
     console.log(
-        await fetch("http://localhost:13333/body", {
+        await fetchTest("http://localhost:13333/body", {
             method: "DELETE",
             body: JSON.stringify({ test: "bbb" }),
             headers: { "Content-Type": "application/json" }

@@ -1,6 +1,7 @@
 // must leave x-powered-by off by default, unlike Express
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -12,7 +13,7 @@ app.get("/", (req, res) => res.send("ok"));
 const isFulmine = !!app.uwsApp;
 
 app.listen(13333, async () => {
-    const response = await fetch("http://localhost:13333/");
+    const response = await fetchTest("http://localhost:13333/");
     await response.text();
 
     const header = response.headers.get("x-powered-by");
@@ -24,7 +25,7 @@ app.listen(13333, async () => {
     on.set("x-powered-by", true);
     on.get("/", (req, res) => res.send("ok"));
     on.listen(13334, async () => {
-        const second = await fetch("http://localhost:13334/");
+        const second = await fetchTest("http://localhost:13334/");
         await second.text();
         console.log("switched on:", second.headers.get("x-powered-by") !== null);
         process.exit(0);

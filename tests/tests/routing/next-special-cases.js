@@ -1,6 +1,7 @@
 // special cases for next()
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 app.set("env", "production");
@@ -49,9 +50,9 @@ app.use((err, req, res, next) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const response = await fetch("http://localhost:13333/test").then((res) => res.text());
+    const response = await fetchTest("http://localhost:13333/test").then((res) => res.text());
     console.log(response);
-    const response2 = await fetch("http://localhost:13333/error").then((res) => res.text());
+    const response2 = await fetchTest("http://localhost:13333/error").then((res) => res.text());
     console.log(response2);
     process.exit(0);
 });

@@ -1,6 +1,7 @@
 // must support body reading
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 const { PassThrough } = require("stream");
 const crypto = require("crypto");
 
@@ -36,20 +37,20 @@ app.listen(13333, async () => {
     }
 
     let res;
-    res = await fetch("http://localhost:13333/test", {
+    res = await fetchTest("http://localhost:13333/test", {
         method: "POST",
         body: body
     });
     console.log(await res.text());
 
-    await fetch("http://localhost:13333/non-body", {
+    await fetchTest("http://localhost:13333/non-body", {
         method: "GET"
     }).then(async (res) => {
         console.log(res.status);
         console.log(await res.text());
     });
 
-    await fetch("http://localhost:13333/non-body", {
+    await fetchTest("http://localhost:13333/non-body", {
         method: "DELETE"
     }).then(async (res) => {
         console.log(res.status);

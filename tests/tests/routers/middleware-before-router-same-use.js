@@ -1,6 +1,7 @@
 // must run middlewares in the same use() call as a mounted router
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 const router = express.Router();
@@ -22,10 +23,10 @@ app.listen(13333, async () => {
     console.log("Server is running on port 13333");
     await new Promise((resolve) => setTimeout(resolve, 200));
 
-    let res = await fetch("http://localhost:13333/private/data");
+    let res = await fetchTest("http://localhost:13333/private/data");
     console.log(res.status, await res.text());
 
-    res = await fetch("http://localhost:13333/private/data", {
+    res = await fetchTest("http://localhost:13333/private/data", {
         headers: { authorization: "yes" }
     });
     console.log(res.status, await res.text());

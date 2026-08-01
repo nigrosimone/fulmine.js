@@ -1,6 +1,7 @@
 // must support complex routes
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -20,12 +21,12 @@ app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
     const outputs = await Promise.all([
-        fetch("http://localhost:13333/abcd").then((res) => res.text()),
-        fetch("http://localhost:13333/abd").then((res) => res.text()),
-        fetch("http://localhost:13333/ad").then((res) => res.text()),
+        fetchTest("http://localhost:13333/abcd").then((res) => res.text()),
+        fetchTest("http://localhost:13333/abd").then((res) => res.text()),
+        fetchTest("http://localhost:13333/ad").then((res) => res.text()),
 
-        fetch("http://localhost:13333/testtest").then((res) => res.text()),
-        fetch("http://localhost:13333/testabctest").then((res) => res.text())
+        fetchTest("http://localhost:13333/testtest").then((res) => res.text()),
+        fetchTest("http://localhost:13333/testabctest").then((res) => res.text())
     ]);
 
     console.log(outputs.join(" "));

@@ -1,6 +1,7 @@
 // must not modify body if it doesnt match the type
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -16,7 +17,7 @@ app.post("/json", express.json(), (req, res) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const response = await fetch("http://localhost:13333/json", {
+    const response = await fetchTest("http://localhost:13333/json", {
         method: "POST",
         headers: {
             "Content-Type": "text/plain"

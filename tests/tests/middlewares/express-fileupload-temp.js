@@ -1,6 +1,7 @@
 // must support express-fileupload middleware with temp file
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 const fileUpload = require("express-fileupload");
 const fs = require("fs");
 
@@ -34,7 +35,7 @@ app.listen(13333, async () => {
     formData.append("file", file);
 
     console.log("sending request");
-    const response = await fetch("http://localhost:13333/file", {
+    const response = await fetchTest("http://localhost:13333/file", {
         method: "POST",
         body: formData
     });

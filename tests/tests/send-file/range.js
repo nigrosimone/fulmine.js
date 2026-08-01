@@ -1,6 +1,7 @@
 // must support Range header
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -15,7 +16,7 @@ app.use((err, req, res, next) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const response = await fetch("http://localhost:13333/test", {
+    const response = await fetchTest("http://localhost:13333/test", {
         headers: {
             Range: "bytes=0-10"
         }
@@ -26,7 +27,7 @@ app.listen(13333, async () => {
         response.headers.get("Content-Length"),
         response.status
     );
-    const response2 = await fetch("http://localhost:13333/test", {
+    const response2 = await fetchTest("http://localhost:13333/test", {
         headers: {
             Range: "bytes=11-20"
         }
@@ -37,7 +38,7 @@ app.listen(13333, async () => {
         response2.headers.get("Content-Length"),
         response2.status
     );
-    const response3 = await fetch("http://localhost:13333/test", {
+    const response3 = await fetchTest("http://localhost:13333/test", {
         headers: {
             Range: "bytes=0-10, 21-30"
         }
@@ -48,7 +49,7 @@ app.listen(13333, async () => {
         response3.headers.get("Content-Length"),
         response3.status
     );
-    const response4 = await fetch("http://localhost:13333/test", {
+    const response4 = await fetchTest("http://localhost:13333/test", {
         headers: {
             Range: "bytes=500-10000"
         }
@@ -59,7 +60,7 @@ app.listen(13333, async () => {
         response4.headers.get("Content-Length"),
         response4.status
     );
-    const response5 = await fetch("http://localhost:13333/test", {
+    const response5 = await fetchTest("http://localhost:13333/test", {
         headers: {
             Range: "bytes=-10"
         }
@@ -71,7 +72,7 @@ app.listen(13333, async () => {
         response5.status
     );
 
-    const response6 = await fetch("http://localhost:13333/test", {
+    const response6 = await fetchTest("http://localhost:13333/test", {
         headers: {
             Range: "bytes=99999999999999999999999999-999999999999999999999999999999"
         }

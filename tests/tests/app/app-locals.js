@@ -1,6 +1,7 @@
 // test app.locals as object for application-level local variables
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -39,12 +40,12 @@ app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
     // Test accessing app.locals from route
-    await fetch("http://localhost:13333/info");
+    await fetchTest("http://localhost:13333/info");
 
     // Test that app.locals is shared between requests
-    await fetch("http://localhost:13333/update");
-    await fetch("http://localhost:13333/update");
-    await fetch("http://localhost:13333/check");
+    await fetchTest("http://localhost:13333/update");
+    await fetchTest("http://localhost:13333/update");
+    await fetchTest("http://localhost:13333/check");
 
     process.exit(0);
 });

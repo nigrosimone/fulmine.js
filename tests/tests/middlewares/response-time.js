@@ -1,6 +1,7 @@
 // must support response-time middleware
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 const responseTime = require("response-time");
 
 const app = express();
@@ -18,7 +19,7 @@ app.post("/abc", (req, res) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const response = await fetch("http://localhost:13333/abc", {
+    const response = await fetchTest("http://localhost:13333/abc", {
         method: "POST",
         body: "abc"
     });

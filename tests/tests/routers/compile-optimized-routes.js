@@ -1,6 +1,7 @@
 // must compile optimized routes at listen for nested routers and skip mixed use(path, mw, router)
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 const singleRouter = express.Router();
@@ -28,19 +29,19 @@ app.use(
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    let res = await fetch("http://localhost:13333/api/data");
+    let res = await fetchTest("http://localhost:13333/api/data");
     console.log("single", res.status, await res.text());
 
-    res = await fetch("http://localhost:13333/abccc/ccc");
+    res = await fetchTest("http://localhost:13333/abccc/ccc");
     console.log("nested-ccc", res.status, await res.text());
 
-    res = await fetch("http://localhost:13333/abccc/nested/ddd");
+    res = await fetchTest("http://localhost:13333/abccc/nested/ddd");
     console.log("nested-ddd", res.status, await res.text());
 
-    res = await fetch("http://localhost:13333/mixed/data");
+    res = await fetchTest("http://localhost:13333/mixed/data");
     console.log("mixed", res.status, await res.text());
 
-    res = await fetch("http://localhost:13333/mixed/data", {
+    res = await fetchTest("http://localhost:13333/mixed/data", {
         headers: { authorization: "yes" }
     });
     console.log("mixed-auth", res.status, await res.text());

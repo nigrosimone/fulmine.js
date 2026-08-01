@@ -1,6 +1,7 @@
 // must support . and - in routes
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -19,16 +20,16 @@ app.get("/test/:from--:to", (req, res) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    let res = await fetch("http://localhost:13333/test/hi.byeaa");
+    let res = await fetchTest("http://localhost:13333/test/hi.byeaa");
     console.log(await res.text());
 
-    res = await fetch("http://localhost:13333/hi-byeaa");
+    res = await fetchTest("http://localhost:13333/hi-byeaa");
     console.log(await res.text());
 
-    res = await fetch("http://localhost:13333/test/hiAbyeaa");
+    res = await fetchTest("http://localhost:13333/test/hiAbyeaa");
     console.log(await res.text());
 
-    res = await fetch("http://localhost:13333/test/123--xyz");
+    res = await fetchTest("http://localhost:13333/test/123--xyz");
     console.log(await res.text());
 
     process.exit(0);

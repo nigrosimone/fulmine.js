@@ -1,6 +1,7 @@
 // must support custom error handler
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -59,11 +60,11 @@ router5.use((req, res, next) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const output1 = await fetch("http://localhost:13333/test1").then((res) => res.json());
-    const output2 = await fetch("http://localhost:13333/test2").then((res) => res.json());
-    const output3 = await fetch("http://localhost:13333/test3").then((res) => res.json());
-    const output4 = await fetch("http://localhost:13333/test4").then((res) => res.json());
-    const output5 = await fetch("http://localhost:13333/test5").then((res) => res.json());
+    const output1 = await fetchTest("http://localhost:13333/test1").then((res) => res.json());
+    const output2 = await fetchTest("http://localhost:13333/test2").then((res) => res.json());
+    const output3 = await fetchTest("http://localhost:13333/test3").then((res) => res.json());
+    const output4 = await fetchTest("http://localhost:13333/test4").then((res) => res.json());
+    const output5 = await fetchTest("http://localhost:13333/test5").then((res) => res.json());
 
     console.log(output1);
     console.log(output2);

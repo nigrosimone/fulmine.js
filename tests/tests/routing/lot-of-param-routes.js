@@ -1,6 +1,7 @@
 // must support a lot of param routes
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -17,7 +18,7 @@ app.get("/:test", (req, res) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const res = await fetch("http://localhost:13333/asdf");
+    const res = await fetchTest("http://localhost:13333/asdf");
     console.log(await res.text());
 
     process.exit(0);

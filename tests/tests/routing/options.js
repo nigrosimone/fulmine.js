@@ -1,6 +1,7 @@
 // must support OPTIONS method
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 const router = express.Router();
@@ -49,22 +50,22 @@ app.all("/all", (req, res) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    let res = await fetch("http://localhost:13333/test", { method: "OPTIONS" });
+    let res = await fetchTest("http://localhost:13333/test", { method: "OPTIONS" });
     console.log(await res.text(), res.status, res.headers.get("allow"), res.headers.get("x-test"));
 
-    res = await fetch("http://localhost:13333/router/test", { method: "OPTIONS" });
+    res = await fetchTest("http://localhost:13333/router/test", { method: "OPTIONS" });
     console.log(await res.text(), res.status, res.headers.get("allow"), res.headers.get("x-test"));
 
-    res = await fetch("http://localhost:13333/router/router2/test", { method: "OPTIONS" });
+    res = await fetchTest("http://localhost:13333/router/router2/test", { method: "OPTIONS" });
     console.log(await res.text(), res.status, res.headers.get("allow"), res.headers.get("x-test"));
 
-    res = await fetch("http://localhost:13333/router/test2", { method: "OPTIONS" });
+    res = await fetchTest("http://localhost:13333/router/test2", { method: "OPTIONS" });
     console.log(await res.text(), res.status, res.headers.get("allow"), res.headers.get("x-test"));
 
-    res = await fetch("http://localhost:13333/options", { method: "OPTIONS" });
+    res = await fetchTest("http://localhost:13333/options", { method: "OPTIONS" });
     console.log(await res.text(), res.status, res.headers.get("allow"), res.headers.get("x-test"));
 
-    res = await fetch("http://localhost:13333/all", { method: "OPTIONS" });
+    res = await fetchTest("http://localhost:13333/all", { method: "OPTIONS" });
     console.log(await res.text(), res.status, res.headers.get("allow"), res.headers.get("x-test"));
 
     process.exit(0);

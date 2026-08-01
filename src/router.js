@@ -396,7 +396,11 @@ module.exports = class Router extends EventEmitter {
                     // same regardless of the order the routes happened to be registered in
                     const allowedMethods = Array.from(request._matchedMethods).sort().join(", ");
                     response.setHeader("Allow", allowedMethods);
-                    response.send(allowedMethods);
+                    // the router package answers this one itself, with a plain-text body, the
+                    // nosniff header and end() rather than send(), so no ETag comes with it
+                    response.setHeader("Content-Type", "text/plain");
+                    response.setHeader("X-Content-Type-Options", "nosniff");
+                    response.end(allowedMethods);
                     return;
                 }
                 response.status(404);

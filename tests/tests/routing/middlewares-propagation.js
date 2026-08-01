@@ -1,6 +1,7 @@
 // must support error propagation through middlewares
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -36,7 +37,7 @@ app.use(generalHandler);
 app.listen(13333, async () => {
     console.log("Server is running at http://localhost:13333");
     console.log(
-        await fetch("http://localhost:13333/")
+        await fetchTest("http://localhost:13333/")
             .then((res) => res.text())
             .catch((err) => err.message)
     );

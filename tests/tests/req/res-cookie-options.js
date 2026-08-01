@@ -1,6 +1,7 @@
 // Test res.cookie() with all options (maxAge, expires, httpOnly, secure, sameSite, domain, path, signed)
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 const cookieParser = require("cookie-parser");
 
 const app = express();
@@ -71,39 +72,39 @@ app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
     // Test maxAge
-    const maxageRes = await fetch("http://localhost:13333/maxage");
+    const maxageRes = await fetchTest("http://localhost:13333/maxage");
     console.log("maxAge:", maxageRes.headers.get("Set-Cookie").replace(/\d\d\:\d\d\:\d\d/g, "xx:xx:xx"));
 
     // Test expires
-    const expiresRes = await fetch("http://localhost:13333/expires");
+    const expiresRes = await fetchTest("http://localhost:13333/expires");
     console.log("expires:", expiresRes.headers.get("Set-Cookie"));
 
     // Test httpOnly
-    const httponlyRes = await fetch("http://localhost:13333/httponly");
+    const httponlyRes = await fetchTest("http://localhost:13333/httponly");
     console.log("httpOnly:", httponlyRes.headers.get("Set-Cookie"));
 
     // Test secure
-    const secureRes = await fetch("http://localhost:13333/secure");
+    const secureRes = await fetchTest("http://localhost:13333/secure");
     console.log("secure:", secureRes.headers.get("Set-Cookie"));
 
     // Test sameSite
-    const samesiteRes = await fetch("http://localhost:13333/samesite");
+    const samesiteRes = await fetchTest("http://localhost:13333/samesite");
     console.log("sameSite:", samesiteRes.headers.get("Set-Cookie"));
 
     // Test domain
-    const domainRes = await fetch("http://localhost:13333/domain");
+    const domainRes = await fetchTest("http://localhost:13333/domain");
     console.log("domain:", domainRes.headers.get("Set-Cookie"));
 
     // Test path
-    const pathRes = await fetch("http://localhost:13333/path");
+    const pathRes = await fetchTest("http://localhost:13333/path");
     console.log("path:", pathRes.headers.get("Set-Cookie"));
 
     // Test signed
-    const signedRes = await fetch("http://localhost:13333/signed");
+    const signedRes = await fetchTest("http://localhost:13333/signed");
     console.log("signed:", signedRes.headers.get("Set-Cookie"));
 
     // Test combined options
-    const combinedRes = await fetch("http://localhost:13333/combined");
+    const combinedRes = await fetchTest("http://localhost:13333/combined");
     console.log("combined:", combinedRes.headers.get("Set-Cookie").replace(/\d\d\:\d\d\:\d\d/g, "xx:xx:xx"));
 
     process.exit(0);

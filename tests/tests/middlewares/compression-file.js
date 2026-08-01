@@ -1,6 +1,7 @@
 // must support compression middleware with files
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 const compression = require("compression");
 const fs = require("node:fs/promises");
 
@@ -28,7 +29,7 @@ app.listen(13333, async () => {
     let file = await fs.readFile("tests/parts/large-file.json");
 
     // sent with pipe
-    let response = await fetch("http://localhost:13333/large-file.json", {
+    let response = await fetchTest("http://localhost:13333/large-file.json", {
         method: "GET",
         headers: {
             "Accept-Encoding": "gzip"
@@ -43,7 +44,7 @@ app.listen(13333, async () => {
 
     // sent with pipe
     file = await fs.readFile("tests/parts/medium-file.json");
-    response = await fetch("http://localhost:13333/medium-file.json", {
+    response = await fetchTest("http://localhost:13333/medium-file.json", {
         method: "GET",
         headers: {
             "Accept-Encoding": "gzip"
@@ -58,7 +59,7 @@ app.listen(13333, async () => {
 
     // sent with worker
     file = await fs.readFile("tests/parts/small-file.json");
-    response = await fetch("http://localhost:13333/small-file.json", {
+    response = await fetchTest("http://localhost:13333/small-file.json", {
         method: "GET",
         headers: {
             "Accept-Encoding": "gzip"
@@ -73,7 +74,7 @@ app.listen(13333, async () => {
 
     // sent with res.sendFile
     file = await fs.readFile("tests/parts/large-file.json");
-    response = await fetch("http://localhost:13333/test", {
+    response = await fetchTest("http://localhost:13333/test", {
         method: "GET",
         headers: {
             "Accept-Encoding": "gzip"
