@@ -7,7 +7,7 @@
         "strict": false,
         "types": ["node"],
         "paths": {
-            "ultimate-express": ["./src/types.d.ts"],
+            "fulmine": ["./src/types.d.ts"],
             "*": ["./node_modules/*"]
         }
     },

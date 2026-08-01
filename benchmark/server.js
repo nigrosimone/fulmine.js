@@ -30,7 +30,7 @@ function resolveFramework(frameworkName) {
         return require('express');
     }
 
-    if (frameworkName === 'ultimate-express') {
+    if (frameworkName === 'fulmine') {
         return require('../src/index');
     }
 
@@ -115,7 +115,7 @@ async function main() {
         app.set('etag', false);
         app.set('x-powered-by', false);
         app.set('env', 'production');
-        if (frameworkName === 'ultimate-express') {
+        if (frameworkName === 'fulmine') {
             app.set('declarative responses', false);
         }
     }

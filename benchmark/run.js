@@ -11,7 +11,7 @@ const SCENARIO_FILES = fs.readdirSync(path.join(__dirname, 'scenarios')).filter(
 
 const FRAMEWORKS = [
     { id: 'express', label: 'Express', port: 3001 },
-    { id: 'ultimate-express', label: 'uExpress', port: 3000 }
+    { id: 'fulmine', label: 'Fulmine', port: 3000 }
 ];
 
 function parseArgs(argv) {
@@ -181,7 +181,7 @@ async function validateScenarioResponses(scenarioName, scenario) {
     }
 
     const expressResult = results.express;
-    const ultimateResult = results['ultimate-express'];
+    const ultimateResult = results['fulmine'];
     const sameStatus = expressResult.statusCode === ultimateResult.statusCode;
     const sameBodyHash = expressResult.bodyHash === ultimateResult.bodyHash;
 
@@ -196,7 +196,7 @@ async function validateScenarioResponses(scenarioName, scenario) {
         ok: false,
         message: [
             `express: status=${expressResult.statusCode}, hash=${expressResult.bodyHash}, size=${expressResult.bodySize}`,
-            `ultimate-express: status=${ultimateResult.statusCode}, hash=${ultimateResult.bodyHash}, size=${ultimateResult.bodySize}`
+            `fulmine: status=${ultimateResult.statusCode}, hash=${ultimateResult.bodyHash}, size=${ultimateResult.bodySize}`
         ].join(' | ')
     };
 }
@@ -349,7 +349,7 @@ function buildMarkdown(results) {
     lines.push('<!-- benchmark-comment -->');
     lines.push('## Benchmark Comparison');
     lines.push('');
-    lines.push('| Test | Express req/sec | uExpress req/sec | Express throughput | uExpress throughput | uExpress speedup |');
+    lines.push('| Test | Express req/sec | Fulmine req/sec | Express throughput | Fulmine throughput | Fulmine speedup |');
     lines.push('| --- | ---: | ---: | ---: | ---: | ---: |');
 
     const failures = [];
@@ -375,7 +375,7 @@ function buildMarkdown(results) {
         if (!row.ultimate.ok) {
             failures.push({
                 scenario: row.name,
-                framework: 'ultimate-express',
+                framework: 'fulmine',
                 message: row.ultimate.error
             });
         }
@@ -389,7 +389,7 @@ function buildMarkdown(results) {
             });
         }
 
-        for (const [framework, result] of [['express', row.express], ['ultimate-express', row.ultimate]]) {
+        for (const [framework, result] of [['express', row.express], ['fulmine', row.ultimate]]) {
             if (result.ok && result.socketErrorLine) {
                 socketErrors.push({ scenario: row.name, framework, message: result.socketErrorLine });
             }
@@ -511,7 +511,7 @@ async function main() {
                 ok: false,
                 error: error.stack || error.message || String(error)
             };
-            process.stderr.write(`[benchmark] FAILED ultimate-express/${scenarioName}\n${ultimateResult.error}\n`);
+            process.stderr.write(`[benchmark] FAILED fulmine/${scenarioName}\n${ultimateResult.error}\n`);
         }
 
         results.push({
