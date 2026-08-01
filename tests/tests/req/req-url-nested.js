@@ -13,17 +13,16 @@ router.use("/:test", (req, res, next) => {
 
 app.use("/test", router);
 
-app.get('/test/:test', (req, res) => {
+app.get("/test/:test", (req, res) => {
     console.log(req.params);
     res.send(req.url);
 });
 
 app.listen(13333, async () => {
+    console.log("Server is running on port 13333");
 
-    console.log('Server is running on port 13333');
-
-    let res = await fetch('http://localhost:13333/test/asdf');
+    const res = await fetch("http://localhost:13333/test/asdf");
     console.log(await res.text());
 
     process.exit(0);
-})
+});

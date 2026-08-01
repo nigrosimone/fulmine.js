@@ -16,34 +16,43 @@ limitations under the License.
 
 const uWS = require("uWebSockets.js");
 const Router = require("./router.js");
-const { removeDuplicateSlashes, defaultSettings, compileTrust, createETagGenerator, fastQueryParse, NullObject } = require("./utils.js");
+const {
+    removeDuplicateSlashes,
+    defaultSettings,
+    compileTrust,
+    createETagGenerator,
+    fastQueryParse,
+    NullObject
+} = require("./utils.js");
 const querystring = require("fast-querystring");
 const ViewClass = require("./view.js");
 const path = require("path");
 const os = require("os");
 const { Worker } = require("worker_threads");
-const cluster = require('cluster');
+const cluster = require("cluster");
 
 const cpuCount = os.cpus().length;
 
-let workers = [];
+const workers = [];
 let taskKey = 0;
 const workerTasks = new NullObject();
 
 class FSWorker {
     constructor() {
         this.busy = false;
-        this.worker = new Worker(path.join(__dirname, 'worker.js'));
+        this.worker = new Worker(path.join(__dirname, "worker.js"));
 
-        this.worker.on('message', (message) => {
+        this.worker.on("message", (message) => {
             this.busy = false;
-            if(message.err) {
+            if (message.err) {
                 workerTasks[message.key].reject(new Error(message.err));
             } else {
                 // worker transfers file contents as an ArrayBuffer; wrap it in a Buffer (zero-copy) so
                 // consumers get the same type as fs.readFile. A bare ArrayBuffer is rejected by wrapped
                 // res.end() implementations (e.g. express-session calls Buffer.byteLength on the chunk).
-                workerTasks[message.key].resolve(message.data instanceof ArrayBuffer ? Buffer.from(message.data) : message.data);
+                workerTasks[message.key].resolve(
+                    message.data instanceof ArrayBuffer ? Buffer.from(message.data) : message.data
+                );
             }
             delete workerTasks[message.key];
         });
@@ -51,26 +60,25 @@ class FSWorker {
 
         workers.push(this);
     }
-
 }
 
 class Application extends Router {
     constructor(settings = new NullObject()) {
         super(settings);
-        if(!settings?.uwsOptions) {
+        if (!settings?.uwsOptions) {
             settings.uwsOptions = {};
         }
-        if(typeof settings.threads !== 'number') {
+        if (typeof settings.threads !== "number") {
             settings.threads = cpuCount > 1 ? 1 : 0;
         }
-        if(settings.uwsApp) {
+        if (settings.uwsApp) {
             this.uwsApp = settings.uwsApp;
-        } else if(settings.http3) {
-            if(!settings.uwsOptions.key_file_name || !settings.uwsOptions.cert_file_name) {
-                throw new Error('uwsOptions.key_file_name and uwsOptions.cert_file_name are required for HTTP/3');
+        } else if (settings.http3) {
+            if (!settings.uwsOptions.key_file_name || !settings.uwsOptions.cert_file_name) {
+                throw new Error("uwsOptions.key_file_name and uwsOptions.cert_file_name are required for HTTP/3");
             }
             this.uwsApp = uWS.H3App(settings.uwsOptions);
-        } else if(settings.uwsOptions.key_file_name && settings.uwsOptions.cert_file_name) {
+        } else if (settings.uwsOptions.key_file_name && settings.uwsOptions.cert_file_name) {
             this.uwsApp = uWS.SSLApp(settings.uwsOptions);
         } else {
             this.uwsApp = uWS.App(settings.uwsOptions);
@@ -83,31 +91,31 @@ class Application extends Router {
         };
         this.listenCalled = false;
         this.workers = [];
-        for(let i = 0; i < settings.threads; i++) {
-            if(workers[i]) {
+        for (let i = 0; i < settings.threads; i++) {
+            if (workers[i]) {
                 this.workers[i] = workers[i];
             } else {
                 this.workers[i] = new FSWorker();
             }
         }
         this.port = undefined;
-        for(const key in defaultSettings) {
-            if(typeof this.settings[key] === 'undefined') {
-                if(typeof defaultSettings[key] === 'function') {
+        for (const key in defaultSettings) {
+            if (typeof this.settings[key] === "undefined") {
+                if (typeof defaultSettings[key] === "function") {
                     this.settings[key] = defaultSettings[key](this);
                 } else {
                     this.settings[key] = defaultSettings[key];
                 }
             }
         }
-        this.set('view', ViewClass);
-        this.set('views', path.resolve('views'));
+        this.set("view", ViewClass);
+        this.set("views", path.resolve("views"));
     }
 
     createWorkerTask(resolve, reject) {
         const key = taskKey++;
         workerTasks[key] = { resolve, reject };
-        if(key > 1000000) {
+        if (key > 1000000) {
             taskKey = 0;
         }
         return key;
@@ -118,50 +126,50 @@ class Application extends Router {
             const worker = this.workers[Math.floor(Math.random() * this.workers.length)];
             const key = this.createWorkerTask(resolve, reject);
             worker.busy = true;
-            worker.worker.postMessage({ key, type: 'readFile', path });
+            worker.worker.postMessage({ key, type: "readFile", path });
         });
     }
 
     set(key, value) {
-        if(key === 'trust proxy') {
-            if(!value) {
-                delete this.settings['trust proxy fn'];
+        if (key === "trust proxy") {
+            if (!value) {
+                delete this.settings["trust proxy fn"];
             } else {
-                this.settings['trust proxy fn'] = compileTrust(value);
+                this.settings["trust proxy fn"] = compileTrust(value);
             }
-        } else if(key === 'query parser') {
-            if(value === 'extended') {
-                this.settings['query parser fn'] = fastQueryParse;
-            } else if(value === 'simple') {
-                this.settings['query parser fn'] = querystring.parse;
-            } else if(typeof value === 'function') {
-                this.settings['query parser fn'] = value;
+        } else if (key === "query parser") {
+            if (value === "extended") {
+                this.settings["query parser fn"] = fastQueryParse;
+            } else if (value === "simple") {
+                this.settings["query parser fn"] = querystring.parse;
+            } else if (typeof value === "function") {
+                this.settings["query parser fn"] = value;
             } else {
-                this.settings['query parser fn'] = undefined;
+                this.settings["query parser fn"] = undefined;
             }
-        } else if(key === 'env') {
-            if(value === 'production') {
-                this.settings['view cache'] = true;
+        } else if (key === "env") {
+            if (value === "production") {
+                this.settings["view cache"] = true;
             } else {
-                this.settings['view cache'] = undefined;
+                this.settings["view cache"] = undefined;
             }
-        } else if(key === 'views') {
+        } else if (key === "views") {
             this.settings[key] = path.resolve(value);
             return this;
-        } else if(key === 'etag') {
-            if(typeof value === 'function') {
-                this.settings['etag fn'] = value;
+        } else if (key === "etag") {
+            if (typeof value === "function") {
+                this.settings["etag fn"] = value;
             } else {
-                switch(value) {
+                switch (value) {
                     case true:
-                    case 'weak':
-                        this.settings['etag fn'] = createETagGenerator({ weak: true });
+                    case "weak":
+                        this.settings["etag fn"] = createETagGenerator({ weak: true });
                         break;
-                    case 'strong':
-                        this.settings['etag fn'] = createETagGenerator({ weak: false });
+                    case "strong":
+                        this.settings["etag fn"] = createETagGenerator({ weak: false });
                         break;
                     case false:
-                        delete this.settings['etag fn'];
+                        delete this.settings["etag fn"];
                         break;
                     default:
                         throw new Error(`Invalid etag mode: ${value}`);
@@ -192,17 +200,17 @@ class Application extends Router {
     }
 
     #createRequestHandler() {
-        this.uwsApp.any('/*', async (res, req) => {
+        this.uwsApp.any("/*", async (res, req) => {
             const { request, response } = this.handleRequest(res, req);
 
             const matchedRoute = await this._routeRequest(request, response);
-            if(!matchedRoute && !response.headersSent && !response.aborted) {
-                if(request._error) {
+            if (!matchedRoute && !response.headersSent && !response.aborted) {
+                if (request._error) {
                     return this._handleError(request._error, null, request, response);
                 }
-                if(request._isOptions && request._matchedMethods.size > 0) {
-                    const allowedMethods = Array.from(request._matchedMethods).join(',');
-                    response.setHeader('Allow', allowedMethods);
+                if (request._isOptions && request._matchedMethods.size > 0) {
+                    const allowedMethods = Array.from(request._matchedMethods).join(",");
+                    response.setHeader("Allow", allowedMethods);
                     response.send(allowedMethods);
                     return;
                 }
@@ -216,42 +224,42 @@ class Application extends Router {
         this._compileOptimizedRoutes();
         this.#createRequestHandler();
         // support listen(callback)
-        if(!callback && typeof port === 'function') {
+        if (!callback && typeof port === "function") {
             callback = port;
             port = 0;
         }
         // support listen(port, callback)
-        if(typeof host === 'function') {
+        if (typeof host === "function") {
             callback = host;
             host = undefined;
         }
-        const onListen = socket => {
-            if(!socket) {
-                let err = new Error('listen EADDRINUSE: address already in use :::' + port);
-                err.code = 'EADDRINUSE';
+        const onListen = (socket) => {
+            if (!socket) {
+                const err = new Error("listen EADDRINUSE: address already in use :::" + port);
+                err.code = "EADDRINUSE";
                 throw err;
             }
             this.port = uWS.us_socket_local_port(socket);
-            if(callback) callback();
+            if (callback) callback();
         };
-        let fn = 'listen';
-        let args = [];
+        let fn = "listen";
+        const args = [];
         // 1 = exclusive port, 0 = shared port
-        let uwsOptions = cluster.isPrimary ? 1 : 0;
-        if(typeof port !== 'number') {
-            if(!isNaN(Number(port))) {
+        const uwsOptions = cluster.isPrimary ? 1 : 0;
+        if (typeof port !== "number") {
+            if (!isNaN(Number(port))) {
                 port = Number(port);
                 args.push(port, uwsOptions, onListen);
-                if(host) {
+                if (host) {
                     args.unshift(host);
                 }
             } else {
-                fn = 'listen_unix';
+                fn = "listen_unix";
                 args.push(onListen, port);
             }
         } else {
             args.push(port, uwsOptions, onListen);
-            if(host) {
+            if (host) {
                 args.unshift(host);
             }
         }
@@ -265,93 +273,96 @@ class Application extends Router {
     }
 
     path() {
-        let paths = [this.mountpath];
+        const paths = [this.mountpath];
         let parent = this.parent;
-        while(parent) {
+        while (parent) {
             paths.unshift(parent.mountpath);
             parent = parent.parent;
         }
-        let path = removeDuplicateSlashes(paths.join(''));
-        return path === '/' ? '' : path;
+        const path = removeDuplicateSlashes(paths.join(""));
+        return path === "/" ? "" : path;
     }
 
     engine(ext, fn) {
-        if (typeof fn !== 'function') {
-            throw new Error('callback function required');
+        if (typeof fn !== "function") {
+            throw new Error("callback function required");
         }
-        const extension = ext[0] !== '.'
-            ? '.' + ext
-            : ext;
+        const extension = ext[0] !== "." ? "." + ext : ext;
         this.engines[extension] = fn;
         return this;
     }
 
     render(name, options, callback) {
-        if(typeof options === 'function') {
+        if (typeof options === "function") {
             callback = options;
             options = new NullObject();
         }
-        if(!options) {
+        if (!options) {
             options = new NullObject();
         } else {
             options = Object.assign({}, options);
         }
-        for(let key in this.locals) {
+        for (const key in this.locals) {
             options[key] = this.locals[key];
         }
 
-        if(options._locals) {
-            for(let key in options._locals) {
+        if (options._locals) {
+            for (const key in options._locals) {
                 options[key] = options._locals[key];
             }
         }
 
-        if(options.cache == null) {
-            options.cache = this.enabled('view cache');
+        if (options.cache == null) {
+            options.cache = this.enabled("view cache");
         }
 
         let view;
-        if(options.cache) {
+        if (options.cache) {
             view = this.cache[name];
         }
 
-        if(!view) {
-            const View = this.get('view');
+        if (!view) {
+            const View = this.get("view");
             view = new View(name, {
-                defaultEngine: this.get('view engine'),
-                root: this.get('views'),
-                engines: {...this.engines}
+                defaultEngine: this.get("view engine"),
+                root: this.get("views"),
+                engines: { ...this.engines }
             });
-            if(!view.path) {
-                const dirs = Array.isArray(view.root) && view.root.length > 1
-                    ? 'directories "' + view.root.slice(0, -1).join('", "') + '" or "' + view.root[view.root.length - 1] + '"'
-                    : 'directory "' + view.root + '"';
+            if (!view.path) {
+                const dirs =
+                    Array.isArray(view.root) && view.root.length > 1
+                        ? 'directories "' +
+                          view.root.slice(0, -1).join('", "') +
+                          '" or "' +
+                          view.root[view.root.length - 1] +
+                          '"'
+                        : 'directory "' + view.root + '"';
 
                 const err = new Error(`Failed to lookup view "${name}" in views ${dirs}`);
                 err.view = view;
                 return callback(err);
             }
 
-            if(options.cache) {
+            if (options.cache) {
                 this.cache[name] = view;
             }
         }
 
         try {
             view.render(options, callback);
-        } catch(err) {
+        } catch (err) {
             callback(err);
         }
     }
 
     close(callback) {
-        if(this.listenCalled) {
+        if (this.listenCalled) {
             this.uwsApp.close();
-        } 
-        if(callback) callback();
+        }
+        if (callback) callback();
     }
 }
 
-module.exports = function(options) {
+module.exports = function (options) {
     return new Application(options);
-}
+};

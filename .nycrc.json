@@ -1,18 +1,8 @@
 {
     "all": true,
     "check-coverage": false,
-    "extension": [
-        ".js"
-    ],
-    "include": [
-        "src/*"
-    ],
-    "exclude": [
-        "src/worker.js"
-    ],
-    "reporter": [
-        "text",
-        "lcov",
-        "html"
-    ]
+    "extension": [".js"],
+    "include": ["src/*"],
+    "exclude": ["src/worker.js"],
+    "reporter": ["text", "lcov", "html"]
 }

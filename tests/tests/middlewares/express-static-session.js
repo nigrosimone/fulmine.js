@@ -8,7 +8,7 @@ const session = require("express-session");
 function makeApp(options, useSession) {
     const app = options ? express(options) : express();
     app.set("case sensitive routing", false);
-    if(useSession) {
+    if (useSession) {
         app.use(session({ secret: "x", resave: false, saveUninitialized: true }));
     }
     app.use("/static", express.static("tests/parts"));
@@ -19,8 +19,8 @@ function makeApp(options, useSession) {
 }
 
 async function check(label, app, port, file) {
-    await new Promise(resolve => app.listen(port, resolve));
-    await new Promise(resolve => setTimeout(resolve, 200)); // wait past the optimizer window
+    await new Promise((resolve) => app.listen(port, resolve));
+    await new Promise((resolve) => setTimeout(resolve, 200)); // wait past the optimizer window
     const res = await fetch(`http://localhost:${port}/static/${file}`);
     const body = await res.text();
     console.log(label, res.status, body.length);

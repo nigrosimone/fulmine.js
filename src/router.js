@@ -14,33 +14,68 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-const { patternToRegex, needsConversionToRegex, deprecated, findIndexStartingFrom, canBeOptimized, NullObject, EMPTY_REGEX } = require("./utils.js");
+const {
+    patternToRegex,
+    needsConversionToRegex,
+    deprecated,
+    findIndexStartingFrom,
+    canBeOptimized,
+    NullObject,
+    EMPTY_REGEX
+} = require("./utils.js");
 const Response = require("./response.js");
 const Request = require("./request.js");
 const { EventEmitter } = require("tseep");
 const compileDeclarative = require("./declarative.js");
 const statuses = require("statuses");
 
-let resCodes = {}, resDecMethods = ['set', 'setHeader', 'header', 'send', 'end', 'append', 'status'];
-for(let method of resDecMethods) {
+const resCodes = {},
+    resDecMethods = ["set", "setHeader", "header", "send", "end", "append", "status"];
+for (const method of resDecMethods) {
     resCodes[method] = Response.prototype[method].toString();
 }
 
 let routeKey = 0;
 
 const methods = [
-    'all',
-    'post', 'put', 'delete', 'patch', 'options', 'head', 'trace', 'connect',
-    'checkout', 'copy', 'lock', 'mkcol', 'move', 'purge', 'propfind', 'proppatch',
-    'search', 'subscribe', 'unsubscribe', 'report', 'mkactivity', 'mkcalendar',
-    'checkout', 'merge', 'm-search', 'notify', 'subscribe', 'unsubscribe', 'search'
+    "all",
+    "post",
+    "put",
+    "delete",
+    "patch",
+    "options",
+    "head",
+    "trace",
+    "connect",
+    "checkout",
+    "copy",
+    "lock",
+    "mkcol",
+    "move",
+    "purge",
+    "propfind",
+    "proppatch",
+    "search",
+    "subscribe",
+    "unsubscribe",
+    "report",
+    "mkactivity",
+    "mkcalendar",
+    "checkout",
+    "merge",
+    "m-search",
+    "notify",
+    "subscribe",
+    "unsubscribe",
+    "search"
 ];
-const supportedUwsMethods = new Set(['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD', 'CONNECT', 'TRACE']);
+const supportedUwsMethods = new Set(["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD", "CONNECT", "TRACE"]);
 
 const regExParam = /:(\w+)/g;
 
 function generateErrorPageHtml(err) {
-    return `<!DOCTYPE html>\n` +
+    return (
+        `<!DOCTYPE html>\n` +
         `<html lang="en">\n` +
         `<head>\n` +
         `<meta charset="utf-8">\n` +
@@ -49,7 +84,8 @@ function generateErrorPageHtml(err) {
         `<body>\n` +
         `<pre>${err?.stack ?? err}</pre>\n` +
         `</body>\n` +
-        `</html>\n`;
+        `</html>\n`
+    );
 }
 
 module.exports = class Router extends EventEmitter {
@@ -62,61 +98,61 @@ module.exports = class Router extends EventEmitter {
         this._paramCallbacks = new Map();
         this._mountpathCache = new Map();
         this._routes = [];
-        this.mountpath = '/';
+        this.mountpath = "/";
         this.settings = settings;
         this._request = Request;
         this._response = Response;
         this.request = this._request.prototype;
         this.response = this._response.prototype;
 
-        if(typeof settings.caseSensitive !== 'undefined') {
-            this.settings['case sensitive routing'] = settings.caseSensitive;
+        if (typeof settings.caseSensitive !== "undefined") {
+            this.settings["case sensitive routing"] = settings.caseSensitive;
             delete this.settings.caseSensitive;
         }
-        if(typeof settings.strict !== 'undefined') {
-            this.settings['strict routing'] = settings.strict;
+        if (typeof settings.strict !== "undefined") {
+            this.settings["strict routing"] = settings.strict;
             delete this.settings.strict;
         }
 
-        if(typeof this.settings['case sensitive routing'] === 'undefined') {
-            this.settings['case sensitive routing'] = true;
+        if (typeof this.settings["case sensitive routing"] === "undefined") {
+            this.settings["case sensitive routing"] = true;
         }
 
-        for(let method of methods) {
+        for (const method of methods) {
             this[method] = (path, ...callbacks) => {
                 return this.createRoute(method, path, this, ...callbacks);
             };
-        };
+        }
     }
 
     get(path, ...callbacks) {
-        if(typeof path === 'string' && callbacks.length === 0) {
+        if (typeof path === "string" && callbacks.length === 0) {
             const key = path;
             const res = this.settings[key];
-            if(typeof res === 'undefined' && this.parent) {
+            if (typeof res === "undefined" && this.parent) {
                 return this.parent.get(key);
             } else {
                 return res;
             }
         }
-        return this.createRoute('GET', path, this, ...callbacks);
+        return this.createRoute("GET", path, this, ...callbacks);
     }
 
     del(path, ...callbacks) {
-        deprecated('app.del', 'app.delete');
-        return this.createRoute('DELETE', path, this, ...callbacks);
+        deprecated("app.del", "app.delete");
+        return this.createRoute("DELETE", path, this, ...callbacks);
     }
 
     getFullMountpath(req) {
         // path-less app.use() pushes "", so a stack of only those joins to "" no matter how deep it is.
         // patternToRegex("", true) is EMPTY_REGEX, so this returns exactly what the join path would,
         // without walking the whole stack on every hop
-        if(!req._stack.length || req._stackMounted === 0) {
+        if (!req._stack.length || req._stackMounted === 0) {
             return EMPTY_REGEX;
         }
         const fullStack = req._stack.join("");
         let fullMountpath = this._mountpathCache.get(fullStack);
-        if(!fullMountpath) {
+        if (!fullMountpath) {
             fullMountpath = patternToRegex(fullStack, true);
             this._mountpathCache.set(fullStack, fullMountpath);
         }
@@ -127,24 +163,24 @@ module.exports = class Router extends EventEmitter {
         let path = req._opPath;
         let pattern = route.pattern;
 
-        if(req.endsWithSlash && path.endsWith('/') && !this.get('strict routing')) {
+        if (req.endsWithSlash && path.endsWith("/") && !this.get("strict routing")) {
             path = path.slice(0, -1);
         }
 
-        if(typeof pattern === 'string') {
-            if(pattern === '/*') {
+        if (typeof pattern === "string") {
+            if (pattern === "/*") {
                 return true;
             }
-            if(path === '') {
-                path = '/';
+            if (path === "") {
+                path = "/";
             }
-            if(!this.get('case sensitive routing')) {
+            if (!this.get("case sensitive routing")) {
                 path = path.toLowerCase();
                 pattern = pattern.toLowerCase();
             }
             return pattern === path;
         }
-        if(pattern === EMPTY_REGEX) {
+        if (pattern === EMPTY_REGEX) {
             return true;
         }
         return pattern.test(path);
@@ -155,24 +191,31 @@ module.exports = class Router extends EventEmitter {
         callbacks = callbacks.flat();
         const paths = Array.isArray(path) ? path : [path];
         const routes = [];
-        for(let path of paths) {
-            if(!this.get('strict routing') && typeof path === 'string' && path.endsWith('/') && path !== '/') {
+        for (let path of paths) {
+            if (!this.get("strict routing") && typeof path === "string" && path.endsWith("/") && path !== "/") {
                 path = path.slice(0, -1);
             }
-            if(path === '*') {
-                path = '/*';
+            if (path === "*") {
+                path = "/*";
             }
             const route = {
-                method: method === 'USE' ? 'ALL' : method,
+                method: method === "USE" ? "ALL" : method,
                 path,
-                pattern: method === 'USE' || needsConversionToRegex(path) ? patternToRegex(path, method === 'USE') : path,
+                pattern:
+                    method === "USE" || needsConversionToRegex(path) ? patternToRegex(path, method === "USE") : path,
                 callbacks,
                 routeKey: routeKey++,
-                use: method === 'USE',
-                all: method === 'ALL' || method === 'USE',
-                gettable: method === 'GET' || method === 'HEAD',
+                use: method === "USE",
+                all: method === "ALL" || method === "USE",
+                gettable: method === "GET" || method === "HEAD"
             };
-            if(typeof route.path === 'string' && (route.path.includes(':') || route.path.includes('*') || (route.path.includes('(') && route.path.includes(')'))) && route.pattern instanceof RegExp) {
+            if (
+                typeof route.path === "string" &&
+                (route.path.includes(":") ||
+                    route.path.includes("*") ||
+                    (route.path.includes("(") && route.path.includes(")"))) &&
+                route.pattern instanceof RegExp
+            ) {
                 route.complex = true;
             }
             routes.push(route);
@@ -187,28 +230,28 @@ module.exports = class Router extends EventEmitter {
     _optimizeRoute(route, routes) {
         const optimizedPath = [];
 
-        for(let i = 0; i < routes.length; i++) {
+        for (let i = 0; i < routes.length; i++) {
             const r = routes[i];
-            if(r.routeKey > route.routeKey) {
+            if (r.routeKey > route.routeKey) {
                 break;
             }
-            if(r === route) {
+            if (r === route) {
                 continue;
             }
             // if the methods are not the same, and its not an all method, skip it
-            if(!r.all && r.method !== route.method) {
+            if (!r.all && r.method !== route.method) {
                 // check if the methods are compatible (GET and HEAD)
-                if(!(r.method === 'HEAD' && route.method === 'GET')) {
+                if (!(r.method === "HEAD" && route.method === "GET")) {
                     continue;
                 }
             }
 
             // check if the paths match
-            if(
+            if (
                 (r.pattern instanceof RegExp && r.pattern.test(route.path)) ||
-                (typeof r.pattern === 'string' && (r.pattern === route.path || r.pattern === '/*'))
+                (typeof r.pattern === "string" && (r.pattern === route.path || r.pattern === "/*"))
             ) {
-                if(r.callbacks.some(c => c instanceof Router)) {
+                if (r.callbacks.some((c) => c instanceof Router)) {
                     return false; // cant optimize nested routers with matches
                 }
                 optimizedPath.push(r);
@@ -220,46 +263,53 @@ module.exports = class Router extends EventEmitter {
     }
 
     _compileOptimizedRoutes() {
-        if(!this.uwsApp || !this.get('case sensitive routing')) {
+        if (!this.uwsApp || !this.get("case sensitive routing")) {
             return;
         }
 
         // pathPrefix/chainPrefix accumulate across nested sole-callback mounts
         const walk = (router, pathPrefix, chainPrefix) => {
-            for(let route of router._routes) {
-                if(route.use) {
+            for (const route of router._routes) {
+                if (route.use) {
                     // only sole-callback mounts
-                    if(
-                        !route.complex && canBeOptimized(route.path) && route.path !== '/*' &&
-                        route.callbacks.length === 1 && route.callbacks[0] instanceof Router
+                    if (
+                        !route.complex &&
+                        canBeOptimized(route.path) &&
+                        route.path !== "/*" &&
+                        route.callbacks.length === 1 &&
+                        route.callbacks[0] instanceof Router
                     ) {
                         let pathToMount = router._optimizeRoute(route, router._routes);
-                        if(!pathToMount) {
+                        if (!pathToMount) {
                             continue;
                         }
                         pathToMount = pathToMount.slice(0, -1);
-                        walk(
-                            route.callbacks[0],
-                            pathPrefix + route.path,
-                            [...chainPrefix, ...pathToMount, {
+                        walk(route.callbacks[0], pathPrefix + route.path, [
+                            ...chainPrefix,
+                            ...pathToMount,
+                            {
                                 ...route,
                                 callbacks: [],
                                 keepMount: true,
                                 // mounted sub-apps become req.app during their dispatch, like express
-                                mountApp: route.callbacks[0].constructor.name === 'Application' ? route.callbacks[0] : undefined
-                            }]
-                        );
+                                mountApp:
+                                    route.callbacks[0].constructor.name === "Application"
+                                        ? route.callbacks[0]
+                                        : undefined
+                            }
+                        ]);
                     }
-                } else if(!route.complex && canBeOptimized(route.path) && supportedUwsMethods.has(route.method)) {
-                    let leafPath = router._optimizeRoute(route, router._routes);
-                    if(!leafPath) {
+                } else if (!route.complex && canBeOptimized(route.path) && supportedUwsMethods.has(route.method)) {
+                    const leafPath = router._optimizeRoute(route, router._routes);
+                    if (!leafPath) {
                         continue;
                     }
                     // param route earlier in the same router would steal this static path
-                    if(leafPath.length > 1) {
+                    if (leafPath.length > 1) {
                         const shadow = leafPath[leafPath.length - 2];
-                        if(
-                            shadow && !shadow.use &&
+                        if (
+                            shadow &&
+                            !shadow.use &&
                             shadow.method === route.method &&
                             shadow.path !== route.path &&
                             shadow.pattern instanceof RegExp
@@ -267,13 +317,16 @@ module.exports = class Router extends EventEmitter {
                             continue;
                         }
                     }
-                    if(pathPrefix) {
-                        this._registerUwsRoute({
-                            ...route,
-                            path: pathPrefix + route.path,
-                            pattern: pathPrefix + route.path,
-                            optimizedRouter: true
-                        }, [...chainPrefix, ...leafPath]);
+                    if (pathPrefix) {
+                        this._registerUwsRoute(
+                            {
+                                ...route,
+                                path: pathPrefix + route.path,
+                                pattern: pathPrefix + route.path,
+                                optimizedRouter: true
+                            },
+                            [...chainPrefix, ...leafPath]
+                        );
                     } else {
                         this._registerUwsRoute(route, leafPath);
                     }
@@ -281,7 +334,7 @@ module.exports = class Router extends EventEmitter {
             }
         };
 
-        walk(this, '', []);
+        walk(this, "", []);
     }
 
     handleRequest(res, req) {
@@ -290,11 +343,11 @@ module.exports = class Router extends EventEmitter {
         request.res = response;
         response.req = request;
         res.onAborted(() => {
-            const err = new Error('Connection closed');
-            err.code = 'ECONNRESET';
+            const err = new Error("Connection closed");
+            err.code = "ECONNRESET";
             response.aborted = true;
             response.finished = true;
-            response.socket?.emit('error', err);
+            response.socket?.emit("error", err);
         });
 
         return { request, response };
@@ -302,19 +355,19 @@ module.exports = class Router extends EventEmitter {
 
     _registerUwsRoute(route, optimizedPath) {
         let method = route.method.toLowerCase();
-        if(method === 'all') {
-            method = 'any';
-        } else if(method === 'delete') {
-            method = 'del';
+        if (method === "all") {
+            method = "any";
+        } else if (method === "delete") {
+            method = "del";
         }
-        if(route.path.includes(":")) {
-            route.optimizedParams = route.path.match(regExParam).map(p => p.slice(1));
+        if (route.path.includes(":")) {
+            route.optimizedParams = route.path.match(regExParam).map((p) => p.slice(1));
         }
         let fn = async (res, req) => {
             const { request, response } = this.handleRequest(res, req);
-            if(route.optimizedParams) {
+            if (route.optimizedParams) {
                 request.optimizedParams = new NullObject();
-                for(let i = 0; i < route.optimizedParams.length; i++) {
+                for (let i = 0; i < route.optimizedParams.length; i++) {
                     request.optimizedParams[route.optimizedParams[i]] = req.getParameter(i);
                 }
             }
@@ -323,16 +376,16 @@ module.exports = class Router extends EventEmitter {
             // the leaf can have a lower routeKey than the parent's own middlewares (e.g. when the router is
             // required from another module), which would otherwise let a pre-mount error handler catch an
             // error thrown inside the router.
-            const mount = optimizedPath.find(r => r.keepMount);
+            const mount = optimizedPath.find((r) => r.keepMount);
             const skipUntil = mount ?? (optimizedPath.length ? optimizedPath[optimizedPath.length - 1] : route);
             const matchedRoute = await this._routeRequest(request, response, 0, optimizedPath, true, skipUntil);
-            if(!matchedRoute && !response.headersSent && !response.aborted) {
-                if(request._error) {
+            if (!matchedRoute && !response.headersSent && !response.aborted) {
+                if (request._error) {
                     return this._handleError(request._error, null, request, response);
                 }
-                if(request._isOptions && request._matchedMethods.size > 0) {
-                    const allowedMethods = Array.from(request._matchedMethods).join(',');
-                    response.setHeader('Allow', allowedMethods);
+                if (request._isOptions && request._matchedMethods.size > 0) {
+                    const allowedMethods = Array.from(request._matchedMethods).join(",");
+                    response.setHeader("Allow", allowedMethods);
                     response.send(allowedMethods);
                     return;
                 }
@@ -342,41 +395,41 @@ module.exports = class Router extends EventEmitter {
             }
         };
         route.optimizedPath = optimizedPath;
-        
+
         let replacedPath = route.path;
         const realFn = fn;
-        
+
         // check if route is declarative
-        if(
+        if (
             optimizedPath.length === 1 && // must not have middlewares
             route.callbacks.length === 1 && // must not have multiple callbacks
-            typeof route.callbacks[0] === 'function' && // must be a function
+            typeof route.callbacks[0] === "function" && // must be a function
             this._paramCallbacks.size === 0 && // app.param() is not supported
-            !resDecMethods.some(method => resCodes[method] !== this.response[method].toString()) && // must not have injected methods
-            this.get('declarative responses') // must have declarative responses enabled
+            !resDecMethods.some((method) => resCodes[method] !== this.response[method].toString()) && // must not have injected methods
+            this.get("declarative responses") // must have declarative responses enabled
         ) {
             const decRes = compileDeclarative(route.callbacks[0], this);
-            if(decRes) {
+            if (decRes) {
                 fn = decRes;
             }
         } else {
-            replacedPath = route.path.replace(regExParam, ':x');
+            replacedPath = route.path.replace(regExParam, ":x");
         }
 
         this.uwsApp[method](replacedPath, fn);
-        if(!this.get('strict routing') && route.path[route.path.length - 1] !== '/') {
-            this.uwsApp[method](replacedPath + '/', fn);
-            if(method === 'get') {
-                this.uwsApp.head(replacedPath + '/', realFn);
+        if (!this.get("strict routing") && route.path[route.path.length - 1] !== "/") {
+            this.uwsApp[method](replacedPath + "/", fn);
+            if (method === "get") {
+                this.uwsApp.head(replacedPath + "/", realFn);
             }
         }
-        if(method === 'get') {
+        if (method === "get") {
             this.uwsApp.head(replacedPath, realFn);
         }
     }
 
     _handleError(err, handler, request, response) {
-        if(handler) {
+        if (handler) {
             return handler(err, request, response, (pass) => {
                 delete request._error;
                 delete request._errorKey;
@@ -384,28 +437,29 @@ module.exports = class Router extends EventEmitter {
             });
         }
         console.error(err);
-        if(response.statusCode === 200) {
+        if (response.statusCode === 200) {
             response.statusCode = 500;
         }
         this._sendErrorPage(request, response, err, true);
     }
 
     _generateErrorPage(err, statusCode, checkEnv = false) {
-        if(checkEnv && this.get('env') === 'production') {
-            err = statusCode >= 400 ? (statuses.message[statusCode] ?? 'Internal Server Error') : 'Internal Server Error';
+        if (checkEnv && this.get("env") === "production") {
+            err =
+                statusCode >= 400 ? (statuses.message[statusCode] ?? "Internal Server Error") : "Internal Server Error";
         }
         return generateErrorPageHtml(err);
     }
 
     _extractParams(pattern, path) {
-        if(path.endsWith('/')) {
+        if (path.endsWith("/")) {
             path = path.slice(0, -1);
         }
-        let match = pattern.exec(path);
+        const match = pattern.exec(path);
         const obj = new NullObject();
-        if(match?.groups) {
-            for(let name in match.groups) {
-                if(name.startsWith('_wc')) {
+        if (match?.groups) {
+            for (const name in match.groups) {
+                if (name.startsWith("_wc")) {
                     obj[name.slice(3)] = match.groups[name];
                 } else {
                     obj[name] = match.groups[name];
@@ -417,44 +471,50 @@ module.exports = class Router extends EventEmitter {
 
     _preprocessRequest(req, res, route) {
         req.route = route;
-        if(route.optimizedParams) {
-            req.params = {...req.optimizedParams};
-        } else if(route.complex) {
+        if (route.optimizedParams) {
+            req.params = { ...req.optimizedParams };
+        } else if (route.complex) {
             let path = req._originalPath;
-            if(req._stack.length > 0) {
+            if (req._stack.length > 0) {
                 const fullMountpath = this.getFullMountpath(req);
-                if(fullMountpath !== EMPTY_REGEX) {
-                    path = path.replace(fullMountpath, '');
-                } 
+                if (fullMountpath !== EMPTY_REGEX) {
+                    path = path.replace(fullMountpath, "");
+                }
             }
-            req.params = {...this._extractParams(route.pattern, path)};
-            if(req._paramStack.length > 0) {
-                for(let params of req._paramStack) {
-                    req.params = {...params, ...req.params};
+            req.params = { ...this._extractParams(route.pattern, path) };
+            if (req._paramStack.length > 0) {
+                for (const params of req._paramStack) {
+                    req.params = { ...params, ...req.params };
                 }
             }
         } else {
             req.params = {};
-            if(req._paramStack.length > 0) {
-                for(let params of req._paramStack) {
-                    req.params = {...params, ...req.params};
+            if (req._paramStack.length > 0) {
+                for (const params of req._paramStack) {
+                    req.params = { ...params, ...req.params };
                 }
             }
         }
 
-        if(this._paramCallbacks.size > 0) {
-            return new Promise(async resolve => {
-                for(let param in req.params) {
+        if (this._paramCallbacks.size > 0) {
+            // known issue, not introduced here: an async executor swallows anything it throws,
+            // because the rejection has nowhere to go once the promise is already constructed.
+            // app.param() callbacks that throw synchronously are therefore lost. Fixing it means
+            // restructuring this into an async function that returns a promise, which changes
+            // when the param callbacks run relative to the route, so it needs its own change.
+            // eslint-disable-next-line no-async-promise-executor
+            return new Promise(async (resolve) => {
+                for (const param in req.params) {
                     const pcs = this._paramCallbacks.get(param);
-                    if(pcs && !req._gotParams.has(param)) {
+                    if (pcs && !req._gotParams.has(param)) {
                         req._gotParams.add(param);
-                        for(let i = 0, len = pcs.length; i < len; i++) {
+                        for (let i = 0, len = pcs.length; i < len; i++) {
                             const fn = pcs[i];
-                            await new Promise(resolveRoute => {
+                            await new Promise((resolveRoute) => {
                                 const next = (thingamabob) => {
-                                    if(thingamabob) {
-                                        if(thingamabob === 'route') {
-                                            return resolve('route');
+                                    if (thingamabob) {
+                                        if (thingamabob === "route") {
+                                            return resolve("route");
                                         } else {
                                             req._error = thingamabob;
                                             req._errorKey = route.routeKey;
@@ -469,26 +529,26 @@ module.exports = class Router extends EventEmitter {
                     }
                 }
 
-                resolve(true)
+                resolve(true);
             });
         }
         return true;
     }
 
     param(name, fn) {
-        if(typeof name === 'function') {
-            deprecated('app.param(callback)', 'app.param(name, callback)', true);
+        if (typeof name === "function") {
+            deprecated("app.param(callback)", "app.param(name, callback)", true);
             this._paramFunction = name;
         } else {
-            if(this._paramFunction) {
-                if(!this._paramCallbacks.has(name)) {
+            if (this._paramFunction) {
+                if (!this._paramCallbacks.has(name)) {
                     this._paramCallbacks.set(name, []);
                 }
                 this._paramCallbacks.get(name).push(this._paramFunction(name, fn));
             } else {
-                let names = Array.isArray(name) ? name : [name];
-                for(let name of names) {
-                    if(!this._paramCallbacks.has(name)) {
+                const names = Array.isArray(name) ? name : [name];
+                for (const name of names) {
+                    if (!this._paramCallbacks.has(name)) {
                         this._paramCallbacks.set(name, []);
                     }
                     this._paramCallbacks.get(name).push(fn);
@@ -507,10 +567,18 @@ module.exports = class Router extends EventEmitter {
     // carries the same resolve, so a chain of N middlewares costs one promise instead of N nested ones
     // that each have to be adopted back up the chain
     _dispatchRoute(req, res, startIndex, routes, skipCheck, skipUntil, resolve, reject) {
-        let routeIndex = skipCheck ? startIndex : findIndexStartingFrom(routes, r => (r.all || r.method === req.method || req._isOptions || (r.gettable && req._isHead)) && this._pathMatches(r, req), startIndex);
+        const routeIndex = skipCheck
+            ? startIndex
+            : findIndexStartingFrom(
+                  routes,
+                  (r) =>
+                      (r.all || r.method === req.method || req._isOptions || (r.gettable && req._isHead)) &&
+                      this._pathMatches(r, req),
+                  startIndex
+              );
         const route = routes[routeIndex];
-        if(!route) {
-            if(!skipCheck) {
+        if (!route) {
+            if (!skipCheck) {
                 // on normal unoptimized routes, if theres no match then there is no route
                 return resolve(false);
             }
@@ -519,7 +587,7 @@ module.exports = class Router extends EventEmitter {
             // an error that propagated out of a mounted router's optimized chain is attributed to the mount
             // (like normal dispatch does when a sub-router returns an error), so parent error handlers declared
             // before the mount don't catch it - the router's leaf can have a lower routeKey than those handlers
-            if(req._error && skipUntil && skipUntil.keepMount && skipUntil.routeKey > req._errorKey) {
+            if (req._error && skipUntil && skipUntil.keepMount && skipUntil.routeKey > req._errorKey) {
                 req._errorKey = skipUntil.routeKey;
             }
             return this._dispatchRoute(req, res, 0, this._routes, false, skipUntil, resolve, reject);
@@ -530,72 +598,93 @@ module.exports = class Router extends EventEmitter {
         // chain of routes would otherwise blow, so force one every 300 routes
         // routeCount starts at 1 so the first route of a request (fresh stack) takes the sync path
         const continueRoute = this._preprocessRequest(req, res, route);
-        if(this._paramCallbacks.size !== 0 || req.routeCount % 300 === 0) {
+        if (this._paramCallbacks.size !== 0 || req.routeCount % 300 === 0) {
             Promise.resolve(continueRoute).then(
-                resumed => this._runRoute(req, res, routeIndex, route, routes, skipCheck, skipUntil, resolve, reject, resumed),
+                (resumed) =>
+                    this._runRoute(req, res, routeIndex, route, routes, skipCheck, skipUntil, resolve, reject, resumed),
                 reject
             );
             return;
         }
-        return this._runRoute(req, res, routeIndex, route, routes, skipCheck, skipUntil, resolve, reject, continueRoute);
+        return this._runRoute(
+            req,
+            res,
+            routeIndex,
+            route,
+            routes,
+            skipCheck,
+            skipUntil,
+            resolve,
+            reject,
+            continueRoute
+        );
     }
 
     _runRoute(req, res, routeIndex, route, routes, skipCheck, skipUntil, resolve, reject, continueRoute) {
         let callbackindex = 0;
-        const strictRouting = this.get('strict routing');
-        if(route.use) {
-            if(route.mountApp) {
+        const strictRouting = this.get("strict routing");
+        if (route.use) {
+            if (route.mountApp) {
                 // optimized chain: normal dispatch swaps req.app when it enters a mounted Application,
                 // but the compiled mount route has no callback to do it, so swap it here
                 req.app = route.mountApp;
             }
             req._stack.push(route.path);
-            if(route.path !== '') {
+            if (route.path !== "") {
                 req._stackMounted++;
             }
             const fullMountpath = this.getFullMountpath(req);
-            req._opPath = fullMountpath !== EMPTY_REGEX ? req._originalPath.replace(fullMountpath, '') : req._originalPath;
-            if(req.endsWithSlash && req._opPath[req._opPath.length - 1] !== '/') {
-                if(strictRouting) {
-                    req._opPath += '/';
+            req._opPath =
+                fullMountpath !== EMPTY_REGEX ? req._originalPath.replace(fullMountpath, "") : req._originalPath;
+            if (req.endsWithSlash && req._opPath[req._opPath.length - 1] !== "/") {
+                if (strictRouting) {
+                    req._opPath += "/";
                 } else {
                     req._opPath = req._opPath.slice(0, -1);
                 }
             }
             req.url = req._opPath + req.urlQuery;
             req.path = req._opPath;
-            if(req._opPath === '') {
-                req.url = '/';
-                req.path = '/';
+            if (req._opPath === "") {
+                req.url = "/";
+                req.path = "/";
             }
         }
         // plain (non-async) function: an async next() would allocate an unconsumed promise
         // on every middleware/handler step of every request
         const next = (thingamabob) => {
-            if(thingamabob) {
-                if(thingamabob === 'route') {
-                    if(route.use && !route.keepMount) {
-                        if(req._stack.pop() !== '') {
+            if (thingamabob) {
+                if (thingamabob === "route") {
+                    if (route.use && !route.keepMount) {
+                        if (req._stack.pop() !== "") {
                             req._stackMounted--;
                         }
 
                         const poppedMountpath = req._stack.length > 0 ? this.getFullMountpath(req) : EMPTY_REGEX;
-                        req._opPath = poppedMountpath !== EMPTY_REGEX ? req._originalPath.replace(poppedMountpath, '') : req._originalPath;
-                        if(strictRouting) {
-                            if(req.endsWithSlash && req._opPath[req._opPath.length - 1] !== '/') {
-                                req._opPath += '/';
+                        req._opPath =
+                            poppedMountpath !== EMPTY_REGEX
+                                ? req._originalPath.replace(poppedMountpath, "")
+                                : req._originalPath;
+                        if (strictRouting) {
+                            if (req.endsWithSlash && req._opPath[req._opPath.length - 1] !== "/") {
+                                req._opPath += "/";
                             }
                         }
                         req.url = req._opPath + req.urlQuery;
                         req.path = req._opPath;
-                        if(req._opPath === '') {
-                            req.url = '/';
-                            req.path = '/';
+                        if (req._opPath === "") {
+                            req.url = "/";
+                            req.path = "/";
                         }
-                        if(!strictRouting && req.endsWithSlash && req._originalPath !== '/' && req._opPath[req._opPath.length - 1] === '/') {
+                        if (
+                            !strictRouting &&
+                            req.endsWithSlash &&
+                            req._originalPath !== "/" &&
+                            req._opPath[req._opPath.length - 1] === "/"
+                        ) {
                             req._opPath = req._opPath.slice(0, -1);
                         }
-                        if(req.app.parent && route.callbacks[0]?.constructor.name === 'Application') {
+                        if (req.app.parent && route.callbacks[0]?.constructor.name === "Application") {
                             req.app = req.app.parent;
                         }
                     }
@@ -603,8 +692,17 @@ module.exports = class Router extends EventEmitter {
                     // _dispatchRoute is a plain function, so a synchronous throw would escape here instead
                     // of rejecting, like it used to when this recursed through the async _routeRequest
                     try {
-                        return this._dispatchRoute(req, res, routeIndex + 1, routes, skipCheck, skipUntil, resolve, reject);
-                    } catch(err) {
+                        return this._dispatchRoute(
+                            req,
+                            res,
+                            routeIndex + 1,
+                            routes,
+                            skipCheck,
+                            skipUntil,
+                            resolve,
+                            reject
+                        );
+                    } catch (err) {
                         return reject(err);
                     }
                 } else {
@@ -613,25 +711,29 @@ module.exports = class Router extends EventEmitter {
                 }
             }
             const callback = route.callbacks[callbackindex++];
-            if(!callback) {
-                return next('route');
+            if (!callback) {
+                return next("route");
             }
-            if(callback instanceof Router) {
-                if(callback.constructor.name === 'Application') {
+            if (callback instanceof Router) {
+                if (callback.constructor.name === "Application") {
                     req.app = callback;
                 }
-                if(callback.settings.mergeParams) {
+                if (callback.settings.mergeParams) {
                     req._paramStack.push(req.params);
                 }
-                if(callback.settings['strict routing'] && req.endsWithSlash && req._opPath[req._opPath.length - 1] !== '/') {
-                    req._opPath += '/';
+                if (
+                    callback.settings["strict routing"] &&
+                    req.endsWithSlash &&
+                    req._opPath[req._opPath.length - 1] !== "/"
+                ) {
+                    req._opPath += "/";
                 }
-                callback._routeRequest(req, res, 0).then(routed => {
-                    if(req._error) {
+                callback._routeRequest(req, res, 0).then((routed) => {
+                    if (req._error) {
                         req._errorKey = route.routeKey;
                     }
-                    if(routed) return resolve(true);
-                    if(req._isOptions && req._matchedMethods.size) {
+                    if (routed) return resolve(true);
+                    if (req._isOptions && req._matchedMethods.size) {
                         // OPTIONS routing is different, it stops in the router if matched
                         return resolve(false);
                     }
@@ -639,8 +741,8 @@ module.exports = class Router extends EventEmitter {
                 });
             } else {
                 // handle errors and error handlers
-                if(req._error || callback.length === 4) {
-                    if(req._error && callback.length === 4 && route.routeKey >= req._errorKey) {
+                if (req._error || callback.length === 4) {
+                    if (req._error && callback.length === 4 && route.routeKey >= req._errorKey) {
                         return this._handleError(req._error, callback, req, res);
                     } else {
                         return next();
@@ -649,22 +751,22 @@ module.exports = class Router extends EventEmitter {
 
                 try {
                     // handling OPTIONS method
-                    if(req._isOptions && !route.all && route.method !== 'OPTIONS') {
+                    if (req._isOptions && !route.all && route.method !== "OPTIONS") {
                         req._matchedMethods.add(route.method);
-                        if(route.gettable) {
-                            req._matchedMethods.add('HEAD');
+                        if (route.gettable) {
+                            req._matchedMethods.add("HEAD");
                         }
                         return next();
                     }
 
                     // skipping routes we already went through via optimized path
-                    if(!skipCheck && skipUntil && skipUntil.routeKey >= route.routeKey) {
+                    if (!skipCheck && skipUntil && skipUntil.routeKey >= route.routeKey) {
                         return next();
                     }
                     const out = callback(req, res, next);
-                    if(out instanceof Promise) {
-                        out.catch(err => {
-                            if(this.get("catch async errors")) {
+                    if (out instanceof Promise) {
+                        out.catch((err) => {
+                            if (this.get("catch async errors")) {
                                 req._error = err;
                                 req._errorKey = route.routeKey;
                                 return next();
@@ -673,17 +775,17 @@ module.exports = class Router extends EventEmitter {
                             }
                         });
                     }
-                } catch(err) {
+                } catch (err) {
                     req._error = err;
                     req._errorKey = route.routeKey;
                     return next();
                 }
             }
-        }
+        };
         req.next = next;
-        if(continueRoute === 'route') {
-            next('route');
-        } else if(continueRoute) {
+        if (continueRoute === "route") {
+            next("route");
+        } else if (continueRoute) {
             next();
         } else {
             resolve(true);
@@ -691,35 +793,39 @@ module.exports = class Router extends EventEmitter {
     }
 
     use(path, ...callbacks) {
-        if(typeof path === 'function' || path instanceof Router || (Array.isArray(path) && path.every(p => typeof p === 'function' || p instanceof Router))) {
+        if (
+            typeof path === "function" ||
+            path instanceof Router ||
+            (Array.isArray(path) && path.every((p) => typeof p === "function" || p instanceof Router))
+        ) {
             callbacks.unshift(path);
-            path = '';
+            path = "";
         }
-        if(path === '/') {
-            path = '';
+        if (path === "/") {
+            path = "";
         }
         callbacks = callbacks.flat();
-        
-        for(let callback of callbacks) {
-            if(callback instanceof Router) {
+
+        for (const callback of callbacks) {
+            if (callback instanceof Router) {
                 callback.mountpath = path;
                 callback.parent = this;
-                callback.emit('mount', this);
+                callback.emit("mount", this);
             }
         }
-        this.createRoute('USE', path, this, ...callbacks);
+        this.createRoute("USE", path, this, ...callbacks);
         return this;
     }
-    
+
     route(path) {
-        let fns = new NullObject();
-        for(let method of methods) {
+        const fns = new NullObject();
+        for (const method of methods) {
             fns[method] = (...callbacks) => {
                 return this.createRoute(method, path, fns, ...callbacks);
             };
         }
         fns.get = (...callbacks) => {
-            return this.createRoute('GET', path, fns, ...callbacks);
+            return this.createRoute("GET", path, fns, ...callbacks);
         };
         return fns;
     }
@@ -727,9 +833,9 @@ module.exports = class Router extends EventEmitter {
     _sendErrorPage(request, response, err, checkEnv = false) {
         err = this._generateErrorPage(err, response.statusCode, checkEnv);
         request.noEtag = true;
-        response.setHeader('Content-Type', 'text/html; charset=utf-8');
-        response.setHeader('X-Content-Type-Options', 'nosniff');
-        response.setHeader('Content-Security-Policy', "default-src 'none'");
+        response.setHeader("Content-Type", "text/html; charset=utf-8");
+        response.setHeader("X-Content-Type-Options", "nosniff");
+        response.setHeader("Content-Security-Policy", "default-src 'none'");
         response.send(err);
     }
-}
+};

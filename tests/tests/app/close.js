@@ -15,9 +15,9 @@ const server = app.listen(13333, (err) => {
 setTimeout(() => {
     server.close((err) => {
         console.log("Server closed successfully");
-        if(err){
+        if (err) {
             console.log(err);
         }
-        process.exit(err ? 1 : 0)
-    })
+        process.exit(err ? 1 : 0);
+    });
 }, 1000);

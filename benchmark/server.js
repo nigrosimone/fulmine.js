@@ -1,21 +1,21 @@
-'use strict';
+"use strict";
 
-const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
-const { Readable } = require('stream');
+const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
+const { Readable } = require("stream");
 
 const KB = 1024;
 const MB = 1024 * KB;
 const STREAM_SIZE_BYTES = 5 * MB;
 const STREAM_CHUNK_SIZE = 64 * KB;
-const STREAM_CHUNK = Buffer.alloc(STREAM_CHUNK_SIZE, 'x');
+const STREAM_CHUNK = Buffer.alloc(STREAM_CHUNK_SIZE, "x");
 
 function parseArgs(argv) {
     const args = {};
     for (let i = 0; i < argv.length; i++) {
         const value = argv[i];
-        if (!value.startsWith('--')) {
+        if (!value.startsWith("--")) {
             continue;
         }
         const key = value.slice(2);
@@ -26,29 +26,29 @@ function parseArgs(argv) {
 }
 
 function resolveFramework(frameworkName) {
-    if (frameworkName === 'express') {
-        return require('express');
+    if (frameworkName === "express") {
+        return require("express");
     }
 
-    if (frameworkName === 'fulmine') {
-        return require('../src/index');
+    if (frameworkName === "fulmine") {
+        return require("../src/index");
     }
 
     throw new Error(`Unknown framework: ${frameworkName}`);
 }
 
 function createContext() {
-    const assetsDir = path.join(__dirname, 'assets');
-    const viewsDir = path.join(__dirname, 'views');
-    const staticFilePath = path.join(assetsDir, 'static-250kb.txt');
-    const compressedPayload = Buffer.from('small-file-content-'.repeat(4096), 'utf8');
+    const assetsDir = path.join(__dirname, "assets");
+    const viewsDir = path.join(__dirname, "views");
+    const staticFilePath = path.join(assetsDir, "static-250kb.txt");
+    const compressedPayload = Buffer.from("small-file-content-".repeat(4096), "utf8");
 
     function ensureAssets() {
         fs.mkdirSync(assetsDir, { recursive: true });
         fs.mkdirSync(viewsDir, { recursive: true });
 
         if (!fs.existsSync(staticFilePath)) {
-            fs.writeFileSync(staticFilePath, Buffer.alloc(250 * KB, 'a'));
+            fs.writeFileSync(staticFilePath, Buffer.alloc(250 * KB, "a"));
         }
     }
 
@@ -61,9 +61,9 @@ function createContext() {
         ensureAssets,
         pipeLargeStream(res, includeContentLength) {
             if (includeContentLength) {
-                res.setHeader('Content-Length', String(STREAM_SIZE_BYTES));
+                res.setHeader("Content-Length", String(STREAM_SIZE_BYTES));
             }
-            res.setHeader('Content-Type', 'application/octet-stream');
+            res.setHeader("Content-Type", "application/octet-stream");
             let remaining = STREAM_SIZE_BYTES;
             const stream = new Readable({
                 read() {
@@ -81,14 +81,14 @@ function createContext() {
             stream.pipe(res);
         },
         createHashFromRequest(req, done) {
-            const hash = crypto.createHash('sha256');
-            req.on('data', (chunk) => {
+            const hash = crypto.createHash("sha256");
+            req.on("data", (chunk) => {
                 hash.update(chunk);
             });
-            req.on('end', () => {
-                done(hash.digest('hex'));
+            req.on("end", () => {
+                done(hash.digest("hex"));
             });
-            req.on('error', (error) => {
+            req.on("error", (error) => {
                 done(null, error);
             });
         }
@@ -102,26 +102,26 @@ async function main() {
     const port = Number(args.port || 3000);
 
     if (!frameworkName || !scenarioName) {
-        throw new Error('Missing required args: --framework and --scenario');
+        throw new Error("Missing required args: --framework and --scenario");
     }
 
     const express = resolveFramework(frameworkName);
     const app = express();
     const context = createContext();
-    const scenarioPath = path.join(__dirname, 'scenarios', `${scenarioName}.js`);
+    const scenarioPath = path.join(__dirname, "scenarios", `${scenarioName}.js`);
     const scenario = require(scenarioPath);
 
-    if (typeof app.set === 'function') {
-        app.set('etag', false);
-        app.set('x-powered-by', false);
-        app.set('env', 'production');
-        if (frameworkName === 'fulmine') {
-            app.set('declarative responses', false);
+    if (typeof app.set === "function") {
+        app.set("etag", false);
+        app.set("x-powered-by", false);
+        app.set("env", "production");
+        if (frameworkName === "fulmine") {
+            app.set("declarative responses", false);
         }
     }
 
-    app.get('/__ready', (req, res) => {
-        res.send('ok');
+    app.get("/__ready", (req, res) => {
+        res.send("ok");
     });
 
     await scenario.setup(app, express, context);
@@ -136,8 +136,8 @@ async function main() {
         });
     }
 
-    process.on('SIGINT', shutdown);
-    process.on('SIGTERM', shutdown);
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
 }
 
 main().catch((error) => {

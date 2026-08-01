@@ -1,24 +1,27 @@
-'use strict';
+"use strict";
 
-const fs = require('fs');
-const http = require('http');
-const path = require('path');
-const zlib = require('zlib');
-const crypto = require('crypto');
-const { spawn, spawnSync } = require('child_process');
+const fs = require("fs");
+const http = require("http");
+const path = require("path");
+const zlib = require("zlib");
+const crypto = require("crypto");
+const { spawn, spawnSync } = require("child_process");
 
-const SCENARIO_FILES = fs.readdirSync(path.join(__dirname, 'scenarios')).filter((file) => file.endsWith('.js')).map((file) => file.replace('.js', ''));
+const SCENARIO_FILES = fs
+    .readdirSync(path.join(__dirname, "scenarios"))
+    .filter((file) => file.endsWith(".js"))
+    .map((file) => file.replace(".js", ""));
 
 const FRAMEWORKS = [
-    { id: 'express', label: 'Express', port: 3001 },
-    { id: 'fulmine', label: 'Fulmine', port: 3000 }
+    { id: "express", label: "Express", port: 3001 },
+    { id: "fulmine", label: "Fulmine", port: 3000 }
 ];
 
 function parseArgs(argv) {
     const args = {};
     for (let i = 0; i < argv.length; i++) {
         const value = argv[i];
-        if (value.startsWith('--')) {
+        if (value.startsWith("--")) {
             args[value.slice(2)] = argv[i + 1];
             i++;
         }
@@ -34,7 +37,7 @@ function waitForReady(port, timeoutMs = 10000) {
     const start = Date.now();
     return new Promise((resolve, reject) => {
         const tryReady = () => {
-            const request = http.get({ host: '127.0.0.1', port, path: '/__ready' }, (response) => {
+            const request = http.get({ host: "127.0.0.1", port, path: "/__ready" }, (response) => {
                 response.resume();
                 if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
                     resolve();
@@ -47,7 +50,7 @@ function waitForReady(port, timeoutMs = 10000) {
                 setTimeout(tryReady, 200);
             });
 
-            request.on('error', () => {
+            request.on("error", () => {
                 if (Date.now() - start > timeoutMs) {
                     reject(new Error(`Timeout waiting for server on port ${port}`));
                     return;
@@ -61,21 +64,24 @@ function waitForReady(port, timeoutMs = 10000) {
 }
 
 function startScenarioServer(framework, scenarioName) {
-    const serverScript = path.join(__dirname, 'server.js');
+    const serverScript = path.join(__dirname, "server.js");
     const serverArgs = [
         serverScript,
-        '--framework', framework.id,
-        '--scenario', scenarioName,
-        '--port', String(framework.port)
+        "--framework",
+        framework.id,
+        "--scenario",
+        scenarioName,
+        "--port",
+        String(framework.port)
     ];
 
     const server = spawn(process.execPath, serverArgs, {
-        cwd: path.join(__dirname, '..'),
-        stdio: ['ignore', 'pipe', 'pipe']
+        cwd: path.join(__dirname, ".."),
+        stdio: ["ignore", "pipe", "pipe"]
     });
 
-    let stderr = '';
-    server.stderr.on('data', (chunk) => {
+    let stderr = "";
+    server.stderr.on("data", (chunk) => {
         stderr += chunk.toString();
     });
 
@@ -84,10 +90,10 @@ function startScenarioServer(framework, scenarioName) {
 
 async function stopScenarioServer(server, stderrRef) {
     if (server.exitCode === null) {
-        server.kill('SIGTERM');
+        server.kill("SIGTERM");
         await wait(300);
         if (server.exitCode === null) {
-            server.kill('SIGKILL');
+            server.kill("SIGKILL");
         }
     }
 
@@ -99,54 +105,60 @@ async function stopScenarioServer(server, stderrRef) {
 
 function runHttpRequest(port, verifyConfig, timeoutMs = 30000) {
     return new Promise((resolve, reject) => {
-        const method = verifyConfig.method || 'GET';
-        const pathName = verifyConfig.path || '/';
+        const method = verifyConfig.method || "GET";
+        const pathName = verifyConfig.path || "/";
         const headers = { ...(verifyConfig.headers || {}) };
         const body = verifyConfig.body || null;
 
-        if (body && headers['Content-Length'] == null && headers['content-length'] == null) {
-            headers['Content-Length'] = String(Buffer.byteLength(body));
+        if (body && headers["Content-Length"] == null && headers["content-length"] == null) {
+            headers["Content-Length"] = String(Buffer.byteLength(body));
         }
 
-        const req = http.request({
-            host: '127.0.0.1',
-            port,
-            path: pathName,
-            method,
-            headers
-        }, (res) => {
-            const chunks = [];
-            res.on('data', (chunk) => chunks.push(chunk));
-            res.on('end', () => {
-                const rawBody = Buffer.concat(chunks);
-                let decodedBody = rawBody;
-                try {
-                    const contentEncoding = String(res.headers['content-encoding'] || '').toLowerCase().split(',')[0].trim();
-                    if (contentEncoding === 'gzip') {
-                        decodedBody = zlib.gunzipSync(rawBody);
-                    } else if (contentEncoding === 'deflate') {
-                        decodedBody = zlib.inflateSync(rawBody);
-                    } else if (contentEncoding === 'br') {
-                        decodedBody = zlib.brotliDecompressSync(rawBody);
+        const req = http.request(
+            {
+                host: "127.0.0.1",
+                port,
+                path: pathName,
+                method,
+                headers
+            },
+            (res) => {
+                const chunks = [];
+                res.on("data", (chunk) => chunks.push(chunk));
+                res.on("end", () => {
+                    const rawBody = Buffer.concat(chunks);
+                    let decodedBody = rawBody;
+                    try {
+                        const contentEncoding = String(res.headers["content-encoding"] || "")
+                            .toLowerCase()
+                            .split(",")[0]
+                            .trim();
+                        if (contentEncoding === "gzip") {
+                            decodedBody = zlib.gunzipSync(rawBody);
+                        } else if (contentEncoding === "deflate") {
+                            decodedBody = zlib.inflateSync(rawBody);
+                        } else if (contentEncoding === "br") {
+                            decodedBody = zlib.brotliDecompressSync(rawBody);
+                        }
+                    } catch (error) {
+                        reject(new Error(`Failed to decode response body: ${error.message}`));
+                        return;
                     }
-                } catch (error) {
-                    reject(new Error(`Failed to decode response body: ${error.message}`));
-                    return;
-                }
 
-                resolve({
-                    statusCode: res.statusCode || 0,
-                    headers: res.headers,
-                    bodyHash: crypto.createHash('sha256').update(decodedBody).digest('hex'),
-                    bodySize: decodedBody.length
+                    resolve({
+                        statusCode: res.statusCode || 0,
+                        headers: res.headers,
+                        bodyHash: crypto.createHash("sha256").update(decodedBody).digest("hex"),
+                        bodySize: decodedBody.length
+                    });
                 });
-            });
-        });
+            }
+        );
 
         req.setTimeout(timeoutMs, () => {
             req.destroy(new Error(`Request timeout after ${timeoutMs}ms`));
         });
-        req.on('error', reject);
+        req.on("error", reject);
 
         if (body) {
             req.write(body);
@@ -158,12 +170,12 @@ function runHttpRequest(port, verifyConfig, timeoutMs = 30000) {
 async function validateScenarioResponses(scenarioName, scenario) {
     const verify = scenario.verify || {};
     let verifyBody = verify.body;
-    if (verify.bodyRepeat && typeof verify.bodyRepeat === 'object') {
+    if (verify.bodyRepeat && typeof verify.bodyRepeat === "object") {
         const repeat = verify.bodyRepeat;
-        verifyBody = String(repeat.char || 'a').repeat(Number(repeat.count || 0));
+        verifyBody = String(repeat.char || "a").repeat(Number(repeat.count || 0));
     }
     const verifyConfig = {
-        method: verify.method || 'GET',
+        method: verify.method || "GET",
         path: verify.path || scenario.path,
         headers: verify.headers || {},
         body: verifyBody || null
@@ -181,7 +193,7 @@ async function validateScenarioResponses(scenarioName, scenario) {
     }
 
     const expressResult = results.express;
-    const ultimateResult = results['fulmine'];
+    const ultimateResult = results["fulmine"];
     const sameStatus = expressResult.statusCode === ultimateResult.statusCode;
     const sameBodyHash = expressResult.bodyHash === ultimateResult.bodyHash;
 
@@ -197,7 +209,7 @@ async function validateScenarioResponses(scenarioName, scenario) {
         message: [
             `express: status=${expressResult.statusCode}, hash=${expressResult.bodyHash}, size=${expressResult.bodySize}`,
             `fulmine: status=${ultimateResult.statusCode}, hash=${ultimateResult.bodyHash}, size=${ultimateResult.bodySize}`
-        ].join(' | ')
+        ].join(" | ")
     };
 }
 
@@ -219,13 +231,13 @@ function parseTransferPerSec(output) {
 
     const value = Number(match[1]);
     const unit = match[2];
-    if (unit === 'KB') {
+    if (unit === "KB") {
         return value * 1024;
     }
-    if (unit === 'MB') {
+    if (unit === "MB") {
         return value * 1024 * 1024;
     }
-    if (unit === 'GB') {
+    if (unit === "GB") {
         return value * 1024 * 1024 * 1024;
     }
     return value;
@@ -267,7 +279,7 @@ function formatReqPerSec(value) {
 }
 
 function formatBytesPerSec(bytes) {
-    const units = ['B/sec', 'KB/sec', 'MB/sec', 'GB/sec'];
+    const units = ["B/sec", "KB/sec", "MB/sec", "GB/sec"];
     let value = bytes;
     let unitIndex = 0;
     while (value >= 1024 && unitIndex < units.length - 1) {
@@ -285,19 +297,22 @@ async function runScenario(framework, scenarioName, scenario, durationSeconds) {
 
         const wrk = scenario.wrk || {};
         const args = [
-            '-t', String(wrk.threads || 1),
-            '-c', String(wrk.connections || 200),
-            '-d', `${durationSeconds}s`
+            "-t",
+            String(wrk.threads || 1),
+            "-c",
+            String(wrk.connections || 200),
+            "-d",
+            `${durationSeconds}s`
         ];
 
         if (wrk.script) {
-            const scriptPath = path.join(__dirname, 'wrk-scripts', wrk.script);
+            const scriptPath = path.join(__dirname, "wrk-scripts", wrk.script);
             // a missing -s script does not make wrk fail, it silently falls back to GET / on the
             // target URL. that is how readable-hash-4mb measured a 404 for 34 published runs
             if (!fs.existsSync(scriptPath)) {
                 throw new Error(`wrk script for ${scenarioName} does not exist: ${scriptPath}`);
             }
-            args.push('-s', scriptPath);
+            args.push("-s", scriptPath);
         }
 
         const targetUrl = wrk.script
@@ -305,9 +320,9 @@ async function runScenario(framework, scenarioName, scenario, durationSeconds) {
             : `http://127.0.0.1:${framework.port}${scenario.path}`;
         args.push(targetUrl);
 
-        const wrkResult = spawnSync('wrk', args, {
-            cwd: path.join(__dirname, '..'),
-            encoding: 'utf8'
+        const wrkResult = spawnSync("wrk", args, {
+            cwd: path.join(__dirname, ".."),
+            encoding: "utf8"
         });
 
         if (wrkResult.status !== 0) {
@@ -320,7 +335,7 @@ async function runScenario(framework, scenarioName, scenario, durationSeconds) {
 
         if (requestsPerSec === 0) {
             throw new Error(
-                `wrk produced invalid benchmark output for ${framework.id}/${scenarioName}:\n${wrkErrors.lines.join('\n')}\n\n${wrkResult.stdout}`
+                `wrk produced invalid benchmark output for ${framework.id}/${scenarioName}:\n${wrkErrors.lines.join("\n")}\n\n${wrkResult.stdout}`
             );
         }
 
@@ -329,7 +344,7 @@ async function runScenario(framework, scenarioName, scenario, durationSeconds) {
         if (wrkErrors.non2xx > 0) {
             throw new Error(
                 `${framework.id}/${scenarioName} served ${wrkErrors.non2xx} non-2xx/3xx responses out of ` +
-                `${wrkErrors.totalRequests}, so this run measured something other than the scenario:\n${wrkResult.stdout}`
+                    `${wrkErrors.totalRequests}, so this run measured something other than the scenario:\n${wrkResult.stdout}`
             );
         }
 
@@ -346,36 +361,39 @@ async function runScenario(framework, scenarioName, scenario, durationSeconds) {
 
 function buildMarkdown(results) {
     const lines = [];
-    lines.push('<!-- benchmark-comment -->');
-    lines.push('## Benchmark Comparison');
-    lines.push('');
-    lines.push('| Test | Express req/sec | Fulmine req/sec | Express throughput | Fulmine throughput | Fulmine speedup |');
-    lines.push('| --- | ---: | ---: | ---: | ---: | ---: |');
+    lines.push("<!-- benchmark-comment -->");
+    lines.push("## Benchmark Comparison");
+    lines.push("");
+    lines.push(
+        "| Test | Express req/sec | Fulmine req/sec | Express throughput | Fulmine throughput | Fulmine speedup |"
+    );
+    lines.push("| --- | ---: | ---: | ---: | ---: | ---: |");
 
     const failures = [];
     const unvalidated = [];
     const socketErrors = [];
     const bounded = [];
     for (const row of results) {
-    const speedup = row.express.ok && row.ultimate.ok && row.express.transferPerSecBytes > 0
-      ? `${(row.ultimate.transferPerSecBytes / row.express.transferPerSecBytes).toFixed(2)}x`
-            : 'N/A';
-        const expressReq = row.express.ok ? formatReqPerSec(row.express.requestsPerSec) : 'FAILED';
-        const ultimateReq = row.ultimate.ok ? formatReqPerSec(row.ultimate.requestsPerSec) : 'FAILED';
-        const expressTransfer = row.express.ok ? formatBytesPerSec(row.express.transferPerSecBytes) : 'FAILED';
-        const ultimateTransfer = row.ultimate.ok ? formatBytesPerSec(row.ultimate.transferPerSecBytes) : 'FAILED';
+        const speedup =
+            row.express.ok && row.ultimate.ok && row.express.transferPerSecBytes > 0
+                ? `${(row.ultimate.transferPerSecBytes / row.express.transferPerSecBytes).toFixed(2)}x`
+                : "N/A";
+        const expressReq = row.express.ok ? formatReqPerSec(row.express.requestsPerSec) : "FAILED";
+        const ultimateReq = row.ultimate.ok ? formatReqPerSec(row.ultimate.requestsPerSec) : "FAILED";
+        const expressTransfer = row.express.ok ? formatBytesPerSec(row.express.transferPerSecBytes) : "FAILED";
+        const ultimateTransfer = row.ultimate.ok ? formatBytesPerSec(row.ultimate.transferPerSecBytes) : "FAILED";
 
         if (!row.express.ok) {
             failures.push({
                 scenario: row.name,
-                framework: 'express',
+                framework: "express",
                 message: row.express.error
             });
         }
         if (!row.ultimate.ok) {
             failures.push({
                 scenario: row.name,
-                framework: 'fulmine',
+                framework: "fulmine",
                 message: row.ultimate.error
             });
         }
@@ -385,11 +403,14 @@ function buildMarkdown(results) {
         if (!row.validation || !row.validation.ok) {
             unvalidated.push({
                 scenario: row.name,
-                message: row.validation ? row.validation.message : 'validation did not run'
+                message: row.validation ? row.validation.message : "validation did not run"
             });
         }
 
-        for (const [framework, result] of [['express', row.express], ['fulmine', row.ultimate]]) {
+        for (const [framework, result] of [
+            ["express", row.express],
+            ["fulmine", row.ultimate]
+        ]) {
             if (result.ok && result.socketErrorLine) {
                 socketErrors.push({ scenario: row.name, framework, message: result.socketErrorLine });
             }
@@ -402,72 +423,76 @@ function buildMarkdown(results) {
             bounded.push({ scenario: row.name, by: row.bound.by, ceiling: row.bound.ceiling });
         }
 
-        const marker =
-            ((!row.validation || !row.validation.ok) ? ' :warning:' : '') +
-            (row.bound ? ' †' : '');
+        const marker = (!row.validation || !row.validation.ok ? " :warning:" : "") + (row.bound ? " †" : "");
         lines.push(
             `| ${row.name}${marker} | ${expressReq} | ${ultimateReq} | ${expressTransfer} | ${ultimateTransfer} | **${speedup}** |`
         );
     }
 
     if (bounded.length > 0) {
-        lines.push('');
-        lines.push('† These rows are dominated by work neither framework performs itself, so the ratio is capped regardless of how fast either one is. They are kept because they are real workloads, not because they discriminate between the two.');
-        lines.push('');
+        lines.push("");
+        lines.push(
+            "† These rows are dominated by work neither framework performs itself, so the ratio is capped regardless of how fast either one is. They are kept because they are real workloads, not because they discriminate between the two."
+        );
+        lines.push("");
         for (const entry of bounded) {
-            lines.push(`- \`${entry.scenario}\`: ${entry.by}${entry.ceiling ? ` — ceiling ${entry.ceiling}` : ''}`);
+            lines.push(`- \`${entry.scenario}\`: ${entry.by}${entry.ceiling ? ` — ceiling ${entry.ceiling}` : ""}`);
         }
     }
 
     if (unvalidated.length > 0) {
-        lines.push('');
-        lines.push(`> :warning: ${unvalidated.length} scenario(s) did not pass response validation: express and uExpress did not return the same status and body, so their numbers are not comparable.`);
-        lines.push('');
-        lines.push('### Failed Response Validation');
-        lines.push('');
+        lines.push("");
+        lines.push(
+            `> :warning: ${unvalidated.length} scenario(s) did not pass response validation: express and uExpress did not return the same status and body, so their numbers are not comparable.`
+        );
+        lines.push("");
+        lines.push("### Failed Response Validation");
+        lines.push("");
         for (const entry of unvalidated) {
             lines.push(`- \`${entry.scenario}\`\n\`\`\`\n${entry.message}\n\`\`\``);
         }
     }
 
     if (socketErrors.length > 0) {
-        lines.push('');
-        lines.push(`> ${socketErrors.length} run(s) reported socket errors. Throughput measured alongside socket errors reflects the load generator as much as the server.`);
-        lines.push('');
-        lines.push('### Socket Errors');
-        lines.push('');
+        lines.push("");
+        lines.push(
+            `> ${socketErrors.length} run(s) reported socket errors. Throughput measured alongside socket errors reflects the load generator as much as the server.`
+        );
+        lines.push("");
+        lines.push("### Socket Errors");
+        lines.push("");
         for (const entry of socketErrors) {
             lines.push(`- \`${entry.scenario}\` on \`${entry.framework}\`: ${entry.message}`);
         }
     }
 
     if (failures.length > 0) {
-        lines.push('');
+        lines.push("");
         lines.push(`> Warning: ${failures.length} benchmark run(s) failed. See details below.`);
-        lines.push('');
-        lines.push('### Failed Scenarios');
-        lines.push('');
+        lines.push("");
+        lines.push("### Failed Scenarios");
+        lines.push("");
         for (const failure of failures) {
             lines.push(`- \`${failure.scenario}\` on \`${failure.framework}\`\n\`\`\`\n${failure.message}\n\`\`\``);
         }
     }
 
-    lines.push('');
-    return `${lines.join('\n')}\n`;
+    lines.push("");
+    return `${lines.join("\n")}\n`;
 }
 
 async function main() {
     const args = parseArgs(process.argv.slice(2));
     const durationSeconds = Number(args.duration || 20);
-    const outputPath = path.resolve(process.cwd(), args.output || 'benchmark_summary.md');
+    const outputPath = path.resolve(process.cwd(), args.output || "benchmark_summary.md");
     const requestedScenario = args.scenario;
     const scenarioList = requestedScenario ? [requestedScenario] : SCENARIO_FILES;
 
     const results = [];
     for (const scenarioName of scenarioList) {
-        const scenario = require(path.join(__dirname, 'scenarios', `${scenarioName}.js`));
+        const scenario = require(path.join(__dirname, "scenarios", `${scenarioName}.js`));
         process.stdout.write(`Running scenario: ${scenario.name}\n`);
-        let validation = null;
+        let validation;
 
         try {
             validation = await validateScenarioResponses(scenarioName, scenario);
@@ -527,13 +552,13 @@ async function main() {
 
     const successfulRows = results.filter((row) => row.express.ok || row.ultimate.ok);
     if (successfulRows.length === 0) {
-        throw new Error('All benchmark scenarios failed. No summary table generated.');
+        throw new Error("All benchmark scenarios failed. No summary table generated.");
     }
 
     results.sort((a, b) => a.name.localeCompare(b.name));
 
     const markdown = buildMarkdown(results);
-    fs.writeFileSync(outputPath, markdown, 'utf8');
+    fs.writeFileSync(outputPath, markdown, "utf8");
     process.stdout.write(markdown);
 }
 

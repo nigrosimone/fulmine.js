@@ -27,15 +27,13 @@ module.exports = class View {
         this.root = options.root;
 
         if (!this.ext && !this.defaultEngine) {
-            throw new Error('No default engine was specified and no extension was provided.');
+            throw new Error("No default engine was specified and no extension was provided.");
         }
 
         let fileName = name;
-        if(!this.ext) {
-            this.ext = this.defaultEngine[0] !== '.'
-                ? '.' + this.defaultEngine
-                : this.defaultEngine;
-        
+        if (!this.ext) {
+            this.ext = this.defaultEngine[0] !== "." ? "." + this.defaultEngine : this.defaultEngine;
+
             fileName += this.ext;
         }
 
@@ -44,18 +42,18 @@ module.exports = class View {
 
             // default engine export
             const fn = require(mod).__express;
-        
-            if (typeof fn !== 'function') {
-              throw new Error('Module "' + mod + '" does not provide a view engine.')
+
+            if (typeof fn !== "function") {
+                throw new Error('Module "' + mod + '" does not provide a view engine.');
             }
-        
+
             this.options.engines[this.ext] = fn;
         }
 
         this.engine = this.options.engines[this.ext];
-        if(path.isAbsolute(name)) {
+        if (path.isAbsolute(name)) {
             this.path = name;
-            if(path.extname(name) === '') {
+            if (path.extname(name) === "") {
                 this.path += this.ext;
             }
         } else {
@@ -65,15 +63,15 @@ module.exports = class View {
 
     lookup(name) {
         let _path;
-        let roots = [].concat(this.root);
+        const roots = [].concat(this.root);
         for (let i = 0; i < roots.length && !_path; i++) {
             const root = roots[i];
-        
+
             // resolve the path
             const loc = path.resolve(root, name);
             const dir = path.dirname(loc);
             const file = path.basename(loc);
-            
+
             // resolve the file
             _path = this.resolve(dir, file);
         }
@@ -84,7 +82,7 @@ module.exports = class View {
     render(options, callback) {
         let sync = true;
         this.engine(this.path, options, function onRender() {
-            if(!sync) {
+            if (!sync) {
                 return callback.apply(this, arguments);
             }
 
@@ -103,21 +101,21 @@ module.exports = class View {
         let _path = path.join(dir, file);
         let stat = tryStat(_path);
 
-        if(stat && stat.isFile()) {
+        if (stat && stat.isFile()) {
             return _path;
         }
 
         // <path>/index.<ext>
-        _path = path.join(dir, path.basename(file, ext), 'index' + ext);
+        _path = path.join(dir, path.basename(file, ext), "index" + ext);
         stat = tryStat(_path);
 
-        if(stat && stat.isFile()) {
+        if (stat && stat.isFile()) {
             return _path;
         }
     }
-}
+};
 
-function tryStat(path) {  
+function tryStat(path) {
     try {
         return fs.statSync(path);
     } catch (e) {

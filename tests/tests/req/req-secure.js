@@ -10,14 +10,14 @@ const app = express();
 
 // HTTP app with trust proxy enabled
 const appTrustProxy = express();
-appTrustProxy.set('trust proxy', true);
+appTrustProxy.set("trust proxy", true);
 
 // HTTPS app
 const appHttps = express({
     uwsOptions: {
         key_file_name: "tests/parts/localhost.key",
-        cert_file_name: "tests/parts/localhost.crt",
-    },
+        cert_file_name: "tests/parts/localhost.crt"
+    }
 });
 
 app.get("/test", (req, res) => {
@@ -38,7 +38,7 @@ if (!appHttps.uwsApp) {
     httpsServer = https.createServer(
         {
             key: fs.readFileSync("tests/parts/localhost.key", "utf8"),
-            cert: fs.readFileSync("tests/parts/localhost.crt", "utf8"),
+            cert: fs.readFileSync("tests/parts/localhost.crt", "utf8")
         },
         appHttps
     );
@@ -51,18 +51,22 @@ app.listen(13333, async () => {
 
             const outputs = await Promise.all([
                 // HTTP without trust proxy - should be false
-                fetch('http://localhost:13333/test').then(res => res.text()),
+                fetch("http://localhost:13333/test").then((res) => res.text()),
                 // HTTP with trust proxy and X-Forwarded-Proto: https - should be true
-                fetch('http://localhost:13334/test', { headers: { 'X-Forwarded-Proto': 'https' } }).then(res => res.text()),
+                fetch("http://localhost:13334/test", { headers: { "X-Forwarded-Proto": "https" } }).then((res) =>
+                    res.text()
+                ),
                 // HTTP with trust proxy and X-Forwarded-Proto: http - should be false
-                fetch('http://localhost:13334/test', { headers: { 'X-Forwarded-Proto': 'http' } }).then(res => res.text()),
+                fetch("http://localhost:13334/test", { headers: { "X-Forwarded-Proto": "http" } }).then((res) =>
+                    res.text()
+                ),
                 // HTTP with trust proxy but no header - should be false
-                fetch('http://localhost:13334/test').then(res => res.text()),
+                fetch("http://localhost:13334/test").then((res) => res.text()),
                 // HTTPS - should be true
-                fetch('https://localhost:13335/test').then(res => res.text()),
+                fetch("https://localhost:13335/test").then((res) => res.text())
             ]);
 
-            console.log(outputs.join(' '));
+            console.log(outputs.join(" "));
             process.exit(0);
         });
     });
