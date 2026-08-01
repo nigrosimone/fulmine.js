@@ -10,6 +10,19 @@
 // by themselves. That is a deliberate departure from semver and it is documented in the README,
 // because it changes what the number promises to anyone installing this.
 
+// whatBump below closes the automatic door. This closes the other one: `release-it major` bumps
+// by keyword, which skips the recommendation entirely and would land on the major after this one
+// rather than the Express major. Raising it means writing the number out.
+if (process.argv.slice(2).includes("major")) {
+    // written straight to stderr because release-it rewrites anything thrown from here as
+    // "Invalid configuration file", which would send someone looking in the wrong place
+    process.stderr.write(
+        "\nThe major tracks the Express major and is never bumped by keyword.\n" +
+            "Pass the version instead, for example: npx release-it 6.0.0\n\n"
+    );
+    throw new Error("refusing a keyword major bump");
+}
+
 // conventional-recommended-bump speaks in levels: 0 is major, 1 is minor, 2 is patch.
 const MAJOR = 0;
 const MINOR = 1;
