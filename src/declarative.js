@@ -292,8 +292,9 @@ module.exports = function compileDeclarative(cb, app) {
                             if (!headers.some((header) => header[0].toLowerCase() === "content-type")) {
                                 headers.push(["content-type", "application/json; charset=utf-8"]);
                             } else {
-                                headers.find((header) => header[0].toLowerCase() === "content-type")[1] =
-                                    "application/json; charset=utf-8";
+                                /** @type {any} */ (
+                                    headers.find((header) => header[0].toLowerCase() === "content-type")
+                                )[1] = "application/json; charset=utf-8";
                             }
                         }
                         body.push({ type: "text", value: val });
@@ -396,8 +397,9 @@ module.exports = function compileDeclarative(cb, app) {
                         if (!headers.some((header) => header[0].toLowerCase() === "content-type")) {
                             headers.push(["content-type", "application/json; charset=utf-8"]);
                         } else {
-                            headers.find((header) => header[0].toLowerCase() === "content-type")[1] =
-                                "application/json; charset=utf-8";
+                            /** @type {any} */ (
+                                headers.find((header) => header[0].toLowerCase() === "content-type")
+                            )[1] = "application/json; charset=utf-8";
                         }
                         body.push({
                             type: "text",

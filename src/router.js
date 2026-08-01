@@ -526,21 +526,23 @@ module.exports = class Router extends EventEmitter {
                         req._gotParams.add(param);
                         for (let i = 0, len = pcs.length; i < len; i++) {
                             const fn = pcs[i];
-                            await new Promise((resolveRoute) => {
-                                const next = (thingamabob) => {
-                                    if (thingamabob) {
-                                        if (thingamabob === "route") {
-                                            return resolve("route");
-                                        } else {
-                                            req._error = thingamabob;
-                                            req._errorKey = route.routeKey;
+                            await /** @type {Promise<void>} */ (
+                                new Promise((resolveRoute) => {
+                                    const next = (thingamabob) => {
+                                        if (thingamabob) {
+                                            if (thingamabob === "route") {
+                                                return resolve("route");
+                                            } else {
+                                                req._error = thingamabob;
+                                                req._errorKey = route.routeKey;
+                                            }
                                         }
-                                    }
-                                    return resolveRoute();
-                                };
-                                req.next = next;
-                                fn(req, res, next, req.params[param], param);
-                            });
+                                        return resolveRoute();
+                                    };
+                                    req.next = next;
+                                    fn(req, res, next, req.params[param], param);
+                                })
+                            );
                         }
                     }
                 }
@@ -579,6 +581,10 @@ module.exports = class Router extends EventEmitter {
         return this;
     }
 
+    /**
+     * Resolves with the route that answered, or false when nothing matched.
+     * @returns {Promise<any>}
+     */
     _routeRequest(req, res, startIndex = 0, routes = this._routes, skipCheck = false, skipUntil) {
         return new Promise((resolve, reject) => {
             this._dispatchRoute(req, res, startIndex, routes, skipCheck, skipUntil, resolve, reject);
@@ -842,7 +848,7 @@ module.exports = class Router extends EventEmitter {
 
         for (const callback of callbacks) {
             if (callback instanceof Router) {
-                callback.mountpath = path;
+                callback.mountpath = /** @type {string|string[]} */ (path);
                 callback.parent = this;
                 callback.emit("mount", this);
             }

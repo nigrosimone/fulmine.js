@@ -48,10 +48,14 @@ const discardedDuplicates = new Set([
 let key = 0;
 
 module.exports = class Request extends Readable {
+    /** @type {Record<string, any>|null} */
     #cachedQuery = null;
+    /** @type {Record<string, any>|null} */
     #cachedHeaders = null;
+    /** @type {Record<string, string[]>|null} */
     #cachedDistinctHeaders = null;
     #rawHeadersEntries = [];
+    /** @type {string|undefined|null} */
     #cachedParsedIp = null;
     #paused = false;
     body;
@@ -304,6 +308,7 @@ module.exports = class Request extends Readable {
         return this.protocol === "https";
     }
 
+    /** @type {string[]|null} */
     #cachedSubdomains = null;
 
     /**
@@ -354,6 +359,7 @@ module.exports = class Request extends Readable {
             }
             this.rawIp = this._res.getRemoteAddress();
         }
+        /** @type {string|undefined} */
         let ip = "";
         if (this.rawIp.byteLength === 4) {
             // ipv4
@@ -560,46 +566,50 @@ module.exports = class Request extends Readable {
         if (this.#cachedHeaders) {
             return this.#cachedHeaders;
         }
-        this.#cachedHeaders = { ...new NullObject() }; // seems to be faster
+        // built into a local and published at the end, so a throw partway through cannot leave a
+        // half-filled object cached
+        const headers = { ...new NullObject() }; // seems to be faster
         for (let index = 0, len = this.#rawHeadersEntries.length; index < len; index++) {
             let [key, value] = this.#rawHeadersEntries[index];
             key = key.toLowerCase();
-            if (this.#cachedHeaders[key]) {
+            if (headers[key]) {
                 if (discardedDuplicates.has(key)) {
                     continue;
                 }
                 if (key === "cookie") {
-                    this.#cachedHeaders[key] += "; " + value;
+                    headers[key] += "; " + value;
                 } else if (key === "set-cookie") {
-                    this.#cachedHeaders[key].push(value);
+                    headers[key].push(value);
                 } else {
-                    this.#cachedHeaders[key] += ", " + value;
+                    headers[key] += ", " + value;
                 }
                 continue;
             }
             if (key === "set-cookie") {
-                this.#cachedHeaders[key] = [value];
+                headers[key] = [value];
             } else {
-                this.#cachedHeaders[key] = value;
+                headers[key] = value;
             }
         }
-        return this.#cachedHeaders;
+        this.#cachedHeaders = headers;
+        return headers;
     }
 
     get headersDistinct() {
         if (this.#cachedDistinctHeaders) {
             return this.#cachedDistinctHeaders;
         }
-        this.#cachedDistinctHeaders = { ...new NullObject() };
+        const distinct = { ...new NullObject() };
         this.#rawHeadersEntries.forEach((val) => {
             const [key, value] = val;
-            if (!this.#cachedDistinctHeaders[key]) {
-                this.#cachedDistinctHeaders[key] = [value];
+            if (!distinct[key]) {
+                distinct[key] = [value];
                 return;
             }
-            this.#cachedDistinctHeaders[key].push(value);
+            distinct[key].push(value);
         });
-        return this.#cachedDistinctHeaders;
+        this.#cachedDistinctHeaders = distinct;
+        return distinct;
     }
 
     get rawHeaders() {

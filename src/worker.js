@@ -18,14 +18,21 @@ limitations under the License.
 const fs = require("fs");
 const { parentPort } = require("worker_threads");
 
-parentPort.on("message", (message) => {
+// this file is only ever loaded as a worker, where parentPort is always present. Reading it in the
+// main thread would give null, so say so once here rather than at each use
+if (!parentPort) {
+    throw new Error("worker.js must be loaded as a worker thread");
+}
+const port = parentPort;
+
+port.on("message", (message) => {
     if (message.type === "readFile") {
         try {
             const data = fs.readFileSync(message.path);
             const ab = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
-            parentPort.postMessage({ key: message.key, data: ab }, [ab]);
+            port.postMessage({ key: message.key, data: ab }, [ab]);
         } catch (err) {
-            parentPort.postMessage({ key: message.key, err: String(err) });
+            port.postMessage({ key: message.key, err: String(err) });
         }
     }
 });

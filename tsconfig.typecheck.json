@@ -18,6 +18,8 @@
         "strictFunctionTypes": true,
         "strictBindCallApply": true,
         "alwaysStrict": true,
+        "strictNullChecks": true,
+        "strictPropertyInitialization": true,
         "noEmit": true,
         // the declaration files shipped by the dependencies are their problem, not ours
         "skipLibCheck": true,
