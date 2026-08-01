@@ -209,7 +209,9 @@ class Application extends Router {
                     return this._handleError(request._error, null, request, response);
                 }
                 if (request._isOptions && request._matchedMethods.size > 0) {
-                    const allowedMethods = Array.from(request._matchedMethods).join(",");
+                    // sorted and ", "-joined, so the header reads the same whatever order the
+                    // routes were registered in. same shape as the router's own OPTIONS reply
+                    const allowedMethods = Array.from(request._matchedMethods).sort().join(", ");
                     response.setHeader("Allow", allowedMethods);
                     response.send(allowedMethods);
                     return;
