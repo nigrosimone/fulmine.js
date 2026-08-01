@@ -10,9 +10,15 @@
 //   node benchmark/ab.js --against main
 //   node benchmark/ab.js --against main --scenario routes-1000 --rounds 9
 //   node benchmark/ab.js --null                 # same code both sides, to see the noise floor
+//   node benchmark/ab.js --against main --pipelining 1   # one request per connection at a time
 //
 // The figure to read is the median of the per-round ratios. If it sits inside the spread that
 // --null produces on the same machine, the change did not move anything this can see.
+//
+// Requests are pipelined by default, which is not the shape of ordinary traffic but is the only
+// way this measures the server. autocannon is a single JS thread and runs out before either arm
+// does, so with one request in flight per connection both arms report the load generator's ceiling
+// and every ratio comes back 1.00 whatever the change was worth.
 
 const fs = require("fs");
 const path = require("path");
@@ -73,13 +79,14 @@ function removeWorktree() {
     }
 }
 
-async function load(framework, scenario, request, durationSeconds, connections) {
+async function load(framework, scenario, request, durationSeconds, connections, pipelining) {
     const result = await autocannon({
         url: `http://127.0.0.1:${framework.port}${request.path}`,
         method: request.method,
         headers: request.headers,
         body: request.body ?? undefined,
         connections,
+        pipelining,
         duration: durationSeconds,
         timeout: 30
     });
@@ -124,6 +131,11 @@ async function main() {
     // this one wants the server to be the bottleneck rather than the scheduler, and piling on
     // connections here only widens what --null reports as the noise floor.
     const connections = Number(args.connections || 50);
+    // Not 1, and it matters more than it looks. autocannon is one JS thread and tops out around
+    // 20k requests a second on a laptop, which is below what either arm can serve, so without
+    // pipelining both arms report the load generator's ceiling and every ratio comes back 1.00
+    // whatever the change did. Measured on a change worth a fifth: 1.00 at pipelining 1, 1.17 at 10.
+    const pipelining = Number(args.pipelining || 10);
 
     let baselineSrc = null;
     if (against) {
@@ -133,7 +145,7 @@ async function main() {
 
     const label = against ? `${against} (baseline) vs working tree (candidate)` : "working tree against itself";
     process.stdout.write(
-        `${scenario.name}: ${label}, ${rounds} rounds of ${durationSeconds}s at ${connections} connections\n\n`
+        `${scenario.name}: ${label}, ${rounds} rounds of ${durationSeconds}s at ${connections} connections, pipelining ${pipelining}\n\n`
     );
 
     const arms = [
@@ -159,8 +171,8 @@ async function main() {
         const WARMUP_ROUNDS = 2;
         for (let i = 0; i < WARMUP_ROUNDS; i++) {
             process.stdout.write(`warmup ${i + 1}/${WARMUP_ROUNDS} (not recorded)\n`);
-            await load(BASELINE, scenario, request, durationSeconds, connections);
-            await load(CANDIDATE, scenario, request, durationSeconds, connections);
+            await load(BASELINE, scenario, request, durationSeconds, connections, pipelining);
+            await load(CANDIDATE, scenario, request, durationSeconds, connections, pipelining);
         }
 
         const ratios = [];
@@ -171,8 +183,8 @@ async function main() {
             const first = baselineFirst ? BASELINE : CANDIDATE;
             const second = baselineFirst ? CANDIDATE : BASELINE;
 
-            const firstReq = await load(first, scenario, request, durationSeconds, connections);
-            const secondReq = await load(second, scenario, request, durationSeconds, connections);
+            const firstReq = await load(first, scenario, request, durationSeconds, connections, pipelining);
+            const secondReq = await load(second, scenario, request, durationSeconds, connections, pipelining);
 
             const baseline = baselineFirst ? firstReq : secondReq;
             const candidate = baselineFirst ? secondReq : firstReq;

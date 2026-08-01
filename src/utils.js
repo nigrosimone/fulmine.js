@@ -530,6 +530,7 @@ function escapeHtml(str) {
 // a charset parameter that is already there, and the whole parameter so it can be replaced
 const CHARSET_PRESENT = /;\s*charset\s*=/i;
 const CHARSET_PARAM = /;\s*charset\s*=\s*[^;]*/i;
+const UTF8_CHARSET = "; charset=utf-8";
 
 /**
  * The content-type a header field should carry once it has been set, which is the value given plus
@@ -559,7 +560,14 @@ function withDefaultCharset(value) {
  * @returns {string}
  */
 function withUtf8Charset(value) {
-    return CHARSET_PARAM.test(value) ? value.replace(CHARSET_PARAM, "; charset=utf-8") : `${value}; charset=utf-8`;
+    // Almost every string body is sent with a content-type res.set already wrote in exactly this
+    // form, so the answer is the value itself and neither regular expression has to run. Without
+    // this, every send matched once and replaced once, and the pair showed up as 2% of the time
+    // spent serving a request.
+    if (value.endsWith(UTF8_CHARSET)) {
+        return value;
+    }
+    return CHARSET_PARAM.test(value) ? value.replace(CHARSET_PARAM, UTF8_CHARSET) : `${value}${UTF8_CHARSET}`;
 }
 
 // fast null object
