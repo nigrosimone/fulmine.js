@@ -381,7 +381,9 @@ module.exports = class Router extends EventEmitter {
                     return this._handleError(request._error, null, request, response);
                 }
                 if (request._isOptions && request._matchedMethods.size > 0) {
-                    const allowedMethods = Array.from(request._matchedMethods).join(",");
+                    // Express 5 sorts the methods and joins them with ", ", so the header reads the
+                    // same regardless of the order the routes happened to be registered in
+                    const allowedMethods = Array.from(request._matchedMethods).sort().join(", ");
                     response.setHeader("Allow", allowedMethods);
                     response.send(allowedMethods);
                     return;
