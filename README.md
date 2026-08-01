@@ -171,7 +171,7 @@ const app = express({
 
 ## Compatibility
 
-In general, basically all features and options are supported. Use the [Express 5.x documentation](https://expressjs.com/en/5x/api.html) for API reference. Anything Express 5 removed is removed here too, and is listed as such below.
+In general, basically all features and options are supported. Use the [Express 5.x documentation](https://expressjs.com/en/5x/api.html) for API reference. Anything Express 5 removed is removed here too, so the list below covers only where this differs from Express 5 itself.
 
 ✅ - Full support (all features and options are supported)  
 🚧 - Partial support (some options are not supported)  
@@ -206,7 +206,6 @@ In general, basically all features and options are supported. Use the [Express 5
 - ✅ app.disabled()
 - ✅ app.path()
 - ✅ app.param(name, callback)
-- ❌ app.param(callback) (removed in Express 5, throws)
 - ✅ app.engine()
 - ✅ app.render()
 - ✅ app.locals
@@ -271,7 +270,6 @@ In general, basically all features and options are supported. Use the [Express 5
 - ✅ req.acceptsLanguages()
 - ✅ req.get()
 - ✅ req.is()
-- ❌ req.param() (removed in Express 5, undefined)
 - ✅ req.range()
 
 ### Response
@@ -327,7 +325,6 @@ In general, basically all features and options are supported. Use the [Express 5
 - ✅ router.route()
 - ✅ router.use()
 - ✅ router.param(name, callback)
-- ❌ router.param(callback) (removed in Express 5, throws)
 - ✅ options.caseSensitive
 - ✅ options.strict
 - ✅ options.mergeParams
@@ -363,10 +360,6 @@ Almost all middlewares that are compatible with Express are compatible with Fulm
 - ✅ [graphql-http](https://www.npmjs.com/package/graphql-http)
 - ✅ [better-sse](https://www.npmjs.com/package/better-sse)
 - ✅ [supertest](https://www.npmjs.com/package/supertest)
-
-Middlewares and modules that are confirmed to not work:
-
-- ❌ [express-async-errors](https://npmjs.com/package/express-async-errors) - not needed, and cannot load: Express 5 forwards rejected handler promises to the error middleware on its own, and the package reaches for `express/lib/router/layer`, which no longer exists.
 
 ## Tested view engines
 
