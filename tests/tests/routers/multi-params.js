@@ -4,7 +4,7 @@ const express = require("express");
 
 const app = express();
 
-app.get("/api/1.0/info/:subdir(ab|cd)?/:item([0-9A-Za-z-_]{6}.[^.])/:empty(.{0})?/details", (req, res) => {
+app.get("/api/1.0/info{/:subdir}/:item/details", (req, res) => {
     res.json({ path: req.path, params: req.params });
 });
 

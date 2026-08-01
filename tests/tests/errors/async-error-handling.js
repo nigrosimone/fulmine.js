@@ -1,11 +1,9 @@
 // async error handling
 
 const express = require("express");
-require("express-async-errors");
 
 const app = express();
 app.set("env", "production");
-app.set("catch async errors", true);
 
 app.get("/test", async (req, res) => {
     await new Promise((resolve, reject) => {
