@@ -133,7 +133,24 @@ class Application extends Router {
         });
     }
 
+    /**
+     * Reads or writes an application setting.
+     *
+     * Called with one argument it is the getter, the same as `app.get(key)`. The check is on
+     * `arguments.length`, so an explicit `set(key, undefined)` still writes.
+     *
+     * Some keys have a side effect: `trust proxy`, `query parser` and `etag` compile the value
+     * into a function kept alongside it, `views` is resolved to an absolute path, and setting
+     * `env` to "production" turns the view cache on.
+     *
+     * @param {string} key setting name
+     * @param {*} [value] value to store; omit to read instead
+     * @returns {*} the app, for chaining, or the value when reading
+     */
     set(key, value) {
+        if (arguments.length === 1) {
+            return this.get(key);
+        }
         if (key === "trust proxy") {
             if (!value) {
                 delete this.settings["trust proxy fn"];
@@ -184,20 +201,41 @@ class Application extends Router {
         return this;
     }
 
+    /**
+     * Sets a setting to true, side effects and all.
+     * @param {string} key setting name
+     * @returns {this} the app, for chaining
+     */
     enable(key) {
         this.set(key, true);
         return this;
     }
 
+    /**
+     * Sets a setting to false, side effects and all.
+     * @param {string} key setting name
+     * @returns {this} the app, for chaining
+     */
     disable(key) {
         this.set(key, false);
         return this;
     }
 
+    /**
+     * Whether a setting is truthy. Reads this app's own settings, without falling back to a
+     * parent app the way get() does.
+     * @param {string} key setting name
+     * @returns {boolean}
+     */
     enabled(key) {
         return !!this.settings[key];
     }
 
+    /**
+     * Whether a setting is falsy.
+     * @param {string} key setting name
+     * @returns {boolean}
+     */
     disabled(key) {
         return !this.settings[key];
     }
@@ -225,6 +263,23 @@ class Application extends Router {
         });
     }
 
+    /**
+     * Binds the server and starts accepting requests.
+     *
+     * Unlike Express this returns the app itself rather than an `http.Server`, because there is
+     * no node HTTP server underneath. The app carries the parts of that interface that make
+     * sense here: `address()`, `close()`, `listening`, and the 'listening' and 'close' events.
+     * Anything needing a real `http.Server`, socket.io being the usual case, should reach for
+     * `app.uwsApp` instead.
+     *
+     * The callback runs on the next tick, as Express runs it, and receives an error if the bind
+     * failed. Passing a path instead of a port listens on a unix socket.
+     *
+     * @param {number|string} [port] port, or a unix socket path; 0 picks a free port
+     * @param {string} [host] interface to bind; every interface when omitted
+     * @param {(err?: Error) => void} [callback] called once bound, or with the bind error
+     * @returns {this} the app, which doubles as the server handle
+     */
     listen(port, host, callback) {
         this._compileOptimizedRoutes();
         this.#createRequestHandler();
@@ -299,6 +354,10 @@ class Application extends Router {
         return this;
     }
 
+    /**
+     * The bound address, or null when not listening.
+     * @returns {{address: string, family: string, port: number}|null}
+     */
     address() {
         if (!this.listening || !this.port) {
             return null;
@@ -314,6 +373,11 @@ class Application extends Router {
         return { address: host, family: host.includes(":") ? "IPv6" : "IPv4", port: this.port };
     }
 
+    /**
+     * The full mount path of this app, walking up through every parent it is mounted on.
+     * A top level app returns the empty string rather than "/".
+     * @returns {string}
+     */
     path() {
         const paths = [this.mountpath];
         let parent = this.parent;
@@ -325,6 +389,17 @@ class Application extends Router {
         return path === "/" ? "" : path;
     }
 
+    /**
+     * Registers a template engine for a file extension.
+     *
+     * The leading dot is optional: "pug" and ".pug" register the same thing.
+     *
+     * @param {string} ext file extension the engine handles
+     * @param {(path: string, options: object, callback: (err: Error|null, rendered?: string) => void) => void} fn
+     *   the engine, in the callback style consolidate-style engines use
+     * @returns {this} the app, for chaining
+     * @throws {Error} if fn is not a function
+     */
     engine(ext, fn) {
         if (typeof fn !== "function") {
             throw new Error("callback function required");
@@ -334,6 +409,18 @@ class Application extends Router {
         return this;
     }
 
+    /**
+     * Renders a view and hands the result to the callback, without sending anything.
+     * `res.render()` is the one that responds.
+     *
+     * `app.locals` and `options._locals` are merged into the options, in that order, so a
+     * per-request local wins over an application-wide one. Caching follows the "view cache"
+     * setting unless `options.cache` says otherwise.
+     *
+     * @param {string} name view name, resolved against the "views" setting
+     * @param {object|((err: Error|null, html?: string) => void)} [options] locals, or the callback
+     * @param {(err: Error|null, html?: string) => void} [callback] receives the rendered view
+     */
     render(name, options, callback) {
         if (typeof options === "function") {
             callback = options;
@@ -397,6 +484,16 @@ class Application extends Router {
         }
     }
 
+    /**
+     * Stops listening and emits 'close'.
+     *
+     * The callback is the first 'close' listener, so it runs before any added afterwards. Closing
+     * a server that was not listening still calls back, with an ERR_SERVER_NOT_RUNNING error, the
+     * way node does.
+     *
+     * @param {(err?: Error) => void} [callback] called once closed
+     * @returns {this} the app, for chaining
+     */
     close(callback) {
         const wasListening = this.listening;
         if (this.listenCalled && wasListening) {

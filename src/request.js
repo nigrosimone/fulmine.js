@@ -192,11 +192,19 @@ module.exports = class Request extends Readable {
         return portIndex !== -1 ? host.substring(0, portIndex) : host;
     }
 
-    // host is the authority including the port, hostname is the same without it
+    /**
+     * The authority, port included, from Host or from X-Forwarded-Host behind a trusted proxy.
+     * `hostname` is the same value without the port.
+     * @returns {string}
+     */
     get host() {
         return this.#authority;
     }
 
+    /**
+     * The host without the port.
+     * @returns {string}
+     */
     get hostname() {
         return this.#host;
     }
@@ -213,6 +221,11 @@ module.exports = class Request extends Readable {
         return 1;
     }
 
+    /**
+     * The client address. With "trust proxy" set this is the first address in X-Forwarded-For
+     * that the trust function accepts, otherwise it is the socket's own address.
+     * @returns {string|undefined} undefined on a unix socket, which has no address
+     */
     get ip() {
         const trust = this.app.get("trust proxy fn");
         if (!trust) {
@@ -221,6 +234,11 @@ module.exports = class Request extends Readable {
         return proxyaddr(this, trust);
     }
 
+    /**
+     * The trusted addresses from X-Forwarded-For, nearest client first, empty unless
+     * "trust proxy" is set.
+     * @returns {string[]}
+     */
     get ips() {
         const trust = this.app.get("trust proxy fn");
         if (!trust) {
@@ -231,6 +249,11 @@ module.exports = class Request extends Readable {
         return addrs;
     }
 
+    /**
+     * "http" or "https", taken from X-Forwarded-Proto when the connection comes from a
+     * trusted proxy.
+     * @returns {string}
+     */
     get protocol() {
         const proto = this.app.ssl ? "https" : "http";
         const trust = this.app.get("trust proxy fn");
@@ -246,6 +269,15 @@ module.exports = class Request extends Readable {
         return index !== -1 ? header.slice(0, index).trim() : header.trim();
     }
 
+    /**
+     * The parsed query string, on a null-prototype object so a query cannot reach
+     * Object.prototype keys. Parsed once and cached.
+     *
+     * There is deliberately no setter, so assigning to req.query throws in strict mode, exactly
+     * as it does on Express.
+     *
+     * @returns {object}
+     */
     // a getter with no setter at all, so assigning to req.query throws in strict mode. Middleware
     // that rewrites the query, express-mongo-sanitize being the common one, fails here exactly as
     // it fails on Express, which is the point of not adding a setter.
@@ -263,12 +295,21 @@ module.exports = class Request extends Readable {
         return this.#cachedQuery;
     }
 
+    /**
+     * Whether the request came in over TLS.
+     * @returns {boolean}
+     */
     get secure() {
         return this.protocol === "https";
     }
 
     #cachedSubdomains = null;
 
+    /**
+     * The hostname's subdomains, furthest from the root first, dropping the last
+     * "subdomain offset" labels. Empty for an IP address.
+     * @returns {string[]}
+     */
     get subdomains() {
         if (this.#cachedSubdomains !== null) {
             return this.#cachedSubdomains;
@@ -286,6 +327,11 @@ module.exports = class Request extends Readable {
         return (this.#cachedSubdomains = subdomains);
     }
 
+    /**
+     * Whether X-Requested-With says XMLHttpRequest. Only libraries that set that header are
+     * detected, which today is mostly jQuery and not fetch.
+     * @returns {boolean}
+     */
     get xhr() {
         const val = this.headers?.["x-requested-with"];
         return typeof val === "string" && val.toLowerCase() === "xmlhttprequest";
@@ -344,6 +390,11 @@ module.exports = class Request extends Readable {
         return this.connection;
     }
 
+    /**
+     * Whether the client's cached copy is still good, from If-None-Match and If-Modified-Since
+     * against the response headers set so far. Only GET and HEAD can be fresh.
+     * @returns {boolean}
+     */
     get fresh() {
         if (this.method !== "HEAD" && this.method !== "GET") {
             return false;
@@ -379,10 +430,22 @@ module.exports = class Request extends Readable {
         return false;
     }
 
+    /**
+     * The opposite of `fresh`.
+     * @returns {boolean}
+     */
     get stale() {
         return !this.fresh;
     }
 
+    /**
+     * Reads a request header, case insensitively. "referer" and "referrer" both work, whichever
+     * one the client sent.
+     *
+     * @param {string} field header name
+     * @returns {string|string[]|undefined}
+     * @throws {TypeError} if field is missing or is not a string
+     */
     get(field) {
         if (!field) {
             throw new TypeError("name argument is required to req.get");
@@ -402,18 +465,39 @@ module.exports = class Request extends Readable {
     }
     header = this.get;
 
+    /**
+     * Picks the best of the given types against the Accept header.
+     * @param {...(string|string[])} types extensions or mime types
+     * @returns {string|string[]|false} the best match, false if none is acceptable, or every
+     *   acceptable type when called with no arguments
+     */
     accepts(...types) {
         return accepts(this).types(...types);
     }
 
+    /**
+     * The same, against Accept-Charset.
+     * @param {...(string|string[])} charsets
+     * @returns {string|string[]|false}
+     */
     acceptsCharsets(...charsets) {
         return accepts(this).charsets(...charsets);
     }
 
+    /**
+     * The same, against Accept-Encoding.
+     * @param {...(string|string[])} encodings
+     * @returns {string|string[]|false}
+     */
     acceptsEncodings(...encodings) {
         return accepts(this).encodings(...encodings);
     }
 
+    /**
+     * The same, against Accept-Language.
+     * @param {...(string|string[])} languages
+     * @returns {string|string[]|false}
+     */
     acceptsLanguages(...languages) {
         return accepts(this).languages(...languages);
     }
@@ -433,6 +517,14 @@ module.exports = class Request extends Readable {
         return this.acceptsLanguages(...args);
     }
 
+    /**
+     * Whether the request body's Content-Type matches. Accepts extensions ("json"), mime types
+     * ("application/json") and wildcards ("application/*").
+     *
+     * @param {string|string[]} types one or several, as an array or as separate arguments
+     * @returns {string|false|null} the matching type, false if it does not match, null if there
+     *   is no body to have a type
+     */
     is(types) {
         if (Array.isArray(types)) {
             return typeis(this, types);
@@ -445,6 +537,14 @@ module.exports = class Request extends Readable {
         return typeis(this, [...arguments]);
     }
 
+    /**
+     * Parses the Range header against a resource of the given size.
+     *
+     * @param {number} size length of the resource being served
+     * @param {{combine?: boolean}} [options] combine adjacent and overlapping ranges
+     * @returns {Array|number|undefined} the ranges, -1 when unsatisfiable, -2 when malformed,
+     *   or undefined when there is no Range header
+     */
     range(size, options) {
         const range = this.headers["range"];
         if (!range) return;
