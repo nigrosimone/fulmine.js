@@ -26,89 +26,95 @@ const EMPTY_REGEX = new RegExp(``);
 
 function fastQueryParse(query, options) {
     const len = query.length;
-    if(len === 0){
+    if (len === 0) {
         return new NullObject();
     }
-    if(len <= 128) {
-        if(!query.includes('[') && !query.includes('%5B') && !query.includes('.') && !query.includes('%2E')) {
+    if (len <= 128) {
+        if (!query.includes("[") && !query.includes("%5B") && !query.includes(".") && !query.includes("%2E")) {
             // [Object: null prototype] issue
-            return {...querystring.parse(query)};
+            return { ...querystring.parse(query) };
         }
     }
     // [Object: null prototype] issue
-    return {...qs.parse(query, options)};
+    return { ...qs.parse(query, options) };
 }
 
 function removeDuplicateSlashes(path) {
-    return path.replace(/\/{2,}/g, '/');
+    return path.replace(/\/{2,}/g, "/");
 }
 
 function patternToRegex(pattern, isPrefix = false) {
-    if(pattern instanceof RegExp) {
+    if (pattern instanceof RegExp) {
         return pattern;
     }
-    if(isPrefix && pattern === '') {
+    if (isPrefix && pattern === "") {
         return EMPTY_REGEX;
     }
 
     let wildcardIndex = 0;
-    let regexPattern = '';
+    let regexPattern = "";
     const captureGroupTest = /(\/|[.-]+):(\w+)(?:\((.+?)\))?\??/g;
     let offset = 0;
     while (true) {
         const result = captureGroupTest.exec(pattern);
         // Process last preceding part if matched, or final part if match ended
-        regexPattern += pattern.substring(offset, result?.index ?? pattern.length)
-            .replaceAll('.', '\\.')
-            .replaceAll('-', '\\-')
-            .replaceAll(/(\*|\(.*?\))/g, (match) => // Convert * to .* and stuff in parentheses to capture group
-                `(?<_wc${wildcardIndex++}>${match.startsWith('(') ? match.slice(1, -1) : match.replaceAll('*', '.*')})`
-        );
+        regexPattern += pattern
+            .substring(offset, result?.index ?? pattern.length)
+            .replaceAll(".", "\\.")
+            .replaceAll("-", "\\-")
+            .replaceAll(
+                /(\*|\(.*?\))/g,
+                (match) =>
+                    // Convert * to .* and stuff in parentheses to capture group
+                    `(?<_wc${wildcardIndex++}>${match.startsWith("(") ? match.slice(1, -1) : match.replaceAll("*", ".*")})`
+            );
         if (!result) break;
         const [match, prefix, param, regex] = result;
-        const optional = match.endsWith('?');
+        const optional = match.endsWith("?");
         // Convert :param to capture group
-        regexPattern += `${optional ? '(' : ''}${prefix}(?<${param}>${regex ? regex + '(?=$|\/)' : '[^/]+'})${optional ? ')?' : ''}`;
+        regexPattern += `${optional ? "(" : ""}${prefix}(?<${param}>${regex ? regex + "(?=$|/)" : "[^/]+"})${optional ? ")?" : ""}`;
         offset = result.index + match.length;
     }
 
-    return new RegExp(`^${regexPattern}${isPrefix ? '(?=$|\/)' : '$'}`);
+    return new RegExp(`^${regexPattern}${isPrefix ? "(?=$|/)" : "$"}`);
 }
 
 function needsConversionToRegex(pattern) {
-    if(pattern instanceof RegExp) {
+    if (pattern instanceof RegExp) {
         return false;
     }
-    
-    return pattern.includes('*') ||
-        pattern.includes('?') ||
-        pattern.includes('+') ||
-        pattern.includes('(') ||
-        pattern.includes(')') ||
-        pattern.includes(':') ||
-        pattern.includes('{') ||
-        pattern.includes('}') ||
-        pattern.includes('[') ||
-        pattern.includes(']');
+
+    return (
+        pattern.includes("*") ||
+        pattern.includes("?") ||
+        pattern.includes("+") ||
+        pattern.includes("(") ||
+        pattern.includes(")") ||
+        pattern.includes(":") ||
+        pattern.includes("{") ||
+        pattern.includes("}") ||
+        pattern.includes("[") ||
+        pattern.includes("]")
+    );
 }
 
 function canBeOptimized(pattern) {
-    if(pattern === '/*') {
+    if (pattern === "/*") {
         return false;
     }
-    if(pattern instanceof RegExp) {
+    if (pattern instanceof RegExp) {
         return false;
     }
-    if(
-        pattern.includes('*') ||
-        pattern.includes('?') ||
-        pattern.includes('+') ||
-        pattern.includes('(') ||
-        pattern.includes(')') ||
-        pattern.includes('{') ||
-        pattern.includes('}') ||
-        pattern.includes('[') ||
-        pattern.includes(']')
+    if (
+        pattern.includes("*") ||
+        pattern.includes("?") ||
+        pattern.includes("+") ||
+        pattern.includes("(") ||
+        pattern.includes(")") ||
+        pattern.includes("{") ||
+        pattern.includes("}") ||
+        pattern.includes("[") ||
+        pattern.includes("]")
     ) {
         return false;
     }
@@ -117,26 +123,26 @@ function canBeOptimized(pattern) {
 
 function acceptParams(str) {
     const length = str.length;
-    const colonIndex = str.indexOf(';');
+    const colonIndex = str.indexOf(";");
     let index = colonIndex === -1 ? length : colonIndex;
     const ret = { value: str.slice(0, index).trim(), quality: 1, params: {} };
 
     while (index < length) {
-        const splitIndex = str.indexOf('=', index);
+        const splitIndex = str.indexOf("=", index);
         if (splitIndex === -1) break;
 
-        const colonIndex = str.indexOf(';', index);
+        const colonIndex = str.indexOf(";", index);
         const endIndex = colonIndex === -1 ? length : colonIndex;
 
         if (splitIndex > endIndex) {
-            index = str.lastIndexOf(';', splitIndex - 1) + 1;
+            index = str.lastIndexOf(";", splitIndex - 1) + 1;
             continue;
         }
 
         const key = str.slice(index, splitIndex).trim();
         const value = str.slice(splitIndex + 1, endIndex).trim();
 
-        if (key === 'q') {
+        if (key === "q") {
             ret.quality = parseFloat(value);
         } else {
             ret.params[key] = value;
@@ -144,123 +150,130 @@ function acceptParams(str) {
 
         index = endIndex + 1;
     }
-  
+
     return ret;
 }
 
 function normalizeType(type) {
-    return ~type.indexOf('/') ?
-        acceptParams(type) :
-        { value: (mime.lookup(type) || 'application/octet-stream'), params: {} };
+    return ~type.indexOf("/")
+        ? acceptParams(type)
+        : { value: mime.lookup(type) || "application/octet-stream", params: {} };
 }
 
 function stringify(value, replacer, spaces, escape) {
-    let json = replacer || spaces
-        ? JSON.stringify(value, replacer, spaces)
-        : JSON.stringify(value);
-  
-    if (escape && typeof json === 'string') {
+    let json = replacer || spaces ? JSON.stringify(value, replacer, spaces) : JSON.stringify(value);
+
+    if (escape && typeof json === "string") {
         json = json.replace(/[<>&]/g, function (c) {
             switch (c.charCodeAt(0)) {
                 case 0x3c:
-                    return '\\u003c'
+                    return "\\u003c";
                 case 0x3e:
-                    return '\\u003e'
+                    return "\\u003e";
                 case 0x26:
-                    return '\\u0026'
+                    return "\\u0026";
                 default:
-                    return c
+                    return c;
             }
         });
     }
-  
+
     return json;
 }
 
 const defaultSettings = {
-    'jsonp callback name': 'callback',
-    'env': () => process.env.NODE_ENV ?? 'development',
-    'etag': 'weak',
-    'etag fn': () => createETagGenerator({ weak: true }),
-    'query parser': 'extended',
-    'query parser fn': () => fastQueryParse,
-    'subdomain offset': 2,
-    'trust proxy': false,
-    'views': () => path.join(process.cwd(), 'views'),
-    'view cache': () => process.env.NODE_ENV === 'production',
-    'x-powered-by': true,
-    'case sensitive routing': true,
-    'declarative responses': true
+    "jsonp callback name": "callback",
+    env: () => process.env.NODE_ENV ?? "development",
+    etag: "weak",
+    "etag fn": () => createETagGenerator({ weak: true }),
+    "query parser": "extended",
+    "query parser fn": () => fastQueryParse,
+    "subdomain offset": 2,
+    "trust proxy": false,
+    views: () => path.join(process.cwd(), "views"),
+    "view cache": () => process.env.NODE_ENV === "production",
+    "x-powered-by": true,
+    "case sensitive routing": true,
+    "declarative responses": true
 };
 
 function compileTrust(val) {
-    if (typeof val === 'function') return val;
-  
+    if (typeof val === "function") return val;
+
     if (val === true) {
         // Support plain true/false
-        return function(){ return true };
+        return function () {
+            return true;
+        };
     }
-  
-    if (typeof val === 'number') {
+
+    if (typeof val === "number") {
         // Support trusting hop count
-        return function(a, i){ return i < val };
+        return function (a, i) {
+            return i < val;
+        };
     }
-  
-    if (typeof val === 'string') {
+
+    if (typeof val === "string") {
         // Support comma-separated values
-        val = val.split(',')
-            .map(function (v) { return v.trim() })
+        val = val.split(",").map(function (v) {
+            return v.trim();
+        });
     }
-  
+
     return proxyaddr.compile(val || []);
 }
 
 const shownWarnings = new Set();
 function deprecated(oldMethod, newMethod, full = false) {
     const err = new Error();
-    const pos = full ? err.stack.split('\n').slice(1).join('\n') : err.stack.split('\n')[3].trim().split('(').slice(1).join('(').split(')').slice(0, -1).join(')');
-    if(shownWarnings.has(pos)) return;
+    const pos = full
+        ? err.stack.split("\n").slice(1).join("\n")
+        : err.stack.split("\n")[3].trim().split("(").slice(1).join("(").split(")").slice(0, -1).join(")");
+    if (shownWarnings.has(pos)) return;
     shownWarnings.add(pos);
-    console.warn(`${new Date().toLocaleString('en-UK', {
-        weekday: 'short',
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: 'numeric',
-        second: 'numeric',
-        timeZone: 'GMT',
-        timeZoneName: 'short'
-    })} u-express deprecated ${oldMethod}: Use ${newMethod} instead at ${pos}`);
+    console.warn(
+        `${new Date().toLocaleString("en-UK", {
+            weekday: "short",
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "numeric",
+            second: "numeric",
+            timeZone: "GMT",
+            timeZoneName: "short"
+        })} u-express deprecated ${oldMethod}: Use ${newMethod} instead at ${pos}`
+    );
 }
 
 function findIndexStartingFrom(arr, fn, index = 0) {
-    for(let i = index, end = arr.length; i < end; i++) {
-        if(fn(arr[i], i, arr)) {
+    for (let i = index, end = arr.length; i < end; i++) {
+        if (fn(arr[i], i, arr)) {
             return i;
         }
     }
     return -1;
-};
+}
 
-function decode (path) {
+function decode(path) {
     try {
-        return decodeURIComponent(path)
+        return decodeURIComponent(path);
     } catch (err) {
-        return -1
+        return -1;
     }
 }
 
 const UP_PATH_REGEXP = /(?:^|[\\/])\.\.(?:[\\/]|$)/;
 
 function containsDotFile(parts) {
-    for(let i = 0, len = parts.length; i < len; i++) {
+    for (let i = 0, len = parts.length; i < len; i++) {
         const part = parts[i];
-        if(part.length > 1 && part[0] === '.') {
+        if (part.length > 1 && part[0] === ".") {
             return true;
         }
     }
-  
+
     return false;
 }
 
@@ -268,16 +281,16 @@ function parseTokenList(str) {
     let end = 0;
     const list = [];
     let start = 0;
-  
+
     // gather tokens
     for (let i = 0, len = str.length; i < len; i++) {
-        switch(str.charCodeAt(i)) {
-            case 0x20: /*   */
+        switch (str.charCodeAt(i)) {
+            case 0x20 /*   */:
                 if (start === end) {
                     start = end = i + 1;
                 }
                 break;
-            case 0x2c: /* , */
+            case 0x2c /* , */:
                 if (start !== end) {
                     list.push(str.substring(start, end));
                 }
@@ -288,36 +301,39 @@ function parseTokenList(str) {
                 break;
         }
     }
-  
+
     // final token
     if (start !== end) {
         list.push(str.substring(start, end));
     }
-  
+
     return list;
 }
 
-
 function parseHttpDate(date) {
     const timestamp = date && Date.parse(date);
-    return typeof timestamp === 'number' ? timestamp : NaN;
+    return typeof timestamp === "number" ? timestamp : NaN;
 }
 
 function isPreconditionFailure(req, res) {
-    const match = req.headers['if-match'];
+    const match = req.headers["if-match"];
 
     // if-match
-    if(match) {
-        const etag = res.get('etag');
-        return !etag || (match !== '*' && parseTokenList(match).every(match => {
-            return match !== etag && match !== 'W/' + etag && 'W/' + match !== etag;
-        }));
+    if (match) {
+        const etag = res.get("etag");
+        return (
+            !etag ||
+            (match !== "*" &&
+                parseTokenList(match).every((match) => {
+                    return match !== etag && match !== "W/" + etag && "W/" + match !== etag;
+                }))
+        );
     }
 
     // if-unmodified-since
-    const unmodifiedSince = parseHttpDate(req.headers['if-unmodified-since']);
-    if(!isNaN(unmodifiedSince)) {
-        const lastModified = parseHttpDate(res.get('Last-Modified'));
+    const unmodifiedSince = parseHttpDate(req.headers["if-unmodified-since"]);
+    if (!isNaN(unmodifiedSince)) {
+        const lastModified = parseHttpDate(res.get("Last-Modified"));
         return isNaN(lastModified) || lastModified > unmodifiedSince;
     }
 
@@ -325,29 +341,29 @@ function isPreconditionFailure(req, res) {
 }
 
 function createETagGenerator(options) {
-    return function generateETag (body, encoding) {
-        if(body instanceof Stats) {
+    return function generateETag(body, encoding) {
+        if (body instanceof Stats) {
             return etag(body, options);
         }
         const buf = !Buffer.isBuffer(body) ? Buffer.from(body, encoding) : body;
         return etag(buf, options);
-    }
+    };
 }
 
 function isRangeFresh(req, res) {
-    const ifRange = req.headers['if-range'];
-    if(!ifRange) {
+    const ifRange = req.headers["if-range"];
+    if (!ifRange) {
         return true;
     }
 
     // if-range as etag
-    if(ifRange.indexOf('"') !== -1) {
-        const etag = res.get('etag');
+    if (ifRange.indexOf('"') !== -1) {
+        const etag = res.get("etag");
         return Boolean(etag && ifRange.indexOf(etag) !== -1);
     }
 
     // if-range as modified date
-    const lastModified = res.get('Last-Modified');
+    const lastModified = res.get("Last-Modified");
     return parseHttpDate(lastModified) <= parseHttpDate(ifRange);
 }
 
@@ -357,36 +373,36 @@ function escapeHtml(str) {
     let i = 0;
 
     // Fast scan: find first char that needs escaping
-    for(; i < len; i++) {
+    for (; i < len; i++) {
         const ch = s.charCodeAt(i);
-        if(ch === 0x26 || ch === 0x3C || ch === 0x3E || ch === 0x22 || ch === 0x27) {
+        if (ch === 0x26 || ch === 0x3c || ch === 0x3e || ch === 0x22 || ch === 0x27) {
             break;
         }
     }
 
     // No escaping needed
-    if(i === len) return s;
+    if (i === len) return s;
 
     // Build escaped string from the first match onward
     let escaped = s.substring(0, i);
 
-    for(; i < len; i++) {
+    for (; i < len; i++) {
         const ch = s.charCodeAt(i);
-        switch(ch) {
+        switch (ch) {
             case 0x26: // &
-                escaped += '&amp;';
+                escaped += "&amp;";
                 break;
-            case 0x3C: // <
-                escaped += '&lt;';
+            case 0x3c: // <
+                escaped += "&lt;";
                 break;
-            case 0x3E: // >
-                escaped += '&gt;';
+            case 0x3e: // >
+                escaped += "&gt;";
                 break;
             case 0x22: // "
-                escaped += '&quot;';
+                escaped += "&quot;";
                 break;
             case 0x27: // '
-                escaped += '&#39;';
+                escaped += "&#39;";
                 break;
             default:
                 escaped += s.charAt(i);
@@ -398,7 +414,7 @@ function escapeHtml(str) {
 }
 
 // fast null object
-const NullObject = function() {};
+const NullObject = function () {};
 NullObject.prototype = Object.create(null);
 
 module.exports = {

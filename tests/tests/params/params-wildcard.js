@@ -31,34 +31,34 @@ app.get("/after/:name/*", (req, res) => {
     res.send("name: " + JSON.stringify(req.params));
 });
 
-app.get('/*', (req, res) => {
+app.get("/*", (req, res) => {
     res.send("none: " + JSON.stringify(req.params));
 });
 
 app.listen(13333, async () => {
-    console.log('Server is running on port 13333');
-    
-    let outputs = await Promise.all([
-        fetch('http://localhost:13333/par/ahmme').then(res => res.text()),
-        fetch('http://localhost:13333/par/ae').then(res => res.text()),
-        
-        fetch('http://localhost:13333/router/param/test/123').then(res => res.text()),
-        fetch('http://localhost:13333/router/param/test/123/456').then(res => res.text()),
-        fetch('http://localhost:13333/router/param/123/456/789').then(res => res.text()),
+    console.log("Server is running on port 13333");
 
-        fetch('http://localhost:13333/hi/123').then(res => res.text()),
-        fetch('http://localhost:13333/hi/123/456').then(res => res.text()),
+    const outputs = await Promise.all([
+        fetch("http://localhost:13333/par/ahmme").then((res) => res.text()),
+        fetch("http://localhost:13333/par/ae").then((res) => res.text()),
 
-        fetch('http://localhost:13333/twice/123/wow/456').then(res => res.text()),
-        fetch('http://localhost:13333/twice/123/wow/456/789').then(res => res.text()),
+        fetch("http://localhost:13333/router/param/test/123").then((res) => res.text()),
+        fetch("http://localhost:13333/router/param/test/123/456").then((res) => res.text()),
+        fetch("http://localhost:13333/router/param/123/456/789").then((res) => res.text()),
 
-        fetch('http://localhost:13333/after/name/123').then(res => res.text()),
-        fetch('http://localhost:13333/after/name/123/456').then(res => res.text()),
+        fetch("http://localhost:13333/hi/123").then((res) => res.text()),
+        fetch("http://localhost:13333/hi/123/456").then((res) => res.text()),
 
-        fetch('http://localhost:13333/123').then(res => res.text()),
-        fetch('http://localhost:13333/123/456').then(res => res.text()),
+        fetch("http://localhost:13333/twice/123/wow/456").then((res) => res.text()),
+        fetch("http://localhost:13333/twice/123/wow/456/789").then((res) => res.text()),
+
+        fetch("http://localhost:13333/after/name/123").then((res) => res.text()),
+        fetch("http://localhost:13333/after/name/123/456").then((res) => res.text()),
+
+        fetch("http://localhost:13333/123").then((res) => res.text()),
+        fetch("http://localhost:13333/123/456").then((res) => res.text())
     ]);
 
-    console.log(outputs.join('\n'));
+    console.log(outputs.join("\n"));
     process.exit(0);
 });

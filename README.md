@@ -3,7 +3,7 @@
 A drop-in replacement for Express 5, running on [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js) instead of `node:http`. Your existing middleware keeps working.
 
 ```js
-const express = require("fulmine");   // instead of require("express")
+const express = require("fulmine"); // instead of require("express")
 ```
 
 [![Node.js >= 22.0.0](https://img.shields.io/badge/Node.js-%3E=22.0.0-green)](https://nodejs.org)
@@ -59,35 +59,42 @@ In a lot of cases, you can just replace `require("express")` with `require("fulm
 - `case sensitive routing` is enabled by default.
 - a new option `catch async errors` is added. If it's enabled, you don't need to use `express-async-errors` module.
 - request body is only read for POST, PUT and PATCH requests by default. You can add additional methods by setting `body methods` to array with uppercased methods.
-- For HTTPS, instead of doing this:  
+- For HTTPS, instead of doing this:
+
 ```js
 const https = require("https");
 const express = require("express");
 
 const app = express();
 
-https.createServer({
-    key: fs.readFileSync('path/to/key.pem'),
-    cert: fs.readFileSync('path/to/cert.pem')
-}, app).listen(3000, () => {
-    console.log('Server is running on port 3000');
-});
+https
+    .createServer(
+        {
+            key: fs.readFileSync("path/to/key.pem"),
+            cert: fs.readFileSync("path/to/cert.pem")
+        },
+        app
+    )
+    .listen(3000, () => {
+        console.log("Server is running on port 3000");
+    });
 ```
 
 You have to pass `uwsOptions` to the `express()` constructor:
+
 ```js
 const express = require("fulmine");
 
 const app = express({
     uwsOptions: {
         // https://unetworking.github.io/uWebSockets.js/generated/interfaces/AppOptions.html
-        key_file_name: 'path/to/key.pem',
-        cert_file_name: 'path/to/cert.pem'
+        key_file_name: "path/to/key.pem",
+        cert_file_name: "path/to/cert.pem"
     }
 });
 
 app.listen(3000, () => {
-    console.log('Server is running on port 3000');
+    console.log("Server is running on port 3000");
 });
 ```
 
@@ -97,9 +104,10 @@ app.listen(3000, () => {
 ## Performance tips
 
 1. Fulmine tries to optimize routing as much as possible, but it's only possible if:
+
 - `case sensitive routing` is enabled (it is by default, unlike in normal Express).
 - only string paths without regex characters like *, +, (), {}, etc. can be optimized.
-  
+
 Optimized routes can be up to 10 times faster than normal routes, as they're using native uWS router and have pre-calculated path.
 
 2. Do not use external `serve-static` module. Instead use built-in `express.static()` middleware, which is optimized for Fulmine.
@@ -114,7 +122,7 @@ Optimized routes can be up to 10 times faster than normal routes, as they're usi
 
 Since you don't create http server manually, you can't properly use http.on("upgrade") to handle WebSockets. To solve this, there's currently 2 options:
 
-- [Ultimate WS](https://github.com/dimdenGD/ultimate-ws) implements a `ws` compatible API on the same idea: a drop-in replacement for the `ws` module. It was written against Ultimate Express and hooks into the same upgrade mechanism, which Fulmine still exposes, but that combination is not covered by this project's tests. There's a guide for how to upgrade http requests in the documentation.  
+- [Ultimate WS](https://github.com/dimdenGD/ultimate-ws) implements a `ws` compatible API on the same idea: a drop-in replacement for the `ws` module. It was written against Ultimate Express and hooks into the same upgrade mechanism, which Fulmine still exposes, but that combination is not covered by this project's tests. There's a guide for how to upgrade http requests in the documentation.
 - You can simply use `app.uwsApp` to access uWebSockets.js `App` instance and call its `ws()` method directly.
 
 ## HTTP/3
@@ -123,11 +131,11 @@ HTTP/3 is supported. To use:
 
 ```js
 const app = express({
-  http3: true,
-  uwsOptions: {
-    key_file_name: '/path/to/example.key',
-    cert_file_name: '/path/to/example.crt'
-  }
+    http3: true,
+    uwsOptions: {
+        key_file_name: "/path/to/example.key",
+        cert_file_name: "/path/to/example.crt"
+    }
 });
 ```
 
@@ -137,7 +145,7 @@ In general, basically all features and options are supported. Use [Express 4.x d
 
 ✅ - Full support (all features and options are supported)  
 🚧 - Partial support (some options are not supported)  
-❌ - Not supported  
+❌ - Not supported
 
 ### express
 
@@ -197,6 +205,7 @@ In general, basically all features and options are supported. Use [Express 4.x d
 - ✅ x-powered-by
 
 ### Request
+
 - ✅ implements Readable stream
 - ✅ req.app
 - ✅ req.baseUrl
@@ -257,20 +266,20 @@ In general, basically all features and options are supported. Use [Express 4.x d
 - ✅ res.render()
 - ✅ res.send()
 - ✅ res.sendFile()
-- - ✅ options.maxAge
-- - ✅ options.root
-- - ✅ options.lastModified
-- - ✅ options.headers
-- - ✅ options.dotfiles
-- - ✅ options.acceptRanges
-- - ✅ options.cacheControl
-- - ✅ options.immutable
-- - ✅ Range header
-- - ✅ Setting ETag header
-- - ✅ If-Match header
-- - ✅ If-Modified-Since header
-- - ✅ If-Unmodified-Since header
-- - ✅ If-Range header
+-   - ✅ options.maxAge
+-   - ✅ options.root
+-   - ✅ options.lastModified
+-   - ✅ options.headers
+-   - ✅ options.dotfiles
+-   - ✅ options.acceptRanges
+-   - ✅ options.cacheControl
+-   - ✅ options.immutable
+-   - ✅ Range header
+-   - ✅ Setting ETag header
+-   - ✅ If-Match header
+-   - ✅ If-Modified-Since header
+-   - ✅ If-Unmodified-Since header
+-   - ✅ If-Range header
 - ✅ res.sendStatus()
 - ✅ res.header(), res.setHeader(), res.set()
 - ✅ res.status()

@@ -1,27 +1,27 @@
-'use strict';
+"use strict";
 
-const compression = require('compression');
+const compression = require("compression");
 
 module.exports = {
-    name: 'middlewares/compression-file',
-    path: '/small-file',
+    name: "middlewares/compression-file",
+    path: "/small-file",
     bound: {
-        by: 'zlib deflate through the same compression middleware on both sides'
+        by: "zlib deflate through the same compression middleware on both sides"
     },
     wrk: {
-        script: 'compression-small-file.lua',
+        script: "compression-small-file.lua",
         connections: 200
     },
     verify: {
-        method: 'GET',
+        method: "GET",
         headers: {
-            'Accept-Encoding': 'gzip'
+            "Accept-Encoding": "gzip"
         }
     },
     setup(app, express, context) {
         app.use(compression());
-        app.get('/small-file', (req, res) => {
-            res.type('text/plain').send(context.compressedPayload);
+        app.get("/small-file", (req, res) => {
+            res.type("text/plain").send(context.compressedPayload);
         });
     }
 };

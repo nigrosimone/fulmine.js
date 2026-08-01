@@ -6,7 +6,7 @@ const app = express();
 const router = express.Router();
 
 router.use((req, res, next) => {
-    console.log('router', req.url);
+    console.log("router", req.url);
     next();
 });
 
@@ -17,10 +17,10 @@ app.get("/test", (req, res) => {
 });
 
 app.listen(13333, async () => {
-    console.log('Server is running on port 13333');
+    console.log("Server is running on port 13333");
 
     let res;
-    res = await fetch('http://localhost:13333/test');
+    res = await fetch("http://localhost:13333/test");
     console.log(await res.text());
     process.exit(0);
-})
+});

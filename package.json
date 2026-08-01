@@ -130,14 +130,5 @@
     },
     "contributors": [
         "dimden.dev (original author of ultimate-express, which this is derived from)"
-    ],
-    "lint-staged": {
-        "*.{js,cjs,mjs,ts}": [
-            "eslint --fix",
-            "prettier --write"
-        ],
-        "*.{json,md,yml}": [
-            "prettier --write"
-        ]
-    }
+    ]
 }

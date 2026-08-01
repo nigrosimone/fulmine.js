@@ -20,10 +20,10 @@ app.use("/test", (req, res) => {
 });
 
 app.listen(13333, async () => {
-    console.log('Server is running on port 13333');
+    console.log("Server is running on port 13333");
 
-    console.log(await fetch('http://localhost:13333/test').then(res => res.text()));
-    console.log(await fetch('http://localhost:13333/router/test').then(res => res.text()));
-    console.log(await fetch('http://localhost:13333/router/test2').then(res => res.text()));
+    console.log(await fetch("http://localhost:13333/test").then((res) => res.text()));
+    console.log(await fetch("http://localhost:13333/router/test").then((res) => res.text()));
+    console.log(await fetch("http://localhost:13333/router/test2").then((res) => res.text()));
     process.exit(0);
 });

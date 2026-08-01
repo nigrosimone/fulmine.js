@@ -5,8 +5,8 @@ const statuses = require("statuses");
 
 const parser = acorn.Parser;
 
-const allowedResMethods = ['set', 'header', 'setHeader', 'sendStatus', 'status', 'send', 'end', 'append'];
-const allowedIdentifiers = ['query', 'params', ...allowedResMethods];
+const allowedResMethods = ["set", "header", "setHeader", "sendStatus", "status", "send", "end", "append"];
+const allowedIdentifiers = ["query", "params", ...allowedResMethods];
 const objKeyRegex = /[\s{\n]([A-Za-z-0-9_]+)(\s|\n)*?:/g;
 
 function replaceSingleCharacter(str, index, char) {
@@ -26,47 +26,73 @@ module.exports = function compileDeclarative(cb, app) {
     try {
         let code = cb.toString();
         // convert anonymous functions to named ones to make it valid code
-        if(code.startsWith("function") || code.startsWith("async function")) {
+        if (code.startsWith("function") || code.startsWith("async function")) {
             code = code.replace(/function *\(/, "function __cb(");
         }
 
         const tokens = [...acorn.tokenizer(code, { ecmaVersion: "latest" })];
 
-        if(tokens.some(token => ['throw', 'new', 'await', 'return', 'try', 'catch', 'finally', 'if', 'else', 'switch', 'case', 'default', 'for', 'while', 'do', 'var', 'let', 'const'].includes(token.value))) {
+        if (
+            tokens.some((token) =>
+                [
+                    "throw",
+                    "new",
+                    "await",
+                    "return",
+                    "try",
+                    "catch",
+                    "finally",
+                    "if",
+                    "else",
+                    "switch",
+                    "case",
+                    "default",
+                    "for",
+                    "while",
+                    "do",
+                    "var",
+                    "let",
+                    "const"
+                ].includes(token.value)
+            )
+        ) {
             return false;
         }
 
         const parsed = parser.parse(code, { ecmaVersion: "latest" }).body;
         let fn = parsed[0];
 
-        if(fn.type === 'ExpressionStatement') {
+        if (fn.type === "ExpressionStatement") {
             fn = fn.expression;
         }
 
         // check if it is a function
-        if (fn.type !== 'FunctionDeclaration' && fn.type !== 'ArrowFunctionExpression') {
+        if (fn.type !== "FunctionDeclaration" && fn.type !== "ArrowFunctionExpression") {
             return false;
         }
 
-        const args = fn.params.map(param => param.name);
+        const args = fn.params.map((param) => param.name);
 
-        if(args.length < 2) {
+        if (args.length < 2) {
             // invalid function? doesn't have (req, res) args
             return false;
         }
 
         const [req, res] = args;
-        let queryName, paramsName, queries = [], params = [];
+        let queryName,
+            paramsName,
+            queries = [],
+            params = [];
 
-        if(fn.params[0].type === 'ObjectPattern') {
-            let query = fn.params[0].properties.find(prop => prop.key.name === 'query');
-            let param = fn.params[0].properties.find(prop => prop.key.name === 'params');
+        if (fn.params[0].type === "ObjectPattern") {
+            const query = fn.params[0].properties.find((prop) => prop.key.name === "query");
+            const param = fn.params[0].properties.find((prop) => prop.key.name === "params");
 
-            if(query?.value?.type === 'Identifier') {
+            if (query?.value?.type === "Identifier") {
                 queryName = query.value.name;
-            } else if(query?.value?.type === 'ObjectPattern') {
-                for(let prop of query.value.properties) {
-                    if(prop.value.type !== 'Identifier') {
+            } else if (query?.value?.type === "ObjectPattern") {
+                for (const prop of query.value.properties) {
+                    if (prop.value.type !== "Identifier") {
                         return false;
                     }
                     queries.push(prop.value.name);
@@ -75,11 +101,11 @@ module.exports = function compileDeclarative(cb, app) {
                 return false;
             }
 
-            if(param?.value?.type === 'Identifier') {
+            if (param?.value?.type === "Identifier") {
                 paramsName = param.value.name;
-            } else if(param?.value?.type === 'ObjectPattern') {
-                for(let prop of param.value.properties) {
-                    if(prop.value.type !== 'Identifier') {
+            } else if (param?.value?.type === "ObjectPattern") {
+                for (const prop of param.value.properties) {
+                    if (prop.value.type !== "Identifier") {
                         return false;
                     }
                     params.push(prop.value.name);
@@ -90,34 +116,33 @@ module.exports = function compileDeclarative(cb, app) {
         }
 
         // check if it calls any other function other than the one in `res`
-        const callExprs = filterNodes(fn, node => node.type === 'CallExpression');
+        const callExprs = filterNodes(fn, (node) => node.type === "CallExpression");
         const resCalls = [];
-        for(let expr of callExprs) {
+        for (const expr of callExprs) {
             let calleeName, propertyName;
 
-            
             // get propertyName
-            if(expr.type === 'MemberExpression') {
+            if (expr.type === "MemberExpression") {
                 propertyName = expr.property.name;
-            } else if(expr.type === 'CallExpression') {
+            } else if (expr.type === "CallExpression") {
                 propertyName = expr.callee?.property?.name ?? expr.callee?.name;
             }
 
             // get calleeName
-            switch(expr.callee.type) {
+            switch (expr.callee.type) {
                 case "Identifier":
                     calleeName = expr.callee.name;
                     break;
                 case "MemberExpression":
-                    if(expr.callee.object.type === 'Identifier') {
+                    if (expr.callee.object.type === "Identifier") {
                         calleeName = expr.callee.object.name;
-                    } else if(expr.callee.object.type === 'CallExpression') {
+                    } else if (expr.callee.object.type === "CallExpression") {
                         // function call chaining
                         let callee = expr.callee;
-                        while(callee.object.callee) {
+                        while (callee.object.callee) {
                             callee = callee.object.callee;
                         }
-                        if(callee.object.type !== 'Identifier') {
+                        if (callee.object.type !== "Identifier") {
                             return false;
                         }
                         calleeName = callee.object.name;
@@ -127,7 +152,7 @@ module.exports = function compileDeclarative(cb, app) {
                     return false;
             }
             // check if calleeName is res
-            if(calleeName !== res) {
+            if (calleeName !== res) {
                 return false;
             }
 
@@ -141,40 +166,44 @@ module.exports = function compileDeclarative(cb, app) {
         // - status
         // - send
         // - end
-        for(let call of resCalls) {
-            if(!allowedResMethods.includes(call.propertyName)) {
+        for (const call of resCalls) {
+            if (!allowedResMethods.includes(call.propertyName)) {
                 return false;
             }
         }
 
         // check if all identifiers are allowed
-        const identifiers = filterNodes(fn, node => node.type === 'Identifier').slice(args.length).map(id => id.name);
-        if(identifiers[identifiers.length - 1] === '__cb') {
+        const identifiers = filterNodes(fn, (node) => node.type === "Identifier")
+            .slice(args.length)
+            .map((id) => id.name);
+        if (identifiers[identifiers.length - 1] === "__cb") {
             identifiers.pop();
         }
-        if(!identifiers.every((id, i) => 
-            allowedIdentifiers.includes(id) || 
-            id === req || 
-            id === res || 
-            (identifiers[i - 2] === req && identifiers[i - 1] === 'params') || 
-            (identifiers[i - 2] === req && identifiers[i - 1] === 'query') ||
-            id === queryName ||
-            id === paramsName ||
-            queries.includes(id) ||
-            params.includes(id)
-        )) {
+        if (
+            !identifiers.every(
+                (id, i) =>
+                    allowedIdentifiers.includes(id) ||
+                    id === req ||
+                    id === res ||
+                    (identifiers[i - 2] === req && identifiers[i - 1] === "params") ||
+                    (identifiers[i - 2] === req && identifiers[i - 1] === "query") ||
+                    id === queryName ||
+                    id === paramsName ||
+                    queries.includes(id) ||
+                    params.includes(id)
+            )
+        ) {
             return false;
         }
 
-        
         let statusCode = 200;
         const headers = [];
         const body = [];
 
         // get statusCode
-        for(let call of callExprs) {
-            if(call.obj.propertyName === 'status') {
-                if(call.arguments[0].type !== 'Literal') {
+        for (const call of callExprs) {
+            if (call.obj.propertyName === "status") {
+                if (call.arguments[0].type !== "Literal") {
                     return false;
                 }
                 statusCode = call.arguments[0].value;
@@ -182,30 +211,36 @@ module.exports = function compileDeclarative(cb, app) {
         }
 
         // get headers
-        for(let call of callExprs) {
-            if(call.obj.propertyName === 'header' || call.obj.propertyName === 'setHeader' || call.obj.propertyName === 'set') {
-                if(call.arguments[0].type !== 'Literal' || call.arguments[1].type !== 'Literal') {
+        for (const call of callExprs) {
+            if (
+                call.obj.propertyName === "header" ||
+                call.obj.propertyName === "setHeader" ||
+                call.obj.propertyName === "set"
+            ) {
+                if (call.arguments[0].type !== "Literal" || call.arguments[1].type !== "Literal") {
                     return false;
                 }
-                const sameHeader = headers.find(header => header[0].toLowerCase() === call.arguments[0].value.toLowerCase());
+                const sameHeader = headers.find(
+                    (header) => header[0].toLowerCase() === call.arguments[0].value.toLowerCase()
+                );
                 let [header, value] = [call.arguments[0].value, call.arguments[1].value];
-                if(call.obj.propertyName !== 'setHeader') {
-                    if(value.includes('text/') && !value.includes('; charset=')) {
-                        value += '; charset=utf-8';
+                if (call.obj.propertyName !== "setHeader") {
+                    if (value.includes("text/") && !value.includes("; charset=")) {
+                        value += "; charset=utf-8";
                     }
                 }
-                if(sameHeader) {
+                if (sameHeader) {
                     sameHeader[1] = value;
                 } else {
                     headers.push([header, value]);
                 }
-            } else if(call.obj.propertyName === 'append') {
-                if(call.arguments[0].type !== 'Literal' || call.arguments[1].type !== 'Literal') {
+            } else if (call.obj.propertyName === "append") {
+                if (call.arguments[0].type !== "Literal" || call.arguments[1].type !== "Literal") {
                     return false;
                 }
                 headers.push([call.arguments[0].value, call.arguments[1].value]);
-            } else if(call.obj.propertyName === 'sendStatus'){
-                if(call.arguments[0].type !== 'Literal') {  
+            } else if (call.obj.propertyName === "sendStatus") {
+                if (call.arguments[0].type !== "Literal") {
                     return false;
                 }
                 statusCode = call.arguments[0].value;
@@ -214,70 +249,72 @@ module.exports = function compileDeclarative(cb, app) {
 
         // get body
         let sendUsed = false;
-        for(let call of callExprs) {
-            if(call.obj.propertyName === 'send' || call.obj.propertyName === 'end') {
-                if(sendUsed) {
+        for (const call of callExprs) {
+            if (call.obj.propertyName === "send" || call.obj.propertyName === "end") {
+                if (sendUsed) {
                     return false;
                 }
-                if(call.obj.propertyName === 'send') {
-                    const index = headers.findIndex(header => header[0].toLowerCase() === 'content-type');
-                    if(index === -1) {
-                        headers.push(['content-type', 'text/html; charset=utf-8']);
+                if (call.obj.propertyName === "send") {
+                    const index = headers.findIndex((header) => header[0].toLowerCase() === "content-type");
+                    if (index === -1) {
+                        headers.push(["content-type", "text/html; charset=utf-8"]);
                     } else {
-                        if(headers[index][1].includes('text/') && !headers[index][1].includes('; charset=')) {
-                            headers[index][1] += '; charset=utf-8';
+                        if (headers[index][1].includes("text/") && !headers[index][1].includes("; charset=")) {
+                            headers[index][1] += "; charset=utf-8";
                         }
                     }
                 }
                 const arg = call.arguments[0];
-                if(arg) {
-                    if(arg.type === 'Literal') {
-                        if(typeof arg.value === 'number') { // status code
+                if (arg) {
+                    if (arg.type === "Literal") {
+                        if (typeof arg.value === "number") {
+                            // status code
                             return false;
                         }
                         let val = arg.value;
-                        if(val === null) {
-                            val = '';
-                            const index = headers.findIndex(header => header[0].toLowerCase() === 'content-type');
-                            if(index !== -1) {
+                        if (val === null) {
+                            val = "";
+                            const index = headers.findIndex((header) => header[0].toLowerCase() === "content-type");
+                            if (index !== -1) {
                                 headers.splice(index, 1);
                             }
                         }
-                        if(typeof val === 'boolean') {
-                            if(!headers.some(header => header[0].toLowerCase() === 'content-type')) {
-                                headers.push(['content-type', 'application/json; charset=utf-8']);
+                        if (typeof val === "boolean") {
+                            if (!headers.some((header) => header[0].toLowerCase() === "content-type")) {
+                                headers.push(["content-type", "application/json; charset=utf-8"]);
                             } else {
-                                headers.find(header => header[0].toLowerCase() === 'content-type')[1] = 'application/json; charset=utf-8';
+                                headers.find((header) => header[0].toLowerCase() === "content-type")[1] =
+                                    "application/json; charset=utf-8";
                             }
                         }
-                        body.push({type: 'text', value: val});
-                    } else if(arg.type === 'TemplateLiteral') {
+                        body.push({ type: "text", value: val });
+                    } else if (arg.type === "TemplateLiteral") {
                         const exprs = [...arg.quasis, ...arg.expressions].sort((a, b) => a.start - b.start);
-                        for(let expr of exprs) {
-                            if(expr.type === 'TemplateElement') {
-                                body.push({type: 'text', value: expr.value.cooked});
-                            } else if(expr.type === 'MemberExpression') {
+                        for (const expr of exprs) {
+                            if (expr.type === "TemplateElement") {
+                                body.push({ type: "text", value: expr.value.cooked });
+                            } else if (expr.type === "MemberExpression") {
                                 const obj = expr.object;
                                 let type;
-                                if(obj.type === 'MemberExpression') {
-                                    if(obj.property.type !== 'Identifier') {
+                                if (obj.type === "MemberExpression") {
+                                    if (obj.property.type !== "Identifier") {
                                         return false;
                                     }
                                     type = obj.property.name;
-                                } else if(obj.type === 'Identifier') {
+                                } else if (obj.type === "Identifier") {
                                     type = obj.name;
                                 } else {
                                     return false;
                                 }
-                                if(type !== 'params' && type !== 'query') {
+                                if (type !== "params" && type !== "query") {
                                     return false;
                                 }
-                                body.push({type, value: expr.property.name});
-                            } else if(expr.type === 'Identifier') {
-                                if(queries.includes(expr.name)) {
-                                    body.push({type: 'query', value: expr.name});
-                                } else if(params.includes(expr.name)) {
-                                    body.push({type: 'params', value: expr.name});
+                                body.push({ type, value: expr.property.name });
+                            } else if (expr.type === "Identifier") {
+                                if (queries.includes(expr.name)) {
+                                    body.push({ type: "query", value: expr.name });
+                                } else if (params.includes(expr.name)) {
+                                    body.push({ type: "params", value: expr.name });
                                 } else {
                                     return false;
                                 }
@@ -285,71 +322,81 @@ module.exports = function compileDeclarative(cb, app) {
                                 return false;
                             }
                         }
-                    } else if(arg.type === 'MemberExpression') {
-                        if(!arg.object.property) {
+                    } else if (arg.type === "MemberExpression") {
+                        if (!arg.object.property) {
                             return false;
                         }
-                        if(arg.object.property.type !== 'Identifier' || (arg.object.property.name !== 'query' && arg.object.property.name !== 'params')) {
+                        if (
+                            arg.object.property.type !== "Identifier" ||
+                            (arg.object.property.name !== "query" && arg.object.property.name !== "params")
+                        ) {
                             return false;
                         }
-                        body.push({type: arg.object.property.name, value: arg.property.name});
-                    } else if(arg.type === 'BinaryExpression') {
-                        let stuff = [];
+                        body.push({ type: arg.object.property.name, value: arg.property.name });
+                    } else if (arg.type === "BinaryExpression") {
+                        const stuff = [];
                         function check(node) {
-                            if(node.right.type === 'Literal') {
-                                stuff.push({type: 'text', value: node.right.value});
-                            } else if(node.right.type === 'MemberExpression')  {
-                                stuff.push({type: node.right.object.property.name, value: node.right.property.name});
+                            if (node.right.type === "Literal") {
+                                stuff.push({ type: "text", value: node.right.value });
+                            } else if (node.right.type === "MemberExpression") {
+                                stuff.push({ type: node.right.object.property.name, value: node.right.property.name });
                             } else return false;
-                            if(node.left.type === 'Literal') {
-                                stuff.push({type: 'text', value: node.left.value});
-                            } else if(node.left.type === 'MemberExpression') {
-                                stuff.push({type: node.left.object.property.name, value: node.left.property.name});
-                            } else if(node.left.type === 'BinaryExpression') {
+                            if (node.left.type === "Literal") {
+                                stuff.push({ type: "text", value: node.left.value });
+                            } else if (node.left.type === "MemberExpression") {
+                                stuff.push({ type: node.left.object.property.name, value: node.left.property.name });
+                            } else if (node.left.type === "BinaryExpression") {
                                 return check(node.left);
                             } else return false;
 
                             return true;
                         }
-                        if(!check(arg)) {
+                        if (!check(arg)) {
                             return false;
                         }
                         body.push(...stuff.reverse());
-                    } else if(arg.type === 'ObjectExpression') {
-                        if(call.obj.propertyName === 'end') {
+                    } else if (arg.type === "ObjectExpression") {
+                        if (call.obj.propertyName === "end") {
                             return false;
                         }
                         // only simple objects can be optimized
                         let objCode = code;
-                        for(let property of arg.properties) {
-                            if(property.key.type !== 'Identifier' && property.key.type !== 'Literal') {
+                        for (const property of arg.properties) {
+                            if (property.key.type !== "Identifier" && property.key.type !== "Literal") {
                                 return false;
                             }
-                            if(property.value.raw.startsWith("'") && property.value.raw.endsWith("'") && !property.value.value.includes("'")) {
+                            if (
+                                property.value.raw.startsWith("'") &&
+                                property.value.raw.endsWith("'") &&
+                                !property.value.value.includes("'")
+                            ) {
                                 objCode = replaceSingleCharacter(objCode, property.value.start, '"');
                                 objCode = replaceSingleCharacter(objCode, property.value.end - 1, '"');
                             }
-                            if(property.value.type !== 'Literal') {
+                            if (property.value.type !== "Literal") {
                                 return false;
                             }
                         }
-                        if(typeof app.get('json replacer') !== 'undefined' && typeof app.get('json replacer') !== 'string') {
+                        if (
+                            typeof app.get("json replacer") !== "undefined" &&
+                            typeof app.get("json replacer") !== "string"
+                        ) {
                             return false;
                         }
 
-                        if(!headers.some(header => header[0].toLowerCase() === 'content-type')) {
-                            headers.push(['content-type', 'application/json; charset=utf-8']);
+                        if (!headers.some((header) => header[0].toLowerCase() === "content-type")) {
+                            headers.push(["content-type", "application/json; charset=utf-8"]);
                         } else {
-                            headers.find(header => header[0].toLowerCase() === 'content-type')[1] = 'application/json; charset=utf-8';
+                            headers.find((header) => header[0].toLowerCase() === "content-type")[1] =
+                                "application/json; charset=utf-8";
                         }
                         body.push({
-                            type: 'text',
-                            value: 
-                            stringify(
-                                JSON.parse(objCode.slice(arg.start, arg.end).replace(objKeyRegex, '"$1":')), 
-                                app.get('json replacer'), 
-                                app.get('json spaces'), 
-                                app.get('json escape')
+                            type: "text",
+                            value: stringify(
+                                JSON.parse(objCode.slice(arg.start, arg.end).replace(objKeyRegex, '"$1":')),
+                                app.get("json replacer"),
+                                app.get("json spaces"),
+                                app.get("json escape")
                             )
                         });
                     } else {
@@ -362,67 +409,70 @@ module.exports = function compileDeclarative(cb, app) {
 
         let decRes = new uWS.DeclarativeResponse();
 
-        if(statusCode != 200) {
-            const statusMessage = statuses.message[statusCode] ?? '';
+        if (statusCode != 200) {
+            const statusMessage = statuses.message[statusCode] ?? "";
             decRes = decRes.writeStatus(`${statusCode} ${statusMessage}`.trim());
-            if(!headers.some(header => header[0].toLowerCase() === 'content-type')) {
-                decRes = decRes.writeHeader('content-type','text/plain; charset=utf-8');
+            if (!headers.some((header) => header[0].toLowerCase() === "content-type")) {
+                decRes = decRes.writeHeader("content-type", "text/plain; charset=utf-8");
             }
         }
 
-        for(let header of headers) {
-            if(header[0].toLowerCase() === 'content-length') {
+        for (const header of headers) {
+            if (header[0].toLowerCase() === "content-length") {
                 return false;
             }
             decRes = decRes.writeHeader(header[0], header[1]);
         }
 
-        if(app.get('etag') && !headers.some(header => header[0].toLowerCase() === 'etag')) {
-            if(body.some(part => part.type !== 'text')) {
+        if (app.get("etag") && !headers.some((header) => header[0].toLowerCase() === "etag")) {
+            if (body.some((part) => part.type !== "text")) {
                 return false;
             } else {
-                decRes = decRes.writeHeader('ETag', app.get('etag fn')(body.map(part => part.value.toString()).join('')));
+                decRes = decRes.writeHeader(
+                    "ETag",
+                    app.get("etag fn")(body.map((part) => part.value.toString()).join(""))
+                );
             }
         }
 
-        if(app.get('x-powered-by')) {
-            decRes = decRes.writeHeader('x-powered-by', 'UltimateExpress');
+        if (app.get("x-powered-by")) {
+            decRes = decRes.writeHeader("x-powered-by", "UltimateExpress");
         }
 
-        for(let bodyPart of body) {
-            if(bodyPart.type === 'text' && String(bodyPart.value).length) {
+        for (const bodyPart of body) {
+            if (bodyPart.type === "text" && String(bodyPart.value).length) {
                 decRes = decRes.write(String(bodyPart.value));
-            } else if(bodyPart.type === 'params') {
+            } else if (bodyPart.type === "params") {
                 decRes = decRes.writeParameterValue(bodyPart.value);
-            } else if(bodyPart.type === 'query') {
+            } else if (bodyPart.type === "query") {
                 decRes = decRes.writeQueryValue(bodyPart.value);
             }
         }
 
-        if(!body.length) {
+        if (!body.length) {
             decRes = decRes.write(statuses.message[statusCode] || String(statusCode));
         }
 
         return decRes.end();
-    } catch(e) {
+    } catch (e) {
         return false;
     }
-}
+};
 
 function filterNodes(node, fn) {
     const filtered = [];
-    if(fn(node)) {
+    if (fn(node)) {
         filtered.push(node);
     }
-    if(node.params) {
-        for(let param of node.params) {
+    if (node.params) {
+        for (const param of node.params) {
             filtered.push(...filterNodes(param, fn));
         }
     }
 
-    if(node.body) {
-        if(Array.isArray(node.body)) {
-            for(let child of node.body) {
+    if (node.body) {
+        if (Array.isArray(node.body)) {
+            for (const child of node.body) {
                 filtered.push(...filterNodes(child, fn));
             }
         } else {
@@ -430,44 +480,44 @@ function filterNodes(node, fn) {
         }
     }
 
-    if(node.declarations) {
-        for(let declaration of node.declarations) {
+    if (node.declarations) {
+        for (const declaration of node.declarations) {
             filtered.push(...filterNodes(declaration, fn));
         }
     }
 
-    if(node.expression) {
+    if (node.expression) {
         filtered.push(...filterNodes(node.expression, fn));
     }
 
-    if(node.callee) {
+    if (node.callee) {
         filtered.push(...filterNodes(node.callee, fn));
     }
 
-    if(node.object) {
+    if (node.object) {
         filtered.push(...filterNodes(node.object, fn));
     }
 
-    if(node.property) {
+    if (node.property) {
         filtered.push(...filterNodes(node.property, fn));
     }
 
-    if(node.id) {
+    if (node.id) {
         filtered.push(...filterNodes(node.id, fn));
     }
-    if(node.init) {
+    if (node.init) {
         filtered.push(...filterNodes(node.init, fn));
     }
-    
-    if(node.left) {
+
+    if (node.left) {
         filtered.push(...filterNodes(node.left, fn));
     }
-    if(node.right) {
+    if (node.right) {
         filtered.push(...filterNodes(node.right, fn));
     }
 
-    if(node.arguments) {
-        for(let argument of node.arguments) {
+    if (node.arguments) {
+        for (const argument of node.arguments) {
             filtered.push(...filterNodes(argument, fn));
         }
     }

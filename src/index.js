@@ -23,15 +23,17 @@ const Response = require("./response.js");
 
 try {
     // disable Uwebsockets header
-    uWS._cfg('999999990007');
-} catch (error) {}
+    uWS._cfg("999999990007");
+} catch (error) {
+    // older uWS builds do not expose _cfg; there is nothing to fall back to
+}
 
 // converts router to a function and makes it callable
-Application.Router = function(options) {
+Application.Router = function (options) {
     const router = new Router(options);
-    const fn = function(req, res, next) {
-        router._routeRequest(req, res, 0).then(routed => {
-            if(!routed) {
+    const fn = function (req, res, next) {
+        router._routeRequest(req, res, 0).then((routed) => {
+            if (!routed) {
                 next();
             }
         });
@@ -39,7 +41,7 @@ Application.Router = function(options) {
     Object.assign(fn, router);
     Object.setPrototypeOf(fn, Object.getPrototypeOf(router));
     return fn;
-}
+};
 
 Application.request = Request.prototype;
 Application.response = Response.prototype;

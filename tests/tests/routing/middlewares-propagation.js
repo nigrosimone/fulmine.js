@@ -5,7 +5,7 @@ const express = require("express");
 const app = express();
 
 const asyncHandler = (fn) => (req, res, next) => {
-  Promise.resolve(fn(req, res, next)).catch(next);
+    Promise.resolve(fn(req, res, next)).catch(next);
 };
 
 const dynamicRouter = async (req, res, next) => {
@@ -15,19 +15,19 @@ const dynamicRouter = async (req, res, next) => {
 app.use(asyncHandler(dynamicRouter));
 
 const handler1 = (err, _req, res, next) => {
-  console.log("handler1");
-  next(err);
+    console.log("handler1");
+    next(err);
 };
 
 const generalHandler = (err, _req, res, _next) => {
-  console.log("generalHandler");
-  if (err instanceof Error) {
-    return res.send(err.message);
-  }
-  if (typeof err === "string") {
-    return res.send(err);
-  }
-  return res.send("UNEXPECTED_ERROR");
+    console.log("generalHandler");
+    if (err instanceof Error) {
+        return res.send(err.message);
+    }
+    if (typeof err === "string") {
+        return res.send(err);
+    }
+    return res.send("UNEXPECTED_ERROR");
 };
 
 app.use(handler1);
@@ -38,7 +38,7 @@ app.listen(13333, async () => {
     console.log(
         await fetch("http://localhost:13333/")
             .then((res) => res.text())
-            .catch((err) => err.message),
+            .catch((err) => err.message)
     );
     process.exit(0);
 });

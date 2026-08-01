@@ -5,7 +5,7 @@ const express = require("express");
 const app = express();
 
 app.listen(() => {
-    console.log('Server is running on random port');
+    console.log("Server is running on random port");
 
     process.exit(0);
 });

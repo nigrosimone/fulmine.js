@@ -7,6 +7,6 @@ const app = express();
 app.listen(13333);
 
 setTimeout(() => {
-    console.log('Server is running on port 13333');
+    console.log("Server is running on port 13333");
     process.exit(0);
 }, 500);

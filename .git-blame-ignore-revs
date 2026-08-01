@@ -1,0 +1,4 @@
+# Bulk reformat when prettier was introduced. Ignore for blame:
+#   git blame --ignore-revs-file .git-blame-ignore-revs
+# Note: this commit also carries five small non-formatting fixes, listed in its message.
+96bee17fedf45b9a68fe8e000adf50b74437fa78

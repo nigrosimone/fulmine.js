@@ -1,4 +1,4 @@
-const NullObject = function() {};
+const NullObject = function () {};
 NullObject.prototype = Object.create(null);
 const cnt = 100000;
 const runs = 50;
@@ -41,7 +41,7 @@ const nullObjectTimings = benchmark(() => {
 const nullObjectTimingsWithSpread = benchmark(() => {
     let nullObjectsW = [];
     for (let i = 0; i < cnt; i++) {
-        nullObjectsW.push({...new NullObject()});
+        nullObjectsW.push({ ...new NullObject() });
     }
     nullObjectsW = null; // Clear memory
 });

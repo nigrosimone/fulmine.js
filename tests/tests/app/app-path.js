@@ -7,11 +7,11 @@ const app2 = express();
 const app3 = express();
 const router = express.Router();
 
-app.use('/abc', app2);
-app2.use('/def', app3);
+app.use("/abc", app2);
+app2.use("/def", app3);
 
 app.use((req, res, next) => {
-    res.send('404');
+    res.send("404");
 });
 
 console.log(app.path());

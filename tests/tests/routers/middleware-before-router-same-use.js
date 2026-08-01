@@ -26,7 +26,7 @@ app.listen(13333, async () => {
     console.log(res.status, await res.text());
 
     res = await fetch("http://localhost:13333/private/data", {
-        headers: { authorization: "yes" },
+        headers: { authorization: "yes" }
     });
     console.log(res.status, await res.text());
 

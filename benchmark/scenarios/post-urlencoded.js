@@ -1,22 +1,22 @@
-'use strict';
+"use strict";
 
 module.exports = {
-    name: 'middlewares/body-urlencoded',
-    path: '/abc',
+    name: "middlewares/body-urlencoded",
+    path: "/abc",
     wrk: {
-        script: 'post-urlencoded.lua',
+        script: "post-urlencoded.lua",
         connections: 200
     },
     verify: {
-        method: 'POST',
+        method: "POST",
         headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
+            "Content-Type": "application/x-www-form-urlencoded"
         },
-        body: 'name=ultimate&value=express&feature=benchmark&count=12345'
+        body: "name=ultimate&value=express&feature=benchmark&count=12345"
     },
     setup(app, express) {
         app.use(express.urlencoded({ extended: false }));
-        app.post('/abc', (req, res) => {
+        app.post("/abc", (req, res) => {
             res.send(`${Object.keys(req.body).length}`);
         });
     }
