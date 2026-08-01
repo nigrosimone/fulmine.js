@@ -5,10 +5,7 @@
 // were not, and three real faults were sitting in that gap, including an ETag that did not match
 // the body it was sent with.
 
-// Compared on every fetchTest call. Three headers are deliberately absent:
-//   date          changes between the two runs by definition
-//   x-powered-by  names the framework, so it differs on purpose
-//   keep-alive    carries each server's own idle timeout
+// Compared by value on every fetchTest call.
 const COMPARED_HEADERS = [
     "content-type",
     "content-length",
@@ -26,6 +23,17 @@ const COMPARED_HEADERS = [
     "set-cookie",
     "connection"
 ];
+
+// Compared by presence rather than by value. Their values differ for reasons that are not the
+// framework's doing, but whether they are sent at all is still worth comparing: leaving them out
+// entirely would mean neither server could ever be caught dropping one.
+//   date        a timestamp, so it differs between the two runs by definition
+//   keep-alive  carries each server's own idle timeout
+const PRESENCE_ONLY_HEADERS = ["date", "keep-alive"];
+
+// x-powered-by is in neither list. Express sends it by default and Fulmine does not, so even its
+// presence differs on purpose, and comparing it would fail on every request rather than say
+// anything. It has its own test, tests/tests/settings/x-powered-by-default.js.
 
 /**
  * fetch, with the response headers printed so they are compared too.
@@ -46,6 +54,9 @@ async function fetchTest(input, init) {
         if (value !== null && value !== "") {
             shown.push(`${name}: ${value}`);
         }
+    }
+    for (const name of PRESENCE_ONLY_HEADERS) {
+        shown.push(`${name}: ${response.headers.has(name) ? "sent" : "absent"}`);
     }
     console.log(`[${response.status}] ${shown.join(", ")}`);
 
@@ -82,4 +93,4 @@ function inspectRequest(req, res, next) {
     next();
 }
 
-module.exports = { fetchTest, inspectRequest, COMPARED_HEADERS };
+module.exports = { fetchTest, inspectRequest, COMPARED_HEADERS, PRESENCE_ONLY_HEADERS };
