@@ -310,10 +310,6 @@ module.exports = class Response extends Writable {
         this.writeHead(this.statusCode);
         this._res.cork(() => {
             if (!this.headersSent) {
-                const etagFn = this.app.get("etag fn");
-                if (etagFn && data && !this.headers["etag"] && !this.req.noEtag) {
-                    this.headers["etag"] = etagFn(data);
-                }
                 const fresh = this.req.fresh;
                 const statusMessage = this.statusText ?? statuses.message[this.statusCode] ?? "";
                 this._res.writeStatus(fresh ? "304 Not Modified" : `${this.statusCode} ${statusMessage}`.trim());
@@ -400,6 +396,13 @@ module.exports = class Response extends Writable {
             if (!this.headers["content-type"]) {
                 this.headers["content-type"] = "application/octet-stream";
             }
+        }
+        // the ETag belongs here rather than in end(): node's end() does not produce one, so
+        // res.end() and res.redirect() must not either. It has to be set before end() reads
+        // req.fresh, which compares If-None-Match against it.
+        const etagFn = this.app.get("etag fn");
+        if (etagFn && body && !this.headers["etag"] && !this.req.noEtag) {
+            this.headers["etag"] = etagFn(body);
         }
         return this.end(body);
     }
@@ -991,6 +994,9 @@ module.exports = class Response extends Writable {
         let body;
         // Support text/{plain,html} by default
         if (forceHtml) {
+            // uppercase on purpose: this branch stands in for the redirect that send and
+            // serve-static emit, and both of those write "charset=UTF-8". res.redirect() below
+            // goes through format(), which takes the lowercase form from the mime lookup.
             this.set("Content-Type", "text/html; charset=UTF-8");
             body =
                 "<!DOCTYPE html>\n" +
@@ -1006,15 +1012,15 @@ module.exports = class Response extends Writable {
         } else {
             this.format({
                 text: () => {
-                    this.set("Content-Type", "text/plain; charset=UTF-8");
+                    this.set("Content-Type", "text/plain; charset=utf-8");
                     body = `${statuses.message[status]}. Redirecting to ${address}`;
                 },
                 html: () => {
-                    this.set("Content-Type", "text/html; charset=UTF-8");
+                    this.set("Content-Type", "text/html; charset=utf-8");
                     body = `<p>${statuses.message[status]}. Redirecting to ${escapeHtml(address)}</p>`;
                 },
                 default: () => {
-                    this.set("Content-Type", "text/plain; charset=UTF-8");
+                    this.set("Content-Type", "text/plain; charset=utf-8");
                     body = "";
                 }
             });
