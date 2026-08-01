@@ -46,7 +46,9 @@ const etag = require("etag");
 
 const outgoingMessage = new http.OutgoingMessage();
 const symbols = Object.getOwnPropertySymbols(outgoingMessage);
-const kOutHeaders = symbols.find((s) => s.toString() === "Symbol(kOutHeaders)");
+// if a future node renames it, fall back to a private symbol rather than writing a property
+// literally named "undefined", which is what indexing with undefined would do
+const kOutHeaders = symbols.find((s) => s.toString() === "Symbol(kOutHeaders)") ?? Symbol("kOutHeaders");
 const HIGH_WATERMARK = 128 * 1024;
 
 class Socket extends EventEmitter {
@@ -77,8 +79,10 @@ class Socket extends EventEmitter {
 }
 
 module.exports = class Response extends Writable {
+    /** @type {Socket|null} */
     #socket = null;
     #ended = false;
+    /** @type {((err?: Error|null) => void)|null} */
     #pendingCallback = null;
     req;
     constructor(res, req, app) {
@@ -280,6 +284,11 @@ module.exports = class Response extends Writable {
             .type("txt")
             .send(statuses.message[code] || String(code));
     }
+    /**
+     * @param {any} [data]
+     * @param {any} [cb]
+     * @returns {this}
+     */
     end(data, cb) {
         if (typeof data === "function") {
             cb = data;
@@ -293,10 +302,10 @@ module.exports = class Response extends Writable {
             this.once("drain", () => {
                 this.end(data, cb);
             });
-            return;
+            return this;
         }
         if (this.finished) {
-            return;
+            return this;
         }
         this.writeHead(this.statusCode);
         this._res.cork(() => {
@@ -418,8 +427,9 @@ module.exports = class Response extends Writable {
             options = new NullObject();
         }
         if (!options) options = new NullObject();
-        let done = callback;
-        if (!done) done = this.req.next;
+        // the callback is optional: without one, errors go to next(). The router assigns req.next
+        // before any handler can run, so by the time sendFile is reachable it is always there.
+        const done = /** @type {(err?: Error) => void} */ (callback ?? this.req.next);
         // default options
         if (typeof options.maxAge === "string") {
             options.maxAge = ms(options.maxAge);
@@ -631,6 +641,7 @@ module.exports = class Response extends Writable {
      */
     download(path, filename, options, callback) {
         let done = callback;
+        /** @type {string|null|undefined} */
         let name = filename;
         let opts = options || new NullObject();
 
@@ -971,7 +982,7 @@ module.exports = class Response extends Writable {
             url = status;
             status = 302;
         }
-        this.location(url);
+        this.location(/** @type {string} */ (url));
         this.status(status);
 
         const address = this.get("Location");

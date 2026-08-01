@@ -336,9 +336,11 @@ function compileTrust(val) {
 const shownWarnings = new Set();
 function deprecated(oldMethod, newMethod, full = false) {
     const err = new Error();
+    // V8 always fills this in for an Error made right here
+    const stack = err.stack ?? "";
     const pos = full
-        ? err.stack.split("\n").slice(1).join("\n")
-        : err.stack.split("\n")[3].trim().split("(").slice(1).join("(").split(")").slice(0, -1).join(")");
+        ? stack.split("\n").slice(1).join("\n")
+        : stack.split("\n")[3].trim().split("(").slice(1).join("(").split(")").slice(0, -1).join(")");
     if (shownWarnings.has(pos)) return;
     shownWarnings.add(pos);
     console.warn(

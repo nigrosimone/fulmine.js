@@ -426,13 +426,17 @@ class Application extends Router {
      *
      * @param {string} name view name, resolved against the "views" setting
      * @param {object} [options] locals for the view
-     * @param {(err: Error|null, html?: string) => void} [callback] receives the rendered view
+     * @param {(err: Error|null, html?: string) => void} [callback] receives the rendered view. It
+     *   is what render is for, so leaving it out throws, as it does in Express
      */
     render(name, options, callback) {
         if (typeof options === "function") {
             callback = options;
             options = new NullObject();
         }
+        // render exists to hand the result somewhere, so there is always a callback by this point:
+        // either the third argument or the second one, shuffled above
+        const done = /** @type {(err: Error|null, html?: string) => void} */ (callback);
         if (!options) {
             options = new NullObject();
         } else {
@@ -477,7 +481,7 @@ class Application extends Router {
                 /** @type {Error & { view?: unknown }} */
                 const err = new Error(`Failed to lookup view "${name}" in views ${dirs}`);
                 err.view = view;
-                return callback(err);
+                return done(err);
             }
 
             if (options.cache) {
@@ -486,9 +490,9 @@ class Application extends Router {
         }
 
         try {
-            view.render(options, callback);
+            view.render(options, done);
         } catch (err) {
-            callback(/** @type {Error} */ (err));
+            done(/** @type {Error} */ (err));
         }
     }
 
