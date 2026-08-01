@@ -235,18 +235,33 @@ class Application extends Router {
             callback = host;
             host = undefined;
         }
+        // uWS runs this handler from inside its own listen(), so everything it hands back to the
+        // caller is deferred a tick. Express binds synchronously too but reports through events,
+        // and node emits both 'listening' and 'error' from a process.nextTick.
         const onListen = (socket) => {
             if (!socket) {
                 const err = new Error("listen EADDRINUSE: address already in use :::" + port);
                 err.code = "EADDRINUSE";
-                // Express 5 hands a listen failure to the callback instead of throwing past it
+                // Express 5 registers the listen callback on 'error' as well as on 'listening',
+                // so a failed bind arrives at the callback rather than being thrown past it
                 if (callback) {
-                    return callback(err);
+                    return process.nextTick(() => callback.call(this, err));
                 }
-                throw err;
+                // no callback means no 'error' listener either, and an EventEmitter carrying an
+                // unhandled error rethrows it from the tick that emitted it, not from listen()
+                return process.nextTick(() => {
+                    throw err;
+                });
             }
+            // the port is known synchronously, as it is in Express, so address() works as soon as
+            // listen() returns. The callback is not: running it here would run it before listen()
+            // had returned, and `const server = app.listen(p, () => server.address())` - the form
+            // the Express docs use - would die on the temporal dead zone.
             this.port = uWS.us_socket_local_port(socket);
-            if (callback) callback();
+            // `this` is the app, which is what listen() returns here. Express binds it to the
+            // http.Server, which is what listen() returns there, so `function () { this.address() }`
+            // reads the same on both.
+            if (callback) process.nextTick(() => callback.call(this));
         };
         let fn = "listen";
         const args = [];
