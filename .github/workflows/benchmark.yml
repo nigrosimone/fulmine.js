@@ -39,6 +39,12 @@ jobs:
           sudo apt-get install -y wrk
 
       - name: Run benchmark suite
+        # without this, template engines run in debug mode and recompile the view on every request,
+        # and express 4 decides its view cache from NODE_ENV in defaultConfiguration() so
+        # app.set('env', 'production') in the harness only takes effect on uExpress.
+        # set on the step, not the job, so npm install still pulls devDependencies
+        env:
+          NODE_ENV: production
         run: npm run benchmark:compare -- --duration 20 --output benchmark_summary.md
 
       - name: Upload benchmark markdown artifact

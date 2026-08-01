@@ -3,6 +3,10 @@
 module.exports = {
     name: 'streaming/writable-with-content-length',
     path: '/stream-with-content-length',
+    bound: {
+        by: 'loopback bandwidth for a 5 MiB response, so nearly all of the budget is per-byte copying',
+        ceiling: '~1.01x'
+    },
     wrk: {
         connections: 50
     },
