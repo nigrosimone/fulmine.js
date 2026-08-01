@@ -504,7 +504,7 @@ module.exports = class Response extends Writable {
             try {
                 stat = fs.statSync(fullpath);
             } catch (err) {
-                return done(err);
+                return done(/** @type {Error} */ (err));
             }
             if (stat.isDirectory()) {
                 this.status(404);

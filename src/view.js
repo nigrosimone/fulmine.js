@@ -79,18 +79,26 @@ module.exports = class View {
         return _path;
     }
 
-    // ill be real idk what exactly this does but express implements it this way
+    // The callback is always delivered asynchronously, even when the engine answers on the spot.
+    // `sync` is still true only if the engine called back before this function returned, and in
+    // that case the callback is pushed to the next tick, so a caller never has to handle both
+    // orders. Express normalises it the same way.
     render(options, callback) {
         let sync = true;
-        this.engine(this.path, options, function onRender() {
-            if (!sync) {
-                return callback.apply(this, arguments);
-            }
+        // `this` is whatever the engine called onRender with, and it is forwarded untouched
+        this.engine(
+            this.path,
+            options,
+            /** @this {any} */ function onRender() {
+                if (!sync) {
+                    return callback.apply(this, arguments);
+                }
 
-            return process.nextTick(() => {
-                return callback.apply(this, arguments);
-            });
-        });
+                return process.nextTick(() => {
+                    return callback.apply(this, arguments);
+                });
+            }
+        );
 
         sync = false;
     }

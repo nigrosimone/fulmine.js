@@ -488,7 +488,7 @@ class Application extends Router {
         try {
             view.render(options, callback);
         } catch (err) {
-            callback(err);
+            callback(/** @type {Error} */ (err));
         }
     }
 

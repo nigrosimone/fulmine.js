@@ -89,7 +89,7 @@ function serveStatic(root, options) {
             if (!stat) {
                 if (!options.fallthrough) {
                     res.status(404);
-                    return next(err.message);
+                    return next(/** @type {Error} */ (err).message);
                 } else return next();
             }
         }
