@@ -14,6 +14,31 @@ One scenario at a time:
 npm run benchmark:compare -- --duration 20 --scenario hello-world
 ```
 
+## Comparing two revisions of this project
+
+`run.js` answers "how does this compare to Express". `ab.js` answers a different question: "did
+the change I just made move anything".
+
+```bash
+npm run benchmark:ab -- --against main
+npm run benchmark:ab -- --against main --scenario routes-1000 --rounds 9
+npm run benchmark:ab -- --null           # same code on both sides
+```
+
+It puts the other revision in a `git worktree` inside the repo, so both trees can be loaded at
+once and node_modules still resolves, starts a server from each, and then **alternates the load
+between them round by round**, swapping which one goes first. The figure to read is the median of
+the per-round ratios.
+
+Measuring one revision and then the other does not work on a machine that warms up or throttles,
+and the tool can show you why: `--null` puts the same code on both sides, so whatever it reports
+is noise. On the laptop this was written on, `--null` lands within about 2% of 1.0 once the two
+warmup rounds are discarded, and reported 0.65x per-round before they were. **If a change moves
+the median less than `--null` does on your machine, it did not move anything this can see.**
+
+Two rounds are run and thrown away first. Whichever server is hit first is hit cold, and without
+that the first recorded round came out 60% away from every round after it.
+
 ## Writing a scenario
 
 A scenario module exports the route setup and, when the request is anything other than a plain GET,
