@@ -1,0 +1,45 @@
+// must support socket.io
+
+const express = require("express");
+const { Server } = require("socket.io");
+const { io } = require("socket.io-client");
+
+const app = express();
+
+app.get("/http", (req, res) => res.send("http still works"));
+
+const sio = new Server();
+sio.on("connection", (socket) => {
+    socket.on("ping-me", (msg) => {
+        socket.emit("pong-me", "got: " + msg);
+    });
+});
+
+const server = app.listen(13333);
+
+// Express hands socket.io a node http.Server and lets it take over the upgrade. There is no
+// http.Server here, so socket.io attaches to the uWS app instead, which it supports natively.
+if (app.uwsApp) {
+    sio.attachApp(app.uwsApp);
+} else {
+    sio.attach(server);
+}
+
+(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    console.log(await fetch("http://localhost:13333/http").then((res) => res.text()));
+
+    const client = io("http://localhost:13333", { transports: ["websocket"] });
+    const reply = await new Promise((resolve) => {
+        client.on("connect", () => client.emit("ping-me", "hello"));
+        client.on("pong-me", (message) => resolve(message));
+        client.on("connect_error", (err) => resolve("connect_error: " + err.message));
+        setTimeout(() => resolve("TIMEOUT"), 5000);
+    });
+    console.log(reply);
+
+    client.close();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    process.exit(0);
+})();
