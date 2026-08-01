@@ -116,6 +116,9 @@ module.exports = class Request extends Readable {
     /** @type {Record<string, string[]>|null} */
     #cachedDistinctHeaders = null;
 
+    // Flat, name then value: an array of pairs meant one array allocated per header on every
+    // request, and a request carries eight or ten of them. Everything that reads this walks it two
+    // at a time.
     #rawHeadersEntries = [];
 
     /** @type {string|undefined|null} */
@@ -139,7 +142,7 @@ module.exports = class Request extends Readable {
         this._req = req;
         this.readable = true;
         this._req.forEach((key, value) => {
-            this.#rawHeadersEntries.push([key, value]);
+            this.#rawHeadersEntries.push(key, value);
             // spotted in the loop that is running anyway: a client asking for the connection to be
             // closed must not be answered that it is being kept alive. The response is built right
             // after this and reads the flag.
@@ -541,8 +544,8 @@ module.exports = class Request extends Readable {
             if (this.#cachedHeaders === null) {
                 let hasConditional = false;
                 const entries = this.#rawHeadersEntries;
-                for (let i = 0, len = entries.length; i < len; i++) {
-                    const key = entries[i][0];
+                for (let i = 0, len = entries.length; i < len; i += 2) {
+                    const key = entries[i];
                     // 'if-none-match'.length === 13, 'if-modified-since'.length === 17
                     if (key.length === 13 || key.length === 17) {
                         const lower = key.toLowerCase();
@@ -727,9 +730,10 @@ module.exports = class Request extends Readable {
         // built into a local and published at the end, so a throw partway through cannot leave a
         // half-filled object cached
         const headers = { ...new NullObject() }; // seems to be faster
-        for (let index = 0, len = this.#rawHeadersEntries.length; index < len; index++) {
-            let [key, value] = this.#rawHeadersEntries[index];
-            key = key.toLowerCase();
+        const entries = this.#rawHeadersEntries;
+        for (let index = 0, len = entries.length; index < len; index += 2) {
+            const value = entries[index + 1];
+            const key = entries[index].toLowerCase();
             if (headers[key]) {
                 if (discardedDuplicates.has(key)) {
                     continue;
@@ -765,14 +769,16 @@ module.exports = class Request extends Readable {
             return this.#cachedDistinctHeaders;
         }
         const distinct = { ...new NullObject() };
-        this.#rawHeadersEntries.forEach((val) => {
-            const [key, value] = val;
+        const entries = this.#rawHeadersEntries;
+        for (let index = 0, len = entries.length; index < len; index += 2) {
+            const key = entries[index];
+            const value = entries[index + 1];
             if (!distinct[key]) {
                 distinct[key] = [value];
-                return;
+            } else {
+                distinct[key].push(value);
             }
-            distinct[key].push(value);
-        });
+        }
         this.#cachedDistinctHeaders = distinct;
         return distinct;
     }
@@ -783,11 +789,8 @@ module.exports = class Request extends Readable {
      * @returns {string[]}
      */
     get rawHeaders() {
-        const res = [];
-        for (let index = 0, len = this.#rawHeadersEntries.length; index < len; index++) {
-            const val = this.#rawHeadersEntries[index];
-            res.push(val[0], val[1]);
-        }
-        return res;
+        // a copy, since this is exactly how the headers are kept and handing the array itself out
+        // would let a caller rewrite what routing reads
+        return this.#rawHeadersEntries.slice();
     }
 };

@@ -100,6 +100,9 @@ module.exports = class Response extends Writable {
     /** @type {((err?: Error|null) => void)|null} */
     #pendingCallback = null;
 
+    /** @type {any} */
+    #outHeaders = null;
+
     req;
 
     constructor(res, req, app) {
@@ -130,16 +133,6 @@ module.exports = class Response extends Writable {
             this.headers["x-powered-by"] = "Fulmine";
         }
 
-        // support for node internal
-        this[kOutHeaders] = new Proxy(this.headers, {
-            set: (obj, prop, value) => {
-                this.set(prop, value[1]);
-                return true;
-            },
-            get: (obj, prop) => {
-                return obj[prop];
-            }
-        });
         this.body = undefined;
         this.on("error", (err) => {
             if (this.finished) {
@@ -154,6 +147,34 @@ module.exports = class Response extends Writable {
         this.once("close", () => {
             this.#ended = true;
         });
+    }
+
+    /**
+     * Where node keeps the outgoing headers of an OutgoingMessage. Only code going through node's
+     * own header path ever looks, cookie-session being the one in this project's tests, so the
+     * proxy standing in for it is built on the first look rather than on every response: it was a
+     * proxy, a handler object and two closures each time, for something almost nothing reads.
+     *
+     * A setter as well, because node assigns to this slot when it resets the headers, and a getter
+     * on its own would make that throw.
+     */
+    get [kOutHeaders]() {
+        if (!this.#outHeaders) {
+            this.#outHeaders = new Proxy(this.headers, {
+                set: (obj, prop, value) => {
+                    this.set(prop, value[1]);
+                    return true;
+                },
+                get: (obj, prop) => {
+                    return obj[prop];
+                }
+            });
+        }
+        return this.#outHeaders;
+    }
+
+    set [kOutHeaders](value) {
+        this.#outHeaders = value;
     }
 
     /**
