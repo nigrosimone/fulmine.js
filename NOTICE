@@ -16,16 +16,20 @@ As required by section 4(b) of the Apache License, the following are the
 significant changes made to the original work:
 
   - Express 4 compatibility removed; the project targets Express 5 only.
-  - Source converted to TypeScript with strict type checking.
+  - Public API documented, and type checked from those annotations.
   - Router dispatch reworked so a chain of N middlewares allocates one promise
     instead of N, and the mount stack is no longer walked on every hop.
   - Request bodies are collected into a single buffer instead of being copied
     once per chunk and again on concatenation.
   - Empty request bodies now produce the same value each Express body parser
     produces, rather than being skipped.
-  - Benchmark harness reworked: NODE_ENV is set, wrk errors and response
-    validation are no longer discarded, rows bounded by shared work are
-    labelled, and scenarios were added for request shapes that were not covered.
+  - Benchmark harness reworked: wrk replaced by autocannon so the suite runs
+    anywhere Node does, NODE_ENV is set, load errors and response validation are
+    no longer discarded, rows bounded by shared work are labelled, and scenarios
+    were added for request shapes that were not covered.
+  - listen() and close() aligned with Express: the callback runs on the next
+    tick, and what listen() returns reports address(), listening and the
+    'listening' and 'close' events.
   - Linting, formatting and commit hooks added.
 
 This product is not affiliated with, endorsed by, or maintained by the OpenJS
