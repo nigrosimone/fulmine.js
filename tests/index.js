@@ -12,6 +12,9 @@ const assert = require("node:assert");
 
 const TEST_TIMEOUT = 60000;
 
+// see tests/win-exit-delay.cjs: without it every test crashes on exit under Node 24+ on Windows
+const NODE_ARGS = process.platform === "win32" ? `--require "${path.join(__dirname, "win-exit-delay.cjs")}" ` : "";
+
 const testPath = path.join(__dirname, "tests");
 
 let testCategories = fs.readdirSync(testPath).sort((a, b) => parseInt(a) - parseInt(b));
@@ -73,7 +76,7 @@ for (const testCategory of testCategories) {
                     };
 
                     const execTest = async (testPath) => {
-                        return (await exec(`node ${testPath}`, { maxBuffer: 1024 * 1024 * 100 })).stdout;
+                        return (await exec(`node ${NODE_ARGS}"${testPath}"`, { maxBuffer: 1024 * 1024 * 100 })).stdout;
                     };
 
                     try {
