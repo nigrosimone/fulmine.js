@@ -116,9 +116,11 @@ Optimized routes can be up to 10 times faster than normal routes, as they're usi
 
 3. Do not use `body-parser` module. Instead use built-in `express.text()`, `express.json()` etc.
 
-4. Do not set `body methods` to read body of requests with GET method or other methods that don't need a body. Reading body makes endpoint about 15% slower.
+4. If a route answers with a JSON shape you know in advance, [express-fast-json-stringify](https://www.npmjs.com/package/express-fast-json-stringify) compiles that shape into a serializer and `res.fastJson()` replaces `res.json()`. `JSON.stringify()` has to walk an object it knows nothing about; a compiled serializer does not. It is tested here for compatibility.
 
-5. By default, Fulmine creates 1 (or 0 if your CPU has only 1 core) child thread to improve performance of reading files. You can change this number by setting `threads` to a different number in `express()`, or set to 0 to disable thread pool (`express({ threads: 0 })`). Threads are shared between all express() instances, with largest `threads` number being used. Using more threads will not necessarily improve performance. Sometimes not using threads at all is faster, so measure both.
+5. Do not set `body methods` to read body of requests with GET method or other methods that don't need a body. Reading body makes endpoint about 15% slower.
+
+6. By default, Fulmine creates 1 (or 0 if your CPU has only 1 core) child thread to improve performance of reading files. You can change this number by setting `threads` to a different number in `express()`, or set to 0 to disable thread pool (`express({ threads: 0 })`). Threads are shared between all express() instances, with largest `threads` number being used. Using more threads will not necessarily improve performance. Sometimes not using threads at all is faster, so measure both.
 
 ## WebSockets
 
@@ -126,6 +128,31 @@ Since you don't create http server manually, you can't properly use http.on("upg
 
 - [Ultimate WS](https://github.com/dimdenGD/ultimate-ws) implements a `ws` compatible API on the same idea: a drop-in replacement for the `ws` module. It was written against Ultimate Express and hooks into the same upgrade mechanism, which Fulmine still exposes, but that combination is not covered by this project's tests. There's a guide for how to upgrade http requests in the documentation.
 - You can simply use `app.uwsApp` to access uWebSockets.js `App` instance and call its `ws()` method directly.
+
+### socket.io
+
+socket.io normally takes over the upgrade on a node `http.Server`. There isn't one here, so hand it
+the µWS app instead, which socket.io supports natively through `attachApp()`:
+
+```js
+const express = require("fulmine.js");
+const { Server } = require("socket.io");
+
+const app = express();
+const io = new Server();
+
+app.listen(3000);
+io.attachApp(app.uwsApp);
+
+io.on("connection", (socket) => {
+    socket.on("message", (data) => socket.emit("reply", data));
+});
+```
+
+`attachApp()` works before or after `app.listen()`. What does not work is `new Server(server)` on the
+value `app.listen()` returns: plain HTTP keeps serving, but the WebSocket upgrade fails, because
+that object is not a real `http.Server`. This is covered by `tests/tests/middlewares/socket-io.js`,
+which runs the same file against Express and against Fulmine and compares the output.
 
 ## HTTP/3
 
@@ -308,6 +335,8 @@ In general, basically all features and options are supported. Use the [Express 5
 
 Almost all middlewares that are compatible with Express are compatible with Fulmine. Here's list of middlewares that we test for compatibility:
 
+- ✅ [express-fast-json-stringify](https://npmjs.com/package/express-fast-json-stringify)
+- ✅ [socket.io](https://npmjs.com/package/socket.io) (via `io.attachApp(app.uwsApp)`, see WebSockets above)
 - ✅ [body-parser](https://npmjs.com/package/body-parser) (use `express.text()` etc instead for better performance)
 - ✅ [cookie-parser](https://npmjs.com/package/cookie-parser)
 - ✅ [cookie-session](https://npmjs.com/package/cookie-session)
