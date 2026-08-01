@@ -1,6 +1,7 @@
 // must support res.send()
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -51,15 +52,15 @@ app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
     const responses = [
-        await fetch("http://localhost:13333/test"),
-        await fetch("http://localhost:13333/json"),
-        await fetch("http://localhost:13333/buffer"),
-        await fetch("http://localhost:13333/null"),
-        await fetch("http://localhost:13333/undefined"),
-        await fetch("http://localhost:13333/number"),
-        await fetch("http://localhost:13333/number2"),
-        await fetch("http://localhost:13333/boolean"),
-        await fetch("http://localhost:13333/arraybuffer")
+        await fetchTest("http://localhost:13333/test"),
+        await fetchTest("http://localhost:13333/json"),
+        await fetchTest("http://localhost:13333/buffer"),
+        await fetchTest("http://localhost:13333/null"),
+        await fetchTest("http://localhost:13333/undefined"),
+        await fetchTest("http://localhost:13333/number"),
+        await fetchTest("http://localhost:13333/number2"),
+        await fetchTest("http://localhost:13333/boolean"),
+        await fetchTest("http://localhost:13333/arraybuffer")
     ];
 
     for await (const response of responses) {

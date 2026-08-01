@@ -1,6 +1,7 @@
 // must support declarative response write status
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -9,7 +10,7 @@ app.get("/test1", (req, res) => {
 });
 
 app.listen(13333, async () => {
-    const response1 = await fetch("http://localhost:13333/test1");
+    const response1 = await fetchTest("http://localhost:13333/test1");
     console.log(response1.status);
     console.log(response1.statusText);
 

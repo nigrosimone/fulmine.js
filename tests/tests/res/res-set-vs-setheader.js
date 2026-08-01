@@ -1,6 +1,7 @@
 // must support .set, .header, and .setHeader differences
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 app.set("declarative responses", false);
@@ -65,15 +66,15 @@ app.use((err, req, res, next) => {
 
 app.listen(13333, async () => {
     const responses = await Promise.all([
-        fetch("http://localhost:13333/set"),
-        fetch("http://localhost:13333/set2"),
-        fetch("http://localhost:13333/set3"),
-        fetch("http://localhost:13333/setheader"),
-        fetch("http://localhost:13333/setheader2"),
-        fetch("http://localhost:13333/setheader3"),
-        fetch("http://localhost:13333/header"),
-        fetch("http://localhost:13333/header2"),
-        fetch("http://localhost:13333/header3")
+        fetchTest("http://localhost:13333/set"),
+        fetchTest("http://localhost:13333/set2"),
+        fetchTest("http://localhost:13333/set3"),
+        fetchTest("http://localhost:13333/setheader"),
+        fetchTest("http://localhost:13333/setheader2"),
+        fetchTest("http://localhost:13333/setheader3"),
+        fetchTest("http://localhost:13333/header"),
+        fetchTest("http://localhost:13333/header2"),
+        fetchTest("http://localhost:13333/header3")
     ]);
 
     for (const response of responses) {

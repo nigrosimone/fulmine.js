@@ -1,6 +1,7 @@
 // must frame a response the way its path frames it
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -19,7 +20,7 @@ app.get("/ordinary", (req, res) => {
 const isFulmine = !!app.uwsApp;
 
 async function framingOf(path) {
-    const response = await fetch("http://localhost:13333" + path);
+    const response = await fetchTest("http://localhost:13333" + path);
     const body = await response.text();
     return {
         body,

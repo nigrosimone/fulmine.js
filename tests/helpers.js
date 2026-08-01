@@ -43,6 +43,24 @@ const PRESENCE_ONLY_HEADERS = ["date", "keep-alive"];
 // Both have a test of their own rather than being silently dropped:
 // tests/tests/settings/x-powered-by-default.js and tests/tests/res/res-framing.js.
 
+// Lines are printed in the order the calls were made, not the order the responses arrived. Most
+// of the suite fetches concurrently through Promise.all, and printing on arrival made the output
+// a race: the same test would order its lines differently on the two servers and fail for a
+// reason that has nothing to do with either. The index is taken synchronously, so it follows the
+// source, and a line waits until every line before it has gone out.
+let nextLine = 0;
+let flushedUpTo = 0;
+const heldLines = new Map();
+
+function printInCallOrder(index, line) {
+    heldLines.set(index, line);
+    while (heldLines.has(flushedUpTo)) {
+        console.log(heldLines.get(flushedUpTo));
+        heldLines.delete(flushedUpTo);
+        flushedUpTo++;
+    }
+}
+
 /**
  * fetch, with the response headers printed so they are compared too.
  *
@@ -53,6 +71,7 @@ const PRESENCE_ONLY_HEADERS = ["date", "keep-alive"];
  * @returns {Promise<Response>}
  */
 async function fetchTest(input, init) {
+    const line = nextLine++;
     const response = await fetch(input, init);
 
     const shown = [];
@@ -66,7 +85,7 @@ async function fetchTest(input, init) {
     for (const name of PRESENCE_ONLY_HEADERS) {
         shown.push(`${name}: ${response.headers.has(name) ? "sent" : "absent"}`);
     }
-    console.log(`[${response.status}] ${shown.join(", ")}`);
+    printInCallOrder(line, `[${response.status}] ${shown.join(", ")}`);
 
     return response;
 }

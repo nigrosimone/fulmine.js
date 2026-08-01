@@ -1,6 +1,7 @@
 // res.render must use the views and engine of the sub-app handling the request
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 app.set("view engine", "ejs");
@@ -37,14 +38,14 @@ app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
     // before the router optimization kicks in
-    console.log(await fetch("http://localhost:13333/sub/page").then((res) => res.text()));
-    console.log(await fetch("http://localhost:13333/sub/fallthrough").then((res) => res.text()));
+    console.log(await fetchTest("http://localhost:13333/sub/page").then((res) => res.text()));
+    console.log(await fetchTest("http://localhost:13333/sub/fallthrough").then((res) => res.text()));
 
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
     // after the router optimization kicks in
-    console.log(await fetch("http://localhost:13333/sub/page").then((res) => res.text()));
-    console.log(await fetch("http://localhost:13333/sub/fallthrough").then((res) => res.text()));
+    console.log(await fetchTest("http://localhost:13333/sub/page").then((res) => res.text()));
+    console.log(await fetchTest("http://localhost:13333/sub/fallthrough").then((res) => res.text()));
 
     process.exit(0);
 });

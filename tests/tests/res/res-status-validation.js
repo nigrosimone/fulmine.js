@@ -1,6 +1,7 @@
 // must validate res.status() accepts only integers 100-999
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -29,13 +30,13 @@ app.get("/invalid-high", (req, res) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const r1 = await fetch("http://localhost:13333/valid");
+    const r1 = await fetchTest("http://localhost:13333/valid");
     console.log(r1.status, await r1.text());
 
-    const r2 = await fetch("http://localhost:13333/invalid-low");
+    const r2 = await fetchTest("http://localhost:13333/invalid-low");
     console.log(await r2.text());
 
-    const r3 = await fetch("http://localhost:13333/invalid-high");
+    const r3 = await fetchTest("http://localhost:13333/invalid-high");
     console.log(await r3.text());
 
     process.exit(0);

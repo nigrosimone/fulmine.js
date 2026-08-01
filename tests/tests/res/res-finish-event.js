@@ -1,6 +1,7 @@
 // res must support finish event
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -13,7 +14,7 @@ app.post("/test", (req, res) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const data = await fetch("http://localhost:13333/test", { method: "POST" }).then((res) => res.text());
+    const data = await fetchTest("http://localhost:13333/test", { method: "POST" }).then((res) => res.text());
     console.log(data);
 
     process.exit(0);

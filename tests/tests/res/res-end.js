@@ -1,6 +1,7 @@
 // must support res.end()
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -24,9 +25,9 @@ app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
     const responses = await Promise.all([
-        fetch("http://localhost:13333/text"),
-        fetch("http://localhost:13333/buffer"),
-        fetch("http://localhost:13333/arraybuffer")
+        fetchTest("http://localhost:13333/text"),
+        fetchTest("http://localhost:13333/buffer"),
+        fetchTest("http://localhost:13333/arraybuffer")
     ]);
 
     for await (const response of responses) {

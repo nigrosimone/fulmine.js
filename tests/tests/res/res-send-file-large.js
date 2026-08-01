@@ -1,6 +1,7 @@
 // must support res.sendFile() with large file
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 const fs = require("node:fs/promises");
 
 const app = express();
@@ -14,7 +15,7 @@ app.listen(13333, async () => {
 
     const file = await fs.readFile("tests/parts/large-file.json");
 
-    const response = await fetch("http://localhost:13333/test");
+    const response = await fetchTest("http://localhost:13333/test");
     console.log(response.headers.get("Content-Type").toLowerCase(), response.headers.get("Content-Length"));
     console.log(file.length === Number(response.headers.get("Content-Length")));
     console.log(file.equals(await response.bytes()));

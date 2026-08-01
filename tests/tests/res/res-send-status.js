@@ -1,6 +1,7 @@
 // must support res.sendStatus()
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -27,22 +28,22 @@ app.get("/unknown", (req, res) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    let response = await fetch("http://localhost:13333/declarative-test");
+    let response = await fetchTest("http://localhost:13333/declarative-test");
     console.log(response.status, await response.text());
 
     // sendStatus should set content-type to text/plain
     console.log("content-type:", response.headers.get("content-type"));
 
-    let response2 = await fetch("http://localhost:13333/declarative-unknown");
+    let response2 = await fetchTest("http://localhost:13333/declarative-unknown");
     console.log(response2.status, await response2.text());
 
-    response = await fetch("http://localhost:13333/test");
+    response = await fetchTest("http://localhost:13333/test");
     console.log(response.status, await response.text());
 
     // sendStatus should set content-type to text/plain
     console.log("content-type:", response.headers.get("content-type"));
 
-    response2 = await fetch("http://localhost:13333/unknown");
+    response2 = await fetchTest("http://localhost:13333/unknown");
     console.log(response2.status, await response2.text());
 
     process.exit(0);

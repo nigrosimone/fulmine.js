@@ -1,6 +1,7 @@
 // res.vary() must throw when called without argument
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -22,10 +23,10 @@ app.get("/valid", (req, res) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const r1 = await fetch("http://localhost:13333/test").then((res) => res.text());
+    const r1 = await fetchTest("http://localhost:13333/test").then((res) => res.text());
     console.log(r1);
 
-    const r2 = await fetch("http://localhost:13333/valid").then((res) => res.text());
+    const r2 = await fetchTest("http://localhost:13333/valid").then((res) => res.text());
     console.log(r2);
 
     process.exit(0);

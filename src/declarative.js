@@ -262,6 +262,9 @@ module.exports = function compileDeclarative(cb, app) {
 
         // get body
         let sendUsed = false;
+        // only send() earns an ETag. end() is node's, which never computes one, and the ordinary
+        // path here follows that too, so the compiled path has to as well.
+        let bodyFromSend = false;
         for (const call of callExprs) {
             if (call.obj.propertyName === "send" || call.obj.propertyName === "end") {
                 if (sendUsed) {
@@ -270,6 +273,9 @@ module.exports = function compileDeclarative(cb, app) {
                 // send() with nothing to send gets no content-type, the same as on the ordinary
                 // path and the same as Express. It was being given one here regardless, so the
                 // two paths disagreed about a route as simple as `res.send()`.
+                if (call.obj.propertyName === "send") {
+                    bodyFromSend = true;
+                }
                 if (call.obj.propertyName === "send" && call.arguments[0]) {
                     const index = headers.findIndex((header) => header[0].toLowerCase() === "content-type");
                     if (index === -1) {
@@ -462,7 +468,12 @@ module.exports = function compileDeclarative(cb, app) {
 
         // an empty body gets no ETag, which is what Express does and what the ordinary path here
         // already did
-        if (body.length && app.get("etag") && !headers.some((header) => header[0].toLowerCase() === "etag")) {
+        if (
+            body.length &&
+            (bodyFromSend || sendStatusUsed) &&
+            app.get("etag") &&
+            !headers.some((header) => header[0].toLowerCase() === "etag")
+        ) {
             if (body.some((part) => part.type !== "text")) {
                 return false;
             } else {

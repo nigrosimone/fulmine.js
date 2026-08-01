@@ -1,6 +1,7 @@
 // must support res.links()
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -23,10 +24,10 @@ app.get("/links", (req, res) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const response = await fetch("http://localhost:13333/test");
+    const response = await fetchTest("http://localhost:13333/test");
     console.log(response.headers.get("Link"));
 
-    const response2 = await fetch("http://localhost:13333/links");
+    const response2 = await fetchTest("http://localhost:13333/links");
     console.log(response2.headers.get("Link"));
 
     process.exit(0);

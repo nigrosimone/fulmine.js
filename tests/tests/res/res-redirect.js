@@ -1,6 +1,7 @@
 // must support res.redirect()
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -37,24 +38,24 @@ app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
     const responses = [
-        await fetch("http://localhost:13333/test", { redirect: "manual" }),
-        await fetch("http://localhost:13333/test2", { redirect: "manual" }),
-        await fetch("http://localhost:13333/test3", { redirect: "manual" }),
-        await fetch("http://localhost:13333/test4", { redirect: "manual" }),
-        await fetch("http://localhost:13333/test5", { redirect: "manual" }),
-        await fetch("http://localhost:13333/test6", { redirect: "manual" }),
-        await fetch("http://localhost:13333/test", { redirect: "manual", headers: { accept: "text/html" } }),
-        await fetch("http://localhost:13333/test2", { redirect: "manual", headers: { accept: "text/html" } }),
-        await fetch("http://localhost:13333/test3", { redirect: "manual", headers: { accept: "text/html" } }),
-        await fetch("http://localhost:13333/test4", { redirect: "manual", headers: { accept: "text/html" } }),
-        await fetch("http://localhost:13333/test5", { redirect: "manual", headers: { accept: "text/html" } }),
-        await fetch("http://localhost:13333/test6", { redirect: "manual", headers: { accept: "text/html" } }),
-        await fetch("http://localhost:13333/test", { redirect: "manual", headers: { accept: "text/plain" } }),
-        await fetch("http://localhost:13333/test2", { redirect: "manual", headers: { accept: "text/plain" } }),
-        await fetch("http://localhost:13333/test3", { redirect: "manual", headers: { accept: "text/plain" } }),
-        await fetch("http://localhost:13333/test4", { redirect: "manual", headers: { accept: "text/plain" } }),
-        await fetch("http://localhost:13333/test5", { redirect: "manual", headers: { accept: "text/plain" } }),
-        await fetch("http://localhost:13333/test6", { redirect: "manual", headers: { accept: "text/plain" } })
+        await fetchTest("http://localhost:13333/test", { redirect: "manual" }),
+        await fetchTest("http://localhost:13333/test2", { redirect: "manual" }),
+        await fetchTest("http://localhost:13333/test3", { redirect: "manual" }),
+        await fetchTest("http://localhost:13333/test4", { redirect: "manual" }),
+        await fetchTest("http://localhost:13333/test5", { redirect: "manual" }),
+        await fetchTest("http://localhost:13333/test6", { redirect: "manual" }),
+        await fetchTest("http://localhost:13333/test", { redirect: "manual", headers: { accept: "text/html" } }),
+        await fetchTest("http://localhost:13333/test2", { redirect: "manual", headers: { accept: "text/html" } }),
+        await fetchTest("http://localhost:13333/test3", { redirect: "manual", headers: { accept: "text/html" } }),
+        await fetchTest("http://localhost:13333/test4", { redirect: "manual", headers: { accept: "text/html" } }),
+        await fetchTest("http://localhost:13333/test5", { redirect: "manual", headers: { accept: "text/html" } }),
+        await fetchTest("http://localhost:13333/test6", { redirect: "manual", headers: { accept: "text/html" } }),
+        await fetchTest("http://localhost:13333/test", { redirect: "manual", headers: { accept: "text/plain" } }),
+        await fetchTest("http://localhost:13333/test2", { redirect: "manual", headers: { accept: "text/plain" } }),
+        await fetchTest("http://localhost:13333/test3", { redirect: "manual", headers: { accept: "text/plain" } }),
+        await fetchTest("http://localhost:13333/test4", { redirect: "manual", headers: { accept: "text/plain" } }),
+        await fetchTest("http://localhost:13333/test5", { redirect: "manual", headers: { accept: "text/plain" } }),
+        await fetchTest("http://localhost:13333/test6", { redirect: "manual", headers: { accept: "text/plain" } })
     ];
 
     for (const response of responses) {
@@ -66,7 +67,7 @@ app.listen(13333, async () => {
         );
     }
 
-    const xss = await fetch("http://localhost:13333/xss", { redirect: "manual", headers: { accept: "text/html" } });
+    const xss = await fetchTest("http://localhost:13333/xss", { redirect: "manual", headers: { accept: "text/html" } });
     console.log("xss-body:", await xss.text());
     console.log("xss-content-length:", xss.headers.get("content-length"));
 
