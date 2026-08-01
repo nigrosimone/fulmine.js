@@ -99,6 +99,9 @@ class Application extends Router {
             }
         }
         this.port = undefined;
+        this.listening = false;
+        // the host handed to listen(), which is all address() has to go on
+        this._listenHost = undefined;
         for (const key in defaultSettings) {
             if (typeof this.settings[key] === "undefined") {
                 if (typeof defaultSettings[key] === "function") {
@@ -258,10 +261,17 @@ class Application extends Router {
             // had returned, and `const server = app.listen(p, () => server.address())` - the form
             // the Express docs use - would die on the temporal dead zone.
             this.port = uWS.us_socket_local_port(socket);
-            // `this` is the app, which is what listen() returns here. Express binds it to the
-            // http.Server, which is what listen() returns there, so `function () { this.address() }`
-            // reads the same on both.
-            if (callback) process.nextTick(() => callback.call(this));
+            this.listening = true;
+            this._listenHost = host;
+            process.nextTick(() => {
+                // `this` is the app, which is what listen() returns here. Express binds it to the
+                // http.Server, which is what listen() returns there, so
+                // `function () { this.address() }` reads the same on both.
+                // The callback goes first: in Express it is registered as a 'listening' listener
+                // before the caller can add any of their own.
+                if (callback) callback.call(this);
+                this.emit("listening");
+            });
         };
         let fn = "listen";
         const args = [];
@@ -290,7 +300,18 @@ class Application extends Router {
     }
 
     address() {
-        return this.port ? { port: this.port } : null;
+        if (!this.listening || !this.port) {
+            return null;
+        }
+        // uWS hands back the port and nothing else, so the address reported is the one we asked
+        // it to bind. No host means every interface, which node reports as "::". A hostname is
+        // reported as written, since what it resolved to is not readable back from here: node
+        // would say "::1" where this says "localhost".
+        const host = this._listenHost;
+        if (!host) {
+            return { address: "::", family: "IPv6", port: this.port };
+        }
+        return { address: host, family: host.includes(":") ? "IPv6" : "IPv4", port: this.port };
     }
 
     path() {
@@ -377,10 +398,25 @@ class Application extends Router {
     }
 
     close(callback) {
-        if (this.listenCalled) {
+        const wasListening = this.listening;
+        if (this.listenCalled && wasListening) {
             this.uwsApp.close();
         }
-        if (callback) callback();
+        this.listening = false;
+        // in Express the close callback is nothing more than the first 'close' listener, and a
+        // server that was not running still gets called back, with an error
+        if (callback) {
+            this.once("close", () => {
+                if (wasListening) {
+                    return callback();
+                }
+                const err = new Error("Server is not running.");
+                err.code = "ERR_SERVER_NOT_RUNNING";
+                callback(err);
+            });
+        }
+        process.nextTick(() => this.emit("close"));
+        return this;
     }
 }
 
