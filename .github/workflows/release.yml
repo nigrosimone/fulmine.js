@@ -16,10 +16,14 @@ on:
     workflow_dispatch:
         inputs:
             release_type:
-                description: 'Version bump ("auto" lets the conventional commits decide)'
+                description: 'Bump ("auto" lets the conventional commits choose between patch and minor)'
                 type: choice
-                options: [auto, patch, minor, major]
+                options: [auto, patch, minor]
                 default: auto
+            version:
+                description: "Explicit version, e.g. 6.0.0. The only way to raise the major, which tracks Express."
+                type: string
+                required: false
             dry_run:
                 description: "Bump and test, but skip the tag, the push and the publish"
                 type: boolean
@@ -95,14 +99,25 @@ jobs:
               if: github.event_name == 'workflow_dispatch'
               env:
                   RELEASE_TYPE: ${{ inputs.release_type }}
+                  VERSION: ${{ inputs.version }}
                   DRY_RUN: ${{ inputs.dry_run }}
               run: |
+                  if [ -n "$VERSION" ] && [ "$RELEASE_TYPE" != auto ]; then
+                    echo "::error::give either a bump or an explicit version, not both"
+                    exit 1
+                  fi
                   git config user.name "github-actions[bot]"
                   git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
                   # release-it ends on a bare `git push --follow-tags`, which needs one
                   git branch --set-upstream-to "origin/$GITHUB_REF_NAME"
                   args=(--ci)
-                  if [ "$RELEASE_TYPE" != auto ]; then args+=("$RELEASE_TYPE"); fi
+                  # an explicit version overrides whatever the commits recommend, which is how the
+                  # major gets raised: .release-it.cjs never returns one on its own
+                  if [ -n "$VERSION" ]; then
+                    args+=("$VERSION")
+                  elif [ "$RELEASE_TYPE" != auto ]; then
+                    args+=("$RELEASE_TYPE")
+                  fi
                   if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
                   npx release-it "${args[@]}"
 

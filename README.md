@@ -169,6 +169,18 @@ const app = express({
 });
 ```
 
+## Versioning
+
+**The major number tracks Express, not semver.** Fulmine 5.x follows Express 5. If Express 6
+arrives, Fulmine goes to 6, and that is the only reason the major ever moves. It is set by hand,
+never derived from the commits.
+
+Read the rest of the number normally: minor for new behaviour, patch for fixes.
+
+What this costs you: a breaking change can land in a minor. It will be in the changelog under its
+own heading, because commits still mark breaking changes the usual way, but the version number
+alone will not warn you. If you pin, pin the minor.
+
 ## Compatibility
 
 In general, basically all features and options are supported. Use the [Express 5.x documentation](https://expressjs.com/en/5x/api.html) for API reference. Anything Express 5 removed is removed here too, so the list below covers only where this differs from Express 5 itself.
