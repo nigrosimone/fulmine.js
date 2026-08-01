@@ -206,6 +206,9 @@ module.exports = function compileDeclarative(cb, app) {
         }
 
         let statusCode = 200;
+        // sendStatus and a bare send() both leave the body empty, and they mean different things:
+        // one sends the status message, the other sends nothing
+        let sendStatusUsed = false;
         const headers = [];
         const body = [];
 
@@ -253,6 +256,7 @@ module.exports = function compileDeclarative(cb, app) {
                     return false;
                 }
                 statusCode = call.arguments[0].value;
+                sendStatusUsed = true;
             }
         }
 
@@ -435,7 +439,17 @@ module.exports = function compileDeclarative(cb, app) {
             decRes = decRes.writeHeader(header[0], header[1]);
         }
 
-        if (app.get("etag") && !headers.some((header) => header[0].toLowerCase() === "etag")) {
+        // sendStatus sends the status message as its body. It has to join `body` here, before the
+        // ETag is computed, and not at write time: computing the ETag over an empty body gave every
+        // sendStatus response the same one, so a cache could not tell a 404 from a 500 and a
+        // conditional request could be answered 304 with the wrong body entirely.
+        if (sendStatusUsed && !body.length) {
+            body.push({ type: "text", value: statuses.message[statusCode] || String(statusCode) });
+        }
+
+        // an empty body gets no ETag, which is what Express does and what the ordinary path here
+        // already did
+        if (body.length && app.get("etag") && !headers.some((header) => header[0].toLowerCase() === "etag")) {
             if (body.some((part) => part.type !== "text")) {
                 return false;
             } else {
@@ -447,7 +461,7 @@ module.exports = function compileDeclarative(cb, app) {
         }
 
         if (app.get("x-powered-by")) {
-            decRes = decRes.writeHeader("x-powered-by", "UltimateExpress");
+            decRes = decRes.writeHeader("x-powered-by", "Fulmine");
         }
 
         for (const bodyPart of body) {
@@ -458,10 +472,6 @@ module.exports = function compileDeclarative(cb, app) {
             } else if (bodyPart.type === "query") {
                 decRes = decRes.writeQueryValue(bodyPart.value);
             }
-        }
-
-        if (!body.length) {
-            decRes = decRes.write(statuses.message[statusCode] || String(statusCode));
         }
 
         return decRes.end();

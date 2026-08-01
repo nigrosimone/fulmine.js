@@ -104,7 +104,7 @@ module.exports = class Response extends Writable {
             "keep-alive": "timeout=10"
         };
         if (this.app.get("x-powered-by")) {
-            this.headers["x-powered-by"] = "UltimateExpress";
+            this.headers["x-powered-by"] = "Fulmine";
         }
 
         // support for node internal
