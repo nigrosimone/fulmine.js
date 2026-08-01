@@ -397,12 +397,14 @@ module.exports = class Response extends Writable {
      * Streams a file, setting Content-Type from the extension and answering conditional and
      * range requests.
      *
-     * The path must be absolute unless `options.root` is given.
+     * The path must be absolute unless `options.root` is given. A function in the options
+     * position is taken as the callback.
+     *
+     * Options: `root`, `maxAge`, `lastModified`, `headers`, `dotfiles` ("allow", "deny" or
+     * "ignore"), `acceptRanges`, `cacheControl`, `immutable`, `etag` and `setHeaders`.
      *
      * @param {string} path
-     * @param {{root?: string, maxAge?: number|string, lastModified?: boolean, headers?: object,
-     *   dotfiles?: "allow"|"deny"|"ignore", acceptRanges?: boolean, cacheControl?: boolean,
-     *   immutable?: boolean}|((err?: Error) => void)} [options] or the callback
+     * @param {object} [options]
      * @param {(err?: Error) => void} [callback] called once sent, or with the error
      */
     sendFile(path, options = new NullObject(), callback) {
@@ -613,9 +615,13 @@ module.exports = class Response extends Writable {
     }
     /**
      * Sends a file as an attachment, so the browser saves it instead of displaying it.
+     *
+     * `filename` and `options` can both be left out, and a function in either position is taken
+     * as the callback.
+     *
      * @param {string} path
-     * @param {string|object|Function} [filename] name offered to the user, defaults to the basename
-     * @param {object|Function} [options] passed through to sendFile
+     * @param {string} [filename] name offered to the user, defaults to the basename of the path
+     * @param {object} [options] passed through to sendFile
      * @param {(err?: Error) => void} [callback]
      */
     download(path, filename, options, callback) {
@@ -713,12 +719,14 @@ module.exports = class Response extends Writable {
     }
     /**
      * Removes a header that has not been flushed yet.
+     *
+     * Returns nothing, the way node's OutgoingMessage does. Returning the response would let
+     * chains be written here that break the moment the same code runs on Express.
+     *
      * @param {string} field
-     * @returns {this}
      */
     removeHeader(field) {
         delete this.headers[field.toLowerCase()];
-        return this;
     }
     /**
      * Adds a header without replacing what is already there, which is what Set-Cookie and Vary
@@ -750,9 +758,9 @@ module.exports = class Response extends Writable {
     }
     /**
      * Renders a view and sends it. With a callback the result goes to the callback instead, and
-     * nothing is sent.
+     * nothing is sent. A function in the options position is taken as the callback.
      * @param {string} view view name
-     * @param {object|((err: Error|null, html?: string) => void)} [options] locals, or the callback
+     * @param {object} [options] locals for the view
      * @param {(err: Error|null, html?: string) => void} [callback]
      */
     render(view, options, callback) {
@@ -869,7 +877,7 @@ module.exports = class Response extends Writable {
         const escape = this.app.get("json escape");
         const replacer = this.app.get("json replacer");
         const spaces = this.app.get("json spaces");
-        this.send(stringify(body, replacer, spaces, escape));
+        return this.send(stringify(body, replacer, spaces, escape));
     }
     /**
      * Sends JSON wrapped in a callback when the query names one, under the setting

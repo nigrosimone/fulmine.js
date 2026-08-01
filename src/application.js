@@ -417,8 +417,10 @@ class Application extends Router {
      * per-request local wins over an application-wide one. Caching follows the "view cache"
      * setting unless `options.cache` says otherwise.
      *
+     * A function in the options position is taken as the callback.
+     *
      * @param {string} name view name, resolved against the "views" setting
-     * @param {object|((err: Error|null, html?: string) => void)} [options] locals, or the callback
+     * @param {object} [options] locals for the view
      * @param {(err: Error|null, html?: string) => void} [callback] receives the rendered view
      */
     render(name, options, callback) {
