@@ -485,7 +485,7 @@ module.exports = class Router extends EventEmitter {
                 }
             }
         } else {
-            req.params = { __proto__: null };
+            req.params = {};
             if (req._paramStack.length > 0) {
                 for (const params of req._paramStack) {
                     req.params = Object.assign({ __proto__: null }, params, req.params);

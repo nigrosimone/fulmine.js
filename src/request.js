@@ -89,7 +89,7 @@ module.exports = class Request extends Readable {
         this.method = req.getCaseSensitiveMethod().toUpperCase();
         this._isOptions = this.method === "OPTIONS";
         this._isHead = this.method === "HEAD";
-        this.params = { __proto__: null };
+        this.params = {};
 
         this._matchedMethods = new Set();
         this._gotParams = new Set();
@@ -247,19 +247,20 @@ module.exports = class Request extends Readable {
         return index !== -1 ? header.slice(0, index).trim() : header.trim();
     }
 
-    // Express 5 made req.query a getter with no setter, so assigning to it is silently ignored
-    // rather than replacing the parsed query
-    set query(query) {}
+    // Express 5 defines query as a getter with no setter at all, so assigning to req.query throws
+    // in strict mode. Middleware written against v4 that rewrites the query - express-mongo-sanitize
+    // is the common one - fails the same way here as it does on Express, which is the point.
+    // The parser's result is returned as-is: spreading it would drop the null prototype that keeps
+    // a query string away from Object.prototype keys.
     get query() {
         if (this.#cachedQuery) {
             return this.#cachedQuery;
         }
         const qp = this.app.get("query parser fn");
-        if (qp) {
-            this.#cachedQuery = { ...qp(this.urlQuery.slice(1)) };
-        } else {
-            this.#cachedQuery = { ...new NullObject() };
-        }
+        // normalised onto a plain null-prototype object: fast-querystring returns instances of an
+        // internal class called Empty, which node inspects as "Empty <[Object: null prototype] {}>"
+        // where Express shows "[Object: null prototype]"
+        this.#cachedQuery = qp ? Object.assign({ __proto__: null }, qp(this.urlQuery.slice(1))) : { __proto__: null };
         return this.#cachedQuery;
     }
 
