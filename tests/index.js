@@ -54,11 +54,9 @@ for (const testCategory of testCategories) {
 
             const secondLine = (testCode.split("\n")[1] || "").trim();
             let marker = null;
-            let skipReason = null;
-            const markerMatch = secondLine.match(/^\/\/\s*(SKIP_V4|SKIP_V5|OFF)(?::\s*(.*))?$/);
+            const markerMatch = secondLine.match(/^\/\/\s*(OFF)(?::\s*(.*))?$/);
             if (markerMatch) {
                 marker = markerMatch[1];
-                skipReason = markerMatch[2] || null;
             }
 
             await new Promise((resolve) => {
@@ -79,38 +77,13 @@ for (const testCategory of testCategories) {
                     };
 
                     try {
-                        // Run with Express 4
-                        let express4Output = null;
-                        if (marker !== "SKIP_V4") {
-                            timeout = setTimeout(() => timeoutFunc("express"), TEST_TIMEOUT);
-                            express4Output = await execTest(testPath);
-                            clearTimeout(timeout);
-                        } else {
-                            t.diagnostic(skipReason ? `express4: SKIPPED (${skipReason})` : "express4: SKIPPED");
-                        }
+                        // Express 5 is the reference. The package named "express" is v5, so the
+                        // test file runs as written.
+                        timeout = setTimeout(() => timeoutFunc("express"), TEST_TIMEOUT);
+                        const expressOutput = await execTest(testPath);
+                        clearTimeout(timeout);
 
-                        // Run with Express 5 (skip if SKIP_V5)
-                        let express5Output = null;
-                        let express5Error = null;
-                        if (marker !== "SKIP_V5") {
-                            const express5Code = testCode.replace(
-                                `const express = require("express");`,
-                                `const express = require("express5");`
-                            );
-                            fs.writeFileSync(testPath, express5Code);
-                            try {
-                                timeout = setTimeout(() => timeoutFunc("express5"), TEST_TIMEOUT);
-                                express5Output = await execTest(testPath);
-                                clearTimeout(timeout);
-                            } catch (e) {
-                                clearTimeout(timeout);
-                                express5Error = e;
-                            }
-                        } else {
-                            t.diagnostic(skipReason ? `express5: SKIPPED (${skipReason})` : "express5: SKIPPED");
-                        }
-
-                        // Run with fulmine
+                        // Run the same file against fulmine
                         const newCode = testCode.replace(
                             `const express = require("express");`,
                             `const express = require("../../../src/index.js");`
@@ -120,32 +93,10 @@ for (const testCategory of testCategories) {
                         }
                         fs.writeFileSync(testPath, newCode);
                         timeout = setTimeout(() => timeoutFunc("fulmine"), TEST_TIMEOUT);
-                        const uExpressOutput = await execTest(testPath);
+                        const fulmineOutput = await execTest(testPath);
                         clearTimeout(timeout);
 
-                        // Compare outputs
-                        if (marker === "SKIP_V4") {
-                            // Strict compare against Express 5
-                            assert.strictEqual(uExpressOutput, express5Output);
-                        } else {
-                            // Strict compare against Express 4 (default + SKIP_V5)
-                            assert.strictEqual(uExpressOutput, express4Output);
-                        }
-
-                        // Compare with Express 5 (diagnostic, only when Express 5 ran)
-                        if (marker !== "SKIP_V5" && marker !== "SKIP_V4") {
-                            if (express5Error) {
-                                t.diagnostic(
-                                    `express5: ERROR - ${(express5Error.stderr || express5Error.message || String(express5Error)).split("\n")[0]}`
-                                );
-                            } else if (uExpressOutput === express5Output) {
-                                t.diagnostic("express5: PASS");
-                            } else {
-                                t.diagnostic("express5: MISMATCH");
-                            }
-                        }
-                    } catch (error) {
-                        throw error;
+                        assert.strictEqual(fulmineOutput, expressOutput);
                     } finally {
                         clearTimeout(timeout);
                         fs.writeFileSync(testPath, testCode);

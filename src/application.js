@@ -237,6 +237,10 @@ class Application extends Router {
             if (!socket) {
                 const err = new Error("listen EADDRINUSE: address already in use :::" + port);
                 err.code = "EADDRINUSE";
+                // Express 5 hands a listen failure to the callback instead of throwing past it
+                if (callback) {
+                    return callback(err);
+                }
                 throw err;
             }
             this.port = uWS.us_socket_local_port(socket);

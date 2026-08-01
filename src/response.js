@@ -254,7 +254,13 @@ module.exports = class Response extends Writable {
         this.writeHead(this.statusCode);
     }
     status(code) {
-        this.statusCode = parseInt(code);
+        // Express 5 rejects anything that is not a plausible status code, instead of writing
+        // NaN or a nonsense number into the response line
+        const statusCode = parseInt(code);
+        if (!Number.isInteger(statusCode) || statusCode < 100 || statusCode > 999) {
+            throw new RangeError(`Invalid status code: ${code}`);
+        }
+        this.statusCode = statusCode;
         return this;
     }
     sendStatus(code) {
@@ -817,11 +823,8 @@ module.exports = class Response extends Writable {
         );
     }
     location(path) {
-        if (path === "back") {
-            path = this.req.get("Referrer");
-            if (!path) path = this.req.get("Referer");
-            if (!path) path = "/";
-        }
+        // Express 5 dropped the magic where 'back' meant the Referrer header. It is now just a
+        // relative URL like any other, which is what res.redirect('back') also does here.
         this.headers["location"] = encodeUrl(path);
         return this;
     }
@@ -880,10 +883,9 @@ module.exports = class Response extends Writable {
     contentType = this.type;
 
     vary(field) {
-        // checks for back-compat
+        // Express 4 warned and carried on; Express 5 treats a missing field as a programming error
         if (!field || (Array.isArray(field) && !field.length)) {
-            deprecated("res.vary(): Provide a field name");
-            return this;
+            throw new Error("field argument is required for res.vary()");
         }
         vary(this, field);
         return this;

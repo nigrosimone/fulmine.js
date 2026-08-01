@@ -17,7 +17,6 @@ limitations under the License.
 const {
     patternToRegex,
     needsConversionToRegex,
-    deprecated,
     findIndexStartingFrom,
     canBeOptimized,
     NullObject,
@@ -67,7 +66,8 @@ const methods = [
     "notify",
     "subscribe",
     "unsubscribe",
-    "search"
+    "search",
+    "query"
 ];
 const supportedUwsMethods = new Set(["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD", "CONNECT", "TRACE"]);
 
@@ -138,9 +138,8 @@ module.exports = class Router extends EventEmitter {
         return this.createRoute("GET", path, this, ...callbacks);
     }
 
-    del(path, ...callbacks) {
-        deprecated("app.del", "app.delete");
-        return this.createRoute("DELETE", path, this, ...callbacks);
+    del() {
+        throw new Error("app.del() has been removed. Use app.delete() instead.");
     }
 
     getFullMountpath(req) {
@@ -196,7 +195,7 @@ module.exports = class Router extends EventEmitter {
                 path = path.slice(0, -1);
             }
             if (path === "*") {
-                path = "/*";
+                path = "/{*splat}";
             }
             const route = {
                 method: method === "USE" ? "ALL" : method,
@@ -211,9 +210,7 @@ module.exports = class Router extends EventEmitter {
             };
             if (
                 typeof route.path === "string" &&
-                (route.path.includes(":") ||
-                    route.path.includes("*") ||
-                    (route.path.includes("(") && route.path.includes(")"))) &&
+                (route.path.includes(":") || route.path.includes("*") || route.path.includes("{")) &&
                 route.pattern instanceof RegExp
             ) {
                 route.complex = true;
@@ -457,13 +454,15 @@ module.exports = class Router extends EventEmitter {
         }
         const match = pattern.exec(path);
         const obj = new NullObject();
+        const wildcardNames = pattern._wildcardNames;
         if (match?.groups) {
             for (const name in match.groups) {
-                if (name.startsWith("_wc")) {
-                    obj[name.slice(3)] = match.groups[name];
-                } else {
-                    obj[name] = match.groups[name];
+                const value = match.groups[name];
+                // an optional group that did not match is absent in v5, not present as undefined
+                if (value === undefined) {
+                    continue;
                 }
+                obj[name] = wildcardNames?.includes(name) ? value.split("/") : value;
             }
         }
         return obj;
@@ -537,8 +536,7 @@ module.exports = class Router extends EventEmitter {
 
     param(name, fn) {
         if (typeof name === "function") {
-            deprecated("app.param(callback)", "app.param(name, callback)", true);
-            this._paramFunction = name;
+            throw new Error("app.param(fn) has been removed. Use app.param(name, fn) instead.");
         } else {
             if (this._paramFunction) {
                 if (!this._paramCallbacks.has(name)) {
@@ -765,14 +763,13 @@ module.exports = class Router extends EventEmitter {
                     }
                     const out = callback(req, res, next);
                     if (out instanceof Promise) {
+                        // Express 5 forwards a rejected handler promise to the error middleware on
+                        // its own, so there is nothing left for the "catch async errors" setting or
+                        // for express-async-errors to opt into
                         out.catch((err) => {
-                            if (this.get("catch async errors")) {
-                                req._error = err;
-                                req._errorKey = route.routeKey;
-                                return next();
-                            } else {
-                                throw err;
-                            }
+                            req._error = err;
+                            req._errorKey = route.routeKey;
+                            return next();
                         });
                     }
                 } catch (err) {
