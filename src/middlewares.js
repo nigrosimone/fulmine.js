@@ -177,7 +177,9 @@ function createBodyParser(defaultType, beforeReturn) {
 
             const type = req.headers["content-type"];
 
-            if (!req.body) req.body = new NullObject();
+            // Express 4 seeded req.body with {} before deciding whether to parse, so a request no
+            // parser claimed still came out with an object. Express 5 leaves it undefined, which is
+            // what tells a handler that nothing was parsed rather than that the body was empty.
 
             // skip reading body for no content type
             if (!type) {
@@ -185,6 +187,14 @@ function createBodyParser(defaultType, beforeReturn) {
             }
 
             const length = req.headers["content-length"];
+
+            // No content-length and no transfer-encoding means the request carries no body at all,
+            // and a body parser must leave it alone rather than parse nothing into an empty value.
+            // type-is applies this before matching the type, but the simpleType shortcut below
+            // compares strings directly and would otherwise skip the check.
+            if (req.headers["transfer-encoding"] === undefined && isNaN(length)) {
+                return next();
+            }
 
             if (options.simpleType) {
                 const semicolonIndex = type.indexOf(";");
