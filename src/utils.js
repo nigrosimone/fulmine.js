@@ -46,6 +46,12 @@ function removeDuplicateSlashes(path) {
 }
 
 /**
+ * A compiled path pattern. The wildcard names ride along on the regex itself, because that is the
+ * only thing the router still has by the time it needs to split a wildcard's value into an array.
+ * @typedef {RegExp & {_wildcardNames?: string[]}} PathRegExp
+ */
+
+/**
  * Compiles a path into a regex, following path-to-regexp v8:
  *   - :param          a named parameter, one segment
  *   - /*splat         a named wildcard, one or more segments, captured as an array
@@ -204,7 +210,7 @@ function patternToRegex(pattern, isPrefix = false) {
         i++;
     }
 
-    const regex = new RegExp(`^${regexPattern}${isPrefix ? "(?=$|/)" : "$"}`);
+    const regex = /** @type {PathRegExp} */ (new RegExp(`^${regexPattern}${isPrefix ? "(?=$|/)" : "$"}`));
     regex._wildcardNames = wildcardNames;
     return regex;
 }

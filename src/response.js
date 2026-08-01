@@ -139,6 +139,7 @@ module.exports = class Response extends Writable {
 
     _write(chunk, encoding, callback) {
         if (this.aborted) {
+            /** @type {NodeJS.ErrnoException} */
             const err = new Error("Request aborted");
             err.code = "ECONNABORTED";
             return this.destroy(err);
@@ -255,14 +256,14 @@ module.exports = class Response extends Writable {
     }
     /**
      * Sets the status code.
-     * @param {number} code an integer from 100 to 999
+     * @param {number|string} code an integer from 100 to 999
      * @returns {this} the response, for chaining
      * @throws {RangeError} if the code is outside that range or is not an integer
      */
     status(code) {
         // Express 5 rejects anything that is not a plausible status code, instead of writing
         // NaN or a nonsense number into the response line
-        const statusCode = parseInt(code);
+        const statusCode = parseInt(String(code), 10);
         if (!Number.isInteger(statusCode) || statusCode < 100 || statusCode > 999) {
             throw new RangeError(`Invalid status code: ${code}`);
         }
@@ -452,11 +453,14 @@ module.exports = class Response extends Writable {
         if (!options.skipEncodePath) {
             path = encodeURI(path);
         }
-        path = decode(path);
-        if (path === -1) {
+        // decode reports failure with -1 rather than throwing, so it needs its own binding before
+        // it can go back into path
+        const decoded = decode(path);
+        if (decoded === -1) {
             this.status(400);
             return done(new Error("Bad Request"));
         }
+        path = decoded;
         if (~path.indexOf("\0")) {
             this.status(400);
             return done(new Error("Bad Request"));
@@ -694,6 +698,7 @@ module.exports = class Response extends Writable {
             field = field.toLowerCase();
             if (field === "content-type") {
                 if (
+                    typeof value === "string" &&
                     !value.includes("charset=") &&
                     (value.startsWith("text/") || value === "application/json" || value === "application/javascript")
                 ) {
@@ -791,8 +796,8 @@ module.exports = class Response extends Writable {
      * @param {string} name
      * @param {string|object} value
      * @param {{maxAge?: number, expires?: Date, path?: string, domain?: string, secure?: boolean,
-     *   httpOnly?: boolean, sameSite?: boolean|string, signed?: boolean, priority?: string,
-     *   partitioned?: boolean}} [options]
+     *   httpOnly?: boolean, sameSite?: boolean|"lax"|"strict"|"none", signed?: boolean,
+     *   priority?: "low"|"medium"|"high", partitioned?: boolean}} [options]
      * @returns {this}
      */
     cookie(name, value, options) {
@@ -1039,6 +1044,10 @@ module.exports = class Response extends Writable {
         return this.socket;
     }
 
+    // Writable declares this as a plain property, and the stream machinery that would maintain it
+    // is mostly bypassed here, so it is deliberately replaced by a getter over our own flag.
+    // TypeScript has no way to say "replacing a base property with an accessor is the intent";
+    // @ts-expect-error rather than @ts-ignore, so this fails loudly if it ever stops applying.
     get writableFinished() {
         return this.finished;
     }

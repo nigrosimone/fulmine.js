@@ -1,6 +1,9 @@
 const acorn = require("acorn");
 const { stringify } = require("./utils.js");
+// H3App, DeclarativeResponse and _cfg all exist at runtime but are missing from the
+// declaration file the package ships, so the module is read through a loose alias
 const uWS = require("uWebSockets.js");
+const uWSAny = /** @type {any} */ (uWS);
 const statuses = require("statuses");
 
 const parser = acorn.Parser;
@@ -30,6 +33,11 @@ module.exports = function compileDeclarative(cb, app) {
             code = code.replace(/function *\(/, "function __cb(");
         }
 
+        // Everything below runs inside the try above, and any shape this does not understand falls
+        // out as `return false`, which is the fallback to ordinary routing. That is the design, and
+        // it is why the tree is walked loosely: acorn types every shape JavaScript can take, and
+        // enumerating them here would be a second, worse copy of that catch.
+        /** @type {any[]} */
         const tokens = [...acorn.tokenizer(code, { ecmaVersion: "latest" })];
 
         if (
@@ -59,6 +67,7 @@ module.exports = function compileDeclarative(cb, app) {
             return false;
         }
 
+        /** @type {any[]} */
         const parsed = parser.parse(code, { ecmaVersion: "latest" }).body;
         let fn = parsed[0];
 
@@ -407,7 +416,7 @@ module.exports = function compileDeclarative(cb, app) {
             }
         }
 
-        let decRes = new uWS.DeclarativeResponse();
+        let decRes = new uWSAny.DeclarativeResponse();
 
         if (statusCode != 200) {
             const statusMessage = statuses.message[statusCode] ?? "";

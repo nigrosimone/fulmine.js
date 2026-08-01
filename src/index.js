@@ -15,7 +15,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// H3App, DeclarativeResponse and _cfg all exist at runtime but are missing from the
+// declaration file the package ships, so the module is read through a loose alias
 const uWS = require("uWebSockets.js");
+const uWSAny = /** @type {any} */ (uWS);
 const Application = require("./application.js");
 const Router = require("./router.js");
 const middlewares = require("./middlewares.js");
@@ -24,13 +27,30 @@ const Response = require("./response.js");
 
 try {
     // disable Uwebsockets header
-    uWS._cfg("999999990007");
+    uWSAny._cfg("999999990007");
 } catch (error) {
     // older uWS builds do not expose _cfg; there is nothing to fall back to
 }
 
+// The factory doubles as a namespace, the way Express does it: Router, static and the body
+// parsers all hang off the same function that creates an app. Naming that shape here is what
+// lets the assignments below be checked rather than waved through.
+/**
+ * @type {typeof Application & {
+ *   Router: Function,
+ *   request: object,
+ *   response: object,
+ *   static: Function,
+ *   json: Function,
+ *   urlencoded: Function,
+ *   text: Function,
+ *   raw: Function
+ * }}
+ */
+const fulmine = /** @type {any} */ (Application);
+
 // converts router to a function and makes it callable
-Application.Router = function (options) {
+fulmine.Router = function (options) {
     const router = new Router(options);
     const fn = function (req, res, next) {
         router._routeRequest(req, res, 0).then((routed) => {
@@ -44,15 +64,15 @@ Application.Router = function (options) {
     return fn;
 };
 
-Application.request = Request.prototype;
-Application.response = Response.prototype;
+fulmine.request = Request.prototype;
+fulmine.response = Response.prototype;
 
-Application.static = middlewares.static;
+fulmine.static = middlewares.static;
 
-Application.json = middlewares.json;
-Application.urlencoded = middlewares.urlencoded;
-Application.text = middlewares.text;
-Application.raw = middlewares.raw;
+fulmine.json = middlewares.json;
+fulmine.urlencoded = middlewares.urlencoded;
+fulmine.text = middlewares.text;
+fulmine.raw = middlewares.raw;
 
 module.exports = Application;
 

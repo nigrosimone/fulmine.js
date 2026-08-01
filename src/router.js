@@ -99,6 +99,8 @@ module.exports = class Router extends EventEmitter {
         this._paramCallbacks = new Map();
         this._mountpathCache = new Map();
         this._routes = [];
+        // an array when mounted on several paths at once, as Express allows
+        /** @type {string|string[]} */
         this.mountpath = "/";
         this.settings = settings;
         this._request = Request;
@@ -348,6 +350,7 @@ module.exports = class Router extends EventEmitter {
         request.res = response;
         response.req = request;
         res.onAborted(() => {
+            /** @type {NodeJS.ErrnoException} */
             const err = new Error("Connection closed");
             err.code = "ECONNRESET";
             response.aborted = true;
@@ -458,6 +461,10 @@ module.exports = class Router extends EventEmitter {
         return generateErrorPageHtml(err);
     }
 
+    /**
+     * @param {import("./utils.js").PathRegExp} pattern
+     * @param {string} path
+     */
     _extractParams(pattern, path) {
         if (path.endsWith("/")) {
             path = path.slice(0, -1);
@@ -561,21 +568,13 @@ module.exports = class Router extends EventEmitter {
         // and it is what reaches anyone catching it
         if (typeof name !== "string" && !Array.isArray(name)) {
             throw new TypeError("argument name must be a string");
-        } else {
-            if (this._paramFunction) {
-                if (!this._paramCallbacks.has(name)) {
-                    this._paramCallbacks.set(name, []);
-                }
-                this._paramCallbacks.get(name).push(this._paramFunction(name, fn));
-            } else {
-                const names = Array.isArray(name) ? name : [name];
-                for (const name of names) {
-                    if (!this._paramCallbacks.has(name)) {
-                        this._paramCallbacks.set(name, []);
-                    }
-                    this._paramCallbacks.get(name).push(fn);
-                }
+        }
+        const names = Array.isArray(name) ? name : [name];
+        for (const key of names) {
+            if (!this._paramCallbacks.has(key)) {
+                this._paramCallbacks.set(key, []);
             }
+            this._paramCallbacks.get(key).push(fn);
         }
         return this;
     }
@@ -822,7 +821,8 @@ module.exports = class Router extends EventEmitter {
      *
      * Mounting a Router sets its mountpath and parent and emits 'mount' on it.
      *
-     * @param {string|string[]|Function|Router} [path] mount path, or the first handler
+     * @param {string|string[]|Function|Router|Array<Function|Router>} [path] mount path, or the
+     *   first handler
      * @param {...(Function|Router|Array<Function|Router>)} callbacks handlers, nested arrays allowed
      * @returns {this} the router, for chaining
      */
