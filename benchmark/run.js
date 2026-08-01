@@ -231,17 +231,32 @@ function parseTransferPerSec(output) {
     return value;
 }
 
-function parseErrorLines(output) {
-    const errorLines = [];
+function parseWrkErrors(output) {
+    const errors = {
+        lines: [],
+        socketErrorLine: null,
+        non2xx: 0,
+        totalRequests: 0
+    };
+
+    const totalMatch = output.match(/([0-9]+)\s+requests\s+in\s/);
+    if (totalMatch) {
+        errors.totalRequests = Number(totalMatch[1]);
+    }
+
     const socketErrorMatch = output.match(/Socket errors:[^\n]+/);
     if (socketErrorMatch) {
-        errorLines.push(socketErrorMatch[0]);
+        errors.lines.push(socketErrorMatch[0]);
+        errors.socketErrorLine = socketErrorMatch[0];
     }
-    const non2xxMatch = output.match(/Non-2xx or 3xx responses:\s+[0-9]+/);
+
+    const non2xxMatch = output.match(/Non-2xx or 3xx responses:\s+([0-9]+)/);
     if (non2xxMatch) {
-        errorLines.push(non2xxMatch[0]);
+        errors.lines.push(non2xxMatch[0]);
+        errors.non2xx = Number(non2xxMatch[1]);
     }
-    return errorLines;
+
+    return errors;
 }
 
 function formatReqPerSec(value) {
@@ -276,7 +291,13 @@ async function runScenario(framework, scenarioName, scenario, durationSeconds) {
         ];
 
         if (wrk.script) {
-            args.push('-s', path.join(__dirname, 'wrk-scripts', wrk.script));
+            const scriptPath = path.join(__dirname, 'wrk-scripts', wrk.script);
+            // a missing -s script does not make wrk fail, it silently falls back to GET / on the
+            // target URL. that is how readable-hash-4mb measured a 404 for 34 published runs
+            if (!fs.existsSync(scriptPath)) {
+                throw new Error(`wrk script for ${scenarioName} does not exist: ${scriptPath}`);
+            }
+            args.push('-s', scriptPath);
         }
 
         const targetUrl = wrk.script
@@ -295,17 +316,27 @@ async function runScenario(framework, scenarioName, scenario, durationSeconds) {
 
         const requestsPerSec = parseRequestsPerSec(wrkResult.stdout);
         const transferPerSecBytes = parseTransferPerSec(wrkResult.stdout);
-        const wrkErrors = parseErrorLines(wrkResult.stdout);
+        const wrkErrors = parseWrkErrors(wrkResult.stdout);
 
         if (requestsPerSec === 0) {
             throw new Error(
-                `wrk produced invalid benchmark output for ${framework.id}/${scenarioName}:\n${wrkErrors.join('\n')}\n\n${wrkResult.stdout}`
+                `wrk produced invalid benchmark output for ${framework.id}/${scenarioName}:\n${wrkErrors.lines.join('\n')}\n\n${wrkResult.stdout}`
+            );
+        }
+
+        // a run that answered anything other than 2xx/3xx did not measure the scenario. this used to
+        // be parsed and then dropped on the floor, so a broken scenario still published a number
+        if (wrkErrors.non2xx > 0) {
+            throw new Error(
+                `${framework.id}/${scenarioName} served ${wrkErrors.non2xx} non-2xx/3xx responses out of ` +
+                `${wrkErrors.totalRequests}, so this run measured something other than the scenario:\n${wrkResult.stdout}`
             );
         }
 
         return {
             requestsPerSec,
             transferPerSecBytes,
+            socketErrorLine: wrkErrors.socketErrorLine,
             raw: wrkResult.stdout
         };
     } finally {
@@ -322,6 +353,8 @@ function buildMarkdown(results) {
     lines.push('| --- | ---: | ---: | ---: | ---: | ---: |');
 
     const failures = [];
+    const unvalidated = [];
+    const socketErrors = [];
     for (const row of results) {
     const speedup = row.express.ok && row.ultimate.ok && row.express.transferPerSecBytes > 0
       ? `${(row.ultimate.transferPerSecBytes / row.express.transferPerSecBytes).toFixed(2)}x`
@@ -346,9 +379,47 @@ function buildMarkdown(results) {
             });
         }
 
+        // the two servers are only comparable if they answered the same thing. this was computed and
+        // then never rendered, so a scenario where they diverged still looked like a clean row
+        if (!row.validation || !row.validation.ok) {
+            unvalidated.push({
+                scenario: row.name,
+                message: row.validation ? row.validation.message : 'validation did not run'
+            });
+        }
+
+        for (const [framework, result] of [['express', row.express], ['ultimate-express', row.ultimate]]) {
+            if (result.ok && result.socketErrorLine) {
+                socketErrors.push({ scenario: row.name, framework, message: result.socketErrorLine });
+            }
+        }
+
+        const marker = (!row.validation || !row.validation.ok) ? ' :warning:' : '';
         lines.push(
-            `| ${row.name} | ${expressReq} | ${ultimateReq} | ${expressTransfer} | ${ultimateTransfer} | **${speedup}** |`
+            `| ${row.name}${marker} | ${expressReq} | ${ultimateReq} | ${expressTransfer} | ${ultimateTransfer} | **${speedup}** |`
         );
+    }
+
+    if (unvalidated.length > 0) {
+        lines.push('');
+        lines.push(`> :warning: ${unvalidated.length} scenario(s) did not pass response validation: express and uExpress did not return the same status and body, so their numbers are not comparable.`);
+        lines.push('');
+        lines.push('### Failed Response Validation');
+        lines.push('');
+        for (const entry of unvalidated) {
+            lines.push(`- \`${entry.scenario}\`\n\`\`\`\n${entry.message}\n\`\`\``);
+        }
+    }
+
+    if (socketErrors.length > 0) {
+        lines.push('');
+        lines.push(`> ${socketErrors.length} run(s) reported socket errors. Throughput measured alongside socket errors reflects the load generator as much as the server.`);
+        lines.push('');
+        lines.push('### Socket Errors');
+        lines.push('');
+        for (const entry of socketErrors) {
+            lines.push(`- \`${entry.scenario}\` on \`${entry.framework}\`: ${entry.message}`);
+        }
     }
 
     if (failures.length > 0) {
