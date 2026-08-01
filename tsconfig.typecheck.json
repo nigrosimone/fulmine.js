@@ -10,7 +10,14 @@
         "target": "ES2022",
         "allowJs": true,
         "checkJs": true,
+        // Turned on one flag at a time, so each lands with the count back at zero rather than
+        // arriving as one unreadable pile. These five cost five findings between them.
         "strict": false,
+        "noImplicitThis": true,
+        "useUnknownInCatchVariables": true,
+        "strictFunctionTypes": true,
+        "strictBindCallApply": true,
+        "alwaysStrict": true,
         "noEmit": true,
         // the declaration files shipped by the dependencies are their problem, not ours
         "skipLibCheck": true,
