@@ -85,18 +85,21 @@ function patternToRegex(pattern, isPrefix = false) {
             continue;
         }
 
-        // /*splat: one or more segments, so it does not match the mount point itself
-        if (ch === "/" && i + 1 < len && pattern[i + 1] === "*") {
-            i += 2;
+        // *splat: one or more characters, slashes included. It is not anchored to a segment
+        // boundary, so /te*st is literal "/te" followed by a wildcard named "st"
+        if (ch === "*") {
+            const at = i;
+            i++;
             let name = "";
             while (i < len && /\w/.test(pattern[i])) {
                 name += pattern[i++];
             }
             if (!name) {
-                throw new Error(`Wildcard must be named in Express 5: use /*splat, not /* (in "${pattern}")`);
+                throw new Error(`Missing parameter name at index ${at}: ${pattern}`);
             }
             wildcardNames.push(name);
-            regexPattern += `/(?<${name}>.+)`;
+            regexPattern += `(?<${name}>[^]+)`;
+            lastTokenWasParam = false;
             continue;
         }
 
@@ -178,7 +181,7 @@ function patternToRegex(pattern, isPrefix = false) {
                 name += pattern[i++];
             }
             if (!name) {
-                throw new Error(`Parameter must be named in Express 5 (in "${pattern}")`);
+                throw new Error(`Missing parameter name at index ${i - 1}: ${pattern}`);
             }
             // a following optional group needs room to match, so the parameter gives ground
             regexPattern += i < len && pattern[i] === "{" ? `(?<${name}>[^/]+?)` : `(?<${name}>[^/]+)`;
@@ -186,11 +189,14 @@ function patternToRegex(pattern, isPrefix = false) {
             continue;
         }
 
-        if (ch === "*") {
-            throw new Error(`Wildcard must be named in Express 5: use /*splat, not /* (in "${pattern}")`);
+        // These are the Express 4 operators. Express 5 has no meaning for them and refuses the
+        // route rather than matching them literally, which is what makes a v4 path fail loudly
+        // at startup instead of quietly never matching. Escape them to use them as literals.
+        if ("?+()[]!".includes(ch)) {
+            throw new Error(`Unexpected ${ch} at index ${i}: ${pattern}`);
         }
 
-        if (".+?^${}()|[]".includes(ch)) {
+        if (".^$|}".includes(ch)) {
             regexPattern += "\\" + ch;
         } else {
             regexPattern += ch;
