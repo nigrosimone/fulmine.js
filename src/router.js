@@ -576,6 +576,7 @@ module.exports = class Router extends EventEmitter {
                 }
             }
         }
+        return this;
     }
 
     _routeRequest(req, res, startIndex = 0, routes = this._routes, skipCheck = false, skipUntil) {
