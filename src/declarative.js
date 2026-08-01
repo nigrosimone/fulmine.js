@@ -432,6 +432,16 @@ module.exports = function compileDeclarative(cb, app) {
             }
         }
 
+        // the same two the ordinary path seeds every response with. Without them a route answered
+        // different headers depending only on whether it happened to be compilable, which is worse
+        // than either choice on its own, and a client had no idle timeout to go on.
+        if (!headers.some((header) => header[0].toLowerCase() === "connection")) {
+            decRes = decRes.writeHeader("connection", "keep-alive");
+        }
+        if (!headers.some((header) => header[0].toLowerCase() === "keep-alive")) {
+            decRes = decRes.writeHeader("keep-alive", "timeout=10");
+        }
+
         for (const header of headers) {
             if (header[0].toLowerCase() === "content-length") {
                 return false;
