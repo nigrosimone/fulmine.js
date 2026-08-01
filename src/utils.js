@@ -25,18 +25,19 @@ const { Stats } = require("fs");
 const EMPTY_REGEX = new RegExp(``);
 
 function fastQueryParse(query, options) {
+    // Express 5 hands back a null-prototype object here, which is why req.query prints as
+    // "[Object: null prototype] {}". Express 4 spread it into a plain object; keeping that would
+    // put Object.prototype keys back within reach of a query string.
     const len = query.length;
     if (len === 0) {
         return new NullObject();
     }
     if (len <= 128) {
         if (!query.includes("[") && !query.includes("%5B") && !query.includes(".") && !query.includes("%2E")) {
-            // [Object: null prototype] issue
-            return { ...querystring.parse(query) };
+            return Object.assign(new NullObject(), querystring.parse(query));
         }
     }
-    // [Object: null prototype] issue
-    return { ...qs.parse(query, options) };
+    return Object.assign(new NullObject(), qs.parse(query, options));
 }
 
 function removeDuplicateSlashes(path) {
