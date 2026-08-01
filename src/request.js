@@ -113,6 +113,7 @@ module.exports = class Request extends Readable {
             this.method === "POST" ||
             this.method === "PUT" ||
             this.method === "PATCH" ||
+            this.method === "QUERY" ||
             (additionalMethods && additionalMethods.includes(this.method))
         ) {
             this._res.onData((ab, isLast) => {
@@ -159,7 +160,8 @@ module.exports = class Request extends Readable {
         this._originalPath = x;
     }
 
-    get #host() {
+    // the Host header as sent, trimmed and resolved through trust proxy, port still attached
+    get #authority() {
         const trust = this.app.get("trust proxy fn");
         const isTrusted = !!(trust && trust(this.connection.remoteAddress, 0));
         const rawHeader = (isTrusted && this.headers["x-forwarded-host"]) || this.headers["host"];
@@ -177,6 +179,11 @@ module.exports = class Request extends Readable {
             }
         }
 
+        return host || undefined;
+    }
+
+    get #host() {
+        const host = this.#authority;
         if (!host) return;
 
         const offset = host[0] === "[" ? host.indexOf("]") + 1 : 0;
@@ -185,9 +192,10 @@ module.exports = class Request extends Readable {
         return portIndex !== -1 ? host.substring(0, portIndex) : host;
     }
 
+    // Express 5 returns the authority including the port here, and req.hostname without it.
+    // In Express 4 this was a deprecated alias for hostname.
     get host() {
-        deprecated("req.host", "req.hostname");
-        return this.hostname;
+        return this.#authority;
     }
 
     get hostname() {
@@ -239,9 +247,9 @@ module.exports = class Request extends Readable {
         return index !== -1 ? header.slice(0, index).trim() : header.trim();
     }
 
-    set query(query) {
-        this.#cachedQuery = query;
-    }
+    // Express 5 made req.query a getter with no setter, so assigning to it is silently ignored
+    // rather than replacing the parsed query
+    set query(query) {}
     get query() {
         if (this.#cachedQuery) {
             return this.#cachedQuery;
@@ -437,27 +445,8 @@ module.exports = class Request extends Readable {
         return typeis(this, [...arguments]);
     }
 
-    param(name, defaultValue) {
-        deprecated("req.param(name)", "req.params, req.body, or req.query");
-
-        if (name == null) return defaultValue;
-
-        if (this.params && Object.prototype.hasOwnProperty.call(this.params, name)) {
-            const value = this.params[name];
-            if (value != null) return value;
-        }
-
-        if (this.body && Object.prototype.hasOwnProperty.call(this.body, name)) {
-            const value = this.body[name];
-            if (value != null) return value;
-        }
-
-        if (this.query && Object.prototype.hasOwnProperty.call(this.query, name)) {
-            const value = this.query[name];
-            if (value != null) return value;
-        }
-
-        return defaultValue;
+    param() {
+        throw new Error("req.param() has been removed. Use req.params, req.body, or req.query instead.");
     }
 
     range(size, options) {

@@ -33,7 +33,7 @@ function static(root, options) {
     if (typeof options.index === "undefined") options.index = "index.html";
     if (typeof options.redirect === "undefined") options.redirect = true;
     if (typeof options.fallthrough === "undefined") options.fallthrough = true;
-    if (typeof options.dotfiles === "undefined") options.dotfiles = "ignore_files";
+    if (typeof options.dotfiles === "undefined") options.dotfiles = "ignore";
     if (options.extensions) {
         if (typeof options.extensions !== "string" && !Array.isArray(options.extensions)) {
             throw new Error("extensions must be a string or an array");
@@ -223,6 +223,7 @@ function createBodyParser(defaultType, beforeReturn) {
                 req.method !== "POST" &&
                 req.method !== "PUT" &&
                 req.method !== "PATCH" &&
+                req.method !== "QUERY" &&
                 (!additionalMethods || !additionalMethods.includes(req.method))
             ) {
                 return next();
@@ -385,7 +386,9 @@ const text = createBodyParser("text/plain", function (req, res, next, options, b
 
 const urlencoded = createBodyParser("application/x-www-form-urlencoded", function (req, res, next, options, buf) {
     try {
-        if (options.extended) {
+        // Express 5 defaults extended to false, so nested keys need opting in
+        const extended = typeof options.extended !== "undefined" ? options.extended : false;
+        if (extended) {
             req.body = fastQueryParse(buf.toString(), options);
         } else {
             req.body = querystring.parse(buf.toString());
