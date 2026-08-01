@@ -473,7 +473,7 @@ module.exports = class Router extends EventEmitter {
     _preprocessRequest(req, res, route) {
         req.route = route;
         if (route.optimizedParams) {
-            req.params = { ...req.optimizedParams };
+            req.params = Object.assign(new NullObject(), req.optimizedParams);
         } else if (route.complex) {
             let path = req._originalPath;
             if (req._stack.length > 0) {
@@ -482,17 +482,17 @@ module.exports = class Router extends EventEmitter {
                     path = path.replace(fullMountpath, "");
                 }
             }
-            req.params = { ...this._extractParams(route.pattern, path) };
+            req.params = this._extractParams(route.pattern, path);
             if (req._paramStack.length > 0) {
                 for (const params of req._paramStack) {
-                    req.params = { ...params, ...req.params };
+                    req.params = Object.assign(new NullObject(), params, req.params);
                 }
             }
         } else {
-            req.params = {};
+            req.params = new NullObject();
             if (req._paramStack.length > 0) {
                 for (const params of req._paramStack) {
-                    req.params = { ...params, ...req.params };
+                    req.params = Object.assign(new NullObject(), params, req.params);
                 }
             }
         }
