@@ -1,5 +1,5 @@
 const acorn = require("acorn");
-const { stringify } = require("./utils.js");
+const { stringify, withDefaultCharset, withUtf8Charset } = require("./utils.js");
 // H3App, DeclarativeResponse and _cfg all exist at runtime but are missing from the
 // declaration file the package ships, so the module is read through a loose alias
 const uWS = require("uWebSockets.js");
@@ -8,12 +8,122 @@ const statuses = require("statuses");
 
 const parser = acorn.Parser;
 
-const allowedResMethods = ["set", "header", "setHeader", "sendStatus", "status", "send", "end", "append"];
+const allowedResMethods = ["set", "header", "setHeader", "sendStatus", "status", "send", "json", "end", "append"];
 const allowedIdentifiers = ["query", "params", ...allowedResMethods];
-const objKeyRegex = /[\s{\n]([A-Za-z-0-9_]+)(\s|\n)*?:/g;
+// the three that write a body, of which only one may appear
+const bodyMethods = new Set(["send", "json", "end"]);
+// and the four that finish the response, after which nothing a handler does is observable
+const terminalMethods = new Set(["send", "json", "end", "sendStatus"]);
 
-function replaceSingleCharacter(str, index, char) {
-    return str.slice(0, index) + char + str.slice(index + 1);
+// Every node type the walk in filterNodes knows how to step through. A type that is missing here
+// is not rejected for being dangerous, it is rejected because the walk would step over it without
+// saying so: a sequence expression hid its calls completely, and `res.append("x", "1"), res.send("k")`
+// compiled into a 200 with no body and no headers at all. Anything unfamiliar falls back to
+// ordinary routing, which is always correct if slower.
+const understoodNodeTypes = new Set([
+    "ArrowFunctionExpression",
+    "FunctionDeclaration",
+    "FunctionExpression",
+    "BlockStatement",
+    "ExpressionStatement",
+    "ReturnStatement",
+    "CallExpression",
+    "MemberExpression",
+    "Identifier",
+    "Literal",
+    "TemplateLiteral",
+    "TemplateElement",
+    "ObjectExpression",
+    "ArrayExpression",
+    "Property",
+    "BinaryExpression",
+    "UnaryExpression",
+    "ObjectPattern"
+]);
+
+/**
+ * Every node type in the tree, found by walking whatever is there rather than by following named
+ * edges, so that the answer does not depend on the walk being complete.
+ *
+ * @param {any} node
+ * @param {Set<string>} types
+ */
+function collectNodeTypes(node, types) {
+    if (!node || typeof node !== "object") {
+        return;
+    }
+    if (Array.isArray(node)) {
+        for (const child of node) collectNodeTypes(child, types);
+        return;
+    }
+    if (typeof node.type === "string") {
+        types.add(node.type);
+    }
+    for (const key in node) {
+        if (key === "type" || key === "start" || key === "end") continue;
+        collectNodeTypes(node[key], types);
+    }
+}
+
+/**
+ * The value a literal expression denotes, for the shapes whose value is known at registration
+ * time. Anything else throws, which the catch around the whole compiler turns into ordinary
+ * routing: a response written once cannot contain something only a request could produce.
+ *
+ * This replaced reading the value back out of the source text, which could not see through a
+ * nested object or an array and needed a regular expression to re-quote the keys.
+ *
+ * @param {any} node
+ * @returns {any}
+ */
+function literalValue(node) {
+    switch (node.type) {
+        case "Literal":
+            // a regular expression and a bigint are literals that JSON cannot carry
+            if (node.regex || typeof node.value === "bigint") {
+                throw new Error("not serialisable");
+            }
+            return node.value;
+        case "ArrayExpression":
+            return node.elements.map((element) => {
+                // a hole, as in [1, , 2], and a spread, which needs something to spread
+                if (element === null || element.type === "SpreadElement") {
+                    throw new Error("not a literal");
+                }
+                return literalValue(element);
+            });
+        case "ObjectExpression": {
+            const out = {};
+            for (const property of node.properties) {
+                if (property.type !== "Property" || property.computed || property.kind !== "init") {
+                    throw new Error("not a literal");
+                }
+                const key =
+                    property.key.type === "Identifier"
+                        ? property.key.name
+                        : property.key.type === "Literal"
+                          ? String(property.key.value)
+                          : null;
+                if (key === null) {
+                    throw new Error("not a literal");
+                }
+                out[key] = literalValue(property.value);
+            }
+            return out;
+        }
+        case "UnaryExpression":
+            // -1 is a unary minus applied to a literal, not a literal
+            if (node.operator === "-" || node.operator === "+") {
+                const value = literalValue(node.argument);
+                if (typeof value !== "number") {
+                    throw new Error("not a literal");
+                }
+                return node.operator === "-" ? -value : value;
+            }
+            throw new Error("not a literal");
+        default:
+            throw new Error("not a literal");
+    }
 }
 
 // generates a declarative response from a callback
@@ -46,7 +156,6 @@ module.exports = function compileDeclarative(cb, app) {
                     "throw",
                     "new",
                     "await",
-                    "return",
                     "try",
                     "catch",
                     "finally",
@@ -80,11 +189,34 @@ module.exports = function compileDeclarative(cb, app) {
             return false;
         }
 
+        // before anything is read out of the tree, since reading it is only meaningful for the
+        // shapes the walk can see through
+        const nodeTypes = new Set();
+        collectNodeTypes(fn, nodeTypes);
+        for (const type of nodeTypes) {
+            if (!understoodNodeTypes.has(type)) {
+                return false;
+            }
+        }
+
         const args = fn.params.map((param) => param.name);
 
         if (args.length < 2) {
             // invalid function? doesn't have (req, res) args
             return false;
+        }
+
+        // `return res.send(...)` describes the same response as `res.send(...)` and is written far
+        // more often, so it is worth reading. It only describes the same response when nothing
+        // follows it: every call in the body is read, whether or not it can be reached, so a return
+        // in the middle would compile statements that never run. A return inside a nested function
+        // fails the same test, not being the last statement of this one.
+        const returns = filterNodes(fn, (node) => node.type === "ReturnStatement");
+        if (returns.length) {
+            const statements = fn.body.type === "BlockStatement" ? fn.body.body : null;
+            if (!statements || returns.length > 1 || returns[0] !== statements[statements.length - 1]) {
+                return false;
+            }
         }
 
         const [req, res] = args;
@@ -181,6 +313,26 @@ module.exports = function compileDeclarative(cb, app) {
             }
         }
 
+        // In the order the calls run, which for a chain is not the order the tree is walked in:
+        // res.status(201) is a node inside res.status(201).send("k"), so the walk reaches the outer
+        // call first and read res.status(201).status(202) backwards. Ending position orders a chain
+        // and separate statements alike.
+        callExprs.sort((a, b) => a.end - b.end);
+
+        // Nothing after the call that writes the body has any effect, since by then the response
+        // has gone out: res.sendStatus(404) followed by res.set("x-a", "1") sends no x-a on
+        // Express, and res.send("k") followed by res.status(201) is still a 200. Two calls that
+        // each write a body is a mistake rather than a shape worth compiling, and falls back.
+        const terminalIndex = callExprs.findIndex((call) => terminalMethods.has(call.obj.propertyName));
+        if (terminalIndex !== -1) {
+            for (let i = terminalIndex + 1; i < callExprs.length; i++) {
+                if (terminalMethods.has(callExprs[i].obj.propertyName)) {
+                    return false;
+                }
+            }
+            callExprs.length = terminalIndex + 1;
+        }
+
         // check if all identifiers are allowed
         const identifiers = filterNodes(fn, (node) => node.type === "Identifier")
             .slice(args.length)
@@ -232,19 +384,26 @@ module.exports = function compileDeclarative(cb, app) {
                 if (call.arguments[0].type !== "Literal" || call.arguments[1].type !== "Literal") {
                     return false;
                 }
-                const sameHeader = headers.find(
-                    (header) => header[0].toLowerCase() === call.arguments[0].value.toLowerCase()
-                );
                 let [header, value] = [call.arguments[0].value, call.arguments[1].value];
-                if (call.obj.propertyName !== "setHeader") {
-                    if (value.includes("text/") && !value.includes("; charset=")) {
-                        value += "; charset=utf-8";
-                    }
+                const name = String(header).toLowerCase();
+                // res.set charsets a content-type and res.setHeader does not, since the second is
+                // node's and node does not know what a media type is
+                if (call.obj.propertyName !== "setHeader" && name === "content-type") {
+                    value = withDefaultCharset(String(value));
                 }
-                if (sameHeader) {
-                    sameHeader[1] = value;
-                } else {
+                const index = headers.findIndex((entry) => String(entry[0]).toLowerCase() === name);
+                if (index === -1) {
                     headers.push([header, value]);
+                } else {
+                    // in place, so the header keeps the position it was first given
+                    headers[index][1] = value;
+                    // set replaces the header outright, so any further value append left there
+                    // goes with it. Replacing only the first left the response carrying both.
+                    for (let i = headers.length - 1; i > index; i--) {
+                        if (String(headers[i][0]).toLowerCase() === name) {
+                            headers.splice(i, 1);
+                        }
+                    }
                 }
             } else if (call.obj.propertyName === "append") {
                 if (call.arguments[0].type !== "Literal" || call.arguments[1].type !== "Literal") {
@@ -266,50 +425,76 @@ module.exports = function compileDeclarative(cb, app) {
         // path here follows that too, so the compiled path has to as well.
         let bodyFromSend = false;
         for (const call of callExprs) {
-            if (call.obj.propertyName === "send" || call.obj.propertyName === "end") {
+            if (bodyMethods.has(call.obj.propertyName)) {
                 if (sendUsed) {
                     return false;
                 }
                 // send() with nothing to send gets no content-type, the same as on the ordinary
                 // path and the same as Express. It was being given one here regardless, so the
                 // two paths disagreed about a route as simple as `res.send()`.
-                if (call.obj.propertyName === "send") {
+                if (call.obj.propertyName !== "end") {
                     bodyFromSend = true;
                 }
-                if (call.obj.propertyName === "send" && call.arguments[0]) {
-                    const index = headers.findIndex((header) => header[0].toLowerCase() === "content-type");
-                    if (index === -1) {
-                        headers.push(["content-type", "text/html; charset=utf-8"]);
+                const arg = call.arguments[0];
+
+                if (call.obj.propertyName === "json") {
+                    // res.json() with nothing to serialise sends no body and no length, which is a
+                    // shape worth leaving to the ordinary path rather than reproducing here
+                    if (!arg) {
+                        return false;
+                    }
+                    // a replacer runs per response on the ordinary path, so a body computed once
+                    // could not honour it
+                    const replacer = app.get("json replacer");
+                    if (typeof replacer !== "undefined" && typeof replacer !== "string") {
+                        return false;
+                    }
+                    // json reaches for a type only when none was chosen, then hands a string to
+                    // send, which is what charsets whatever type is there
+                    const existing = headers.find((header) => header[0].toLowerCase() === "content-type");
+                    if (existing) {
+                        existing[1] = withUtf8Charset(String(existing[1]));
                     } else {
-                        if (headers[index][1].includes("text/") && !headers[index][1].includes("; charset=")) {
-                            headers[index][1] += "; charset=utf-8";
+                        headers.push(["content-type", "application/json; charset=utf-8"]);
+                    }
+                    body.push({
+                        type: "text",
+                        value: stringify(literalValue(arg), replacer, app.get("json spaces"), app.get("json escape"))
+                    });
+                    sendUsed = true;
+                    continue;
+                }
+
+                if (call.obj.propertyName === "send" && arg) {
+                    // What the body is decides which content-type it would be given, so this comes
+                    // before the body is read rather than after. Setting one and then overwriting
+                    // it, which is what happened here, meant res.set("content-type", "text/plain")
+                    // followed by res.send({}) answered application/json where Express answers
+                    // text/plain: send only reaches for a type when none was chosen.
+                    const isJsonBody =
+                        arg.type === "ObjectExpression" || (arg.type === "Literal" && typeof arg.value === "boolean");
+                    const isNullBody = arg.type === "Literal" && arg.value === null;
+                    const existing = headers.find((header) => header[0].toLowerCase() === "content-type");
+                    if (!existing) {
+                        if (isJsonBody) {
+                            headers.push(["content-type", "application/json; charset=utf-8"]);
+                        } else if (!isNullBody) {
+                            // send(null) sends an empty string without choosing a type, the same
+                            // as it does on the ordinary path
+                            headers.push(["content-type", "text/html; charset=utf-8"]);
                         }
+                    } else {
+                        existing[1] = withUtf8Charset(String(existing[1]));
                     }
                 }
-                const arg = call.arguments[0];
                 if (arg) {
                     if (arg.type === "Literal") {
                         if (typeof arg.value === "number") {
                             // status code
                             return false;
                         }
-                        let val = arg.value;
-                        if (val === null) {
-                            val = "";
-                            const index = headers.findIndex((header) => header[0].toLowerCase() === "content-type");
-                            if (index !== -1) {
-                                headers.splice(index, 1);
-                            }
-                        }
-                        if (typeof val === "boolean") {
-                            if (!headers.some((header) => header[0].toLowerCase() === "content-type")) {
-                                headers.push(["content-type", "application/json; charset=utf-8"]);
-                            } else {
-                                /** @type {any} */ (
-                                    headers.find((header) => header[0].toLowerCase() === "content-type")
-                                )[1] = "application/json; charset=utf-8";
-                            }
-                        }
+                        // the content-type was decided above, from what this argument is
+                        const val = arg.value === null ? "" : arg.value;
                         body.push({ type: "text", value: val });
                     } else if (arg.type === "TemplateLiteral") {
                         const exprs = [...arg.quasis, ...arg.expressions].sort((a, b) => a.start - b.start);
@@ -382,43 +567,19 @@ module.exports = function compileDeclarative(cb, app) {
                         if (call.obj.propertyName === "end") {
                             return false;
                         }
-                        // only simple objects can be optimized
-                        let objCode = code;
-                        for (const property of arg.properties) {
-                            if (property.key.type !== "Identifier" && property.key.type !== "Literal") {
-                                return false;
-                            }
-                            if (
-                                property.value.raw.startsWith("'") &&
-                                property.value.raw.endsWith("'") &&
-                                !property.value.value.includes("'")
-                            ) {
-                                objCode = replaceSingleCharacter(objCode, property.value.start, '"');
-                                objCode = replaceSingleCharacter(objCode, property.value.end - 1, '"');
-                            }
-                            if (property.value.type !== "Literal") {
-                                return false;
-                            }
-                        }
-                        if (
-                            typeof app.get("json replacer") !== "undefined" &&
-                            typeof app.get("json replacer") !== "string"
-                        ) {
+                        // a replacer runs per response on the ordinary path, so a body computed
+                        // once could not honour it
+                        const replacer = app.get("json replacer");
+                        if (typeof replacer !== "undefined" && typeof replacer !== "string") {
                             return false;
                         }
 
-                        if (!headers.some((header) => header[0].toLowerCase() === "content-type")) {
-                            headers.push(["content-type", "application/json; charset=utf-8"]);
-                        } else {
-                            /** @type {any} */ (
-                                headers.find((header) => header[0].toLowerCase() === "content-type")
-                            )[1] = "application/json; charset=utf-8";
-                        }
+                        // the content-type was decided above, from what this argument is
                         body.push({
                             type: "text",
                             value: stringify(
-                                JSON.parse(objCode.slice(arg.start, arg.end).replace(objKeyRegex, '"$1":')),
-                                app.get("json replacer"),
+                                literalValue(arg),
+                                replacer,
                                 app.get("json spaces"),
                                 app.get("json escape")
                             )
@@ -574,6 +735,13 @@ function filterNodes(node, fn) {
         for (const argument of node.arguments) {
             filtered.push(...filterNodes(argument, fn));
         }
+    }
+
+    // singular, and not the list above: it is what a return statement returns, and what a unary
+    // operator applies to. Without it `return res.send("x")` looked like a body with no calls in
+    // it at all, which would have compiled into an empty response.
+    if (node.argument) {
+        filtered.push(...filterNodes(node.argument, fn));
     }
 
     return filtered;

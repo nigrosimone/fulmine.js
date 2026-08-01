@@ -527,6 +527,41 @@ function escapeHtml(str) {
     return escaped;
 }
 
+// a charset parameter that is already there, and the whole parameter so it can be replaced
+const CHARSET_PRESENT = /;\s*charset\s*=/i;
+const CHARSET_PARAM = /;\s*charset\s*=\s*[^;]*/i;
+
+/**
+ * The content-type a header field should carry once it has been set, which is the value given plus
+ * the charset its media type implies. text/* gets one, and so does any type whose mime database
+ * entry names one, which is how application/json and application/manifest+json get theirs.
+ *
+ * @param {string} value
+ * @returns {string}
+ */
+function withDefaultCharset(value) {
+    if (CHARSET_PRESENT.test(value)) {
+        return value;
+    }
+    const charset = mime.charset(value.split(";")[0]);
+    return charset ? `${value}; charset=${charset.toLowerCase()}` : value;
+}
+
+/**
+ * The same content-type, saying utf-8. A string body is written as utf-8 whatever the header
+ * claimed, so a header claiming otherwise is wrong on the wire and not merely different, and
+ * Express replaces the parameter for that reason.
+ *
+ * Other parameters are kept where they were written rather than sorted, which is the one place
+ * this differs from Express and is not significant to any client.
+ *
+ * @param {string} value
+ * @returns {string}
+ */
+function withUtf8Charset(value) {
+    return CHARSET_PARAM.test(value) ? value.replace(CHARSET_PARAM, "; charset=utf-8") : `${value}; charset=utf-8`;
+}
+
 // fast null object
 // A constructor whose instances have no prototype, so a key from a request body or a query string
 // cannot reach Object.prototype. Typed as returning a plain record: without that, assigning one
@@ -558,5 +593,7 @@ module.exports = {
     fastQueryParse,
     canBeOptimized,
     escapeHtml,
+    withDefaultCharset,
+    withUtf8Charset,
     EMPTY_REGEX
 };

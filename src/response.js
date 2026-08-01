@@ -29,6 +29,8 @@ const {
     isPreconditionFailure,
     isRangeFresh,
     escapeHtml,
+    withDefaultCharset,
+    withUtf8Charset,
     NullObject
 } = require("./utils.js");
 const { Writable } = require("stream");
@@ -408,14 +410,18 @@ module.exports = class Response extends Writable {
         } else if (!isBuffer) {
             body = String(body);
         }
-        if (skipContentType) {
-            // nothing: send(null) leaves the content-type alone
-        } else if (typeof body === "string" && !isBuffer) {
+        if (typeof body === "string" && !isBuffer) {
             const contentType = this.headers["content-type"];
             if (!contentType) {
-                this.headers["content-type"] = "text/html; charset=utf-8";
-            } else if (!contentType.includes(";")) {
-                this.headers["content-type"] += "; charset=utf-8";
+                // send(null) sends an empty string without choosing a type. Only a string argument
+                // reaches for text/html, which is the branch Express's switch takes for it.
+                if (!skipContentType) {
+                    this.headers["content-type"] = "text/html; charset=utf-8";
+                }
+            } else if (typeof contentType === "string") {
+                // replaced, not only added: the body goes out as utf-8, so a content-type saying
+                // iso-8859-1 would be describing bytes that are not there.
+                this.headers["content-type"] = withUtf8Charset(contentType);
             }
         } else {
             if (!this.headers["content-type"]) {
@@ -769,14 +775,10 @@ module.exports = class Response extends Writable {
             }
         } else {
             field = field.toLowerCase();
-            if (field === "content-type") {
-                if (
-                    typeof value === "string" &&
-                    !value.includes("charset=") &&
-                    (value.startsWith("text/") || value === "application/json" || value === "application/javascript")
-                ) {
-                    value += "; charset=utf-8";
-                }
+            if (field === "content-type" && typeof value === "string") {
+                // every type the mime database gives a charset, not a list of three. The list was
+                // missing application/manifest+json among others, which Express does charset.
+                value = withDefaultCharset(value);
             }
             this.setHeader(field, value);
         }

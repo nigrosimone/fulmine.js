@@ -9,9 +9,13 @@ app.set("etag", false);
 app.post("/abc", (req, res) => {
     res.send("ok");
 });
+// collected rather than logged as it happens: the five requests below are concurrent, so a log
+// written while one is being served lands between the lines the client prints for the others, and
+// where exactly depends on which response comes back first
+const caught = [];
 app.use("/static", (req, res, next) => {
     express.static("src")(req, res, (e) => {
-        console.log("caught", e);
+        caught.push(String(e));
         next();
     });
 });
@@ -36,6 +40,7 @@ app.listen(13333, async () => {
     const texts = await Promise.all(responses.map((r) => r.text()));
 
     console.log(texts.map((t) => t.slice(0, 30)));
+    console.log("fell through:", caught.sort());
 
     process.exit(0);
 });

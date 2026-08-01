@@ -14,6 +14,18 @@ One scenario at a time:
 npm run benchmark:compare -- --duration 20 --scenario hello-world
 ```
 
+Declarative responses are off while measuring, so the comparison is between two frameworks doing
+the work rather than between one of them and a response uWS wrote at startup. To measure what that
+shortcut is worth instead, turn it on:
+
+```bash
+FULMINE_DECLARATIVE=1 npm run benchmark:compare -- --duration 20 --scenario hello-world
+```
+
+Measured on a route simple enough to be compiled, it is worth around a fifth more throughput once
+the load generator is no longer the bottleneck. Without pipelining, autocannon saturates first and
+both sides read the same. It is paid for with chunked framing and no `Content-Length`.
+
 ## Comparing two revisions of this project
 
 `run.js` answers "how does this compare to Express". `ab.js` answers a different question: "did

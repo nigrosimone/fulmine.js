@@ -118,7 +118,11 @@ async function main() {
         app.set("x-powered-by", false);
         app.set("env", "production");
         if (frameworkName === "fulmine") {
-            app.set("declarative responses", false);
+            // Off, so the comparison is between two frameworks doing the work rather than between
+            // one of them and a response uWS wrote at startup. Set FULMINE_DECLARATIVE=1 to measure
+            // what that shortcut is worth: on a route simple enough to be compiled it is around a
+            // fifth more throughput, paid for with chunked framing and no Content-Length.
+            app.set("declarative responses", process.env.FULMINE_DECLARATIVE === "1");
         }
     }
 
