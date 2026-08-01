@@ -125,6 +125,17 @@ module.exports = class Router extends EventEmitter {
         }
     }
 
+    /**
+     * Two methods sharing a name, as in Express.
+     *
+     * With a string and no handlers it reads a setting, falling back to the parent router when
+     * this one does not have it. With handlers it registers a GET route. A GET route also
+     * answers HEAD.
+     *
+     * @param {string} path setting name, or route path
+     * @param {...(Function|Array<Function>)} callbacks handlers; none means read a setting
+     * @returns {*} the setting value, or the created route
+     */
     get(path, ...callbacks) {
         if (typeof path === "string" && callbacks.length === 0) {
             const key = path;
@@ -532,6 +543,18 @@ module.exports = class Router extends EventEmitter {
         return true;
     }
 
+    /**
+     * Registers a callback that runs whenever a route parameter of this name is matched, before
+     * the route's own handlers, once per request per parameter.
+     *
+     * @example
+     * app.param("id", (req, res, next, value) => { req.user = lookup(value); next(); });
+     *
+     * @param {string|string[]} name parameter name, or several
+     * @param {(req: object, res: object, next: Function, value: string, name: string) => void} fn
+     * @returns {this} the router, for chaining
+     * @throws {TypeError} if name is neither a string nor an array
+     */
     param(name, fn) {
         // the message has to read exactly like this: it is the one the router package throws,
         // and it is what reaches anyone catching it
@@ -789,6 +812,18 @@ module.exports = class Router extends EventEmitter {
         }
     }
 
+    /**
+     * Mounts middleware, or a whole router, at a path.
+     *
+     * The path is optional: `use(fn)` and `use([fn, fn])` mount at the root. A mounted route
+     * matches the path and everything under it, which is what separates it from `all()`.
+     *
+     * Mounting a Router sets its mountpath and parent and emits 'mount' on it.
+     *
+     * @param {string|string[]|Function|Router} [path] mount path, or the first handler
+     * @param {...(Function|Router|Array<Function|Router>)} callbacks handlers, nested arrays allowed
+     * @returns {this} the router, for chaining
+     */
     use(path, ...callbacks) {
         if (
             typeof path === "function" ||
@@ -814,6 +849,15 @@ module.exports = class Router extends EventEmitter {
         return this;
     }
 
+    /**
+     * A builder for one path, so the path is written once and the verbs chain off it.
+     *
+     * @example
+     * app.route("/book").get(list).post(create);
+     *
+     * @param {string} path the path every verb on the returned object registers against
+     * @returns {object} an object with one method per HTTP verb, each returning it again
+     */
     route(path) {
         const fns = new NullObject();
         for (const method of methods) {

@@ -252,6 +252,12 @@ module.exports = class Response extends Writable {
         // usually should send headers but this is useless for us
         this.writeHead(this.statusCode);
     }
+    /**
+     * Sets the status code.
+     * @param {number} code an integer from 100 to 999
+     * @returns {this} the response, for chaining
+     * @throws {RangeError} if the code is outside that range or is not an integer
+     */
     status(code) {
         // Express 5 rejects anything that is not a plausible status code, instead of writing
         // NaN or a nonsense number into the response line
@@ -262,6 +268,11 @@ module.exports = class Response extends Writable {
         this.statusCode = statusCode;
         return this;
     }
+    /**
+     * Sets the status and sends its standard message as the body, so 404 answers "Not Found".
+     * @param {number} code
+     * @returns {this}
+     */
     sendStatus(code) {
         return this.status(code)
             .type("txt")
@@ -338,6 +349,16 @@ module.exports = class Response extends Writable {
         return this;
     }
 
+    /**
+     * Sends the body, picking a Content-Type when none was set and adding an ETag when the
+     * "etag" setting asks for one.
+     *
+     * A number is a value to serialise, the same as a boolean or an object, and never a status
+     * code: use `sendStatus()` for that.
+     *
+     * @param {string|number|boolean|object|Buffer|null} [body]
+     * @returns {this}
+     */
     send(body) {
         if (this.headersSent) {
             throw new Error("Can't write body: Response was already sent");
@@ -372,6 +393,18 @@ module.exports = class Response extends Writable {
         return this.end(body);
     }
 
+    /**
+     * Streams a file, setting Content-Type from the extension and answering conditional and
+     * range requests.
+     *
+     * The path must be absolute unless `options.root` is given.
+     *
+     * @param {string} path
+     * @param {{root?: string, maxAge?: number|string, lastModified?: boolean, headers?: object,
+     *   dotfiles?: "allow"|"deny"|"ignore", acceptRanges?: boolean, cacheControl?: boolean,
+     *   immutable?: boolean}|((err?: Error) => void)} [options] or the callback
+     * @param {(err?: Error) => void} [callback] called once sent, or with the error
+     */
     sendFile(path, options = new NullObject(), callback) {
         if (typeof path !== "string") {
             throw new TypeError("path argument is required to res.sendFile");
@@ -578,6 +611,13 @@ module.exports = class Response extends Writable {
             file.pipe(this);
         }
     }
+    /**
+     * Sends a file as an attachment, so the browser saves it instead of displaying it.
+     * @param {string} path
+     * @param {string|object|Function} [filename] name offered to the user, defaults to the basename
+     * @param {object|Function} [options] passed through to sendFile
+     * @param {(err?: Error) => void} [callback]
+     */
     download(path, filename, options, callback) {
         let done = callback;
         let name = filename;
@@ -632,6 +672,12 @@ module.exports = class Response extends Writable {
     header(field, value) {
         return this.set(field, value);
     }
+    /**
+     * Sets one header, or several from an object. Also available as `header()`.
+     * @param {string|object} field header name, or an object of them
+     * @param {string|string[]} [value]
+     * @returns {this}
+     */
     set(field, value) {
         if (typeof field === "object") {
             for (const header in field) {
@@ -651,6 +697,11 @@ module.exports = class Response extends Writable {
         }
         return this;
     }
+    /**
+     * Reads a response header that has been set, case insensitively.
+     * @param {string} field
+     * @returns {string|string[]|undefined}
+     */
     get(field) {
         return this.headers[field.toLowerCase()];
     }
@@ -660,10 +711,22 @@ module.exports = class Response extends Writable {
     getHeaders() {
         return this.headers;
     }
+    /**
+     * Removes a header that has not been flushed yet.
+     * @param {string} field
+     * @returns {this}
+     */
     removeHeader(field) {
         delete this.headers[field.toLowerCase()];
         return this;
     }
+    /**
+     * Adds a header without replacing what is already there, which is what Set-Cookie and Vary
+     * need.
+     * @param {string} field
+     * @param {string|string[]} value
+     * @returns {this}
+     */
     append(field, value) {
         field = field.toLowerCase();
         const old = this.headers[field];
@@ -685,6 +748,13 @@ module.exports = class Response extends Writable {
         }
         return this;
     }
+    /**
+     * Renders a view and sends it. With a callback the result goes to the callback instead, and
+     * nothing is sent.
+     * @param {string} view view name
+     * @param {object|((err: Error|null, html?: string) => void)} [options] locals, or the callback
+     * @param {(err: Error|null, html?: string) => void} [callback]
+     */
     render(view, options, callback) {
         if (typeof options === "function") {
             callback = options;
@@ -706,6 +776,16 @@ module.exports = class Response extends Writable {
         // use req.app like express does, so mounted sub-apps resolve views with their own settings
         this.req.app.render(view, options, done);
     }
+    /**
+     * Appends a Set-Cookie header. An object value is serialised as JSON. With `signed` the
+     * cookie is signed using the secret given to cookie-parser.
+     * @param {string} name
+     * @param {string|object} value
+     * @param {{maxAge?: number, expires?: Date, path?: string, domain?: string, secure?: boolean,
+     *   httpOnly?: boolean, sameSite?: boolean|string, signed?: boolean, priority?: string,
+     *   partitioned?: boolean}} [options]
+     * @returns {this}
+     */
     cookie(name, value, options) {
         const opt = { ...(options ?? {}) }; // create a new ref because we change original object (https://github.com/dimdenGD/ultimate-express/issues/68)
         let val = typeof value === "object" ? "j:" + JSON.stringify(value) : String(value);
@@ -727,11 +807,25 @@ module.exports = class Response extends Writable {
         this.append("Set-Cookie", cookie.serialize(name, val, opt));
         return this;
     }
+    /**
+     * Clears a cookie. The browser only matches it if `path` and `domain` are the ones it was
+     * set with. Any `maxAge` or `expires` passed here is ignored, since clearing is defined as
+     * expiring it immediately.
+     * @param {string} name
+     * @param {object} [options]
+     * @returns {this}
+     */
     clearCookie(name, options) {
         const opts = { path: "/", ...options, expires: new Date(1) };
         delete opts.maxAge;
         return this.cookie(name, "", opts);
     }
+    /**
+     * Sets Content-Disposition to attachment, and Content-Type from the extension when a
+     * filename is given.
+     * @param {string} [filename]
+     * @returns {this}
+     */
     attachment(filename) {
         if (filename) {
             this.type(Path.extname(filename));
@@ -739,6 +833,13 @@ module.exports = class Response extends Writable {
         this.set("Content-Disposition", contentDisposition(filename));
         return this;
     }
+    /**
+     * Answers according to the Accept header, calling the handler whose key matches best. A
+     * `default` key catches everything else; without one an unmatched request gets 406.
+     * Sets Vary: Accept.
+     * @param {object} object handlers keyed by extension or mime type
+     * @returns {this}
+     */
     format(object) {
         const keys = Object.keys(object).filter((v) => v !== "default");
         const key = keys.length > 0 ? this.req.accepts(keys) : false;
@@ -756,6 +857,11 @@ module.exports = class Response extends Writable {
 
         return this;
     }
+    /**
+     * Sends JSON, honouring the "json replacer", "json spaces" and "json escape" settings.
+     * @param {*} body
+     * @returns {this}
+     */
     json(body) {
         if (!this.headers["content-type"]) {
             this.headers["content-type"] = "application/json; charset=utf-8";
@@ -765,6 +871,12 @@ module.exports = class Response extends Writable {
         const spaces = this.app.get("json spaces");
         this.send(stringify(body, replacer, spaces, escape));
     }
+    /**
+     * Sends JSON wrapped in a callback when the query names one, under the setting
+     * "jsonp callback name", which defaults to "callback". Without it this is plain JSON.
+     * @param {*} object
+     * @returns {this}
+     */
     jsonp(object) {
         let callback = this.req.query[this.app.get("jsonp callback name")];
         let body = stringify(
@@ -799,6 +911,11 @@ module.exports = class Response extends Writable {
 
         return this.send(body);
     }
+    /**
+     * Adds to the Link header, one entry per key, the key being the rel.
+     * @param {object} links rel to url
+     * @returns {this}
+     */
     links(links) {
         // this.headers['link'] = Object.entries(links).map(([rel, url]) => `<${url}>; rel="${rel}"`).join(', ');
         // return this;
@@ -814,12 +931,27 @@ module.exports = class Response extends Writable {
                     .join(", ")
         );
     }
+    /**
+     * Sets the Location header, URL-encoding the value.
+     *
+     * "back" is a literal location here, not the Referrer: that shortcut is gone in Express 5.
+     *
+     * @param {string} path
+     * @returns {this}
+     */
     location(path) {
         // Express 5 dropped the magic where 'back' meant the Referrer header. It is now just a
         // relative URL like any other, which is what res.redirect('back') also does here.
         this.headers["location"] = encodeUrl(path);
         return this;
     }
+    /**
+     * Redirects, defaulting to 302. The status may be given first, as `redirect(301, url)`.
+     * The body is a short note in whichever format the client accepts.
+     * @param {number|string} status status code, or the url when the status is left out
+     * @param {string} [url]
+     * @param {boolean} [forceHtml] answer with an HTML body whatever the client accepts
+     */
     redirect(status, url, forceHtml = false) {
         if (typeof status !== "number" && !url) {
             url = status;
@@ -867,6 +999,12 @@ module.exports = class Response extends Writable {
         }
     }
 
+    /**
+     * Sets Content-Type. An extension is looked up as a mime type and gets a charset; anything
+     * containing a slash is used as written. Also available as `contentType()`.
+     * @param {string} type
+     * @returns {this}
+     */
     type(type) {
         const ct = type.indexOf("/") === -1 ? mime.contentType(type) || "application/octet-stream" : type;
 
@@ -874,6 +1012,12 @@ module.exports = class Response extends Writable {
     }
     contentType = this.type;
 
+    /**
+     * Adds a field to Vary, without repeating one already there.
+     * @param {string|string[]} field
+     * @returns {this}
+     * @throws {Error} if no field is given, since a Vary with nothing in it is a mistake
+     */
     vary(field) {
         if (!field || (Array.isArray(field) && !field.length)) {
             throw new Error("field argument is required for res.vary()");
