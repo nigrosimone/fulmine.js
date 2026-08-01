@@ -80,6 +80,9 @@ module.exports = class Request extends Readable {
         this._matchedMethods = new Set();
         this._gotParams = new Set();
         this._stack = [];
+        // number of entries in _stack that aren't the empty path. while this is 0 the whole
+        // stack joins to "", so getFullMountpath can skip the join entirely
+        this._stackMounted = 0;
         this._paramStack = [];
         this.receivedData = false;
         // reading ip is very slow in UWS, so its better to not do it unless truly needed
