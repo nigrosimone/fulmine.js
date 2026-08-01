@@ -30,37 +30,46 @@ function parseArgs(argv) {
     return args;
 }
 
-function wait(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
+// The child announces itself on stdout once it is listening. Waiting for that line, rather than
+// probing the port, is what makes it impossible to be answered by the previous scenario's server:
+// every scenario reuses the same two ports, and a server still draining a load run's keep-alive
+// connections will happily answer a readiness probe and then never answer the real request.
+function waitForReady(server, framework, scenarioName, timeoutMs = 15000) {
+    const expected = `ready:${framework.id}:${scenarioName}:${framework.port}`;
 
-function waitForReady(port, timeoutMs = 10000) {
-    const start = Date.now();
     return new Promise((resolve, reject) => {
-        const tryReady = () => {
-            const request = http.get({ host: "127.0.0.1", port, path: "/__ready" }, (response) => {
-                response.resume();
-                if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
-                    resolve();
-                    return;
-                }
-                if (Date.now() - start > timeoutMs) {
-                    reject(new Error(`Timeout waiting for server on port ${port}`));
-                    return;
-                }
-                setTimeout(tryReady, 200);
-            });
+        let stdout = "";
 
-            request.on("error", () => {
-                if (Date.now() - start > timeoutMs) {
-                    reject(new Error(`Timeout waiting for server on port ${port}`));
-                    return;
-                }
-                setTimeout(tryReady, 200);
-            });
+        const finish = (err) => {
+            clearTimeout(timer);
+            server.stdout.off("data", onData);
+            server.off("exit", onExit);
+            if (err) {
+                reject(err);
+            } else {
+                resolve();
+            }
         };
 
-        tryReady();
+        const onData = (chunk) => {
+            stdout += chunk.toString();
+            if (stdout.includes(expected)) {
+                finish();
+            }
+        };
+
+        const onExit = (code, signal) => {
+            finish(
+                new Error(`${framework.id}/${scenarioName} exited (code ${code}, signal ${signal}) before it was ready`)
+            );
+        };
+
+        const timer = setTimeout(() => {
+            finish(new Error(`Timeout waiting for ${framework.id}/${scenarioName} on port ${framework.port}`));
+        }, timeoutMs);
+
+        server.stdout.on("data", onData);
+        server.on("exit", onExit);
     });
 }
 
@@ -91,11 +100,16 @@ function startScenarioServer(framework, scenarioName) {
 
 async function stopScenarioServer(server, stderrRef) {
     if (server.exitCode === null) {
+        // waiting for the process to actually go is the point: the ports are fixed and reused by
+        // the next scenario, so returning while this one still holds its port is what lets a
+        // request land on a server that is halfway through shutting down
+        const exited = new Promise((resolve) => server.once("exit", resolve));
         server.kill("SIGTERM");
-        await wait(300);
-        if (server.exitCode === null) {
-            server.kill("SIGKILL");
-        }
+        // a graceful close waits for the load run's keep-alive connections to drain, which is not
+        // quick after a scenario that moved hundreds of megabytes, so give it room before insisting
+        const insist = setTimeout(() => server.kill("SIGKILL"), 5000);
+        await exited;
+        clearTimeout(insist);
     }
 
     const stderr = stderrRef();
@@ -194,8 +208,12 @@ async function validateScenarioResponses(scenarioName, scenario) {
     for (const framework of FRAMEWORKS) {
         const { server, stderrRef } = startScenarioServer(framework, scenarioName);
         try {
-            await waitForReady(framework.port);
+            await waitForReady(server, framework, scenarioName);
             results[framework.id] = await runHttpRequest(framework.port, request);
+        } catch (error) {
+            // say which server failed to answer. Without it the report names neither, and a
+            // validation that never ran is indistinguishable from one that ran and disagreed
+            throw new Error(`${framework.id} did not answer: ${error.message}`, { cause: error });
         } finally {
             await stopScenarioServer(server, stderrRef);
         }
@@ -248,7 +266,7 @@ async function runScenario(framework, scenarioName, scenario, durationSeconds) {
     const { server, stderrRef } = startScenarioServer(framework, scenarioName);
 
     try {
-        await waitForReady(framework.port);
+        await waitForReady(server, framework, scenarioName);
 
         const load = scenario.load || {};
         const request = resolveRequest(scenario);
@@ -347,6 +365,9 @@ function buildMarkdown(results) {
         if (!row.validation || !row.validation.ok) {
             unvalidated.push({
                 scenario: row.name,
+                // a validation that threw never compared anything, so it must not be reported as
+                // the two servers having disagreed
+                ran: row.validation ? row.validation.ran !== false : false,
                 message: row.validation ? row.validation.message : "validation did not run"
             });
         }
@@ -385,15 +406,27 @@ function buildMarkdown(results) {
     }
 
     if (unvalidated.length > 0) {
+        const disagreed = unvalidated.filter((entry) => entry.ran).length;
+        const neverRan = unvalidated.length - disagreed;
+        const reasons = [];
+        if (disagreed > 0) {
+            reasons.push(`${disagreed} where Express and Fulmine did not return the same status and body`);
+        }
+        if (neverRan > 0) {
+            reasons.push(`${neverRan} where the check could not run at all, so nothing was compared`);
+        }
+
         lines.push("");
         lines.push(
-            `> :warning: ${unvalidated.length} scenario(s) did not pass response validation: express and uExpress did not return the same status and body, so their numbers are not comparable.`
+            `> :warning: ${unvalidated.length} scenario(s) are unvalidated: ${reasons.join(", and ")}. ` +
+                `Their numbers are not comparable either way.`
         );
         lines.push("");
-        lines.push("### Failed Response Validation");
+        lines.push("### Unvalidated Scenarios");
         lines.push("");
         for (const entry of unvalidated) {
-            lines.push(`- \`${entry.scenario}\`\n\`\`\`\n${entry.message}\n\`\`\``);
+            const what = entry.ran ? "responses differ" : "check did not run";
+            lines.push(`- \`${entry.scenario}\` (${what})\n\`\`\`\n${entry.message}\n\`\`\``);
         }
     }
 
@@ -448,6 +481,8 @@ async function main() {
         } catch (error) {
             validation = {
                 ok: false,
+                // it never got as far as comparing anything, which is a different thing to report
+                ran: false,
                 message: error.stack || error.message || String(error)
             };
             process.stderr.write(`[validation] ERROR ${scenario.name}: ${validation.message}\n`);
