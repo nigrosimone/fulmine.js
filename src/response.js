@@ -415,7 +415,7 @@ module.exports = class Response extends Writable {
      * "ignore"), `acceptRanges`, `cacheControl`, `immutable`, `etag` and `setHeaders`.
      *
      * @param {string} path
-     * @param {object} [options]
+     * @param {Record<string, any>} [options]
      * @param {(err?: Error) => void} [callback] called once sent, or with the error
      */
     sendFile(path, options = new NullObject(), callback) {
@@ -423,7 +423,7 @@ module.exports = class Response extends Writable {
             throw new TypeError("path argument is required to res.sendFile");
         }
         if (typeof options === "function") {
-            callback = options;
+            callback = /** @type {any} */ (options);
             options = new NullObject();
         }
         if (!options) options = new NullObject();
@@ -432,7 +432,7 @@ module.exports = class Response extends Writable {
         const done = /** @type {(err?: Error) => void} */ (callback ?? this.req.next);
         // default options
         if (typeof options.maxAge === "string") {
-            options.maxAge = ms(options.maxAge);
+            options.maxAge = ms(/** @type {any} */ (options.maxAge));
         } else if (typeof options.maxAge === "undefined") {
             options.maxAge = 0;
         }
@@ -541,7 +541,7 @@ module.exports = class Response extends Writable {
             }
         }
         if (options.setHeaders) {
-            options.setHeaders(this, fullpath, stat);
+            options.setHeaders(/** @type {any} */ (this), fullpath, stat);
         }
 
         // etag
@@ -636,7 +636,7 @@ module.exports = class Response extends Writable {
      *
      * @param {string} path
      * @param {string} [filename] name offered to the user, defaults to the basename of the path
-     * @param {object} [options] passed through to sendFile
+     * @param {Record<string, any>} [options] passed through to sendFile
      * @param {(err?: Error) => void} [callback]
      */
     download(path, filename, options, callback) {
@@ -647,11 +647,11 @@ module.exports = class Response extends Writable {
 
         // support function as second or third arg
         if (typeof filename === "function") {
-            done = filename;
+            done = /** @type {any} */ (filename);
             name = null;
             opts = {};
         } else if (typeof options === "function") {
-            done = options;
+            done = /** @type {any} */ (options);
             opts = {};
         }
 
@@ -777,12 +777,12 @@ module.exports = class Response extends Writable {
      * Renders a view and sends it. With a callback the result goes to the callback instead, and
      * nothing is sent. A function in the options position is taken as the callback.
      * @param {string} view view name
-     * @param {object} [options] locals for the view
+     * @param {Record<string, any>} [options] locals for the view
      * @param {(err: Error|null, html?: string) => void} [callback]
      */
     render(view, options, callback) {
         if (typeof options === "function") {
-            callback = options;
+            callback = /** @type {any} */ (options);
             options = {};
         }
         if (!options) {
@@ -837,10 +837,12 @@ module.exports = class Response extends Writable {
      * set with. Any `maxAge` or `expires` passed here is ignored, since clearing is defined as
      * expiring it immediately.
      * @param {string} name
-     * @param {object} [options]
+     * @param {Record<string, any>} [options]
      * @returns {this}
      */
     clearCookie(name, options) {
+        // clearing is defined as expiring now, so any maxAge passed in is dropped rather than honoured
+        /** @type {Record<string, any>} */
         const opts = { path: "/", ...options, expires: new Date(1) };
         delete opts.maxAge;
         return this.cookie(name, "", opts);
@@ -862,7 +864,7 @@ module.exports = class Response extends Writable {
      * Answers according to the Accept header, calling the handler whose key matches best. A
      * `default` key catches everything else; without one an unmatched request gets 406.
      * Sets Vary: Accept.
-     * @param {object} object handlers keyed by extension or mime type
+     * @param {Record<string, any>} object handlers keyed by extension or mime type
      * @returns {this}
      */
     format(object) {
@@ -938,7 +940,7 @@ module.exports = class Response extends Writable {
     }
     /**
      * Adds to the Link header, one entry per key, the key being the rel.
-     * @param {object} links rel to url
+     * @param {Record<string, any>} links rel to url
      * @returns {this}
      */
     links(links) {
@@ -1047,7 +1049,7 @@ module.exports = class Response extends Writable {
         if (!field || (Array.isArray(field) && !field.length)) {
             throw new Error("field argument is required for res.vary()");
         }
-        vary(this, field);
+        vary(/** @type {any} */ (this), field);
         return this;
     }
 

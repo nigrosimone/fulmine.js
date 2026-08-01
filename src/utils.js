@@ -525,7 +525,11 @@ function escapeHtml(str) {
 }
 
 // fast null object
-const NullObject = function () {};
+// A constructor whose instances have no prototype, so a key from a request body or a query string
+// cannot reach Object.prototype. Typed as returning a plain record: without that, assigning one
+// reads as assigning `any`, which resets narrowing instead of removing undefined from it.
+/** @type {new () => Record<string, any>} */
+const NullObject = /** @type {any} */ (function () {});
 NullObject.prototype = Object.create(null);
 
 module.exports = {
