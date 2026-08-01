@@ -29,7 +29,7 @@ const { fastQueryParse, NullObject } = require("./utils.js");
 // real one of the same size would
 const MAX_PREALLOCATED_BODY = 1024 * 1024;
 
-function static(root, options) {
+function serveStatic(root, options) {
     if (!options) options = new NullObject();
     if (typeof options.index === "undefined") options.index = "index.html";
     if (typeof options.redirect === "undefined") options.redirect = true;
@@ -411,7 +411,7 @@ const urlencoded = createBodyParser("application/x-www-form-urlencoded", functio
 });
 
 module.exports = {
-    static,
+    static: serveStatic,
     json,
     raw,
     text,

@@ -15,7 +15,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// H3App, DeclarativeResponse and _cfg all exist at runtime but are missing from the
+// declaration file the package ships, so the module is read through a loose alias
 const uWS = require("uWebSockets.js");
+const uWSAny = /** @type {any} */ (uWS);
 const Router = require("./router.js");
 const {
     removeDuplicateSlashes,
@@ -78,7 +81,7 @@ class Application extends Router {
             if (!settings.uwsOptions.key_file_name || !settings.uwsOptions.cert_file_name) {
                 throw new Error("uwsOptions.key_file_name and uwsOptions.cert_file_name are required for HTTP/3");
             }
-            this.uwsApp = uWS.H3App(settings.uwsOptions);
+            this.uwsApp = uWSAny.H3App(settings.uwsOptions);
         } else if (settings.uwsOptions.key_file_name && settings.uwsOptions.cert_file_name) {
             this.uwsApp = uWS.SSLApp(settings.uwsOptions);
         } else {
@@ -299,6 +302,7 @@ class Application extends Router {
         // and node emits both 'listening' and 'error' from a process.nextTick.
         const onListen = (socket) => {
             if (!socket) {
+                /** @type {NodeJS.ErrnoException} */
                 const err = new Error("listen EADDRINUSE: address already in use :::" + port);
                 err.code = "EADDRINUSE";
                 // Express 5 registers the listen callback on 'error' as well as on 'listening',
@@ -470,6 +474,7 @@ class Application extends Router {
                           '"'
                         : 'directory "' + view.root + '"';
 
+                /** @type {Error & { view?: unknown }} */
                 const err = new Error(`Failed to lookup view "${name}" in views ${dirs}`);
                 err.view = view;
                 return callback(err);
@@ -510,6 +515,7 @@ class Application extends Router {
                 if (wasListening) {
                     return callback();
                 }
+                /** @type {NodeJS.ErrnoException} */
                 const err = new Error("Server is not running.");
                 err.code = "ERR_SERVER_NOT_RUNNING";
                 callback(err);
