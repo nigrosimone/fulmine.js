@@ -870,11 +870,11 @@ module.exports = class Router extends EventEmitter {
         const fns = new NullObject();
         for (const method of methods) {
             fns[method] = (...callbacks) => {
-                return this.createRoute(method, path, fns, ...callbacks);
+                return this.createRoute(method, path, /** @type {any} */ (fns), ...callbacks);
             };
         }
         fns.get = (...callbacks) => {
-            return this.createRoute("GET", path, fns, ...callbacks);
+            return this.createRoute("GET", path, /** @type {any} */ (fns), ...callbacks);
         };
         return fns;
     }

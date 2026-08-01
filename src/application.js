@@ -425,13 +425,13 @@ class Application extends Router {
      * A function in the options position is taken as the callback.
      *
      * @param {string} name view name, resolved against the "views" setting
-     * @param {object} [options] locals for the view
+     * @param {Record<string, any>} [options] locals for the view
      * @param {(err: Error|null, html?: string) => void} [callback] receives the rendered view. It
      *   is what render is for, so leaving it out throws, as it does in Express
      */
     render(name, options, callback) {
         if (typeof options === "function") {
-            callback = options;
+            callback = /** @type {any} */ (options);
             options = new NullObject();
         }
         // render exists to hand the result somewhere, so there is always a callback by this point:

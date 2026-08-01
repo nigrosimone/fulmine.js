@@ -24,6 +24,11 @@ const { isIP } = require("node:net");
 const fresh = require("fresh");
 const { Readable } = require("stream");
 
+// accepts, type-is, proxy-addr and fresh all declare a node IncomingMessage and read nothing off
+// it but .headers. This request is deliberately not one, so it is handed over as itself and the
+// declared shape is stepped around at each call.
+const asMessage = (req) => /** @type {any} */ (req);
+
 const discardedDuplicates = new Set([
     "age",
     "authorization",
@@ -236,7 +241,7 @@ module.exports = class Request extends Readable {
         if (!trust) {
             return this.parsedIp;
         }
-        return proxyaddr(this, trust);
+        return proxyaddr(asMessage(this), trust);
     }
 
     /**
@@ -249,7 +254,7 @@ module.exports = class Request extends Readable {
         if (!trust) {
             return [];
         }
-        const addrs = proxyaddr.all(this, trust);
+        const addrs = proxyaddr.all(asMessage(this), trust);
         addrs.reverse().pop();
         return addrs;
     }
@@ -479,7 +484,7 @@ module.exports = class Request extends Readable {
      *   acceptable type when called with no arguments
      */
     accepts(...types) {
-        return accepts(this).types(...types);
+        return accepts(asMessage(this)).types(.../** @type {any} */ (types));
     }
 
     /**
@@ -488,7 +493,7 @@ module.exports = class Request extends Readable {
      * @returns {string|string[]|false}
      */
     acceptsCharsets(...charsets) {
-        return accepts(this).charsets(...charsets);
+        return accepts(asMessage(this)).charsets(.../** @type {any} */ (charsets));
     }
 
     /**
@@ -497,7 +502,7 @@ module.exports = class Request extends Readable {
      * @returns {string|string[]|false}
      */
     acceptsEncodings(...encodings) {
-        return accepts(this).encodings(...encodings);
+        return accepts(asMessage(this)).encodings(.../** @type {any} */ (encodings));
     }
 
     /**
@@ -506,7 +511,7 @@ module.exports = class Request extends Readable {
      * @returns {string|string[]|false}
      */
     acceptsLanguages(...languages) {
-        return accepts(this).languages(...languages);
+        return accepts(asMessage(this)).languages(.../** @type {any} */ (languages));
     }
 
     acceptsEncoding(...args) {
@@ -534,14 +539,14 @@ module.exports = class Request extends Readable {
      */
     is(types) {
         if (Array.isArray(types)) {
-            return typeis(this, types);
+            return typeis(asMessage(this), types);
         }
 
         if (arguments.length === 1) {
-            return typeis(this, [types]);
+            return typeis(asMessage(this), [types]);
         }
 
-        return typeis(this, [...arguments]);
+        return typeis(asMessage(this), [...arguments]);
     }
 
     /**
