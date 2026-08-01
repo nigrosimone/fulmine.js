@@ -45,18 +45,18 @@ declare module "fulmine" {
         export import Send = e.Send;
     }
 
-    type UltimateExpressListen = ReturnType<e.Express["listen"]> & {
+    type FulmineServer = ReturnType<e.Express["listen"]> & {
         uwsApp: uWS.TemplatedApp;
     };
 
-    type UltimateExpress = Omit<e.Express, "listen"> & {
+    type Fulmine = Omit<e.Express, "listen"> & {
         readonly uwsApp: uWS.TemplatedApp;
-        listen(port: number, callback?: (token: any) => void): UltimateExpressListen;
-        listen(port: number, host: string, callback?: (token: any) => void): UltimateExpressListen;
-        listen(callback: (token: any) => void): UltimateExpressListen;
+        listen(port: number, callback?: (token: any) => void): FulmineServer;
+        listen(port: number, host: string, callback?: (token: any) => void): FulmineServer;
+        listen(callback: (token: any) => void): FulmineServer;
     };
 
-    function express(settings?: Settings): UltimateExpress;
+    function express(settings?: Settings): Fulmine;
 
     export = express;
 }
