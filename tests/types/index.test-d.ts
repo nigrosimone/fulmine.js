@@ -2,6 +2,7 @@ import { expectType, expectAssignable } from "tsd";
 import express from "fulmine";
 import type { Request, Response, NextFunction, IRouter, RequestHandler, ErrorRequestHandler } from "express";
 import type { Server } from "http";
+import type uWS from "uWebSockets.js";
 
 const app = express();
 
@@ -33,7 +34,9 @@ app.get("/request", (req: Request, res: Response) => {
     expectType<string>(req.path);
     expectType<any>(req.body);
     expectAssignable<Record<string, any>>(req.query);
-    expectAssignable<Record<string, string>>(req.params);
+    // a named wildcard such as /*splat arrives as the array of segments it matched,
+    // so a parameter is a string or an array of them
+    expectAssignable<Record<string, string | string[]>>(req.params);
     expectType<any>(req.cookies);
 
     expectType<string | undefined>(req.get("Content-Type"));
@@ -133,3 +136,25 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 const server = app.listen(3000);
 expectAssignable<Server>(server);
 server.close();
+
+// The surface that is Fulmine's own rather than re-exported from Express: the constructor
+// settings, the uWS app hanging off both the application and the server, and the listen
+// overloads that hand back a uWS listen token.
+const configured = express({
+    threads: 2,
+    http3: false,
+    uwsOptions: { key_file_name: "key.pem", cert_file_name: "cert.pem" }
+});
+expectType<uWS.TemplatedApp>(configured.uwsApp);
+
+const withToken = configured.listen(3000, (token) => {
+    expectType<any>(token);
+});
+expectType<uWS.TemplatedApp>(withToken.uwsApp);
+withToken.close();
+
+expectAssignable<Server>(configured.listen(3000, "127.0.0.1"));
+expectAssignable<Server>(configured.listen((_token) => {}));
+
+// an existing uWS app can be handed in instead of letting Fulmine create one
+express({ uwsApp: configured.uwsApp }).listen(3001).close();
