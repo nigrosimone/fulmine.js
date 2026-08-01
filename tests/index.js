@@ -21,7 +21,10 @@ if(filterPath) {
     if(!filterPath.endsWith('.js')) {
         testCategories = testCategories.filter(category => category.startsWith(path.basename(filterPath)));
     } else {
-        testCategories = [path.dirname(filterPath).split(path.sep).pop()];
+        // basename, not split(path.sep): on Windows path.sep is a backslash, so a path typed with
+        // forward slashes never split and the whole "tests/tests/middlewares" came back as the
+        // category name. path.basename handles either separator on both platforms
+        testCategories = [path.basename(path.dirname(filterPath))];
     }
 }
 
