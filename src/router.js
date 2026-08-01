@@ -138,10 +138,6 @@ module.exports = class Router extends EventEmitter {
         return this.createRoute("GET", path, this, ...callbacks);
     }
 
-    del() {
-        throw new Error("app.del() has been removed. Use app.delete() instead.");
-    }
-
     getFullMountpath(req) {
         // path-less app.use() pushes "", so a stack of only those joins to "" no matter how deep it is.
         // patternToRegex("", true) is EMPTY_REGEX, so this returns exactly what the join path would,
@@ -455,7 +451,7 @@ module.exports = class Router extends EventEmitter {
             path = path.slice(0, -1);
         }
         const match = pattern.exec(path);
-        const obj = new NullObject();
+        const obj = { __proto__: null };
         const wildcardNames = pattern._wildcardNames;
         if (match?.groups) {
             for (const name in match.groups) {
@@ -473,7 +469,7 @@ module.exports = class Router extends EventEmitter {
     _preprocessRequest(req, res, route) {
         req.route = route;
         if (route.optimizedParams) {
-            req.params = Object.assign(new NullObject(), req.optimizedParams);
+            req.params = Object.assign({ __proto__: null }, req.optimizedParams);
         } else if (route.complex) {
             let path = req._originalPath;
             if (req._stack.length > 0) {
@@ -485,14 +481,14 @@ module.exports = class Router extends EventEmitter {
             req.params = this._extractParams(route.pattern, path);
             if (req._paramStack.length > 0) {
                 for (const params of req._paramStack) {
-                    req.params = Object.assign(new NullObject(), params, req.params);
+                    req.params = Object.assign({ __proto__: null }, params, req.params);
                 }
             }
         } else {
-            req.params = new NullObject();
+            req.params = { __proto__: null };
             if (req._paramStack.length > 0) {
                 for (const params of req._paramStack) {
-                    req.params = Object.assign(new NullObject(), params, req.params);
+                    req.params = Object.assign({ __proto__: null }, params, req.params);
                 }
             }
         }
@@ -537,8 +533,10 @@ module.exports = class Router extends EventEmitter {
     }
 
     param(name, fn) {
-        if (typeof name === "function") {
-            throw new Error("app.param(fn) has been removed. Use app.param(name, fn) instead.");
+        // Express 5 validates the name and rejects the v4 handler-factory form with this exact
+        // TypeError, from the router package
+        if (typeof name !== "string" && !Array.isArray(name)) {
+            throw new TypeError("argument name must be a string");
         } else {
             if (this._paramFunction) {
                 if (!this._paramCallbacks.has(name)) {

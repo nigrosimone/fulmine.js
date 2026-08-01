@@ -89,7 +89,7 @@ module.exports = class Request extends Readable {
         this.method = req.getCaseSensitiveMethod().toUpperCase();
         this._isOptions = this.method === "OPTIONS";
         this._isHead = this.method === "HEAD";
-        this.params = {};
+        this.params = { __proto__: null };
 
         this._matchedMethods = new Set();
         this._gotParams = new Set();
@@ -443,10 +443,6 @@ module.exports = class Request extends Readable {
         }
 
         return typeis(this, [...arguments]);
-    }
-
-    param() {
-        throw new Error("req.param() has been removed. Use req.params, req.body, or req.query instead.");
     }
 
     range(size, options) {
