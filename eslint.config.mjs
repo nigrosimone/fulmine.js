@@ -24,7 +24,10 @@ export default [
             "prefer-const": ["warn", { destructuring: "all" }],
             "no-console": "off",
             // several getters return undefined on purpose when there is nothing to report
-            "getter-return": ["error", { allowImplicit: true }]
+            "getter-return": ["error", { allowImplicit: true }],
+            // a blank line between class members. Prettier keeps a blank line that is already
+            // there but never adds one, so this is the rule that puts it there, and --fix does it
+            "lines-between-class-members": ["error", "always", { exceptAfterSingleLine: false }]
         }
     },
     {
