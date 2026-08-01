@@ -1,5 +1,5 @@
 import { expectType, expectAssignable } from 'tsd';
-import express from 'ultimate-express';
+import express from 'fulmine';
 import type {
   Request, Response, NextFunction,
   IRouter, RequestHandler, ErrorRequestHandler

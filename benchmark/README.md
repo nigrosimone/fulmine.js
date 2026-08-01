@@ -1,6 +1,6 @@
 # Benchmark suite
 
-Run all scenarios and compare `express` vs `ultimate-express`:
+Run all scenarios and compare `express` vs `fulmine`:
 
 ```bash
 npm run benchmark:compare -- --duration 20 --output benchmark_summary.md

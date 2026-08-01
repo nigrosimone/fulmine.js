@@ -104,13 +104,13 @@ for (const testCategory of testCategories) {
                             t.diagnostic(skipReason ? `express5: SKIPPED (${skipReason})` : 'express5: SKIPPED');
                         }
 
-                        // Run with ultimate-express
+                        // Run with fulmine
                         const newCode = testCode.replace(`const express = require("express");`, `const express = require("../../../src/index.js");`);
                         if(newCode === testCode) {
                             throw new Error("Test code does not contain require express");
                         }
                         fs.writeFileSync(testPath, newCode);
-                        timeout = setTimeout(() => timeoutFunc('ultimate-express'), TEST_TIMEOUT)
+                        timeout = setTimeout(() => timeoutFunc('fulmine'), TEST_TIMEOUT)
                         let uExpressOutput = await execTest(testPath);
                         clearTimeout(timeout);
 

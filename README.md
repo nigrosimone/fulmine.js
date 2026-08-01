@@ -1,58 +1,60 @@
-# µExpress / Ultimate Express
+# Fulmine
 
-The *Ultimate* Express. Fastest http server with **full** Express compatibility, based on µWebSockets.
+A drop-in replacement for Express 5, running on [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js) instead of `node:http`. Your existing middleware keeps working.
 
-This library is a very fast re-implementation of Express.js 4.
-It is designed to be a drop-in replacement for Express.js, with the same API and functionality, while being much faster. It is not a fork of Express.js.  
-To make sure µExpress matches behavior of Express in all cases, we run all tests with Express first, and then with µExpress and compare results to make sure they match.  
-
-`npm install ultimate-express` -> replace `express` with `ultimate-express` -> done[*](https://github.com/dimdenGD/ultimate-express?tab=readme-ov-file#differences-from-express)  
+```js
+const express = require("fulmine");   // instead of require("express")
+```
 
 [![Node.js >= 22.0.0](https://img.shields.io/badge/Node.js-%3E=22.0.0-green)](https://nodejs.org)
-[![npm](https://img.shields.io/npm/v/ultimate-express?label=last+version)](https://npmjs.com/package/ultimate-express)
-[![Patreon](https://img.shields.io/badge/donate-Patreon-orange)](https://patreon.com/dimdendev)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](./LICENSE)
 
-> Use `npm install ultimate-express@2.1.0` to install last version that supported Node.js v21, v20 and v19.
+> **Status: work in progress.** Not published to npm yet. The API is the Express 5 API; the parts that differ are listed under [Differences from Express](#differences-from-express).
 
-> Use `npm install ultimate-express@node-v18` to install last version that supported Node.js v18.
+## Why this exists
 
-## Difference from similar projects
+There are several fast HTTP servers for Node built on µWebSockets. What is scarce is one you can actually drop into an existing Express application without rewriting it.
 
-Similar projects based on uWebSockets:
-
-- `express` on Bun - since Bun uses uWS for its HTTP module, Express is about 2-3 times faster than on Node.js, but still almost 2 times slower than µExpress because it doesn't do uWS-specific optimizations.
-- `hyper-express` - while having a similar API to Express, it's very far from being a drop-in replacement, and implements most of the functionality differently. This creates a lot of random quirks and issues, making the switch quite difficult. Built in middlewares are also very different, middlewares for Express are mostly not supported.
-- `uwebsockets-express` - this library is closer to being a drop-in replacement, but misses a lot of APIs, depends on Express by calling it's methods under the hood and doesn't try to optimize routing by using native uWS router.
+Compatibility here is not a claim, it is a test suite. Every test runs against real Express first and then against Fulmine, and the outputs have to match byte for byte. That is what makes `helmet`, `cors`, `passport`, `morgan`, `multer`, `express-session` and the rest of the ecosystem work rather than "mostly work".
 
 ## Performance
 
-### Performance against Express
+Fulmine is faster than Express where the framework itself is doing the work, and the same speed where it is not. Both halves of that sentence matter, so here is the honest version.
 
-Tested using [wrk](https://github.com/wg/wrk) (`-d 60 -t 1 -c 200`). Tested on Ubuntu 22.04, Node.js 20.17.0, AMD Ryzen 5 3600, 64GB RAM.
+**Where it is clearly faster.** Routing and dispatch, request shapes with params and query strings, connection handling. On the CI benchmark these land between 2.4x and 7.7x, with plain routing around 3.9x and a thousand-route table around 7.7x.
 
-| Test                                          | Express req/sec | µExpress req/sec | Express throughput | µExpress throughput | µExpress speedup |
-| --------------------------------------------- | --------------- | ---------------- | ------------------ | ------------------- | ---------------- |
-| routing/simple-routes (/)                     | 11.16k          | 75.14k           | 2.08 MB/sec        | 14.46 MB/sec        | **6.73X**        |
-| routing/lot-of-routes (/999)                  | 4.63k           | 54.57k           | 0.84 MB/sec        | 10.03 MB/sec        | **11.78X**       |
-| routing/some-middlewares (/90)                | 10.12k          | 61.92k           | 1.79 MB/sec        | 11.32 MB/sec        | **6.12X**        |
-| routers/nested-routers (/abccc/nested/ddd)    | 10.18k          | 51.15k           | 1.82 MB/sec        | 9.40 MB/sec         | **5.02X**        |
-| middlewares/express-static (/static/index.js) | 6.58k           | 32.45k           | 10.15 MB/sec       | 49.43 MB/sec        | **4.87X**        |
-| engines/ejs (/test)                           | 5.50k           | 40.82k           | 2.45 MB/sec        | 18.38 MB/sec        | **7.42X**        |
-| middlewares/body-urlencoded (/abc)            | 8.07k           | 50.52k           | 1.68 MB/sec        | 10.78 MB/sec        | **6.26X**        |
-| middlewares/compression-file (/small-file)    | 4.81k           | 14.92k           | 386 MB/sec         | 1.17 GB/sec         | **3.10X**        |
+**Where it is a wash.** Any request whose cost is dominated by work both servers hand to the same library. A 512 KiB JSON body is `JSON.parse`, a gzipped response is zlib, a hashed upload is OpenSSL, a 5 MiB stream is memory bandwidth. On those the ratio is capped by arithmetic somewhere around 1.0x to 1.2x, and no amount of work on either server moves it. The benchmark labels those rows rather than quietly publishing them as if the two were equivalent.
 
-### Performance against other frameworks
- - [TechEmpower / FrameworkBenchmarks](https://www.techempower.com/benchmarks/#section=data-r23&test=plaintext&l=zik0sf-pa7)
- - [the-benchmarker / web-frameworks](https://web-frameworks-benchmark.netlify.app/result?l=javascript)
- - [HttpArena](https://www.http-arena.com/leaderboard/)
+**What that means for your application.** If a request spends 1 ms in your database and 40 µs in the framework, a 3x framework speedup is worth about 1% end to end. If you are serving a gateway, a proxy, static assets, health endpoints or anything with a high request rate and little work per request, it is worth a great deal more. Pick accordingly.
 
-### Performance on real-world application
+Two things worth knowing before comparing numbers with anyone:
 
-Also tested on a [real-world application](https://nekoweb.org) with templates, static files and dynamic pages with data from database, and showed 1.5-4X speedup in requests per second depending on the page.
+- **Node 24 moved the baseline.** Express got roughly 3x faster on the routing benchmarks between Node 22 and Node 24, while a µWS-based server barely moved, because the gain came from `node:http`. Any comparison published before mid-2026 overstates the current gap.
+- **Ratios are not portable across runs.** GitHub's runners vary enough that the same code measures 15k or 28k req/sec on the same row. Only compare figures produced in the same run.
+
+The current table is generated by CI on every push and pull request, so it reflects the code rather than a snapshot somebody took once. See [`benchmark/README.md`](./benchmark/README.md) to run it yourself.
+
+## Attribution
+
+Fulmine is a derivative work of [Ultimate Express](https://github.com/dimdenGD/ultimate-express) by [dimden](https://dimden.dev), used under the Apache License 2.0. The full commit history is preserved, so the original authorship is visible in the repository itself:
+
+```sh
+git shortlog -sn
+```
+
+Fulmine is not affiliated with, endorsed by, or maintained by the authors of Ultimate Express. See [`NOTICE`](./NOTICE) for the list of significant changes.
+
+It is likewise not affiliated with the OpenJS Foundation or the Express.js project. Express is a trademark of the OpenJS Foundation.
+
+## Difference from similar projects
+
+- **`hyper-express`** has a similar API but is not a drop-in replacement. It implements much of the functionality differently, which produces quirks that make switching an existing application difficult, and most Express middleware is unsupported.
+- **`uwebsockets-express`** is closer to a drop-in replacement, but misses a lot of the API, depends on Express by calling its methods under the hood, and does not use the native µWS router.
+- **`express` on Bun** benefits from Bun using µWS for its HTTP module, but performs no µWS-specific optimisations.
 
 ## Differences from Express
 
-In a lot of cases, you can just replace `require("express")` with `require("ultimate-express")` and everything works the same. But there are some differences:
+In a lot of cases, you can just replace `require("express")` with `require("fulmine")` and everything works the same. But there are some differences:
 
 - `case sensitive routing` is enabled by default.
 - a new option `catch async errors` is added. If it's enabled, you don't need to use `express-async-errors` module.
@@ -74,7 +76,7 @@ https.createServer({
 
 You have to pass `uwsOptions` to the `express()` constructor:
 ```js
-const express = require("ultimate-express");
+const express = require("fulmine");
 
 const app = express({
     uwsOptions: {
@@ -94,25 +96,25 @@ app.listen(3000, () => {
 
 ## Performance tips
 
-1. µExpress tries to optimize routing as much as possible, but it's only possible if:
+1. Fulmine tries to optimize routing as much as possible, but it's only possible if:
 - `case sensitive routing` is enabled (it is by default, unlike in normal Express).
 - only string paths without regex characters like *, +, (), {}, etc. can be optimized.
   
 Optimized routes can be up to 10 times faster than normal routes, as they're using native uWS router and have pre-calculated path.
 
-2. Do not use external `serve-static` module. Instead use built-in `express.static()` middleware, which is optimized for uExpress.
+2. Do not use external `serve-static` module. Instead use built-in `express.static()` middleware, which is optimized for Fulmine.
 
 3. Do not use `body-parser` module. Instead use built-in `express.text()`, `express.json()` etc.
 
 4. Do not set `body methods` to read body of requests with GET method or other methods that don't need a body. Reading body makes endpoint about 15% slower.
 
-5. By default, µExpress creates 1 (or 0 if your CPU has only 1 core) child thread to improve performance of reading files. You can change this number by setting `threads` to a different number in `express()`, or set to 0 to disable thread pool (`express({ threads: 0 })`). Threads are shared between all express() instances, with largest `threads` number being used. Using more threads will not necessarily improve performance. Sometimes not using threads at all is faster, please [test](https://github.com/wg/wrk/) both options.
+5. By default, Fulmine creates 1 (or 0 if your CPU has only 1 core) child thread to improve performance of reading files. You can change this number by setting `threads` to a different number in `express()`, or set to 0 to disable thread pool (`express({ threads: 0 })`). Threads are shared between all express() instances, with largest `threads` number being used. Using more threads will not necessarily improve performance. Sometimes not using threads at all is faster, please [test](https://github.com/wg/wrk/) both options.
 
 ## WebSockets
 
 Since you don't create http server manually, you can't properly use http.on("upgrade") to handle WebSockets. To solve this, there's currently 2 options:
 
-- There's a sister library that implements `ws` compatible API: [Ultimate WS](https://github.com/dimdenGD/ultimate-ws). It's same concept as this library, but for WebSockets: fast drop-in replacement for `ws` module with support for Ultimate Express upgrades. There's a guide for how to upgrade http requests in the documentation.  
+- [Ultimate WS](https://github.com/dimdenGD/ultimate-ws) implements a `ws` compatible API on the same idea: a drop-in replacement for the `ws` module. It was written against Ultimate Express and hooks into the same upgrade mechanism, which Fulmine still exposes, but that combination is not covered by this project's tests. There's a guide for how to upgrade http requests in the documentation.  
 - You can simply use `app.uwsApp` to access uWebSockets.js `App` instance and call its `ws()` method directly.
 
 ## HTTP/3
@@ -292,7 +294,7 @@ In general, basically all features and options are supported. Use [Express 4.x d
 
 ## Tested middlewares
 
-Almost all middlewares that are compatible with Express are compatible with µExpress. Here's list of middlewares that we test for compatibility:
+Almost all middlewares that are compatible with Express are compatible with Fulmine. Here's list of middlewares that we test for compatibility:
 
 - ✅ [body-parser](https://npmjs.com/package/body-parser) (use `express.text()` etc instead for better performance)
 - ✅ [cookie-parser](https://npmjs.com/package/cookie-parser)
