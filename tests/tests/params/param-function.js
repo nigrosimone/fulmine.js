@@ -1,23 +1,26 @@
-// must support app.param and router.param as function
+// must support app.param and router.param with a named handler
 
 const express = require("express");
 
 const app = express();
 const router = express.Router();
 
-app.param(function (param, option) {
-    return function (req, res, next, val) {
-        console.log("param", param, option);
-        next();
-    };
+// Express 5 keeps only the two-argument form. The v4 handler-factory form, app.param(fn),
+// is covered by app/app-param-deprecated.
+app.param("id", function (req, res, next, val) {
+    console.log("app param", val);
+    next();
+});
+
+router.param("rid", function (req, res, next, val) {
+    console.log("router param", val);
+    next();
 });
 
 app.get("/user/:id", (req, res, next) => {
     console.log("before");
     next();
 });
-
-app.param("id", 1337);
 
 app.get("/user/:id", function (req, res, next) {
     console.log("although this matches");
@@ -29,7 +32,7 @@ app.get("/user/:id", function (req, res) {
     res.send("test");
 });
 
-router.get("/:id", (req, res) => {
+router.get("/:rid", (req, res) => {
     res.send("routertest");
 });
 
