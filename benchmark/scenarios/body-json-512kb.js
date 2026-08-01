@@ -8,6 +8,10 @@ const PAD = 512 * 1024;
 module.exports = {
     name: 'middlewares/body-json-512kb',
     path: '/abc',
+    bound: {
+        by: 'JSON.parse and utf8 decode of a 512 KiB body, which both frameworks hand to the same V8 primitive',
+        ceiling: '~1.02x'
+    },
     wrk: {
         script: 'post-json-512kb.lua',
         connections: 50
