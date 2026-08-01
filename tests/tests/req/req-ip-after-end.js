@@ -8,9 +8,9 @@ const app = express();
 app.get("/test", (req, res) => {
     res.write("ok");
     res.end(() => {
-        console.log(req.ip.replace("0000:0000:0000:0000:0000:0000:0000:000", "::"));
+        console.log(req.ip);
     });
-    console.log(req.ip.replace("0000:0000:0000:0000:0000:0000:0000:000", "::"));
+    console.log(req.ip);
 });
 
 app.listen(13333, async () => {

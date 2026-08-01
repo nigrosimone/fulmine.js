@@ -14,7 +14,7 @@ app.use((req, res, next) => {
 });
 
 app.get("/test", (req, res) => {
-    res.send(req.ip.replace("0000:0000:0000:0000:0000:0000:0000:000", "::"));
+    res.send(req.ip);
 });
 
 app.listen(13333, async () => {

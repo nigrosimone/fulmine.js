@@ -3,6 +3,9 @@
     "version": "0.1.0",
     "description": "Drop-in Express 5 replacement on uWebSockets.js. Your existing middleware keeps working.",
     "main": "src/index.js",
+    "bin": {
+        "fulmine.js": "src/cli.js"
+    },
     "scripts": {
         "test": "node tests/index.js",
         "test:types": "tsd --files tests/types/*.test-d.ts",

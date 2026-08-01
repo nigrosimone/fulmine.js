@@ -57,8 +57,17 @@ It is likewise not affiliated with the OpenJS Foundation or the Express.js proje
 
 ## Differences from Express
 
-In a lot of cases, you can just replace `require("express")` with `require("fulmine.js")` and everything works the same. But there are some differences:
+In a lot of cases, you can just replace `require("express")` with `require("fulmine.js")` and everything works the same. There is a command that does the replacing:
 
+```sh
+npx fulmine.js migrate            # rewrite the imports under the current directory
+npx fulmine.js migrate --dry-run  # say what it would rewrite and rewrite nothing
+npx fulmine.js differences        # print the list below and change nothing
+```
+
+It reads each file rather than searching the text, so `express-session` and the word "express" in a string or a comment are left alone, and a file it cannot parse is reported instead of rewritten. It changes the import and nothing else, then prints what to check by hand. That list is this one:
+
+- `app.listen()` returns the app, not an `http.Server`. There is no node server underneath, so `server.close()`, `server.address()` and anything that attaches itself to a real `http.Server` need a look. `app.close()`, `app.address()` and `app.listening` are there and do what you would expect.
 - `case sensitive routing` is enabled by default.
 - `x-powered-by` is disabled by default. Express sends `X-Powered-By: Express` unless you turn it off; Fulmine does not send it unless you turn it on with `app.set("x-powered-by", true)`. The header only tells anyone asking which framework is running.
 - request body is only read for POST, PUT, PATCH and QUERY requests by default. You can add additional methods by setting `body methods` to array with uppercased methods.
@@ -113,6 +122,14 @@ app.listen(3000, () => {
 - the path is a plain string, with no `:param`, no `*splat` and no `{}` group. Note that `+`, `()` and `[]` are not slow paths, they are not valid Express 5 paths at all and throw when the route is registered.
 
 Optimized routes can be up to 10 times faster than normal routes, as they're using native uWS router and have pre-calculated path.
+
+On top of that, a handler simple enough to be read at registration time is compiled into a uWS declarative response and answered natively, without entering JavaScript at all. That needs the route to have no middleware in front of it and a single handler that only calls `res.status`, `res.set`, `res.append`, `res.send`, `res.sendStatus` or `res.end` with literal arguments, plus `req.params` and `req.query`. Anything else, a variable, a call, an `if`, falls back to ordinary routing. Two things follow from the response being static:
+
+- it cannot answer `304 Not Modified`. The ETag is still sent, so caches keep working, but a conditional request gets the whole body back rather than an empty 304. Express replies 304 there.
+- it is framed as `Transfer-Encoding: chunked` and carries no `Content-Length`, because uWS writes that framing itself.
+- it answers `Connection: keep-alive` even to a request that asked for `Connection: close`. The connection is still closed, since uWS decides that itself, and a client that asked to close is closing anyway.
+
+`app.set("declarative responses", false)` turns the whole thing off if you would rather have Express's exact framing than the speed.
 
 2. Do not use external `serve-static` module. Instead use built-in `express.static()` middleware, which is optimized for Fulmine.
 
@@ -248,6 +265,10 @@ In general, basically all features and options are supported. Use the [Express 5
 - ✅ view cache
 - ✅ view engine
 - ✅ x-powered-by
+
+Fulmine adds one of its own:
+
+- `declarative responses`, on by default. Lets a simple enough handler be compiled into a native uWS response, described under [Performance tips](#performance-tips).
 
 ### Request
 

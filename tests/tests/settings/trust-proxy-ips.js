@@ -83,7 +83,7 @@ app.listen(13333, async () => {
                     fetchTest("http://localhost:13335/abc").then((res) => res.text()),
                     fetchTest("http://localhost:13336/abc").then((res) => res.text())
                 ]);
-                console.log(outputs.join(" ").replaceAll("0000:0000:0000:0000:0000:0000:0000:000", "::"));
+                console.log(outputs.join(" "));
                 process.exit(0);
             });
         });

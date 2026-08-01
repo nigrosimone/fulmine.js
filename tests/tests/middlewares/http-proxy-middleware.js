@@ -2,6 +2,7 @@
 process.env.DEBUG = "http-proxy-middleware";
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const { createProxyMiddleware } = require("http-proxy-middleware");
 
@@ -26,7 +27,7 @@ app.use("/api", proxyMiddleware);
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const responses = await fetch("http://localhost:13333/api").then((r) => r.text());
+    const responses = await fetchTest("http://localhost:13333/api").then((r) => r.text());
     console.log(responses);
 
     process.exit(0);

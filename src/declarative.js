@@ -444,10 +444,14 @@ module.exports = function compileDeclarative(cb, app) {
         // the same two the ordinary path seeds every response with. Without them a route answered
         // different headers depending only on whether it happened to be compilable, which is worse
         // than either choice on its own, and a client had no idle timeout to go on.
-        if (!headers.some((header) => header[0].toLowerCase() === "connection")) {
+        const connection = headers.find((header) => header[0].toLowerCase() === "connection");
+        if (!connection) {
             decRes = decRes.writeHeader("connection", "keep-alive");
         }
-        if (!headers.some((header) => header[0].toLowerCase() === "keep-alive")) {
+        // not on a connection the handler is closing: Keep-Alive describes one that is staying
+        // open, and the ordinary path leaves it out for the same reason
+        const closing = typeof connection?.[1] === "string" && connection[1].toLowerCase() === "close";
+        if (!closing && !headers.some((header) => header[0].toLowerCase() === "keep-alive")) {
             decRes = decRes.writeHeader("keep-alive", "timeout=10");
         }
 

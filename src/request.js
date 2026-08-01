@@ -29,6 +29,60 @@ const { Readable } = require("stream");
 // declared shape is stepped around at each call.
 const asMessage = (req) => /** @type {any} */ (req);
 
+/**
+ * Writes an address the way node writes socket.remoteAddress, which is inet_ntop's output and so
+ * RFC 5952: leading zeros dropped from each group, the longest run of two or more zero groups
+ * written as "::", and the last four bytes written in dotted form for the addresses that carry an
+ * IPv4 one. uWS hands over the sixteen bytes, and writing them out in full gave req.ip
+ * "0000:0000:0000:0000:0000:0000:0000:0001" where Express says "::1".
+ *
+ * @param {number[]} groups the eight 16-bit groups, most significant first
+ * @returns {string}
+ */
+function formatIPv6(groups) {
+    // longest run of zero groups, leftmost on a tie, which is the run inet_ntop replaces
+    let bestStart = -1;
+    let bestLength = 0;
+    for (let i = 0; i < 8; i++) {
+        if (groups[i] !== 0) continue;
+        let run = 1;
+        while (i + run < 8 && groups[i + run] === 0) run++;
+        if (run > bestLength) {
+            bestStart = i;
+            bestLength = run;
+        }
+        i += run - 1;
+    }
+    // a single zero group is written as "0", not as "::"
+    if (bestLength < 2) {
+        bestStart = -1;
+        bestLength = 0;
+    }
+
+    // ::ffff:a.b.c.d, and the deprecated ::a.b.c.d. The test is inet_ntop's own, including that a
+    // run of seven leading zeros never reaches it, since group 6 is inside the run by then.
+    const mixed =
+        bestStart === 0 &&
+        (bestLength === 6 || (bestLength === 7 && groups[7] !== 1) || (bestLength === 5 && groups[5] === 0xffff));
+
+    let out = "";
+    for (let i = 0; i < 8; i++) {
+        if (bestStart !== -1 && i >= bestStart && i < bestStart + bestLength) {
+            if (i === bestStart) out += ":";
+            continue;
+        }
+        if (i !== 0) out += ":";
+        if (mixed && i === 6) {
+            out += `${groups[6] >> 8}.${groups[6] & 0xff}.${groups[7] >> 8}.${groups[7] & 0xff}`;
+            break;
+        }
+        out += groups[i].toString(16);
+    }
+    // a run reaching the end leaves a trailing group to close the "::"
+    if (bestStart !== -1 && bestStart + bestLength === 8) out += ":";
+    return out;
+}
+
 const discardedDuplicates = new Set([
     "age",
     "authorization",
@@ -75,6 +129,12 @@ module.exports = class Request extends Readable {
         this.readable = true;
         this._req.forEach((key, value) => {
             this.#rawHeadersEntries.push([key, value]);
+            // spotted in the loop that is running anyway: a client asking for the connection to be
+            // closed must not be answered that it is being kept alive. The response is built right
+            // after this and reads the flag.
+            if (key.length === 10 && key === "connection" && value.length === 5 && value.toLowerCase() === "close") {
+                this._connectionClose = true;
+            }
         });
         this.routeCount = 1;
         this.key = key++;
@@ -365,22 +425,18 @@ module.exports = class Request extends Readable {
             this.rawIp = this._res.getRemoteAddress();
         }
         /** @type {string|undefined} */
-        let ip = "";
+        let ip;
         if (this.rawIp.byteLength === 4) {
             // ipv4
             ip = new Uint8Array(this.rawIp).join(".");
         } else if (this.rawIp.byteLength === 16) {
             // ipv6
             const dv = new DataView(this.rawIp);
+            const groups = new Array(8);
             for (let i = 0; i < 8; i++) {
-                ip += dv
-                    .getUint16(i * 2)
-                    .toString(16)
-                    .padStart(4, "0");
-                if (i < 7) {
-                    ip += ":";
-                }
+                groups[i] = dv.getUint16(i * 2);
             }
+            ip = formatIPv6(groups);
         } else {
             ip = undefined; // unix sockets dont have ip
         }
@@ -412,8 +468,8 @@ module.exports = class Request extends Readable {
             return false;
         }
         if ((this.res.statusCode >= 200 && this.res.statusCode < 300) || this.res.statusCode === 304) {
-            // fast path: res.end() reads req.fresh on every response, but fresh() can only
-            // return true when the request carries a conditional header. Scan the raw entries
+            // fast path: res.send() reads req.fresh on every response it sends, but fresh() can
+            // only return true when the request carries a conditional header. Scan the raw entries
             // instead of materializing the full headers object, which is lazy by design.
             // Only valid while headers are untouched: both the getter and the setter populate #cachedHeaders.
             if (this.#cachedHeaders === null) {

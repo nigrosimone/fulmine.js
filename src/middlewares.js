@@ -29,6 +29,26 @@ const { fastQueryParse, NullObject } = require("./utils.js");
 // real one of the same size would
 const MAX_PREALLOCATED_BODY = 1024 * 1024;
 
+// The status send picks for a failed stat. Anything else is the file being there but unreadable,
+// which is the server's problem and not the request's.
+const STAT_ERROR_STATUS = { ENAMETOOLONG: 404, ENOTDIR: 404, ENOENT: 404 };
+
+/**
+ * Marks an fs error the way send does before handing it to next(), so an error handler reading
+ * err.status or err.statusCode finds what it would find behind Express. The three properties are
+ * assigned in this order because they are serialised in insertion order, and an error handler that
+ * answers with res.send(err) sends them.
+ *
+ * @param {any} err
+ * @returns {any} the same error
+ */
+function asSendError(err) {
+    err.expose = false;
+    err.statusCode = STAT_ERROR_STATUS[err.code] ?? 500;
+    err.status = err.statusCode;
+    return err;
+}
+
 function serveStatic(root, options) {
     if (!options) options = new NullObject();
     if (typeof options.index === "undefined") options.index = "index.html";
@@ -45,6 +65,11 @@ function serveStatic(root, options) {
         options.extensions = options.extensions.map((ext) => (ext.startsWith(".") ? ext.slice(1) : ext));
     }
     options.root = root;
+    // serve-static decides this for itself and never asks the app, so a static file keeps its
+    // ETag under app.set("etag", false) and only { etag: false } here turns it off. res.sendFile
+    // takes the app's setting instead, which is why this has to be said out loud.
+    options.etag = options.etag !== false;
+    options._ownEtag = true;
 
     return (req, res, next) => {
         const iq = req.url.indexOf("?");
@@ -89,7 +114,11 @@ function serveStatic(root, options) {
             if (!stat) {
                 if (!options.fallthrough) {
                     res.status(404);
-                    return next(/** @type {Error} */ (err).message);
+                    // the error itself, not its message: serve-static hands the fs error to the
+                    // error handler with its errno, code, syscall and path still on it, and an
+                    // error handler doing res.send(err) sends those as JSON. Passing the string
+                    // sent an HTML page instead.
+                    return next(asSendError(err));
                 } else return next();
             }
         }

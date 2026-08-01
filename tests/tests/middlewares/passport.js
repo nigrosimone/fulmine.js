@@ -1,6 +1,7 @@
 // must support passport middleware
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 const passport = require("passport");
 const LocalStrategy = require("passport-local");
 const session = require("express-session");
@@ -12,7 +13,10 @@ app.use(
     session({
         secret: "secret",
         resave: false,
-        saveUninitialized: false
+        saveUninitialized: false,
+        // fixed, so Set-Cookie is the same on both runs and can be compared. passport regenerates
+        // the session on login, which asks for an id again, and this keeps that answer stable too.
+        genid: () => "fixed-session-id"
     })
 );
 app.use(passport.initialize());
@@ -41,7 +45,7 @@ app.post(
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const response = await fetch("http://localhost:13333/login/password", {
+    const response = await fetchTest("http://localhost:13333/login/password", {
         method: "POST",
         headers: {
             "Content-Type": "application/x-www-form-urlencoded"
@@ -53,7 +57,7 @@ app.listen(13333, async () => {
     console.log("vary:", response.headers.get("vary"));
 
     /*
-  response = await fetch("http://localhost:13333/login/password", {
+  response = await fetchTest("http://localhost:13333/login/password", {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

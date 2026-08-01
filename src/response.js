@@ -50,6 +50,9 @@ const symbols = Object.getOwnPropertySymbols(outgoingMessage);
 // literally named "undefined", which is what indexing with undefined would do
 const kOutHeaders = symbols.find((s) => s.toString() === "Symbol(kOutHeaders)") ?? Symbol("kOutHeaders");
 const HIGH_WATERMARK = 128 * 1024;
+// Statuses whose message carries no body, so no Content-Length may describe one either. 1xx is
+// the third case and is checked by range rather than listed.
+const STATUSES_WITHOUT_BODY = new Set([204, 304]);
 
 class Socket extends EventEmitter {
     constructor(response) {
@@ -103,6 +106,12 @@ module.exports = class Response extends Writable {
             connection: "keep-alive",
             "keep-alive": "timeout=10"
         };
+        // the client asked for the connection to be closed, and uWS closes it, so saying otherwise
+        // would be telling the client something the transport contradicts. A declarative response
+        // cannot do this, being written once and not per request.
+        if (req._connectionClose) {
+            this.headers.connection = "close";
+        }
         if (this.app.get("x-powered-by")) {
             this.headers["x-powered-by"] = "Fulmine";
         }
@@ -235,7 +244,16 @@ module.exports = class Response extends Writable {
         return this;
     }
     writeHeaders(utf8) {
+        // Keep-Alive describes a connection that is being kept alive, so node leaves it out once
+        // the connection is closing. That happens both when the client asked and when something
+        // else set the header on the way out, which is what a proxy passing an upstream response
+        // through does.
+        const connection = this.headers["connection"];
+        const closing = typeof connection === "string" && connection.toLowerCase() === "close";
         for (const header in this.headers) {
+            if (closing && header === "keep-alive") {
+                continue;
+            }
             const value = this.headers[header];
             if (header === "content-length") {
                 // if content-length is set, disable chunked transfer encoding, since size is known
@@ -310,26 +328,21 @@ module.exports = class Response extends Writable {
         this.writeHead(this.statusCode);
         this._res.cork(() => {
             if (!this.headersSent) {
-                const fresh = this.req.fresh;
+                // freshness is not decided here. node's end() knows nothing about conditional
+                // requests, and Express answers 304 from send() and from sendFile(), each of
+                // which strips the entity headers first. Deciding it here meant res.end("body")
+                // answered 304 and dropped the body that the caller had just written.
                 const statusMessage = this.statusText ?? statuses.message[this.statusCode] ?? "";
-                this._res.writeStatus(fresh ? "304 Not Modified" : `${this.statusCode} ${statusMessage}`.trim());
+                this._res.writeStatus(`${this.statusCode} ${statusMessage}`.trim());
                 this.writeHeaders(true);
-                if (fresh) {
-                    this._res.end();
-                    this.finished = true;
-                    this.#socket?.emit("close");
-                    this.emit("finish");
-                    this.emit("close");
-                    cb &&
-                        queueMicrotask(() => {
-                            this.#ended = true;
-                            cb();
-                        });
-                    return;
-                }
             }
             const contentLength = this.headers["content-length"];
-            if (!data && contentLength) {
+            if (STATUSES_WITHOUT_BODY.has(this.statusCode) || this.statusCode < 200) {
+                // no body and no length describing one, whatever the caller passed. node decides
+                // this the same way, from the status alone, so res.status(304).end("x") sends the
+                // status and nothing else on either.
+                this._res.endWithoutBody();
+            } else if (!data && contentLength) {
                 this._res.endWithoutBody(contentLength.toString());
             } else {
                 if (data instanceof Buffer) {
@@ -418,6 +431,23 @@ module.exports = class Response extends Writable {
         if (etagFn && !this.headers["etag"] && !this.req.noEtag) {
             this.headers["etag"] = etagFn(body);
         }
+        // after the ETag, never before: freshness compares If-None-Match against the one that is
+        // about to be sent, so a generated ETag has to exist by now.
+        if (this.req.fresh) {
+            this.status(304);
+        }
+        // A 204 and a 304 carry no body, so the headers describing one have no meaning and are
+        // dropped. A 205 carries no body either but has to say so with an explicit length.
+        if (this.statusCode === 204 || this.statusCode === 304) {
+            delete this.headers["content-type"];
+            delete this.headers["content-length"];
+            delete this.headers["transfer-encoding"];
+            body = "";
+        } else if (this.statusCode === 205) {
+            this.headers["content-length"] = "0";
+            delete this.headers["transfer-encoding"];
+            body = "";
+        }
         return this.end(body);
     }
 
@@ -462,14 +492,12 @@ module.exports = class Response extends Writable {
         if (typeof options.acceptRanges === "undefined") {
             options.acceptRanges = true;
         }
-        if (typeof options.etag === "undefined") {
+        // Express wires the app's setting straight into send here and drops whatever the caller
+        // passed, so res.sendFile(p, { etag: false }) still sends one while the app has ETags on.
+        // express.static is the opposite: serve-static never asks the app, so a static file keeps
+        // its ETag even under app.set("etag", false). It says so with _ownEtag.
+        if (!options._ownEtag) {
             options.etag = this.app.get("etag") !== false;
-        }
-        let etagFn = this.app.get("etag fn");
-        if (options.etag && !etagFn) {
-            etagFn = (stat) => {
-                return etag(stat, { weak: true });
-            };
         }
 
         // path checks
@@ -561,9 +589,11 @@ module.exports = class Response extends Writable {
             options.setHeaders(/** @type {any} */ (this), fullpath, stat);
         }
 
-        // etag
-        if (options.etag && etagFn && !this.headers["etag"]) {
-            this.headers["etag"] = etagFn(stat);
+        // etag, from the stat and never from the app's "etag fn". send computes this itself with
+        // the etag package, so neither a custom fn nor app.set("etag", "strong") reaches a file's
+        // ETag on Express either.
+        if (options.etag && !this.headers["etag"]) {
+            this.headers["etag"] = etag(stat, { weak: true });
         }
         if (!options.etag) {
             this.req.noEtag = true;
@@ -615,6 +645,15 @@ module.exports = class Response extends Writable {
 
         // if-modified-since, if-none-match
         if (this.req.fresh) {
+            // the same fields send removes: everything describing a body that is not being sent.
+            // Content-Range goes too, since a 304 answers the whole conditional request and not
+            // the range that was asked for.
+            delete this.headers["content-type"];
+            delete this.headers["content-encoding"];
+            delete this.headers["content-language"];
+            delete this.headers["content-length"];
+            delete this.headers["content-range"];
+            this.status(304);
             return this.end();
         }
 

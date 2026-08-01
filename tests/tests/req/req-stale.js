@@ -1,6 +1,7 @@
 // Test req.stale property - must be the boolean inverse of req.fresh
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -15,12 +16,12 @@ app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
     // Test 1: Without conditional headers - stale should be true (not fresh)
-    const res1 = await fetch("http://localhost:13333/test");
+    const res1 = await fetchTest("http://localhost:13333/test");
     await res1.text();
     console.log("Test 1 - No conditional headers");
 
     // Test 2: With If-None-Match matching ETag - stale should be false (fresh)
-    const res2 = await fetch("http://localhost:13333/test", {
+    const res2 = await fetchTest("http://localhost:13333/test", {
         headers: {
             "Cache-Control": "max-age=604800",
             "If-None-Match": '"abc123"'
@@ -30,7 +31,7 @@ app.listen(13333, async () => {
     console.log("Test 2 - If-None-Match matches ETag, status:", res2.status);
 
     // Test 3: With If-None-Match NOT matching ETag - stale should be true (not fresh)
-    const res3 = await fetch("http://localhost:13333/test", {
+    const res3 = await fetchTest("http://localhost:13333/test", {
         headers: {
             "Cache-Control": "max-age=604800",
             "If-None-Match": '"different"'

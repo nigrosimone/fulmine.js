@@ -2,6 +2,7 @@
 process.env.DEBUG = "express-http-proxy";
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 const proxy = require("express-http-proxy");
 
 const app = express();
@@ -22,7 +23,7 @@ app.use(
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const responses = await fetch("http://localhost:13333/proxy", {
+    const responses = await fetchTest("http://localhost:13333/proxy", {
         method: "POST",
         body: "plain text"
     }).then((r) => r.text());

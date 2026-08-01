@@ -1,6 +1,7 @@
 // must serve static files under 768KB when res.end is wrapped by express-session
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 const session = require("express-session");
 
 // force the non-optimized dispatch path (the uWS route optimizer masks this bug),
@@ -9,7 +10,9 @@ function makeApp(options, useSession) {
     const app = options ? express(options) : express();
     app.set("case sensitive routing", false);
     if (useSession) {
-        app.use(session({ secret: "x", resave: false, saveUninitialized: true }));
+        // genid is fixed so Set-Cookie is the same on both runs and can be compared. Each app has
+        // its own store, so sharing the id between them changes nothing.
+        app.use(session({ secret: "x", resave: false, saveUninitialized: true, genid: () => "fixed-session-id" }));
     }
     app.use("/static", express.static("tests/parts"));
     app.use((req, res) => {
@@ -21,7 +24,7 @@ function makeApp(options, useSession) {
 async function check(label, app, port, file) {
     await new Promise((resolve) => app.listen(port, resolve));
     await new Promise((resolve) => setTimeout(resolve, 200)); // wait past the optimizer window
-    const res = await fetch(`http://localhost:${port}/static/${file}`);
+    const res = await fetchTest(`http://localhost:${port}/static/${file}`);
     const body = await res.text();
     console.log(label, res.status, body.length);
 }

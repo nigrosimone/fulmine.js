@@ -1,6 +1,7 @@
 // must support req.fresh and req.stale
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
@@ -11,7 +12,9 @@ app.get("/test", (req, res) => {
     res.send([req.fresh, req.stale]);
 });
 
-const date = new Date();
+// fixed, not new Date(): the handler sends it as Last-Modified and the test prints the header, so
+// reading the clock would make the two runs differ by a second for no reason of the framework's.
+const date = new Date("2024-03-05T10:20:30.000Z");
 
 app.get("/test2", (req, res) => {
     res.set("Etag", '"1234"');
@@ -23,29 +26,29 @@ app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
     const responses = await Promise.all([
-        fetch("http://localhost:13333/test", {
+        fetchTest("http://localhost:13333/test", {
             headers: {
                 "cache-control": "max-age=604800"
             }
         }),
-        fetch("http://localhost:13333/test", {
+        fetchTest("http://localhost:13333/test", {
             headers: {
                 "cache-control": "max-age=604800",
                 "if-none-match": '"123"'
             }
         }),
-        fetch("http://localhost:13333/test", {
+        fetchTest("http://localhost:13333/test", {
             headers: {
                 "cache-control": "max-age=604800",
                 "if-none-match": '"1234"'
             }
         }),
-        fetch("http://localhost:13333/test2", {
+        fetchTest("http://localhost:13333/test2", {
             headers: {
                 "cache-control": "max-age=604800"
             }
         }),
-        fetch("http://localhost:13333/test2", {
+        fetchTest("http://localhost:13333/test2", {
             headers: {
                 "cache-control": "max-age=604800",
                 "if-modified-since": new Date(date.getTime() - 1000).toISOString()
