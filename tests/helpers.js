@@ -93,9 +93,16 @@ async function fetchTest(input, init) {
 /**
  * Middleware that prints the request-side values, so they are compared too.
  *
- * Mount it first with `app.use(inspectRequest)`. A plain function middleware does not stop routes
- * being compiled onto the native uWS router, which was checked before this was written: the same
- * app compiles the same number of routes with and without it.
+ * Mount it first with `app.use(inspectRequest)`, but not everywhere: unlike fetchTest, which sits
+ * outside the app and costs nothing, this changes which code path a route takes.
+ *
+ * Two separate things were measured, and only one of them is free. Native route compilation is
+ * unaffected: the same app registers the same number of routes on the uWS router with and without
+ * a plain middleware in front. Declarative responses are not. A route preceded by a middleware the
+ * compiler cannot follow stops being compiled into a declarative response and is served by the
+ * ordinary path instead, which is a different implementation with its own faults, several of them
+ * found by this suite. So a test that mounts this stops covering the compiled path, and it belongs
+ * in tests written for the request values rather than sprinkled across the suite.
  *
  * req.ip is deliberately absent. It depends on whether the connection arrived over IPv4 or IPv6,
  * so it would report a difference that is the machine's rather than the framework's. It has its
