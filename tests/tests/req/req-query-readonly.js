@@ -1,5 +1,4 @@
 // req.query must be read-only (assignment silently ignored)
-// SKIP_V4: Express 5 makes req.query a read-only getter
 
 const express = require("express");
 

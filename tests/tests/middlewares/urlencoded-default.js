@@ -1,5 +1,4 @@
 // express.urlencoded() must default to extended:false
-// SKIP_V4: Express 5 changed urlencoded default extended to false
 
 const express = require("express");
 

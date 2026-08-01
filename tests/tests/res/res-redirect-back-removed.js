@@ -1,5 +1,4 @@
 // res.redirect('back') treats 'back' as literal URL instead of Referrer
-// SKIP_V4: Express 5 removed 'back' magic in res.redirect/res.location
 
 const express = require("express");
 

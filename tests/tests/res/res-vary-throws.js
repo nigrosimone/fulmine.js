@@ -1,5 +1,4 @@
 // res.vary() must throw when called without argument
-// SKIP_V4: Express 5 throws on res.vary() without argument
 
 const express = require("express");
 

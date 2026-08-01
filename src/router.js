@@ -533,8 +533,8 @@ module.exports = class Router extends EventEmitter {
     }
 
     param(name, fn) {
-        // Express 5 validates the name and rejects the v4 handler-factory form with this exact
-        // TypeError, from the router package
+        // the message has to read exactly like this: it is the one the router package throws,
+        // and it is what reaches anyone catching it
         if (typeof name !== "string" && !Array.isArray(name)) {
             throw new TypeError("argument name must be a string");
         } else {

@@ -177,9 +177,9 @@ function createBodyParser(defaultType, beforeReturn) {
 
             const type = req.headers["content-type"];
 
-            // Express 4 seeded req.body with {} before deciding whether to parse, so a request no
-            // parser claimed still came out with an object. Express 5 leaves it undefined, which is
-            // what tells a handler that nothing was parsed rather than that the body was empty.
+            // req.body is deliberately left undefined until a parser claims the request. That is
+            // what lets a handler tell "nothing parsed this" apart from "the body was empty",
+            // so it must not be seeded with an empty object first.
 
             // skip reading body for no content type
             if (!type) {

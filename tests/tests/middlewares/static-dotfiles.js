@@ -1,5 +1,4 @@
 // express.static must default dotfiles to 'ignore'
-// SKIP_V4: Express 5 changed dotfiles default to ignore
 
 const express = require("express");
 const path = require("path");

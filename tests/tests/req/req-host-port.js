@@ -1,5 +1,4 @@
 // req.host must include the port number
-// SKIP_V4: Express 5 changed req.host to include port
 
 const express = require("express");
 

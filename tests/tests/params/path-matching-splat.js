@@ -1,5 +1,4 @@
 // must support named wildcard /*splat path matching
-// SKIP_V4: Express 5 path syntax
 
 const express = require("express");
 

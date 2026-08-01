@@ -1,5 +1,4 @@
 // must handle async errors natively without express-async-errors
-// SKIP_V4: Express 5 handles async errors natively
 
 const express = require("express");
 

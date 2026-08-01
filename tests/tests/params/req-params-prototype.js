@@ -1,5 +1,4 @@
 // req.params must have null prototype
-// SKIP_V4: Express 5 uses null prototype for params
 
 const express = require("express");
 

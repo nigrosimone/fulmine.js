@@ -25,9 +25,9 @@ const { Stats } = require("fs");
 const EMPTY_REGEX = new RegExp(``);
 
 function fastQueryParse(query, options) {
-    // Express 5 hands back a null-prototype object here, which is why req.query prints as
-    // "[Object: null prototype] {}". Express 4 spread it into a plain object; keeping that would
-    // put Object.prototype keys back within reach of a query string.
+    // the result keeps a null prototype, which is why req.query prints as "[Object: null
+    // prototype] {}". Spreading it into a plain object would put Object.prototype keys back
+    // within reach of a query string.
     const len = query.length;
     if (len === 0) {
         return { __proto__: null };
@@ -45,21 +45,18 @@ function removeDuplicateSlashes(path) {
 }
 
 /**
- * Compiles an Express 5 path into a regex.
- *
- * Express 5 moved to path-to-regexp v8, which is a much smaller language than v4's:
+ * Compiles a path into a regex, following path-to-regexp v8:
  *   - :param          a named parameter, one segment
  *   - /*splat         a named wildcard, one or more segments, captured as an array
- *   - {...}           an optional group, which is how v5 spells v4's trailing `?`
+ *   - {...}           an optional group
  *   - \x              an escaped literal
  *
- * What v4 allowed and v5 does not: bare `*` with no name, unnamed parameters, inline
- * regex like :id(\\d+), and the `+`, `?`, `()` operators. Those throw rather than
- * silently matching something else, because a route that quietly stops matching is
- * worse than one that fails at startup.
+ * Refused rather than matched literally: a bare `*` with no name, unnamed parameters,
+ * inline regex like :id(\\d+), and the `+`, `?`, `()` operators. They throw, because a
+ * route that quietly stops matching is worse than one that fails at startup.
  *
  * Wildcard names are recorded on the returned regex so the router can split their
- * value into the array v5 hands to req.params.
+ * value into the array req.params expects.
  */
 function patternToRegex(pattern, isPrefix = false) {
     if (pattern instanceof RegExp) {
@@ -190,9 +187,9 @@ function patternToRegex(pattern, isPrefix = false) {
             continue;
         }
 
-        // These are the Express 4 operators. Express 5 has no meaning for them and refuses the
-        // route rather than matching them literally, which is what makes a v4 path fail loudly
-        // at startup instead of quietly never matching. Escape them to use them as literals.
+        // these have no meaning in a path, and the route is refused rather than matching them
+        // literally: a path that quietly stops matching is worse than one that fails at startup.
+        // Escape them to use them as literals.
         if ("?+()[]!".includes(ch)) {
             throw new Error(`Unexpected ${ch} at index ${i}: ${pattern}`);
         }

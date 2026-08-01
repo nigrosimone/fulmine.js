@@ -1,5 +1,4 @@
 // res.clearCookie must ignore maxAge and expires options
-// SKIP_V4: Express 5 ignores maxAge/expires in clearCookie
 
 const express = require("express");
 
