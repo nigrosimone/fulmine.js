@@ -1,4 +1,4 @@
-declare module "fulmine" {
+declare module "fulmine.js" {
     import e from "express";
     import uWS from "uWebSockets.js";
 

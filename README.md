@@ -3,7 +3,7 @@
 A drop-in replacement for Express 5, running on [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js) instead of `node:http`. Your existing middleware keeps working.
 
 ```js
-const express = require("fulmine"); // instead of require("express")
+const express = require("fulmine.js"); // instead of require("express")
 ```
 
 [![Node.js >= 22.0.0](https://img.shields.io/badge/Node.js-%3E=22.0.0-green)](https://nodejs.org)
@@ -57,7 +57,7 @@ It is likewise not affiliated with the OpenJS Foundation or the Express.js proje
 
 ## Differences from Express
 
-In a lot of cases, you can just replace `require("express")` with `require("fulmine")` and everything works the same. But there are some differences:
+In a lot of cases, you can just replace `require("express")` with `require("fulmine.js")` and everything works the same. But there are some differences:
 
 - `case sensitive routing` is enabled by default.
 - request body is only read for POST, PUT, PATCH and QUERY requests by default. You can add additional methods by setting `body methods` to array with uppercased methods.
@@ -85,7 +85,7 @@ https
 You have to pass `uwsOptions` to the `express()` constructor:
 
 ```js
-const express = require("fulmine");
+const express = require("fulmine.js");
 
 const app = express({
     uwsOptions: {
