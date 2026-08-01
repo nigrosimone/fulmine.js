@@ -62,6 +62,14 @@ module.exports = class View {
         }
     }
 
+    /**
+     * The first of the configured roots that actually holds this template, or undefined when none
+     * of them does. `views` may be a single directory or a list, and the list is searched in order,
+     * so an application can put its own templates in front of a package's.
+     *
+     * @param {string} name template file name, relative to a root
+     * @returns {string|undefined} absolute path to the file that exists
+     */
     lookup(name) {
         let _path;
         const roots = [].concat(this.root);
@@ -79,10 +87,18 @@ module.exports = class View {
         return _path;
     }
 
-    // The callback is always delivered asynchronously, even when the engine answers on the spot.
-    // `sync` is still true only if the engine called back before this function returned, and in
-    // that case the callback is pushed to the next tick, so a caller never has to handle both
-    // orders. Express normalises it the same way.
+    /**
+     * Renders the template through its engine.
+     *
+     * The callback is always delivered asynchronously, even when the engine answers on the spot.
+     * `sync` is still true only if the engine called back before this function returned, and in
+     * that case the callback is pushed to the next tick, so a caller never has to handle both
+     * orders. Express normalises it the same way.
+     *
+     * @param {Record<string, any>} options locals and engine options, passed through untouched
+     * @param {Function} callback called with whatever the engine passed, which is normally
+     *   (err, html) but is forwarded as it came rather than reshaped
+     */
     render(options, callback) {
         let sync = true;
         // `this` is whatever the engine called onRender with, and it is forwarded untouched
@@ -103,6 +119,14 @@ module.exports = class View {
         sync = false;
     }
 
+    /**
+     * The file a template name resolves to inside one directory, trying `<name>.<ext>` first and
+     * then `<name>/index.<ext>`, which is how a template can be a directory with an index in it.
+     *
+     * @param {string} dir directory to look in
+     * @param {string} file file name, with or without the extension
+     * @returns {string|undefined} the path that exists, or undefined when neither does
+     */
     resolve(dir, file) {
         const ext = this.ext;
 

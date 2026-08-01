@@ -91,8 +91,11 @@ function generateErrorPageHtml(err) {
 
 module.exports = class Router extends EventEmitter {
     parent;
+
     listenCalled;
+
     uwsApp;
+
     constructor(settings = {}) {
         super();
 
@@ -152,6 +155,14 @@ module.exports = class Router extends EventEmitter {
         return this.createRoute("GET", path, this, ...callbacks);
     }
 
+    /**
+     * The pattern matching everything the mounts on this request have consumed so far, which is
+     * what a nested router strips off the path before matching against it. Cached per stack, since
+     * the same mount chain is walked by every request that reaches it.
+     *
+     * @param {any} req
+     * @returns {RegExp}
+     */
     getFullMountpath(req) {
         // path-less app.use() pushes "", so a stack of only those joins to "" no matter how deep it is.
         // patternToRegex("", true) is EMPTY_REGEX, so this returns exactly what the join path would,
@@ -168,6 +179,15 @@ module.exports = class Router extends EventEmitter {
         return fullMountpath;
     }
 
+    /**
+     * Whether a route's path matches this request. A plain string compares directly, which is what
+     * makes a route eligible for the native router; anything carrying a parameter or a wildcard was
+     * turned into a regular expression when it was registered.
+     *
+     * @param {any} route
+     * @param {any} req
+     * @returns {boolean}
+     */
     _pathMatches(route, req) {
         let path = req._opPath;
         let pattern = route.pattern;
@@ -195,6 +215,20 @@ module.exports = class Router extends EventEmitter {
         return pattern.test(path);
     }
 
+    /**
+     * Registers a route, which every method helper and use() funnel into. Several paths at once
+     * become several routes sharing the callbacks, as Express allows.
+     *
+     * Paths are normalised here rather than at match time: a trailing slash is dropped unless
+     * strict routing is on, a bare "*" becomes "/{*splat}", and anything that cannot be compared as
+     * a plain string is compiled into a regular expression and marked complex.
+     *
+     * @param {string} method HTTP method, or USE for a mount
+     * @param {string|string[]|RegExp|undefined} path
+     * @param {any} [parent] what to return, so chaining lands on the app rather than the router
+     * @param {...any} callbacks
+     * @returns {any} parent
+     */
     createRoute(method, path, parent = this, ...callbacks) {
         method = method.toUpperCase();
         callbacks = callbacks.flat();
@@ -234,6 +268,16 @@ module.exports = class Router extends EventEmitter {
 
     // if route is a simple string, its possible to pre-calculate its path
     // and then create a native uWS route for it, which is much faster
+    /**
+     * The chain a request would walk to reach this route, or false when that cannot be known ahead
+     * of time. Everything registered before the route that could also match it has to be in the
+     * chain, in order: the native router jumps straight to the route, and the middleware in front
+     * of it still has to run.
+     *
+     * @param {any} route
+     * @param {any[]} routes every route of this router, in registration order
+     * @returns {any[]|false} the chain, ending in the route itself
+     */
     _optimizeRoute(route, routes) {
         const optimizedPath = [];
 
@@ -269,6 +313,11 @@ module.exports = class Router extends EventEmitter {
         return optimizedPath;
     }
 
+    /**
+     * Hands every route reachable by path alone to the native uWS router, walking into mounted
+     * routers and carrying their prefix down. Runs once, when the app starts listening, since it
+     * needs every route to have been registered first.
+     */
     _compileOptimizedRoutes() {
         if (!this.uwsApp || !this.get("case sensitive routing")) {
             return;
@@ -344,6 +393,14 @@ module.exports = class Router extends EventEmitter {
         walk(this, "", []);
     }
 
+    /**
+     * Wraps a uWS request and response in ours and links them, which is the first thing every
+     * request does whichever path serves it.
+     *
+     * @param {any} res uWS response
+     * @param {any} req uWS request, readable only during this call
+     * @returns {{request: any, response: any}}
+     */
     handleRequest(res, req) {
         const request = new this._request(req, res, this);
         const response = new this._response(res, request, this);
@@ -361,6 +418,17 @@ module.exports = class Router extends EventEmitter {
         return { request, response };
     }
 
+    /**
+     * Registers one route on the native uWS router, along with the chain it has to walk first.
+     *
+     * A GET is registered for HEAD as well, and unless strict routing is on the path is registered
+     * with a trailing slash too. A handler simple enough to be read at registration time is
+     * compiled into a declarative response, but only for its own method: HEAD keeps the real
+     * handler, since a response written once cannot leave its body out.
+     *
+     * @param {any} route
+     * @param {any[]} optimizedPath the chain from _optimizeRoute
+     */
     _registerUwsRoute(route, optimizedPath) {
         let method = route.method.toLowerCase();
         if (method === "all") {
@@ -442,6 +510,16 @@ module.exports = class Router extends EventEmitter {
         }
     }
 
+    /**
+     * Gives an error to the handler that asked for it, or answers with it when there is none.
+     * Passing something to next() from an error handler clears the error and resumes routing,
+     * which is how Express lets a handler decide the error was not fatal.
+     *
+     * @param {any} err
+     * @param {Function|null} handler the four-argument handler to call, or null for the default
+     * @param {any} request
+     * @param {any} response
+     */
     _handleError(err, handler, request, response) {
         if (handler) {
             return handler(err, request, response, (pass) => {
@@ -457,6 +535,15 @@ module.exports = class Router extends EventEmitter {
         this._sendErrorPage(request, response, err, true);
     }
 
+    /**
+     * The HTML for an error, which in production says only what the status means rather than what
+     * went wrong, so a stack trace does not reach the client.
+     *
+     * @param {any} err
+     * @param {number} statusCode
+     * @param {boolean} [checkEnv] whether production should redact it
+     * @returns {string}
+     */
     _generateErrorPage(err, statusCode, checkEnv = false) {
         if (checkEnv && this.get("env") === "production") {
             err =
@@ -489,6 +576,16 @@ module.exports = class Router extends EventEmitter {
         return obj;
     }
 
+    /**
+     * Fills in what a route needs before its handlers run: req.route, req.params from the pattern
+     * and from any mergeParams parents, and the app.param callbacks for the parameters this route
+     * matched that this request has not already seen.
+     *
+     * @param {any} req
+     * @param {any} res
+     * @param {any} route
+     * @returns {any} a promise only when a param callback is involved
+     */
     _preprocessRequest(req, res, route) {
         req.route = route;
         if (route.optimizedParams) {
@@ -598,6 +695,21 @@ module.exports = class Router extends EventEmitter {
     // walks this router's chain for a single request. moving on to the next route is a plain call that
     // carries the same resolve, so a chain of N middlewares costs one promise instead of N nested ones
     // that each have to be adopted back up the chain
+    /**
+     * Finds the next route that matches and runs it, carrying the same resolve and reject the whole
+     * way rather than nesting a promise per hop. next() calls this again for the route after, so a
+     * chain of N middlewares costs one promise instead of N that each have to be adopted back up.
+     *
+     * @param {any} req
+     * @param {any} res
+     * @param {number} startIndex where to resume the scan
+     * @param {any[]} routes
+     * @param {boolean} skipCheck take the route at startIndex without matching it, which is how an
+     *   already-decided chain is walked
+     * @param {any} skipUntil route to resume after when this chain runs out, or undefined
+     * @param {(value: any) => void} resolve
+     * @param {(err: any) => void} reject
+     */
     _dispatchRoute(req, res, startIndex, routes, skipCheck, skipUntil, resolve, reject) {
         const routeIndex = skipCheck
             ? startIndex
@@ -652,6 +764,21 @@ module.exports = class Router extends EventEmitter {
         );
     }
 
+    /**
+     * Runs one route's callbacks, one after another through next(). A mount adjusts req.url,
+     * req.path and the mount stack on the way in, and puts them back if next("route") leaves it.
+     *
+     * @param {any} req
+     * @param {any} res
+     * @param {number} routeIndex
+     * @param {any} route
+     * @param {any[]} routes
+     * @param {boolean} skipCheck
+     * @param {any} skipUntil
+     * @param {(value: any) => void} resolve
+     * @param {(err: any) => void} reject
+     * @param {any} continueRoute
+     */
     _runRoute(req, res, routeIndex, route, routes, skipCheck, skipUntil, resolve, reject, continueRoute) {
         let callbackindex = 0;
         const strictRouting = this.get("strict routing");
@@ -883,6 +1010,15 @@ module.exports = class Router extends EventEmitter {
         return fns;
     }
 
+    /**
+     * Answers with an error page, locked down: no sniffing, no ETag, and a content security policy
+     * that allows nothing, since the page carries a message that came from somewhere else.
+     *
+     * @param {any} request
+     * @param {any} response
+     * @param {any} err
+     * @param {boolean} [checkEnv] whether production should redact it
+     */
     _sendErrorPage(request, response, err, checkEnv = false) {
         err = this._generateErrorPage(err, response.statusCode, checkEnv);
         request.noEtag = true;

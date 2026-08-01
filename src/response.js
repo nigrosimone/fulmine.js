@@ -65,14 +65,22 @@ class Socket extends EventEmitter {
             this.emit("close");
         });
     }
+
+    /** Whether anything more can be written, which stops being true once the response is done. */
     get writable() {
         return !this.response.finished;
     }
 
+    /**
+     * Finishes the response through the socket, which is how the middleware that only knows
+     * about sockets ends one.
+     * @param {any} [body]
+     */
     end(body) {
         this.response.end(body);
     }
 
+    /** Closes the connection outright, without finishing a response first. */
     close() {
         if (this.response.finished) {
             return;
@@ -86,10 +94,14 @@ class Socket extends EventEmitter {
 module.exports = class Response extends Writable {
     /** @type {Socket|null} */
     #socket = null;
+
     #ended = false;
+
     /** @type {((err?: Error|null) => void)|null} */
     #pendingCallback = null;
+
     req;
+
     constructor(res, req, app) {
         super();
         this._req = req;
@@ -144,6 +156,11 @@ module.exports = class Response extends Writable {
         });
     }
 
+    /**
+     * A socket-shaped object for middleware that reaches for one, built on first ask and kept
+     * from then on. null once the response is over, as node reports it.
+     * @returns {Socket|null}
+     */
     get socket() {
         if (this.#ended) return null;
         if (!this.#socket) {
@@ -152,6 +169,16 @@ module.exports = class Response extends Writable {
         return this.#socket;
     }
 
+    /**
+     * Writable's sink. Sends the headers if they have not gone yet, then hands the chunk to uWS,
+     * either as a chunk of a chunked response or through tryEnd when a Content-Length said how
+     * much there would be. Backpressure comes back as onWritable, which is what defers the
+     * callback rather than dropping the chunk.
+     *
+     * @param {any} chunk
+     * @param {BufferEncoding} encoding
+     * @param {(err?: Error|null) => void} callback
+     */
     _write(chunk, encoding, callback) {
         if (this.aborted) {
             /** @type {NodeJS.ErrnoException} */
@@ -231,6 +258,18 @@ module.exports = class Response extends Writable {
             }
         });
     }
+
+    /**
+     * Sets the status and, optionally, a batch of headers, the way node does. The second argument
+     * is either the status message or the headers, since node allows both shapes.
+     *
+     * Nothing is written here despite the name: the headers go out when the body does.
+     *
+     * @param {number} statusCode
+     * @param {string|Record<string, any>} [statusMessage] the reason phrase, or the headers
+     * @param {Record<string, any>} [headers]
+     * @returns {this}
+     */
     writeHead(statusCode, statusMessage, headers) {
         this.statusCode = statusCode;
         if (typeof statusMessage === "string") {
@@ -238,13 +277,27 @@ module.exports = class Response extends Writable {
         }
         if (!headers) {
             if (!statusMessage) return this;
-            headers = statusMessage;
+            // the two-argument shape, where what looked like a reason phrase is the headers. A
+            // string reaching here was already taken as the phrase above and simply has no keys.
+            headers = /** @type {Record<string, any>} */ (statusMessage);
         }
         for (const header in headers) {
             this.set(header, headers[header]);
         }
         return this;
     }
+
+    /**
+     * Writes every header set so far to uWS, which is the point of no return: after this the
+     * status line and the headers are on the wire and headersSent is true.
+     *
+     * Content-Length is not written as a header. uWS wants the length through tryEnd or
+     * endWithoutBody instead, so it is taken out here and kept on totalSize, and its presence is
+     * also what turns chunked framing off.
+     *
+     * @param {boolean} utf8 unused, kept because node's equivalent takes it and the two callers
+     *   differ on what they know about the body
+     */
     writeHeaders(utf8) {
         // Keep-Alive describes a connection that is being kept alive, so node leaves it out once
         // the connection is closing. That happens both when the client asked and when something
@@ -273,11 +326,17 @@ module.exports = class Response extends Writable {
         }
         this.headersSent = true;
     }
+
+    /**
+     * What node calls before writing a body when the caller never called writeHead. Here there is
+     * nothing to flush, since the headers are written with the body, so this only fixes the status.
+     */
     _implicitHeader() {
         // compatibility function
         // usually should send headers but this is useless for us
         this.writeHead(this.statusCode);
     }
+
     /**
      * Sets the status code.
      * @param {number|string} code an integer from 100 to 999
@@ -294,6 +353,7 @@ module.exports = class Response extends Writable {
         this.statusCode = statusCode;
         return this;
     }
+
     /**
      * Sets the status and sends its standard message as the body, so 404 answers "Not Found".
      * @param {number} code
@@ -304,6 +364,7 @@ module.exports = class Response extends Writable {
             .type("txt")
             .send(statuses.message[code] || String(code));
     }
+
     /**
      * @param {any} [data]
      * @param {any} [cb]
@@ -696,6 +757,7 @@ module.exports = class Response extends Writable {
             file.pipe(this);
         }
     }
+
     /**
      * Sends a file as an attachment, so the browser saves it instead of displaying it.
      *
@@ -738,6 +800,17 @@ module.exports = class Response extends Writable {
         this.attachment(name);
         this.sendFile(path, opts, done);
     }
+
+    /**
+     * Sets a header, node's way: no charset is added to a content-type, since node does not know
+     * what a media type is. res.set does that, and is what Express code should use.
+     *
+     * @param {string} field
+     * @param {any} value an array sends the header once per entry
+     * @returns {this}
+     * @throws {Error} once the headers have gone out
+     * @throws {TypeError} if the name is not a string
+     */
     setHeader(field, value) {
         if (this.headersSent) {
             throw new Error("Cannot set headers after they are sent to the client");
@@ -754,14 +827,27 @@ module.exports = class Response extends Writable {
         }
         return this;
     }
+
+    /**
+     * Node asks this before validating a header value, and answering true keeps it permissive.
+     * Only reached through code that goes down node's own header path.
+     */
     _isLenientHeaderValidation() {
         // Node.js internal function for lenient header validation
         // Returns true to allow more permissive header value validation
         return true;
     }
+
+    /**
+     * The Express name for set(), including the charset it adds to a content-type.
+     * @param {string|Record<string, any>} field
+     * @param {string|string[]} [value]
+     * @returns {this}
+     */
     header(field, value) {
         return this.set(field, value);
     }
+
     /**
      * Sets one header, or several from an object. Also available as `header()`.
      * @param {string|object} field header name, or an object of them
@@ -784,6 +870,7 @@ module.exports = class Response extends Writable {
         }
         return this;
     }
+
     /**
      * Reads a response header that has been set, case insensitively.
      * @param {string} field
@@ -792,12 +879,25 @@ module.exports = class Response extends Writable {
     get(field) {
         return this.headers[field.toLowerCase()];
     }
+
+    /**
+     * Reads a header that has been set, case insensitively. node's name for get().
+     * @param {string} field
+     * @returns {string|string[]|undefined}
+     */
     getHeader(field) {
         return this.get(field);
     }
+
+    /**
+     * Every header set so far, as the object they are kept in rather than a copy, so writing to
+     * it writes to the response.
+     * @returns {Record<string, any>}
+     */
     getHeaders() {
         return this.headers;
     }
+
     /**
      * Removes a header that has not been flushed yet.
      *
@@ -809,6 +909,7 @@ module.exports = class Response extends Writable {
     removeHeader(field) {
         delete this.headers[field.toLowerCase()];
     }
+
     /**
      * Adds a header without replacing what is already there, which is what Set-Cookie and Vary
      * need.
@@ -837,6 +938,7 @@ module.exports = class Response extends Writable {
         }
         return this;
     }
+
     /**
      * Renders a view and sends it. With a callback the result goes to the callback instead, and
      * nothing is sent. A function in the options position is taken as the callback.
@@ -865,6 +967,7 @@ module.exports = class Response extends Writable {
         // use req.app like express does, so mounted sub-apps resolve views with their own settings
         this.req.app.render(view, options, done);
     }
+
     /**
      * Appends a Set-Cookie header. An object value is serialised as JSON. With `signed` the
      * cookie is signed using the secret given to cookie-parser.
@@ -896,6 +999,7 @@ module.exports = class Response extends Writable {
         this.append("Set-Cookie", cookie.serialize(name, val, opt));
         return this;
     }
+
     /**
      * Clears a cookie. The browser only matches it if `path` and `domain` are the ones it was
      * set with. Any `maxAge` or `expires` passed here is ignored, since clearing is defined as
@@ -911,6 +1015,7 @@ module.exports = class Response extends Writable {
         delete opts.maxAge;
         return this.cookie(name, "", opts);
     }
+
     /**
      * Sets Content-Disposition to attachment, and Content-Type from the extension when a
      * filename is given.
@@ -924,6 +1029,7 @@ module.exports = class Response extends Writable {
         this.set("Content-Disposition", contentDisposition(filename));
         return this;
     }
+
     /**
      * Answers according to the Accept header, calling the handler whose key matches best. A
      * `default` key catches everything else; without one an unmatched request gets 406.
@@ -948,6 +1054,7 @@ module.exports = class Response extends Writable {
 
         return this;
     }
+
     /**
      * Sends JSON, honouring the "json replacer", "json spaces" and "json escape" settings.
      * @param {*} body
@@ -962,6 +1069,7 @@ module.exports = class Response extends Writable {
         const spaces = this.app.get("json spaces");
         return this.send(stringify(body, replacer, spaces, escape));
     }
+
     /**
      * Sends JSON wrapped in a callback when the query names one, under the setting
      * "jsonp callback name", which defaults to "callback". Without it this is plain JSON.
@@ -1002,6 +1110,7 @@ module.exports = class Response extends Writable {
 
         return this.send(body);
     }
+
     /**
      * Adds to the Link header, one entry per key, the key being the rel.
      * @param {Record<string, any>} links rel to url
@@ -1022,6 +1131,7 @@ module.exports = class Response extends Writable {
                     .join(", ")
         );
     }
+
     /**
      * Sets the Location header, URL-encoding the value.
      *
@@ -1036,6 +1146,7 @@ module.exports = class Response extends Writable {
         this.headers["location"] = encodeUrl(path);
         return this;
     }
+
     /**
      * Redirects, defaulting to 302. The status may be given first, as `redirect(301, url)`.
      * The body is a short note in whichever format the client accepts.
@@ -1104,6 +1215,7 @@ module.exports = class Response extends Writable {
 
         return this.set("content-type", ct);
     }
+
     contentType = this.type;
 
     /**
@@ -1120,14 +1232,22 @@ module.exports = class Response extends Writable {
         return this;
     }
 
+    /** The same object as socket, which node carries under both names. */
     get connection() {
         return this.socket;
     }
 
-    // Writable declares this as a plain property, and the stream machinery that would maintain it
-    // is mostly bypassed here, so it is deliberately replaced by a getter over our own flag.
-    // TypeScript has no way to say "replacing a base property with an accessor is the intent";
-    // @ts-expect-error rather than @ts-ignore, so this fails loudly if it ever stops applying.
+    /**
+     * Whether the response has been fully written, which is what Writable reports here.
+     *
+     * Writable declares this as a plain property, and the stream machinery that would maintain it
+     * is mostly bypassed here, so it is deliberately replaced by a getter over our own flag.
+     * TypeScript has no way to say "replacing a base property with an accessor is the intent", so
+     * the directive below suppresses it. It has to sit on its own line: inside this block it would
+     * read as a JSDoc tag and suppress nothing.
+     */
+    // @ts-expect-error TS2611, the accessor replacing the base property is deliberate. Expect
+    // rather than ignore, so it fails loudly if it ever stops applying.
     get writableFinished() {
         return this.finished;
     }

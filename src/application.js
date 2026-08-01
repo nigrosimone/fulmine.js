@@ -119,6 +119,15 @@ class Application extends Router {
         this.set("views", path.resolve("views"));
     }
 
+    /**
+     * Parks a promise's settle functions under a key the worker can send back, since a worker
+     * message carries data and not closures. The counter wraps rather than growing without bound,
+     * a million tasks being far more than can be outstanding at once.
+     *
+     * @param {(value: any) => void} resolve
+     * @param {(err: any) => void} reject
+     * @returns {number} the key to send to the worker
+     */
     createWorkerTask(resolve, reject) {
         const key = taskKey++;
         workerTasks[key] = { resolve, reject };
@@ -128,6 +137,14 @@ class Application extends Router {
         return key;
     }
 
+    /**
+     * Reads a file on one of the file threads, picked at random, rather than on the event loop.
+     * Only worth it below the size where the copy back costs more than the read, which is why
+     * res.sendFile uses it for small files and streams the rest.
+     *
+     * @param {string} path absolute path to read
+     * @returns {Promise<Buffer>}
+     */
     readFileWithWorker(path) {
         return new Promise((resolve, reject) => {
             const worker = this.workers[Math.floor(Math.random() * this.workers.length)];
@@ -244,6 +261,11 @@ class Application extends Router {
         return !this.settings[key];
     }
 
+    /**
+     * Registers the catch-all uWS handler, which is what serves every request that no optimized
+     * route took natively. It walks this app's own chain and, when nothing in it answered, decides
+     * between an error, the automatic OPTIONS reply and a 404.
+     */
     #createRequestHandler() {
         this.uwsApp.any("/*", async (res, req) => {
             const { request, response } = this.handleRequest(res, req);

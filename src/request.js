@@ -109,19 +109,30 @@ let key = 0;
 module.exports = class Request extends Readable {
     /** @type {Record<string, any>|null} */
     #cachedQuery = null;
+
     /** @type {Record<string, any>|null} */
     #cachedHeaders = null;
+
     /** @type {Record<string, string[]>|null} */
     #cachedDistinctHeaders = null;
+
     #rawHeadersEntries = [];
+
     /** @type {string|undefined|null} */
     #cachedParsedIp = null;
+
     #paused = false;
+
     body;
+
     res;
+
     optimizedParams;
+
     _error;
+
     noEtag;
+
     constructor(req, res, app) {
         super({ highWaterMark: 128 * 1024 });
         this._res = res;
@@ -210,10 +221,18 @@ module.exports = class Request extends Readable {
         }
     }
 
+    /**
+     * Whether there is any point still reading the body: once the response is finished or the
+     * connection is gone, uWS has nothing left to hand over.
+     */
     get #responseEnded() {
         return this.res?.finished || this.res?.aborted;
     }
 
+    /**
+     * Readable's pull. uWS pushes the body rather than being pulled from, so all this does is
+     * lift the backpressure that a full queue put on it.
+     */
     _read() {
         if (this.#paused && !this.#responseEnded) {
             this.#paused = false;
@@ -221,16 +240,29 @@ module.exports = class Request extends Readable {
         }
     }
 
+    /**
+     * The part of the path the routers mounted so far have consumed, which is the empty string at
+     * the top level. Matched rather than joined, because a mount path can be a pattern.
+     * @returns {string}
+     */
     get baseUrl() {
         const match = this._originalPath.match(patternToRegex(this._stack.join(""), true));
         return match ? match[0] : "";
     }
 
+    /**
+     * Only here because a getter without a setter makes the property read-only, and middleware in
+     * the wild does assign to it. Express keeps it writable too.
+     */
     set baseUrl(x) {
         this._originalPath = x;
     }
 
-    // the Host header as sent, trimmed and resolved through trust proxy, port still attached
+    /**
+     * The Host header as sent, trimmed and resolved through trust proxy, port still attached.
+     * X-Forwarded-Host wins when the peer is trusted, and only its first entry: the header is
+     * meant to carry one value, but nothing stops a proxy from appending.
+     */
     get #authority() {
         const trust = this.app.get("trust proxy fn");
         const isTrusted = !!(trust && trust(this.connection.remoteAddress, 0));
@@ -252,6 +284,7 @@ module.exports = class Request extends Readable {
         return host || undefined;
     }
 
+    /** The authority with the port removed, taking care not to read an IPv6 literal's colons. */
     get #host() {
         const host = this.#authority;
         if (!host) return;
@@ -279,14 +312,21 @@ module.exports = class Request extends Readable {
         return this.#host;
     }
 
+    /**
+     * Always "1.1". uWS speaks HTTP/1.1 and, when built for it, HTTP/3, and reports neither
+     * version through this API, so the value node code expects to find here is hardcoded.
+     * @returns {string}
+     */
     get httpVersion() {
         return "1.1";
     }
 
+    /** @returns {number} the 1 of HTTP/1.1, for code that reads the parts separately */
     get httpVersionMajor() {
         return 1;
     }
 
+    /** @returns {number} the second 1 of HTTP/1.1 */
     get httpVersionMinor() {
         return 1;
     }
@@ -353,6 +393,12 @@ module.exports = class Request extends Readable {
     // it fails on Express, which is the point of not adding a setter.
     // The parser's result is returned as-is: spreading it would drop the null prototype that keeps
     // a query string away from Object.prototype keys.
+    /**
+     * The query string parsed by whichever parser the "query parser" setting names, cached for
+     * the life of the request. A null-prototype object, so a key like "__proto__" from the query
+     * string cannot reach Object.prototype.
+     * @returns {Record<string, any>}
+     */
     get query() {
         if (this.#cachedQuery) {
             return this.#cachedQuery;
@@ -361,8 +407,9 @@ module.exports = class Request extends Readable {
         // normalised onto a plain null-prototype object: fast-querystring returns instances of an
         // internal class called Empty, which node inspects as "Empty <[Object: null prototype] {}>"
         // where Express shows "[Object: null prototype]"
-        this.#cachedQuery = qp ? Object.assign({ __proto__: null }, qp(this.urlQuery.slice(1))) : { __proto__: null };
-        return this.#cachedQuery;
+        const parsed = qp ? Object.assign({ __proto__: null }, qp(this.urlQuery.slice(1))) : { __proto__: null };
+        this.#cachedQuery = parsed;
+        return parsed;
     }
 
     /**
@@ -408,6 +455,16 @@ module.exports = class Request extends Readable {
         return typeof val === "string" && val.toLowerCase() === "xmlhttprequest";
     }
 
+    /**
+     * The peer address as text, read from uWS and cached.
+     *
+     * Reading it is expensive and the address is gone once the response has finished, so it is
+     * read up front only for the first hundred requests, or for every request once an application
+     * has been seen asking for it too late. An app that does ask too late gets 127.0.0.1 once,
+     * then the real address from the next request on.
+     *
+     * @returns {string|undefined} undefined over a unix socket, which has no address
+     */
     get parsedIp() {
         if (this.#cachedParsedIp !== null) {
             return this.#cachedParsedIp;
@@ -444,6 +501,11 @@ module.exports = class Request extends Readable {
         return ip;
     }
 
+    /**
+     * Enough of a node socket for the middleware that reaches for one. It is built on each read
+     * rather than kept, since almost nothing asks for it.
+     * @returns {{remoteAddress: string|undefined, remotePort: number, localPort: number|undefined, encrypted: boolean, end: (body?: any) => void}}
+     */
     get connection() {
         return {
             remoteAddress: this.parsedIp,
@@ -454,6 +516,10 @@ module.exports = class Request extends Readable {
         };
     }
 
+    /**
+     * The same object `connection` builds. node carries both names and middleware reaches for
+     * either one, so both are here.
+     */
     get socket() {
         return this.connection;
     }
@@ -531,6 +597,7 @@ module.exports = class Request extends Readable {
         }
         return this.headers[field];
     }
+
     header = this.get;
 
     /**
@@ -570,16 +637,31 @@ module.exports = class Request extends Readable {
         return accepts(asMessage(this)).languages(.../** @type {any} */ (languages));
     }
 
+    /**
+     * @deprecated the singular spelling Express 4 carried; use acceptsEncodings
+     * @param {...(string|string[])} args
+     * @returns {string|string[]|false}
+     */
     acceptsEncoding(...args) {
         deprecated("req.acceptsEncoding", "req.acceptsEncodings");
         return this.acceptsEncodings(...args);
     }
 
+    /**
+     * @deprecated the singular spelling Express 4 carried; use acceptsCharsets
+     * @param {...(string|string[])} args
+     * @returns {string|string[]|false}
+     */
     acceptsCharset(...args) {
         deprecated("req.acceptsCharset", "req.acceptsCharsets");
         return this.acceptsCharsets(...args);
     }
 
+    /**
+     * @deprecated the singular spelling Express 4 carried; use acceptsLanguages
+     * @param {...(string|string[])} args
+     * @returns {string|string[]|false}
+     */
     acceptsLanguage(...args) {
         deprecated("req.acceptsLanguage", "req.acceptsLanguages");
         return this.acceptsLanguages(...args);
@@ -619,9 +701,24 @@ module.exports = class Request extends Readable {
         return parseRange(size, range, options);
     }
 
+    /**
+     * Only here so a getter does not make the property read-only. Middleware that rewrites the
+     * request headers wholesale assigns to it, and Express lets it.
+     */
     set headers(headers) {
         this.#cachedHeaders = headers;
     }
+
+    /**
+     * The request headers as node presents them: lowercased names, and repeats folded the way
+     * node folds them. Set-Cookie stays an array, Cookie is joined with "; ", the fields listed in
+     * discardedDuplicates keep only the first value, and everything else is joined with ", ".
+     *
+     * Built on first read and cached, since the raw entries are what routing works from and most
+     * requests never ask for this at all.
+     *
+     * @returns {Record<string, any>}
+     */
     get headers() {
         // https://nodejs.org/api/http.html#messageheaders
         if (this.#cachedHeaders) {
@@ -656,6 +753,13 @@ module.exports = class Request extends Readable {
         return headers;
     }
 
+    /**
+     * The same headers with every repeat kept, each name mapping to an array. node exposes this
+     * alongside the folded form for the callers that need to tell one header sent twice from one
+     * header carrying a comma.
+     *
+     * @returns {Record<string, string[]>}
+     */
     get headersDistinct() {
         if (this.#cachedDistinctHeaders) {
             return this.#cachedDistinctHeaders;
@@ -673,6 +777,11 @@ module.exports = class Request extends Readable {
         return distinct;
     }
 
+    /**
+     * The headers as a flat list, name then value, in the order they arrived and with the case
+     * they arrived in. Same shape as node.
+     * @returns {string[]}
+     */
     get rawHeaders() {
         const res = [];
         for (let index = 0, len = this.#rawHeadersEntries.length; index < len; index++) {
