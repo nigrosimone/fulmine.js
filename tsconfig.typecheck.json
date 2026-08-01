@@ -1,0 +1,24 @@
+{
+    // The config the `typecheck` script uses. The editor configs check the tests and the demo
+    // too, which is useful while writing them but drowns the source: those two carry well over
+    // a thousand findings between them, so a regression in src would never be noticed.
+    //
+    // This one is scoped to the shipped source, and it is the number that has to reach zero
+    // before the TypeScript conversion can turn `strict` on.
+    "compilerOptions": {
+        "module": "commonjs",
+        "target": "ES2022",
+        "allowJs": true,
+        "checkJs": true,
+        "strict": false,
+        "noEmit": true,
+        // the declaration files shipped by the dependencies are their problem, not ours
+        "skipLibCheck": true,
+        "types": ["node"],
+        "paths": {
+            "fulmine.js": ["./src/types.d.ts"]
+        }
+    },
+    "include": ["src/**/*"],
+    "exclude": ["node_modules", "coverage"]
+}
