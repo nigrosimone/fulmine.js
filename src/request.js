@@ -192,8 +192,7 @@ module.exports = class Request extends Readable {
         return portIndex !== -1 ? host.substring(0, portIndex) : host;
     }
 
-    // Express 5 returns the authority including the port here, and req.hostname without it.
-    // In Express 4 this was a deprecated alias for hostname.
+    // host is the authority including the port, hostname is the same without it
     get host() {
         return this.#authority;
     }
@@ -247,9 +246,9 @@ module.exports = class Request extends Readable {
         return index !== -1 ? header.slice(0, index).trim() : header.trim();
     }
 
-    // Express 5 defines query as a getter with no setter at all, so assigning to req.query throws
-    // in strict mode. Middleware written against v4 that rewrites the query - express-mongo-sanitize
-    // is the common one - fails the same way here as it does on Express, which is the point.
+    // a getter with no setter at all, so assigning to req.query throws in strict mode. Middleware
+    // that rewrites the query, express-mongo-sanitize being the common one, fails here exactly as
+    // it fails on Express, which is the point of not adding a setter.
     // The parser's result is returned as-is: spreading it would drop the null prototype that keeps
     // a query string away from Object.prototype keys.
     get query() {

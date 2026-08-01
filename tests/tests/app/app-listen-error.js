@@ -1,5 +1,4 @@
 // app.listen must pass errors to callback instead of throwing
-// SKIP_V4: Express 5 changed app.listen error handling
 
 const express = require("express");
 const net = require("net");

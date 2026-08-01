@@ -1,5 +1,4 @@
 // must support HTTP QUERY method (RFC 10008)
-// SKIP_V4: HTTP QUERY method support added in Express 5
 
 const express = require("express");
 

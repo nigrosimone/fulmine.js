@@ -349,9 +349,8 @@ module.exports = class Response extends Writable {
         } else if (typeof body === "object" && !isBuffer) {
             return this.json(body);
         } else if (typeof body === "number") {
-            // In Express 4 a lone number meant the status code, and res.send(status, body) was the
-            // two-argument form. Both are gone in Express 5: a number is just a value to serialise,
-            // the same as a boolean. res.sendStatus() is the way to send a status.
+            // a number is a value to serialise, the same as a boolean, and never a status code.
+            // res.sendStatus() is what sets a status.
             return this.json(body);
         } else if (typeof body === "boolean") {
             return this.json(body);
@@ -876,7 +875,6 @@ module.exports = class Response extends Writable {
     contentType = this.type;
 
     vary(field) {
-        // Express 4 warned and carried on; Express 5 treats a missing field as a programming error
         if (!field || (Array.isArray(field) && !field.length)) {
             throw new Error("field argument is required for res.vary()");
         }

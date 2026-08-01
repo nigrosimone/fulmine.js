@@ -1,5 +1,4 @@
 // must validate res.status() accepts only integers 100-999
-// SKIP_V4: Express 5 validates status code range
 
 const express = require("express");
 

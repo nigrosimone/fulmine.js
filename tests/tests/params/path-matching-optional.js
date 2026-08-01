@@ -1,5 +1,4 @@
 // must support optional groups with braces {:file{.:ext}}
-// SKIP_V4: Express 5 path syntax
 
 const express = require("express");
 
