@@ -7,7 +7,7 @@
         "strict": false,
         "types": ["node"],
         "paths": {
-            "fulmine": ["./src/types.d.ts"],
+            "fulmine.js": ["./src/types.d.ts"],
             "*": ["./node_modules/*"]
         }
     },

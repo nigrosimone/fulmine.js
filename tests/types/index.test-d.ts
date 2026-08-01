@@ -1,5 +1,5 @@
 import { expectType, expectAssignable } from "tsd";
-import express from "fulmine";
+import express from "fulmine.js";
 import type { Request, Response, NextFunction, IRouter, RequestHandler, ErrorRequestHandler } from "express";
 import type { Server } from "http";
 import type uWS from "uWebSockets.js";
