@@ -301,7 +301,10 @@ const defaultSettings = {
     "trust proxy": false,
     views: () => path.join(process.cwd(), "views"),
     "view cache": () => process.env.NODE_ENV === "production",
-    "x-powered-by": true,
+    // off by default, unlike Express, which keeps it for historical reasons. It only tells anyone
+    // asking which framework is running, and every hardening guide says to remove it. Set it back
+    // to true if something depends on it.
+    "x-powered-by": false,
     "case sensitive routing": true,
     "declarative responses": true
 };
