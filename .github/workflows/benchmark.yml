@@ -33,15 +33,9 @@ jobs:
             - name: Install dependencies
               run: npm install --include=dev
 
-            - name: Install wrk
-              run: |
-                  sudo apt-get update
-                  sudo apt-get install -y wrk
-
             - name: Run benchmark suite
-              # without this, template engines run in debug mode and recompile the view on every request,
-              # and express 4 decides its view cache from NODE_ENV in defaultConfiguration() so
-              # app.set('env', 'production') in the harness only takes effect on uExpress.
+              # without this, template engines run in debug mode and recompile the view on every
+              # request, so engines/art measures the template compiler rather than either server.
               # set on the step, not the job, so npm install still pulls devDependencies
               env:
                   NODE_ENV: production

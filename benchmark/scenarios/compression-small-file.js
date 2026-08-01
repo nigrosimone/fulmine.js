@@ -8,11 +8,10 @@ module.exports = {
     bound: {
         by: "zlib deflate through the same compression middleware on both sides"
     },
-    wrk: {
-        script: "compression-small-file.lua",
+    load: {
         connections: 200
     },
-    verify: {
+    request: {
         method: "GET",
         headers: {
             "Accept-Encoding": "gzip"

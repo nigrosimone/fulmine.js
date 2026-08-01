@@ -7,11 +7,10 @@ module.exports = {
         by: "OpenSSL sha256 over a 4 MiB body, which is most of the per-request budget",
         ceiling: "~1.1x-1.4x"
     },
-    wrk: {
-        script: "post-hash-body-4mb.lua",
+    load: {
         connections: 50
     },
-    verify: {
+    request: {
         method: "POST",
         headers: {
             "Content-Type": "application/octet-stream"

@@ -5,7 +5,8 @@ const http = require("http");
 const path = require("path");
 const zlib = require("zlib");
 const crypto = require("crypto");
-const { spawn, spawnSync } = require("child_process");
+const { spawn } = require("child_process");
+const autocannon = require("autocannon");
 
 const SCENARIO_FILES = fs
     .readdirSync(path.join(__dirname, "scenarios"))
@@ -103,12 +104,12 @@ async function stopScenarioServer(server, stderrRef) {
     }
 }
 
-function runHttpRequest(port, verifyConfig, timeoutMs = 30000) {
+function runHttpRequest(port, request, timeoutMs = 30000) {
     return new Promise((resolve, reject) => {
-        const method = verifyConfig.method || "GET";
-        const pathName = verifyConfig.path || "/";
-        const headers = { ...(verifyConfig.headers || {}) };
-        const body = verifyConfig.body || null;
+        const method = request.method || "GET";
+        const pathName = request.path || "/";
+        const headers = { ...(request.headers || {}) };
+        const body = request.body || null;
 
         if (body && headers["Content-Length"] == null && headers["content-length"] == null) {
             headers["Content-Length"] = String(Buffer.byteLength(body));
@@ -167,35 +168,43 @@ function runHttpRequest(port, verifyConfig, timeoutMs = 30000) {
     });
 }
 
-async function validateScenarioResponses(scenarioName, scenario) {
-    const verify = scenario.verify || {};
-    let verifyBody = verify.body;
-    if (verify.bodyRepeat && typeof verify.bodyRepeat === "object") {
-        const repeat = verify.bodyRepeat;
-        verifyBody = String(repeat.char || "a").repeat(Number(repeat.count || 0));
+// The request a scenario issues, resolved once and used both for validation and for the load run.
+// Keeping these as one definition is deliberate: they used to be two - a `verify` block here and a
+// separate wrk lua script - and when one of the scripts was renamed the load run silently fell back
+// to GET / and measured a 404 for 34 published runs while validation carried on passing.
+function resolveRequest(scenario) {
+    const request = scenario.request || {};
+    let body = request.body ?? null;
+    if (request.bodyRepeat && typeof request.bodyRepeat === "object") {
+        const repeat = request.bodyRepeat;
+        body = String(repeat.char || "a").repeat(Number(repeat.count || 0));
     }
-    const verifyConfig = {
-        method: verify.method || "GET",
-        path: verify.path || scenario.path,
-        headers: verify.headers || {},
-        body: verifyBody || null
+    return {
+        method: request.method || "GET",
+        path: request.path || scenario.path,
+        headers: { ...(request.headers || {}) },
+        body
     };
+}
+
+async function validateScenarioResponses(scenarioName, scenario) {
+    const request = resolveRequest(scenario);
     const results = {};
 
     for (const framework of FRAMEWORKS) {
         const { server, stderrRef } = startScenarioServer(framework, scenarioName);
         try {
             await waitForReady(framework.port);
-            results[framework.id] = await runHttpRequest(framework.port, verifyConfig);
+            results[framework.id] = await runHttpRequest(framework.port, request);
         } finally {
             await stopScenarioServer(server, stderrRef);
         }
     }
 
     const expressResult = results.express;
-    const ultimateResult = results["fulmine"];
-    const sameStatus = expressResult.statusCode === ultimateResult.statusCode;
-    const sameBodyHash = expressResult.bodyHash === ultimateResult.bodyHash;
+    const fulmineResult = results["fulmine"];
+    const sameStatus = expressResult.statusCode === fulmineResult.statusCode;
+    const sameBodyHash = expressResult.bodyHash === fulmineResult.bodyHash;
 
     if (sameStatus && sameBodyHash) {
         return {
@@ -208,67 +217,9 @@ async function validateScenarioResponses(scenarioName, scenario) {
         ok: false,
         message: [
             `express: status=${expressResult.statusCode}, hash=${expressResult.bodyHash}, size=${expressResult.bodySize}`,
-            `fulmine: status=${ultimateResult.statusCode}, hash=${ultimateResult.bodyHash}, size=${ultimateResult.bodySize}`
+            `fulmine: status=${fulmineResult.statusCode}, hash=${fulmineResult.bodyHash}, size=${fulmineResult.bodySize}`
         ].join(" | ")
     };
-}
-
-function parseRequestsPerSec(output) {
-    const totalMatch = output.match(/Requests\/sec:\s+([0-9.]+)/);
-    if (totalMatch) {
-        return Number(totalMatch[1]);
-    }
-
-    const reqSecMatch = output.match(/Req\/Sec\s+([0-9.]+)/);
-    return reqSecMatch ? Number(reqSecMatch[1]) : 0;
-}
-
-function parseTransferPerSec(output) {
-    const match = output.match(/Transfer\/sec:\s+([0-9.]+)([KMG]?B)/);
-    if (!match) {
-        return 0;
-    }
-
-    const value = Number(match[1]);
-    const unit = match[2];
-    if (unit === "KB") {
-        return value * 1024;
-    }
-    if (unit === "MB") {
-        return value * 1024 * 1024;
-    }
-    if (unit === "GB") {
-        return value * 1024 * 1024 * 1024;
-    }
-    return value;
-}
-
-function parseWrkErrors(output) {
-    const errors = {
-        lines: [],
-        socketErrorLine: null,
-        non2xx: 0,
-        totalRequests: 0
-    };
-
-    const totalMatch = output.match(/([0-9]+)\s+requests\s+in\s/);
-    if (totalMatch) {
-        errors.totalRequests = Number(totalMatch[1]);
-    }
-
-    const socketErrorMatch = output.match(/Socket errors:[^\n]+/);
-    if (socketErrorMatch) {
-        errors.lines.push(socketErrorMatch[0]);
-        errors.socketErrorLine = socketErrorMatch[0];
-    }
-
-    const non2xxMatch = output.match(/Non-2xx or 3xx responses:\s+([0-9]+)/);
-    if (non2xxMatch) {
-        errors.lines.push(non2xxMatch[0]);
-        errors.non2xx = Number(non2xxMatch[1]);
-    }
-
-    return errors;
 }
 
 function formatReqPerSec(value) {
@@ -289,70 +240,61 @@ function formatBytesPerSec(bytes) {
     return `${value.toFixed(2)} ${units[unitIndex]}`;
 }
 
+function formatMs(value) {
+    return `${Number(value).toFixed(2)} ms`;
+}
+
 async function runScenario(framework, scenarioName, scenario, durationSeconds) {
     const { server, stderrRef } = startScenarioServer(framework, scenarioName);
 
     try {
         await waitForReady(framework.port);
 
-        const wrk = scenario.wrk || {};
-        const args = [
-            "-t",
-            String(wrk.threads || 1),
-            "-c",
-            String(wrk.connections || 200),
-            "-d",
-            `${durationSeconds}s`
-        ];
+        const load = scenario.load || {};
+        const request = resolveRequest(scenario);
 
-        if (wrk.script) {
-            const scriptPath = path.join(__dirname, "wrk-scripts", wrk.script);
-            // a missing -s script does not make wrk fail, it silently falls back to GET / on the
-            // target URL. that is how readable-hash-4mb measured a 404 for 34 published runs
-            if (!fs.existsSync(scriptPath)) {
-                throw new Error(`wrk script for ${scenarioName} does not exist: ${scriptPath}`);
-            }
-            args.push("-s", scriptPath);
-        }
-
-        const targetUrl = wrk.script
-            ? `http://127.0.0.1:${framework.port}`
-            : `http://127.0.0.1:${framework.port}${scenario.path}`;
-        args.push(targetUrl);
-
-        const wrkResult = spawnSync("wrk", args, {
-            cwd: path.join(__dirname, ".."),
-            encoding: "utf8"
+        const result = await autocannon({
+            // the path goes in the url: autocannon only honours a top-level `path` through the
+            // `requests` array, so passing it alongside `url` silently sends every request to /
+            url: `http://127.0.0.1:${framework.port}${request.path}`,
+            method: request.method,
+            headers: request.headers,
+            body: request.body ?? undefined,
+            connections: load.connections || 200,
+            workers: load.workers || undefined,
+            duration: durationSeconds,
+            // the generator shares the machine with the server, so it has to be told not to wait
+            // forever on a request the server is too busy to answer
+            timeout: 30
         });
 
-        if (wrkResult.status !== 0) {
-            throw new Error(`wrk failed: ${wrkResult.stderr || wrkResult.stdout}`);
-        }
-
-        const requestsPerSec = parseRequestsPerSec(wrkResult.stdout);
-        const transferPerSecBytes = parseTransferPerSec(wrkResult.stdout);
-        const wrkErrors = parseWrkErrors(wrkResult.stdout);
-
-        if (requestsPerSec === 0) {
+        const requestsPerSec = result.requests.average;
+        if (!requestsPerSec) {
             throw new Error(
-                `wrk produced invalid benchmark output for ${framework.id}/${scenarioName}:\n${wrkErrors.lines.join("\n")}\n\n${wrkResult.stdout}`
+                `no completed requests for ${framework.id}/${scenarioName}: ` +
+                    `${result.errors} errors, ${result.timeouts} timeouts, ${result.non2xx} non-2xx`
             );
         }
 
-        // a run that answered anything other than 2xx/3xx did not measure the scenario. this used to
-        // be parsed and then dropped on the floor, so a broken scenario still published a number
-        if (wrkErrors.non2xx > 0) {
+        // a run that answered anything other than 2xx/3xx did not measure the scenario
+        if (result.non2xx > 0) {
             throw new Error(
-                `${framework.id}/${scenarioName} served ${wrkErrors.non2xx} non-2xx/3xx responses out of ` +
-                    `${wrkErrors.totalRequests}, so this run measured something other than the scenario:\n${wrkResult.stdout}`
+                `${framework.id}/${scenarioName} served ${result.non2xx} non-2xx/3xx responses out of ` +
+                    `${result.requests.total}, so this run measured something other than the scenario`
             );
         }
+
+        const socketErrors = result.errors + result.timeouts;
 
         return {
             requestsPerSec,
-            transferPerSecBytes,
-            socketErrorLine: wrkErrors.socketErrorLine,
-            raw: wrkResult.stdout
+            transferPerSecBytes: result.throughput.average,
+            latencyP50: result.latency.p50,
+            latencyP99: result.latency.p99,
+            socketErrorLine:
+                socketErrors > 0
+                    ? `errors ${result.errors}, timeouts ${result.timeouts}, out of ${result.requests.total} requests`
+                    : null
         };
     } finally {
         await stopScenarioServer(server, stderrRef);
@@ -365,9 +307,9 @@ function buildMarkdown(results) {
     lines.push("## Benchmark Comparison");
     lines.push("");
     lines.push(
-        "| Test | Express req/sec | Fulmine req/sec | Express throughput | Fulmine throughput | Fulmine speedup |"
+        "| Test | Express req/sec | Fulmine req/sec | Express p99 | Fulmine p99 | Express throughput | Fulmine throughput | Fulmine speedup |"
     );
-    lines.push("| --- | ---: | ---: | ---: | ---: | ---: |");
+    lines.push("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
 
     const failures = [];
     const unvalidated = [];
@@ -375,13 +317,15 @@ function buildMarkdown(results) {
     const bounded = [];
     for (const row of results) {
         const speedup =
-            row.express.ok && row.ultimate.ok && row.express.transferPerSecBytes > 0
-                ? `${(row.ultimate.transferPerSecBytes / row.express.transferPerSecBytes).toFixed(2)}x`
+            row.express.ok && row.ultimate.ok && row.express.requestsPerSec > 0
+                ? `${(row.ultimate.requestsPerSec / row.express.requestsPerSec).toFixed(2)}x`
                 : "N/A";
         const expressReq = row.express.ok ? formatReqPerSec(row.express.requestsPerSec) : "FAILED";
         const ultimateReq = row.ultimate.ok ? formatReqPerSec(row.ultimate.requestsPerSec) : "FAILED";
         const expressTransfer = row.express.ok ? formatBytesPerSec(row.express.transferPerSecBytes) : "FAILED";
         const ultimateTransfer = row.ultimate.ok ? formatBytesPerSec(row.ultimate.transferPerSecBytes) : "FAILED";
+        const expressLatency = row.express.ok ? formatMs(row.express.latencyP99) : "FAILED";
+        const ultimateLatency = row.ultimate.ok ? formatMs(row.ultimate.latencyP99) : "FAILED";
 
         if (!row.express.ok) {
             failures.push({
@@ -425,7 +369,7 @@ function buildMarkdown(results) {
 
         const marker = (!row.validation || !row.validation.ok ? " :warning:" : "") + (row.bound ? " †" : "");
         lines.push(
-            `| ${row.name}${marker} | ${expressReq} | ${ultimateReq} | ${expressTransfer} | ${ultimateTransfer} | **${speedup}** |`
+            `| ${row.name}${marker} | ${expressReq} | ${ultimateReq} | ${expressLatency} | ${ultimateLatency} | ${expressTransfer} | ${ultimateTransfer} | **${speedup}** |`
         );
     }
 

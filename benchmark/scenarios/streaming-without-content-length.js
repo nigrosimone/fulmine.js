@@ -7,7 +7,7 @@ module.exports = {
         by: "loopback bandwidth for a 5 MiB response, so nearly all of the budget is per-byte copying",
         ceiling: "~1.01x"
     },
-    wrk: {
+    load: {
         connections: 50
     },
     setup(app, express, context) {

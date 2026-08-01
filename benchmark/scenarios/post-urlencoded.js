@@ -3,11 +3,10 @@
 module.exports = {
     name: "middlewares/body-urlencoded",
     path: "/abc",
-    wrk: {
-        script: "post-urlencoded.lua",
+    load: {
         connections: 200
     },
-    verify: {
+    request: {
         method: "POST",
         headers: {
             "Content-Type": "application/x-www-form-urlencoded"
