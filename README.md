@@ -60,6 +60,7 @@ It is likewise not affiliated with the OpenJS Foundation or the Express.js proje
 In a lot of cases, you can just replace `require("express")` with `require("fulmine.js")` and everything works the same. But there are some differences:
 
 - `case sensitive routing` is enabled by default.
+- `x-powered-by` is disabled by default. Express sends `X-Powered-By: Express` unless you turn it off; Fulmine does not send it unless you turn it on with `app.set("x-powered-by", true)`. The header only tells anyone asking which framework is running.
 - request body is only read for POST, PUT, PATCH and QUERY requests by default. You can add additional methods by setting `body methods` to array with uppercased methods.
 - For HTTPS, instead of doing this:
 
@@ -121,7 +122,9 @@ Optimized routes can be up to 10 times faster than normal routes, as they're usi
 
 5. Do not set `body methods` to read body of requests with GET method or other methods that don't need a body. Reading body makes endpoint about 15% slower.
 
-6. By default, Fulmine creates 1 (or 0 if your CPU has only 1 core) child thread to improve performance of reading files. You can change this number by setting `threads` to a different number in `express()`, or set to 0 to disable thread pool (`express({ threads: 0 })`). Threads are shared between all express() instances, with largest `threads` number being used. Using more threads will not necessarily improve performance. Sometimes not using threads at all is faster, so measure both.
+6. `app.set("etag", false)` is worth about 8% on small responses, measured on both Fulmine and Express, which pay it almost identically. Know what you are trading: without an ETag a client cannot make a conditional request, so there are no `304 Not Modified` replies and every response is downloaded in full. On anything cacheable the bandwidth a 304 saves is usually worth far more than the 8%. It is left on by default for that reason. Turn it off for an API whose responses are never revalidated.
+
+7. By default, Fulmine creates 1 (or 0 if your CPU has only 1 core) child thread to improve performance of reading files. You can change this number by setting `threads` to a different number in `express()`, or set to 0 to disable thread pool (`express({ threads: 0 })`). Threads are shared between all express() instances, with largest `threads` number being used. Using more threads will not necessarily improve performance. Sometimes not using threads at all is faster, so measure both.
 
 ## WebSockets
 
