@@ -43,6 +43,23 @@ function removeDuplicateSlashes(path) {
     return path.replace(/\/{2,}/g, "/");
 }
 
+/**
+ * Compiles an Express 5 path into a regex.
+ *
+ * Express 5 moved to path-to-regexp v8, which is a much smaller language than v4's:
+ *   - :param          a named parameter, one segment
+ *   - /*splat         a named wildcard, one or more segments, captured as an array
+ *   - {...}           an optional group, which is how v5 spells v4's trailing `?`
+ *   - \x              an escaped literal
+ *
+ * What v4 allowed and v5 does not: bare `*` with no name, unnamed parameters, inline
+ * regex like :id(\\d+), and the `+`, `?`, `()` operators. Those throw rather than
+ * silently matching something else, because a route that quietly stops matching is
+ * worse than one that fails at startup.
+ *
+ * Wildcard names are recorded on the returned regex so the router can split their
+ * value into the array v5 hands to req.params.
+ */
 function patternToRegex(pattern, isPrefix = false) {
     if (pattern instanceof RegExp) {
         return pattern;
@@ -51,32 +68,140 @@ function patternToRegex(pattern, isPrefix = false) {
         return EMPTY_REGEX;
     }
 
-    let wildcardIndex = 0;
     let regexPattern = "";
-    const captureGroupTest = /(\/|[.-]+):(\w+)(?:\((.+?)\))?\??/g;
-    let offset = 0;
-    while (true) {
-        const result = captureGroupTest.exec(pattern);
-        // Process last preceding part if matched, or final part if match ended
-        regexPattern += pattern
-            .substring(offset, result?.index ?? pattern.length)
-            .replaceAll(".", "\\.")
-            .replaceAll("-", "\\-")
-            .replaceAll(
-                /(\*|\(.*?\))/g,
-                (match) =>
-                    // Convert * to .* and stuff in parentheses to capture group
-                    `(?<_wc${wildcardIndex++}>${match.startsWith("(") ? match.slice(1, -1) : match.replaceAll("*", ".*")})`
-            );
-        if (!result) break;
-        const [match, prefix, param, regex] = result;
-        const optional = match.endsWith("?");
-        // Convert :param to capture group
-        regexPattern += `${optional ? "(" : ""}${prefix}(?<${param}>${regex ? regex + "(?=$|/)" : "[^/]+"})${optional ? ")?" : ""}`;
-        offset = result.index + match.length;
+    let i = 0;
+    const len = pattern.length;
+    const wildcardNames = [];
+    // whether the token just emitted was a :parameter, which decides how greedy the next
+    // optional group is allowed to be. see the comment where it is read
+    let lastTokenWasParam = false;
+
+    while (i < len) {
+        const ch = pattern[i];
+
+        if (ch === "\\" && i + 1 < len) {
+            regexPattern += "\\" + pattern[i + 1];
+            i += 2;
+            continue;
+        }
+
+        // /*splat: one or more segments, so it does not match the mount point itself
+        if (ch === "/" && i + 1 < len && pattern[i + 1] === "*") {
+            i += 2;
+            let name = "";
+            while (i < len && /\w/.test(pattern[i])) {
+                name += pattern[i++];
+            }
+            if (!name) {
+                throw new Error(`Wildcard must be named in Express 5: use /*splat, not /* (in "${pattern}")`);
+            }
+            wildcardNames.push(name);
+            regexPattern += `/(?<${name}>.+)`;
+            continue;
+        }
+
+        if (ch === "{") {
+            // {*splat}: zero or more segments, so it also matches the mount point
+            if (pattern[i + 1] === "*") {
+                i += 2;
+                let name = "";
+                while (i < len && pattern[i] !== "}") {
+                    name += pattern[i++];
+                }
+                i++;
+                if (!name) {
+                    throw new Error(`Wildcard must be named in Express 5: use {*splat} (in "${pattern}")`);
+                }
+                wildcardNames.push(name);
+                if (regexPattern.endsWith("/") || regexPattern.endsWith("\\/")) {
+                    // the slash belongs to the optional part, otherwise /{*splat} would not match /
+                    regexPattern = regexPattern.slice(0, regexPattern.endsWith("\\/") ? -2 : -1);
+                    regexPattern += `(?:/(?<${name}>.+))?/?`;
+                } else {
+                    regexPattern += `(?<${name}>.*)`;
+                }
+                continue;
+            }
+
+            // optional group, which may itself contain a parameter: {.:ext}, {/:page}
+            i++;
+            let groupContent = "";
+            let braceDepth = 1;
+            while (i < len && braceDepth > 0) {
+                if (pattern[i] === "{") braceDepth++;
+                else if (pattern[i] === "}") {
+                    braceDepth--;
+                    if (braceDepth === 0) break;
+                }
+                groupContent += pattern[i++];
+            }
+            i++;
+
+            // When a :parameter precedes this group, that parameter is the one that gives ground
+            // while backtracking, so this one must not swallow the separator as well. Express
+            // splits /a.b.c against /:file{.:ext} as file=a.b, ext=c, which only works if ext
+            // cannot contain a dot. After static text there is nothing to give ground, so the
+            // parameter takes everything: /file{.:ext} against /file.tar.gz gives ext=tar.gz.
+            const separator = lastTokenWasParam && groupContent[0] && groupContent[0] !== ":" ? groupContent[0] : "";
+            const groupParamClass = `[^/${separator.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}]+`;
+
+            let groupRegex = "";
+            let gi = 0;
+            while (gi < groupContent.length) {
+                if (groupContent[gi] === ":") {
+                    gi++;
+                    let paramName = "";
+                    while (gi < groupContent.length && /\w/.test(groupContent[gi])) {
+                        paramName += groupContent[gi++];
+                    }
+                    groupRegex += `(?<${paramName}>${groupParamClass})`;
+                } else if (groupContent[gi] === ".") {
+                    groupRegex += "\\.";
+                    gi++;
+                } else if (groupContent[gi] === "/") {
+                    groupRegex += "/";
+                    gi++;
+                } else {
+                    groupRegex += groupContent[gi].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                    gi++;
+                }
+            }
+            regexPattern += `(?:${groupRegex})?`;
+            lastTokenWasParam = false;
+            continue;
+        }
+
+        if (ch === ":") {
+            i++;
+            let name = "";
+            while (i < len && /\w/.test(pattern[i])) {
+                name += pattern[i++];
+            }
+            if (!name) {
+                throw new Error(`Parameter must be named in Express 5 (in "${pattern}")`);
+            }
+            // a following optional group needs room to match, so the parameter gives ground
+            regexPattern += i < len && pattern[i] === "{" ? `(?<${name}>[^/]+?)` : `(?<${name}>[^/]+)`;
+            lastTokenWasParam = true;
+            continue;
+        }
+
+        if (ch === "*") {
+            throw new Error(`Wildcard must be named in Express 5: use /*splat, not /* (in "${pattern}")`);
+        }
+
+        if (".+?^${}()|[]".includes(ch)) {
+            regexPattern += "\\" + ch;
+        } else {
+            regexPattern += ch;
+        }
+        lastTokenWasParam = false;
+        i++;
     }
 
-    return new RegExp(`^${regexPattern}${isPrefix ? "(?=$|/)" : "$"}`);
+    const regex = new RegExp(`^${regexPattern}${isPrefix ? "(?=$|/)" : "$"}`);
+    regex._wildcardNames = wildcardNames;
+    return regex;
 }
 
 function needsConversionToRegex(pattern) {
@@ -84,41 +209,14 @@ function needsConversionToRegex(pattern) {
         return false;
     }
 
-    return (
-        pattern.includes("*") ||
-        pattern.includes("?") ||
-        pattern.includes("+") ||
-        pattern.includes("(") ||
-        pattern.includes(")") ||
-        pattern.includes(":") ||
-        pattern.includes("{") ||
-        pattern.includes("}") ||
-        pattern.includes("[") ||
-        pattern.includes("]")
-    );
+    return pattern.includes("*") || pattern.includes(":") || pattern.includes("{");
 }
 
 function canBeOptimized(pattern) {
-    if (pattern === "/*") {
-        return false;
-    }
     if (pattern instanceof RegExp) {
         return false;
     }
-    if (
-        pattern.includes("*") ||
-        pattern.includes("?") ||
-        pattern.includes("+") ||
-        pattern.includes("(") ||
-        pattern.includes(")") ||
-        pattern.includes("{") ||
-        pattern.includes("}") ||
-        pattern.includes("[") ||
-        pattern.includes("]")
-    ) {
-        return false;
-    }
-    return true;
+    return !pattern.includes("*") && !pattern.includes("{") && !pattern.includes(":");
 }
 
 function acceptParams(str) {
