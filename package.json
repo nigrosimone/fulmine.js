@@ -127,6 +127,6 @@
         "vhost": "^3.0.2"
     },
     "contributors": [
-        "dimden <https://dimden.dev> (https://github.com/dimdenGD) - author of ultimate-express, which this is derived from"
+        "dimden (https://github.com/dimdenGD) - author of ultimate-express, which this is derived from"
     ]
 }
