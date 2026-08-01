@@ -355,6 +355,7 @@ function buildMarkdown(results) {
     const failures = [];
     const unvalidated = [];
     const socketErrors = [];
+    const bounded = [];
     for (const row of results) {
     const speedup = row.express.ok && row.ultimate.ok && row.express.transferPerSecBytes > 0
       ? `${(row.ultimate.transferPerSecBytes / row.express.transferPerSecBytes).toFixed(2)}x`
@@ -394,10 +395,28 @@ function buildMarkdown(results) {
             }
         }
 
-        const marker = (!row.validation || !row.validation.ok) ? ' :warning:' : '';
+        // some scenarios are dominated by work both frameworks hand to the same library, so their
+        // ratio is capped no matter how fast either framework is. mark them instead of letting the
+        // number read as "the frameworks are equivalent"
+        if (row.bound) {
+            bounded.push({ scenario: row.name, by: row.bound.by, ceiling: row.bound.ceiling });
+        }
+
+        const marker =
+            ((!row.validation || !row.validation.ok) ? ' :warning:' : '') +
+            (row.bound ? ' †' : '');
         lines.push(
             `| ${row.name}${marker} | ${expressReq} | ${ultimateReq} | ${expressTransfer} | ${ultimateTransfer} | **${speedup}** |`
         );
+    }
+
+    if (bounded.length > 0) {
+        lines.push('');
+        lines.push('† These rows are dominated by work neither framework performs itself, so the ratio is capped regardless of how fast either one is. They are kept because they are real workloads, not because they discriminate between the two.');
+        lines.push('');
+        for (const entry of bounded) {
+            lines.push(`- \`${entry.scenario}\`: ${entry.by}${entry.ceiling ? ` — ceiling ${entry.ceiling}` : ''}`);
+        }
     }
 
     if (unvalidated.length > 0) {
@@ -497,6 +516,7 @@ async function main() {
 
         results.push({
             name: scenario.name,
+            bound: scenario.bound || null,
             validation,
             express: expressResult,
             ultimate: ultimateResult

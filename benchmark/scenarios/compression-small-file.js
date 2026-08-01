@@ -5,6 +5,9 @@ const compression = require('compression');
 module.exports = {
     name: 'middlewares/compression-file',
     path: '/small-file',
+    bound: {
+        by: 'zlib deflate through the same compression middleware on both sides'
+    },
     wrk: {
         script: 'compression-small-file.lua',
         connections: 200

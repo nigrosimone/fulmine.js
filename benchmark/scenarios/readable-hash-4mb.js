@@ -3,6 +3,10 @@
 module.exports = {
     name: 'streaming/readable-hash-4mb',
     path: '/hash-body',
+    bound: {
+        by: 'OpenSSL sha256 over a 4 MiB body, which is most of the per-request budget',
+        ceiling: '~1.1x-1.4x'
+    },
     wrk: {
         script: 'post-hash-body-4mb.lua',
         connections: 50
