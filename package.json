@@ -78,6 +78,7 @@
         "@codechecks/client": "^0.1.12",
         "@eslint/js": "^10.0.1",
         "@types/node": "^25.9.1",
+        "autocannon": "^8.0.0",
         "better-sse": "^0.16.1",
         "body-parser": "^2.2.2",
         "compression": "^1.8.1",

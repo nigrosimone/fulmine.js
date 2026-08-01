@@ -10,9 +10,9 @@
 module.exports = {
     name: "connections/high-concurrency",
     path: "/ping",
-    wrk: {
-        threads: 2,
-        connections: 1000
+    load: {
+        connections: 1000,
+        workers: 2
     },
     setup(app) {
         app.get("/ping", (req, res) => res.send("pong"));

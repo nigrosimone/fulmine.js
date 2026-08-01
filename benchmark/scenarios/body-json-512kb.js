@@ -12,11 +12,10 @@ module.exports = {
         by: "JSON.parse and utf8 decode of a 512 KiB body, which both frameworks hand to the same V8 primitive",
         ceiling: "~1.02x"
     },
-    wrk: {
-        script: "post-json-512kb.lua",
+    load: {
         connections: 50
     },
-    verify: {
+    request: {
         method: "POST",
         headers: {
             "Content-Type": "application/json"

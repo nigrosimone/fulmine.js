@@ -13,13 +13,10 @@ const morgan = require("morgan");
 module.exports = {
     name: "middlewares/realistic-stack",
     path: "/profile",
-    wrk: {
-        script: "realistic-stack.lua",
+    load: {
         connections: 200
     },
-    // keep these in sync with realistic-stack.lua: the verify request and the load request are
-    // separate definitions, so cors would otherwise be exercised only by one of them
-    verify: {
+    request: {
         method: "GET",
         headers: {
             Cookie: "sid=abc123; theme=dark",

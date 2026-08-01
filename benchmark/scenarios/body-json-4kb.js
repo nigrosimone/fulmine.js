@@ -9,11 +9,10 @@ const PAD = 4 * 1024;
 module.exports = {
     name: "middlewares/body-json-4kb",
     path: "/abc",
-    wrk: {
-        script: "post-json-4kb.lua",
+    load: {
         connections: 200
     },
-    verify: {
+    request: {
         method: "POST",
         headers: {
             "Content-Type": "application/json"
