@@ -6,4 +6,4 @@ processed.txt
 /coverage
 .DS_Store
 benchmark_summary.md
-.vscode
+.vscode.ab-worktree/

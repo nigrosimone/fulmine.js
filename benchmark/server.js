@@ -31,7 +31,9 @@ function resolveFramework(frameworkName) {
     }
 
     if (frameworkName === "fulmine") {
-        return require("../src/index");
+        // ab.js points this at a git worktree so two revisions can be measured against each other.
+        // The worktree lives inside the repo, so requires from it still resolve node_modules here.
+        return require(process.env.FULMINE_SRC || "../src/index");
     }
 
     throw new Error(`Unknown framework: ${frameworkName}`);
