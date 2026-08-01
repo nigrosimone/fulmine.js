@@ -1,0 +1,123 @@
+name: Release
+
+# Two ways in, one job.
+#
+#   - Dispatch it here, and the job runs release-it itself: it bumps the version,
+#     writes the CHANGELOG, commits, tags, pushes and then publishes.
+#   - Or run `npm run release` locally and push the tag it creates, which lands
+#     on the same job with the bump already done.
+#
+# The dispatch path has to publish in the same run: a tag pushed with
+# GITHUB_TOKEN does not trigger another workflow, so waiting for the tag half to
+# fire would wait forever.
+on:
+    push:
+        tags: ["v*"]
+    workflow_dispatch:
+        inputs:
+            release_type:
+                description: 'Version bump ("auto" lets the conventional commits decide)'
+                type: choice
+                options: [auto, patch, minor, major]
+                default: auto
+            dry_run:
+                description: "Bump and test, but skip the tag, the push and the publish"
+                type: boolean
+                default: false
+
+# A dispatch and a tag push must not overlap: both would publish.
+concurrency:
+    group: release
+    cancel-in-progress: false
+
+permissions:
+    # `write` is what lets the dispatch path push the release commit and the tag.
+    # The tag path never uses it.
+    contents: write
+    # Required by npm trusted publishing: npm exchanges this short lived OIDC
+    # token for a publish credential, so no NPM_TOKEN secret is needed.
+    id-token: write
+
+env:
+    # the release commits on the runner: git hooks have no business running there
+    HUSKY: 0
+
+jobs:
+    publish:
+        name: Publish to npm
+        runs-on: ubuntu-latest
+        steps:
+            - name: Only dispatch a release from the default branch
+              if: github.event_name == 'workflow_dispatch' && github.ref_name != github.event.repository.default_branch
+              run: |
+                  echo "::error::a dispatched release must run on ${{ github.event.repository.default_branch }}, got ${{ github.ref_name }}"
+                  exit 1
+
+            - uses: actions/checkout@v7
+              with:
+                  # release-it reads the tags to work out the bump and the changelog
+                  fetch-depth: 0
+
+            - uses: actions/setup-node@v7
+              with:
+                  node-version: 24.x
+                  cache: npm
+                  registry-url: https://registry.npmjs.org
+
+            # Cheap, and it runs before anything else: on this path the version is
+            # already decided, so a mismatch can only mean the tag was cut by hand.
+            - name: Check the tag matches the package version
+              if: github.ref_type == 'tag'
+              run: |
+                  tag="${GITHUB_REF_NAME#v}"
+                  version="$(node -p 'require("./package.json").version')"
+                  if [ "$tag" != "$version" ]; then
+                    echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version ${version}"
+                    exit 1
+                  fi
+
+            # Trusted publishing needs npm 11.5.1 or newer.
+            - name: Use an npm that can publish with OIDC
+              run: npm install -g npm@latest
+
+            - run: npm ci
+
+            # Nothing is tagged or published until all of this passes.
+            - run: npm run lint
+            - run: npm run format:check
+            - run: npm test
+            - run: npm run test:types
+
+            # release-it is configured with `npm.publish: false`, so this only touches
+            # git: bump, CHANGELOG, commit, tag, push. The publish is the step below,
+            # shared with the tag path.
+            - name: Cut the release
+              if: github.event_name == 'workflow_dispatch'
+              env:
+                  RELEASE_TYPE: ${{ inputs.release_type }}
+                  DRY_RUN: ${{ inputs.dry_run }}
+              run: |
+                  git config user.name "github-actions[bot]"
+                  git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+                  # release-it ends on a bare `git push --follow-tags`, which needs one
+                  git branch --set-upstream-to "origin/$GITHUB_REF_NAME"
+                  args=(--ci)
+                  if [ "$RELEASE_TYPE" != auto ]; then args+=("$RELEASE_TYPE"); fi
+                  if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
+                  npx release-it "${args[@]}"
+
+            # Whichever path got here, the manifest now names the version to publish.
+            - name: Check the version is not on npm
+              if: ${{ !inputs.dry_run }}
+              run: |
+                  name="$(node -p 'require("./package.json").name')"
+                  version="$(node -p 'require("./package.json").version')"
+                  if npm view "$name@$version" version >/dev/null 2>&1; then
+                    echo "::error::$name@$version is already on npm"
+                    exit 1
+                  fi
+                  echo "Publishing $name v$version" >> "$GITHUB_STEP_SUMMARY"
+
+            - name: Publish
+              if: ${{ !inputs.dry_run }}
+              run: npm publish --provenance
