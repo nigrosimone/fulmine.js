@@ -30,14 +30,14 @@ function fastQueryParse(query, options) {
     // put Object.prototype keys back within reach of a query string.
     const len = query.length;
     if (len === 0) {
-        return new NullObject();
+        return { __proto__: null };
     }
     if (len <= 128) {
         if (!query.includes("[") && !query.includes("%5B") && !query.includes(".") && !query.includes("%2E")) {
-            return Object.assign(new NullObject(), querystring.parse(query));
+            return Object.assign({ __proto__: null }, querystring.parse(query));
         }
     }
-    return Object.assign(new NullObject(), qs.parse(query, options));
+    return Object.assign({ __proto__: null }, qs.parse(query, options));
 }
 
 function removeDuplicateSlashes(path) {

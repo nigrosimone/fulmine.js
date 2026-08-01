@@ -85,7 +85,7 @@ class Application extends Router {
         }
         this.ssl = settings.uwsOptions.key_file_name && settings.uwsOptions.cert_file_name;
         this.cache = new NullObject();
-        this.engines = {};
+        this.engines = { __proto__: null };
         this.locals = {
             settings: this.settings
         };
