@@ -267,7 +267,10 @@ module.exports = function compileDeclarative(cb, app) {
                 if (sendUsed) {
                     return false;
                 }
-                if (call.obj.propertyName === "send") {
+                // send() with nothing to send gets no content-type, the same as on the ordinary
+                // path and the same as Express. It was being given one here regardless, so the
+                // two paths disagreed about a route as simple as `res.send()`.
+                if (call.obj.propertyName === "send" && call.arguments[0]) {
                     const index = headers.findIndex((header) => header[0].toLowerCase() === "content-type");
                     if (index === -1) {
                         headers.push(["content-type", "text/html; charset=utf-8"]);
@@ -470,6 +473,11 @@ module.exports = function compileDeclarative(cb, app) {
             }
         }
 
+        // No Content-Length here, and it is not an oversight. uWS writes a DeclarativeResponse
+        // with Transfer-Encoding: chunked and adds that header itself, so setting Content-Length
+        // as well produces a response carrying both, which is invalid and which clients reject
+        // outright. Every declarative response is therefore chunked, where Express always sends
+        // a length. Changing it means changing uWS.
         if (app.get("x-powered-by")) {
             decRes = decRes.writeHeader("x-powered-by", "Fulmine");
         }

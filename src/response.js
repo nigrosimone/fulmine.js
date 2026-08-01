@@ -371,9 +371,19 @@ module.exports = class Response extends Writable {
             throw new Error("Can't write body: Response was already sent");
         }
         const isBuffer = Buffer.isBuffer(body);
-        if (body === null || body === undefined) {
+        // undefined means nothing was passed, and Express treats that differently from a value
+        // that happens to be empty: no content-type and no ETag for send(), both for send(null)
+        // and send("").
+        if (body === undefined) {
+            return this.end("");
+        }
+        // null is an object as far as Express's switch is concerned, so it becomes the empty
+        // string without ever reaching the branch that gives a string its content-type. It still
+        // earns an ETag. send("") takes the string branch and does get one.
+        let skipContentType = false;
+        if (body === null) {
             body = "";
-            return this.end(body);
+            skipContentType = true;
         } else if (typeof body === "object" && !isBuffer) {
             return this.json(body);
         } else if (typeof body === "number") {
@@ -385,7 +395,9 @@ module.exports = class Response extends Writable {
         } else if (!isBuffer) {
             body = String(body);
         }
-        if (typeof body === "string" && !isBuffer) {
+        if (skipContentType) {
+            // nothing: send(null) leaves the content-type alone
+        } else if (typeof body === "string" && !isBuffer) {
             const contentType = this.headers["content-type"];
             if (!contentType) {
                 this.headers["content-type"] = "text/html; charset=utf-8";
@@ -400,8 +412,10 @@ module.exports = class Response extends Writable {
         // the ETag belongs here rather than in end(): node's end() does not produce one, so
         // res.end() and res.redirect() must not either. It has to be set before end() reads
         // req.fresh, which compares If-None-Match against it.
+        // body is defined by the time it gets here, so an empty one still earns an ETag. Testing
+        // its truthiness instead meant send("") and send(null) came back without one.
         const etagFn = this.app.get("etag fn");
-        if (etagFn && body && !this.headers["etag"] && !this.req.noEtag) {
+        if (etagFn && !this.headers["etag"] && !this.req.noEtag) {
             this.headers["etag"] = etagFn(body);
         }
         return this.end(body);

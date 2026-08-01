@@ -8,8 +8,6 @@
 // Compared by value on every fetchTest call.
 const COMPARED_HEADERS = [
     "content-type",
-    "content-length",
-    "transfer-encoding",
     "content-encoding",
     "content-disposition",
     "etag",
@@ -31,9 +29,19 @@ const COMPARED_HEADERS = [
 //   keep-alive  carries each server's own idle timeout
 const PRESENCE_ONLY_HEADERS = ["date", "keep-alive"];
 
-// x-powered-by is in neither list. Express sends it by default and Fulmine does not, so even its
-// presence differs on purpose, and comparing it would fail on every request rather than say
-// anything. It has its own test, tests/tests/settings/x-powered-by-default.js.
+// Three headers are in neither list, because for each of them even the presence differs for a
+// reason that is not a fault:
+//
+//   x-powered-by                    Express sends it by default and Fulmine does not.
+//   content-length, transfer-encoding
+//                                   uWS frames a declarative response as chunked and writes the
+//                                   Transfer-Encoding header itself, so those routes never carry
+//                                   a Content-Length while Express always does. It cannot be set
+//                                   from here: a response carrying both is invalid and clients
+//                                   reject it outright.
+//
+// Both have a test of their own rather than being silently dropped:
+// tests/tests/settings/x-powered-by-default.js and tests/tests/res/res-framing.js.
 
 /**
  * fetch, with the response headers printed so they are compared too.
