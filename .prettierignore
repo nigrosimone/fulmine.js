@@ -1,0 +1,16 @@
+node_modules
+coverage
+.nyc_output
+package-lock.json
+
+# test fixtures and view templates: reformatting these changes their bytes, which
+# changes file sizes, etags and rendered output, and several tests assert on those
+tests/parts
+benchmark/assets
+benchmark/views
+**/*.html
+**/*.handlebars
+
+LICENSE
+EXPRESS_LICENSE
+NOTICE
