@@ -22,7 +22,6 @@ const contentDisposition = require("content-disposition");
 const {
     normalizeType,
     stringify,
-    deprecated,
     UP_PATH_REGEXP,
     decode,
     containsDotFile,
@@ -350,16 +349,10 @@ module.exports = class Response extends Writable {
         } else if (typeof body === "object" && !isBuffer) {
             return this.json(body);
         } else if (typeof body === "number") {
-            if (arguments[1]) {
-                deprecated("res.send(status, body)", "res.status(status).send(body)");
-                return this.status(body).send(arguments[1]);
-            } else {
-                deprecated("res.send(status)", "res.sendStatus(status)");
-                if (!this.headers["content-type"]) {
-                    this.headers["content-type"] = "text/plain; charset=utf-8";
-                }
-                return this.sendStatus(body);
-            }
+            // In Express 4 a lone number meant the status code, and res.send(status, body) was the
+            // two-argument form. Both are gone in Express 5: a number is just a value to serialise,
+            // the same as a boolean. res.sendStatus() is the way to send a status.
+            return this.json(body);
         } else if (typeof body === "boolean") {
             return this.json(body);
         } else if (!isBuffer) {
