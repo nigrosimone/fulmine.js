@@ -23,6 +23,11 @@ const querystring = require('fast-querystring');
 const { AsyncResource } = require('async_hooks');
 const { fastQueryParse, NullObject } = require('./utils.js');
 
+// largest content-length we will allocate a body buffer for up front. above this the body is
+// collected chunk by chunk instead, so a declared-but-unsent body cannot pin more memory than a
+// real one of the same size would
+const MAX_PREALLOCATED_BODY = 1024 * 1024;
+
 function static(root, options) {
     if(!options) options = new NullObject();
     if(typeof options.index === 'undefined') options.index = 'index.html';
@@ -232,6 +237,19 @@ function createBodyParser(defaultType, beforeReturn) {
                 }
             }
 
+            // uWS neuters its ArrayBuffer after the callback, so every chunk has to be copied out of
+            // it - and then Buffer.concat copied the whole body a second time. when content-length is
+            // known and we aren't inflating, the final size is known up front, so chunks can go
+            // straight into one buffer and the body is copied once.
+            // the cap means a client that declares a body and never sends it costs no more than one
+            // that actually sends a body that size, and content-length above options.limit was
+            // already rejected above
+            const declaredLength = inflate ? -1 : Number(length);
+            let target = declaredLength > 0 && declaredLength <= MAX_PREALLOCATED_BODY
+                ? Buffer.allocUnsafe(declaredLength)
+                : null;
+            let targetOffset = 0;
+
             req.bodyRead = true;
 
             // uWS keeps delivering chunks after we reject an oversized body, and the
@@ -250,15 +268,27 @@ function createBodyParser(defaultType, beforeReturn) {
                     buf = inflate.process(buf);
                 }
 
-                // shallow copy, to avoid shared references for large bodies.
-                abs.push(Buffer.from(buf));
-
                 totalSize += buf.length;
                 if(totalSize > options.limit) {
                     finished = true;
                     abs.length = 0;
+                    target = null;
                     return next(new Error('Request entity too large'));
                 }
+
+                if(target) {
+                    if(targetOffset + buf.length <= target.length) {
+                        buf.copy(target, targetOffset);
+                        targetOffset += buf.length;
+                        return;
+                    }
+                    // more body than content-length promised: keep what we have and fall back
+                    abs.push(Buffer.from(target.subarray(0, targetOffset)));
+                    target = null;
+                }
+
+                // shallow copy, to avoid shared references for large bodies.
+                abs.push(Buffer.from(buf));
             }
 
             function onEnd() {
@@ -266,7 +296,11 @@ function createBodyParser(defaultType, beforeReturn) {
                     return;
                 }
                 finished = true;
-                const buf = Buffer.concat(abs);
+                // target holds the whole body already; otherwise a single chunk is the body, and
+                // only a genuinely chunked body needs the concat
+                const buf = target
+                    ? (targetOffset === target.length ? target : target.subarray(0, targetOffset))
+                    : (abs.length === 1 ? abs[0] : Buffer.concat(abs));
                 if(options.verify) {
                     try {
                         options.verify(req, res, buf);
