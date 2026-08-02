@@ -71,6 +71,16 @@ for (const testCategory of testCategories) {
 
                     let timeout;
                     const timeoutFunc = (module) => {
+                        // Written straight to the file descriptor, before anything else.
+                        //
+                        // Throwing alone loses the message: the exit below happens on the next
+                        // turn, which is sooner than the reporter gets round to printing why the
+                        // test failed. A CI run on 2026-08-02 died here and the log said only that
+                        // 60 seconds had passed, which leaves the one thing worth knowing out of
+                        // it: whether the arm that hung was Express or this project. console.error
+                        // is not enough either, since on a pipe it can be asynchronous and the
+                        // process is already leaving.
+                        fs.writeSync(2, `\n${module} timed out after ${TEST_TIMEOUT}ms running ${testPath}\n`);
                         setTimeout(() => process.exit(1));
                         throw `${module} timed out`;
                     };
