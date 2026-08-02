@@ -106,6 +106,9 @@ const discardedDuplicates = new Set([
 
 let key = 0;
 
+// 128 KB of body buffered before uWS is asked to pause
+const READABLE_OPTIONS = { highWaterMark: 128 * 1024 };
+
 module.exports = class Request extends Readable {
     /** @type {Record<string, any>|null} */
     #cachedQuery = null;
@@ -147,7 +150,9 @@ module.exports = class Request extends Readable {
      * @param {any} app the application or router this request arrived at
      */
     constructor(req, res, app) {
-        super({ highWaterMark: 128 * 1024 });
+        // the same object every time. Readable reads these and does not keep or write to them, and
+        // a fresh literal here was one more allocation for every request that ever arrives.
+        super(READABLE_OPTIONS);
         this._res = res;
         this._req = req;
         this.readable = true;
@@ -170,11 +175,14 @@ module.exports = class Request extends Readable {
         if (this.urlQuery) {
             this.urlQuery = "?" + this.urlQuery;
         }
-        this.originalUrl = req.getUrl() + this.urlQuery;
+        // getUrl() is the path already, so the query is joined on and then not split off again.
+        // Building originalUrl and picking the path back out of it with indexOf and substring was
+        // a search and a second string for something uWS had just handed over.
+        this.path = req.getUrl();
+        this.originalUrl = this.path + this.urlQuery;
         this.url = this.originalUrl;
-        const iq = this.url.indexOf("?");
-        this.path = iq !== -1 ? this.url.substring(0, iq) : this.url;
-        this.endsWithSlash = this.path[this.path.length - 1] === "/";
+        // charCodeAt rather than indexing: s[i] builds a one character string to throw away
+        this.endsWithSlash = this.path.charCodeAt(this.path.length - 1) === 0x2f;
         this._opPath = this.path;
         this._originalPath = this.path;
         if (this.endsWithSlash && this.path !== "/" && !this.app.get("strict routing")) {
@@ -185,8 +193,17 @@ module.exports = class Request extends Readable {
         this._isHead = this.method === "HEAD";
         this.params = {};
 
-        this._matchedMethods = new Set();
-        this._gotParams = new Set();
+        // Two Sets per request, for two things almost no request needs.
+        //
+        // _matchedMethods collects the verbs a path answers so an OPTIONS request can be told what
+        // they are, and every place that reads it asks _isOptions first, so it is built only for
+        // the requests that are one.
+        //
+        // _gotParams remembers which app.param() callbacks have already run for this request, so it
+        // is only wanted by an application that uses app.param at all. The router builds it the
+        // first time it has something to put in it.
+        this._matchedMethods = this._isOptions ? new Set() : null;
+        this._gotParams = null;
         this._stack = [];
         // number of entries in _stack that aren't the empty path. while this is 0 the whole
         // stack joins to "", so getFullMountpath can skip the join entirely

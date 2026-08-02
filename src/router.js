@@ -696,8 +696,10 @@ module.exports = class Router extends EventEmitter {
             return new Promise(async (resolve) => {
                 for (const param in req.params) {
                     const pcs = this._paramCallbacks.get(param);
-                    if (pcs && !req._gotParams.has(param)) {
-                        req._gotParams.add(param);
+                    // built here rather than for every request, since only an application using
+                    // app.param() ever reaches this line
+                    if (pcs && !req._gotParams?.has(param)) {
+                        (req._gotParams ??= new Set()).add(param);
                         for (let i = 0, len = pcs.length; i < len; i++) {
                             const fn = pcs[i];
                             await /** @type {Promise<void>} */ (
