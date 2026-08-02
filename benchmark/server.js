@@ -132,8 +132,45 @@ async function main() {
 
     await scenario.setup(app, express, context);
 
+    // profile.js sets PROFILE_OUT and stops us with a message rather than a signal. A signal would
+    // be no use: --cpu-prof and the profiler both write on a clean exit, and a killed process on
+    // Windows leaves nothing behind at all.
+    const profiler = process.env.PROFILE_OUT ? new (require("inspector").Session)() : null;
+
     const server = app.listen(port, () => {
-        process.stdout.write(`ready:${frameworkName}:${scenarioName}:${port}\n`);
+        if (!profiler) {
+            process.stdout.write(`ready:${frameworkName}:${scenarioName}:${port}\n`);
+            return;
+        }
+        profiler.connect();
+        profiler.post("Profiler.enable", () => {
+            // 100 microseconds rather than the default millisecond. Ten times the samples for the
+            // same run, which is what makes a function worth a few microseconds a request come out
+            // as a number rather than as quantisation.
+            profiler.post("Profiler.setSamplingInterval", { interval: 100 }, () => {
+                profiler.post("Profiler.start", () => {
+                    process.stdout.write(`ready:${frameworkName}:${scenarioName}:${port}\n`);
+                });
+            });
+        });
+    });
+
+    // profile.js asks for a cut at the end of every round and keeps this process alive between
+    // them, so that each round is measured on a server that is already warm rather than on one that
+    // has just started and is still being compiled.
+    process.on("message", (message) => {
+        if (!profiler) {
+            return;
+        }
+        if (message.cmd === "exit") {
+            process.exit(0);
+        }
+        profiler.post("Profiler.stop", (err, result) => {
+            fs.writeFileSync(message.out, JSON.stringify(result.profile));
+            profiler.post("Profiler.start", () => {
+                /** @type {any} */ (process).send({ cut: message.out });
+            });
+        });
     });
 
     function shutdown() {

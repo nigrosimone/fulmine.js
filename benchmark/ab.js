@@ -20,15 +20,9 @@
 // does, so with one request in flight per connection both arms report the load generator's ceiling
 // and every ratio comes back 1.00 whatever the change was worth.
 
-const fs = require("fs");
 const path = require("path");
-const { execFileSync } = require("child_process");
 const autocannon = require("autocannon");
-const { startScenarioServer, waitForReady, stopScenarioServer } = require("./harness.js");
-
-const REPO_ROOT = path.join(__dirname, "..");
-// inside the repo on purpose: a worktree in the system temp directory cannot resolve node_modules
-const WORKTREE_DIR = path.join(REPO_ROOT, ".ab-worktree");
+const { startScenarioServer, waitForReady, stopScenarioServer, addWorktree, removeWorktree } = require("./harness.js");
 
 const BASELINE = { id: "fulmine", label: "baseline", port: 3100 };
 const CANDIDATE = { id: "fulmine", label: "candidate", port: 3101 };
@@ -50,33 +44,6 @@ function parseArgs(argv) {
         }
     }
     return args;
-}
-
-function git(...gitArgs) {
-    return execFileSync("git", gitArgs, { cwd: REPO_ROOT, encoding: "utf8" }).trim();
-}
-
-function addWorktree(ref) {
-    removeWorktree();
-    // detached, so the ref is not checked out anywhere that could then be committed to by mistake
-    git("worktree", "add", "--detach", WORKTREE_DIR, ref);
-    return path.join(WORKTREE_DIR, "src", "index.js");
-}
-
-function removeWorktree() {
-    if (!fs.existsSync(WORKTREE_DIR)) {
-        return;
-    }
-    try {
-        git("worktree", "remove", "--force", WORKTREE_DIR);
-    } catch {
-        fs.rmSync(WORKTREE_DIR, { recursive: true, force: true });
-        try {
-            git("worktree", "prune");
-        } catch {
-            // nothing left to prune
-        }
-    }
 }
 
 async function load(framework, scenario, request, durationSeconds, connections, pipelining) {
@@ -139,7 +106,7 @@ async function main() {
 
     let baselineSrc = null;
     if (against) {
-        process.stdout.write(`Checking out ${against} into ${path.relative(REPO_ROOT, WORKTREE_DIR)}\n`);
+        process.stdout.write(`Checking out ${against} beside the working tree\n`);
         baselineSrc = addWorktree(against);
     }
 
