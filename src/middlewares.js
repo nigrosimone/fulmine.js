@@ -50,6 +50,25 @@ function asSendError(err) {
 }
 
 /**
+ * A path with any run of leading slashes reduced to one.
+ *
+ * This is not tidiness. A Location header beginning with "//" is a protocol-relative URL, so a
+ * browser given "//assets/" goes to the host called "assets" rather than to a path on this server.
+ * serve-static collapses them for exactly that reason, and a redirect that leaves the server is
+ * not a redirect the server meant to issue.
+ *
+ * @param {string} path
+ * @returns {string}
+ */
+function collapseLeadingSlashes(path) {
+    let i = 0;
+    while (i < path.length && path.charCodeAt(i) === 0x2f) {
+        i++;
+    }
+    return i > 1 ? "/" + path.slice(i) : path;
+}
+
+/**
  * The text without a leading byte order mark, which is what a decoder would have handed over.
  * body-parser decodes through iconv and iconv removes it, so nothing downstream of it ever sees
  * one; reading the buffer directly, as here, means removing it explicitly.
@@ -203,7 +222,12 @@ function serveStatic(root, options) {
         if (stat.isDirectory()) {
             if (!req.endsWithSlash) {
                 if (options.redirect) {
-                    return res.redirect(301, req._originalPath + "/", true);
+                    // The query goes along, and the leading slashes are collapsed. Both were
+                    // wrong: "/docs?page=3" redirected to "/docs/" and lost the page, and a
+                    // request for "//assets" answered "Location: //assets/", which a browser
+                    // reads as a protocol-relative URL and follows to the host "assets". A
+                    // redirect that leaves this server is not a redirect this server meant.
+                    return res.redirect(301, collapseLeadingSlashes(req._originalPath + "/") + req.urlQuery, true);
                 } else {
                     if (!options.fallthrough) {
                         res.status(404);
