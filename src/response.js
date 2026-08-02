@@ -55,6 +55,9 @@ const HIGH_WATERMARK = 128 * 1024;
 // Statuses whose message carries no body, so no Content-Length may describe one either. 1xx is
 // the third case and is checked by range rather than listed.
 const STATUSES_WITHOUT_BODY = new Set([204, 304]);
+// send's ceiling for maxAge, one year in milliseconds. Anything larger is clamped to it rather
+// than written out, since a year is already longer than any cache will honour.
+const MAX_MAXAGE = 60 * 60 * 24 * 365 * 1000;
 
 class Socket extends EventEmitter {
     /**
@@ -581,11 +584,18 @@ module.exports = class Response extends Writable {
         // before any handler can run, so by the time sendFile is reachable it is always there.
         const done = /** @type {(err?: Error) => void} */ (callback ?? this.req.next);
         // default options
-        if (typeof options.maxAge === "string") {
-            options.maxAge = ms(/** @type {any} */ (options.maxAge));
-        } else if (typeof options.maxAge === "undefined") {
-            options.maxAge = 0;
-        }
+        // Normalised the way send does, and it is not fussiness: max-age takes a non-negative
+        // integer count of seconds, so 0.5, -1 and Infinity are all invalid, and a client that
+        // cannot read the directive may throw away the whole Cache-Control header with it. A
+        // fractional maxAge came out as "max-age=0.5" here, a negative one as "max-age=-1" and
+        // Infinity as "max-age=Infinity".
+        // Number() around the lot, and not only around the branch that is already a number: ms()
+        // answers undefined for a duration it cannot read, and Number.isNaN(undefined) is false,
+        // so an unreadable string reached the header as "max-age=NaN".
+        const maxAge = Number(
+            typeof options.maxAge === "string" ? ms(/** @type {any} */ (options.maxAge)) : options.maxAge
+        );
+        options.maxAge = Number.isNaN(maxAge) ? 0 : Math.min(Math.max(0, maxAge), MAX_MAXAGE);
         if (typeof options.lastModified === "undefined") {
             options.lastModified = true;
         }
@@ -678,7 +688,7 @@ module.exports = class Response extends Writable {
         }
         if (options.cacheControl) {
             this.headers["cache-control"] =
-                `public, max-age=${options.maxAge / 1000}` + (options.immutable ? ", immutable" : "");
+                `public, max-age=${Math.floor(options.maxAge / 1000)}` + (options.immutable ? ", immutable" : "");
         }
         if (options.lastModified) {
             this.headers["last-modified"] = stat.mtime.toUTCString();
