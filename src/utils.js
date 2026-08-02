@@ -68,10 +68,34 @@ function removeDuplicateSlashes(path) {
 const NAMED_GROUP = /\(\?<([^>]+)>/g;
 
 /**
- * A compiled path pattern. The names ride along on the regex itself, because that is the only thing
- * the router still has by the time it needs to read a match: which names it captures, in order, and
- * which of those are wildcards and have to be split into an array.
- * @typedef {RegExp & {_wildcardNames?: string[], _paramNames?: string[], _paramIsWildcard?: boolean[]}} PathRegExp
+ * What a compiled pattern knows about itself: which names it captures, in order, and which of those
+ * are wildcards and have to be split into an array.
+ *
+ * Kept here rather than on the regex, and this is not tidiness. V8 has a fast path for regular
+ * expressions that requires the object to be exactly a RegExp and nothing more, and a single own
+ * property takes it off that path for good. Measured on the anchored prefix pattern of a mounted
+ * router: `path.replace(re, "")` costs 37ns with a clean regex and 808ns with three properties
+ * hung off it, and `re.test(path)` costs 22ns against 78. Those two run for every mount and every
+ * route a request is compared against, so the annotations were charging more than everything they
+ * were meant to save.
+ *
+ * @typedef {{wildcardNames: string[], paramNames: string[], isWildcard: boolean[]}} PatternMeta
+ */
+const patternMeta = new WeakMap();
+
+/**
+ * What patternToRegex worked out about a pattern, or undefined for a RegExp the application wrote
+ * itself.
+ * @param {RegExp} pattern
+ * @returns {PatternMeta|undefined}
+ */
+function getPatternMeta(pattern) {
+    return patternMeta.get(pattern);
+}
+
+/**
+ * A compiled path pattern. A plain RegExp, deliberately.
+ * @typedef {RegExp} PathRegExp
  */
 
 /**
@@ -85,8 +109,8 @@ const NAMED_GROUP = /\(\?<([^>]+)>/g;
  * inline regex like :id(\\d+), and the `+`, `?`, `()` operators. They throw, because a
  * route that quietly stops matching is worse than one that fails at startup.
  *
- * Wildcard names are recorded on the returned regex so the router can split their
- * value into the array req.params expects.
+ * Wildcard names and parameter names are recorded in a WeakMap beside the regex, not on it: see
+ * PatternMeta for why a single own property on a RegExp is expensive.
  */
 function patternToRegex(pattern, isPrefix = false) {
     if (pattern instanceof RegExp) {
@@ -234,7 +258,6 @@ function patternToRegex(pattern, isPrefix = false) {
     }
 
     const regex = /** @type {PathRegExp} */ (new RegExp(`^${regexPattern}${isPrefix ? "(?=$|/)" : "$"}`));
-    regex._wildcardNames = wildcardNames;
     // The names this regex captures, in the order it captures them, and which of them are
     // wildcards. Both are read back out of the pattern that was just built rather than collected on
     // the way, so there is one list and it cannot disagree with the regex.
@@ -243,8 +266,14 @@ function patternToRegex(pattern, isPrefix = false) {
     // with for-in instead, and asking an array whether each name is a wildcard, cost 349ns against
     // 176 for the same answer, and this runs for every request that matches a route with a
     // parameter in it.
-    regex._paramNames = [...regexPattern.matchAll(NAMED_GROUP)].map((m) => m[1]);
-    regex._paramIsWildcard = regex._paramNames.map((name) => wildcardNames.includes(name));
+    //
+    // In a WeakMap and not on the regex, for the reason written at PatternMeta.
+    const paramNames = [...regexPattern.matchAll(NAMED_GROUP)].map((m) => m[1]);
+    patternMeta.set(regex, {
+        wildcardNames,
+        paramNames,
+        isWildcard: paramNames.map((name) => wildcardNames.includes(name))
+    });
     return regex;
 }
 
@@ -875,6 +904,7 @@ NullObject.prototype = Object.create(null);
 module.exports = {
     removeDuplicateSlashes,
     patternToRegex,
+    getPatternMeta,
     needsConversionToRegex,
     acceptParams,
     normalizeType,

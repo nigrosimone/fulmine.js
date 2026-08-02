@@ -17,6 +17,7 @@ limitations under the License.
 
 const {
     patternToRegex,
+    getPatternMeta,
     needsConversionToRegex,
     findIndexStartingFrom,
     canBeOptimized,
@@ -642,16 +643,15 @@ module.exports = class Router extends EventEmitter {
         }
 
         const groups = match.groups;
-        const names = pattern._paramNames;
-        if (names === undefined) {
-            // a RegExp the application supplied itself, which has no list attached to it
-            const wildcardNames = pattern._wildcardNames;
+        const meta = getPatternMeta(pattern);
+        if (meta === undefined) {
+            // a RegExp the application supplied itself, which was never compiled here
             for (const name in groups) {
                 const value = groups[name];
                 if (value === undefined) {
                     continue;
                 }
-                obj[name] = wildcardNames?.includes(name) ? value.split("/") : value;
+                obj[name] = value;
             }
             return obj;
         }
@@ -659,10 +659,9 @@ module.exports = class Router extends EventEmitter {
         // asking for each name in turn rather than walking the groups object, which is a
         // null-prototype dictionary and slow to enumerate, and reading the wildcard answer that was
         // worked out when the pattern was compiled instead of searching an array for it
-        // built alongside _paramNames, so it is there whenever that is
-        const isWildcard = /** @type {boolean[]} */ (pattern._paramIsWildcard);
-        for (let i = 0, len = names.length; i < len; i++) {
-            const name = names[i];
+        const { paramNames, isWildcard } = meta;
+        for (let i = 0, len = paramNames.length; i < len; i++) {
+            const name = paramNames[i];
             const value = groups[name];
             // an optional group that did not match is absent in v5, not present as undefined
             if (value === undefined) {
