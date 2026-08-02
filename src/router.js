@@ -22,6 +22,7 @@ const {
     needsConversionToRegex,
     findIndexStartingFrom,
     canBeOptimized,
+    canBeOptimizedWithParams,
     NullObject,
     EMPTY_REGEX
 } = require("./utils.js");
@@ -438,7 +439,27 @@ module.exports = class Router extends EventEmitter {
                             }
                         ]);
                     }
-                } else if (!route.complex && canBeOptimized(route.path) && supportedUwsMethods.has(route.method)) {
+                    // canBeOptimizedWithParams and not canBeOptimized: a path whose parameters are
+                    // whole segments is one µWS matches itself, and "/users/:id" is the commonest
+                    // route shape there is. The chain below is what keeps the order right, since
+                    // µWS picks by specificity where Express picks by registration order: whichever
+                    // route µWS lands on, the chain computed for it runs everything that could have
+                    // matched first, in order.
+                } else if (
+                    (canBeOptimized(route.path) ||
+                        (canBeOptimizedWithParams(route.path) &&
+                            // app.param() and router.param() are the exception. The native chain is
+                            // run by the app, so it consults the app's callbacks, and a mounted
+                            // router's own would never fire. Rather than teach the chain who owns
+                            // each route, a path with parameters goes the slow way whenever any
+                            // param callback is registered: the callbacks are rare and this keeps
+                            // their ordering exactly as Express has it.
+                            router._paramCallbacks.size === 0 &&
+                            this._paramCallbacks.size === 0 &&
+                            // and inside a mounted router, only when nothing after it could match
+                            (!pathPrefix || !router._isFollowedByAnOverlap(route, router._routes)))) &&
+                    supportedUwsMethods.has(route.method)
+                ) {
                     const leafPath = router._optimizeRoute(route, router._routes);
                     if (!leafPath) {
                         continue;
@@ -511,6 +532,50 @@ module.exports = class Router extends EventEmitter {
      *
      * @param {any} route
      * @param {any[]} optimizedPath the chain from _optimizeRoute
+     */
+    /**
+     * Whether something registered after this route, in the same router, could also match a path
+     * this route matches.
+     *
+     * It decides whether a route with a parameter inside a mounted router may go to µWS. When a
+     * native chain runs out and hands back to ordinary routing, it resumes after the mount in the
+     * parent rather than inside the router, so a sibling that would have matched next is lost. A
+     * parameter matches many paths, so it has many possible siblings, where a literal has almost
+     * none.
+     *
+     * Conservative on purpose: a later pattern is assumed to overlap, since asking whether two
+     * patterns share any path is not a question with a cheap answer.
+     *
+     * @param {any} route
+     * @param {any[]} routes every route of the router this one belongs to
+     * @returns {boolean}
+     */
+    _isFollowedByAnOverlap(route, routes) {
+        for (let i = routes.length - 1; i >= 0; i--) {
+            const later = routes[i];
+            if (later.routeKey <= route.routeKey) {
+                return false;
+            }
+            // a different verb cannot answer the same request, unless it answers every verb
+            if (!later.all && !later.use && later.method !== route.method) {
+                continue;
+            }
+            if (later.use || later.pattern instanceof RegExp) {
+                return true;
+            }
+            if (typeof later.path === "string" && route.pattern instanceof RegExp && route.pattern.test(later.path)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Hands one route to µWS, along with the chain of everything that has to run in front of it,
+     * and records that chain on the route so the handler can walk it.
+     *
+     * @param {any} route
+     * @param {any[]} optimizedPath the routes to run, in order, ending with this one
      */
     _registerUwsRoute(route, optimizedPath) {
         let method = route.method.toLowerCase();
@@ -695,8 +760,22 @@ module.exports = class Router extends EventEmitter {
      */
     _preprocessRequest(req, res, route) {
         req.route = route;
-        if (route.optimizedParams) {
-            req.params = Object.assign(Object.create(null), req.optimizedParams);
+        // and req.optimizedParams, not the route flag alone: the flag says this route was registered
+        // natively, while the values are only there when this request actually came in through that
+        // registration. A request that reached the same route the slow way has none, and would
+        // otherwise be handed an empty params object.
+        if (route.optimizedParams && req.optimizedParams) {
+            req.params = Object.create(null);
+            try {
+                // µWS hands back the raw text, as the regex does, so both paths decode here
+                for (const name in req.optimizedParams) {
+                    req.params[name] = decodeParam(req.optimizedParams[name]);
+                }
+            } catch (err) {
+                req._error = err;
+                req._errorKey = route.routeKey;
+                return "route";
+            }
         } else if (route.complex) {
             let path = req._originalPath;
             if (req._stack.length > 0) {

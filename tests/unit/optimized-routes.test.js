@@ -80,14 +80,34 @@ test("case insensitive routing turns the native router off altogether", async ()
     assert.strictEqual(optimized["/health"], false);
 });
 
-// Written as a todo rather than an assertion, because it is the one that is meant to change.
-//
-// µWS matches :param itself, `_registerUwsRoute` already reads the values back with getParameter,
-// and `/users/:id` is the commonest route shape there is. Today it is not on the fast path, and the
-// day it is, this test says so out loud instead of the change passing unnoticed.
-test("a :param route is not on the native router yet", async () => {
+test("a :param route is on the native router", async () => {
+    // The commonest route shape there is, and the one this file was written to protect. It reached
+    // the native router on 2026-08-02; before that it went the slow way in this project and in the
+    // one it is derived from, while the machinery to handle it sat unused.
     const optimized = await optimizedFor(["/users/:id", "/users/:id/posts", "/a/:b/c/:d"]);
     for (const [path, isOptimized] of Object.entries(optimized)) {
-        assert.strictEqual(isOptimized, false, `${path}: if this now fails, the optimisation landed`);
+        assert.strictEqual(isOptimized, true, `${path} should be on the native router`);
     }
+});
+
+test("a parameter that is not a whole segment is not", async () => {
+    // µWS matches ":from" against a whole segment, so "/flights/:from-:to" would be one parameter
+    // to it and two to Express. A route that matched different requests would be a great deal
+    // worse than a route that is merely slower.
+    const optimized = await optimizedFor(["/flights/:from-:to", "/file-:name", "/:a.:b"]);
+    for (const [path, isOptimized] of Object.entries(optimized)) {
+        assert.strictEqual(isOptimized, false, `${path} cannot be matched natively`);
+    }
+});
+
+test("app.param() sends parameter routes back to the slow path", async () => {
+    // The native chain is run by the app, so it consults the app's param callbacks. A mounted
+    // router's own would never fire, and rather than teach the chain who owns each route, a path
+    // with parameters goes the slow way whenever any param callback is registered.
+    const optimized = await optimizedFor(["/users/:id"], (app) => app.param("id", (req, res, next) => next()));
+    assert.strictEqual(optimized["/users/:id"], false);
+
+    // a plain path has no parameters to call back about, so it is unaffected
+    const plain = await optimizedFor(["/health"], (app) => app.param("id", (req, res, next) => next()));
+    assert.strictEqual(plain["/health"], true);
 });

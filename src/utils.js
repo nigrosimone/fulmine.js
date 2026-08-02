@@ -307,6 +307,44 @@ function canBeOptimized(pattern) {
     return !pattern.includes("*") && !pattern.includes("{") && !pattern.includes(":");
 }
 
+// a parameter that is the whole segment, which is the only shape µWS matches the same way Express
+// does. "/flights/:from-:to" is one segment to µWS and two parameters to Express.
+const WHOLE_SEGMENT_PARAM = /^:\w+$/;
+
+/**
+ * Whether µWS's own router can match this path, parameters included, and match exactly the paths
+ * Express would.
+ *
+ * µWS matches `:name` against one non-empty segment, anywhere in the path and any number of times,
+ * which is what Express's `:name` does too. It has nothing for a wildcard the way Express 5 spells
+ * one, since `{*splat}` is named, hands over an array of segments and also matches the mount point
+ * itself, and nothing at all for an optional group.
+ *
+ * A parameter is only accepted when it is the whole segment. Express is happy to match
+ * `/flights/:from-:to` within a segment and µWS is not, so a path like that goes the slow way
+ * rather than quietly matching different requests.
+ *
+ * @param {string|RegExp} pattern
+ * @returns {boolean}
+ */
+function canBeOptimizedWithParams(pattern) {
+    if (pattern instanceof RegExp) {
+        return false;
+    }
+    if (/[*{}()[\]?+\\]/.test(pattern)) {
+        return false;
+    }
+    if (!pattern.includes(":")) {
+        return true;
+    }
+    for (const segment of pattern.split("/")) {
+        if (segment.includes(":") && !WHOLE_SEGMENT_PARAM.test(segment)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /**
  * Splits one entry of an Accept-style header into its value and its parameters, with q pulled out
  * as the quality since that is the one every caller wants.
@@ -961,6 +999,7 @@ module.exports = {
     findIndexStartingFrom,
     fastQueryParse,
     canBeOptimized,
+    canBeOptimizedWithParams,
     escapeHtml,
     withDefaultCharset,
     withUtf8Charset,
