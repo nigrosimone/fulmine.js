@@ -42,14 +42,14 @@ function fastQueryParse(query, options) {
     // within reach of a query string.
     const len = query.length;
     if (len === 0) {
-        return { __proto__: null };
+        return Object.create(null);
     }
     if (len <= 128) {
         if (!query.includes("[") && !query.includes("%5B") && !query.includes(".") && !query.includes("%2E")) {
-            return Object.assign({ __proto__: null }, querystring.parse(query));
+            return Object.assign(Object.create(null), querystring.parse(query));
         }
     }
-    return Object.assign({ __proto__: null }, qs.parse(query, options));
+    return Object.assign(Object.create(null), qs.parse(query, options));
 }
 
 /**
