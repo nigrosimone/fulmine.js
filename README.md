@@ -36,7 +36,7 @@ Compatibility here is not a claim, it is a test suite. Every test runs against r
 
 Fulmine is faster than Express where the framework itself is doing the work, and the same speed where it is not. Both halves of that sentence matter, so here is the honest version.
 
-**Where it is clearly faster.** Routing and dispatch, request shapes with params and query strings, connection handling: land between 1.7x and 3x: plain routing 1.7x to 2.3x, an API endpoint with params and a query 1.8x to 2.7x, nested routers 2.2x to 2.5x, a urlencoded body 2.7x to 3x.
+**Where it is clearly faster.** Routing and dispatch, request shapes with params and query strings, connection handling. These land between 1.7x and 3x: plain routing 1.7x to 2.3x, an API endpoint with params and a query 1.8x to 2.7x, nested routers 2.2x to 2.5x, a urlencoded body 2.7x to 3x.
 
 **Where it is a wash.** Any request whose cost is dominated by work both servers hand to the same library. A 512 KiB JSON body is `JSON.parse`, a gzipped response is zlib, a hashed upload is OpenSSL, a 5 MiB stream is memory bandwidth. On those the ratio is capped by arithmetic somewhere around 1.0x to 1.2x, and no amount of work on either server moves it. The benchmark labels those rows rather than quietly publishing them as if the two were equivalent.
 
@@ -119,7 +119,7 @@ app.listen(3000, () => {
 });
 ```
 
-- This also applies to non-SSL HTTP too. Do not create http server manually, use `app.listen()` instead.
+- This also applies to non-SSL HTTP too. Use `app.listen()` rather than creating a server by hand. `http.createServer(app)` does work, because the app is a request listener like Express's and answers node's requests through a shim, which is what lets `supertest`, `vhost` and anything else that calls an app keep working. But it serves those requests through `node:http` rather than through µWS, so the speed is Express's. It is there for compatibility, not for production.
 - Node.JS max header size is 16384 bytes, while uWebSockets by default is 4096 bytes, so if you need longer headers set the env variable `UWS_HTTP_MAX_HEADERS_SIZE` to max byte count you need.
 - uWebSockets drops a request whose body arrives slower than 16KB/s, and the timeout is not reachable from JavaScript, while Node.JS waits as long as the client needs. Uploads over very slow connections can therefore fail here and succeed on Express. A body stalled for 5 seconds still completes; one stalled for 12 seconds gets its socket reset at around 11.8 seconds.
 
