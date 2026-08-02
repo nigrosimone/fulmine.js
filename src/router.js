@@ -91,6 +91,48 @@ const regExParam = /:(\w+)/g;
 // Response and Application. Everything on Router, and everything one class reads off another's
 // instance such as req._opPath, stays an underscore because it has to.
 
+// one intermediate prototype per class, built the first time a callable of that class is made
+const callablePrototypes = new WeakMap();
+
+/**
+ * The prototype a callable router or app is given: the class's own, with the handful of things a
+ * function is expected to have put back.
+ *
+ * Setting a function's prototype to a class prototype takes Function.prototype out of its chain,
+ * and with it apply, call and bind. A function without apply is not something node will emit a
+ * request to: `http.createServer(app)` failed with "handler.apply is not a function" on Node 24,
+ * where Node 26 happened to call the listener another way and let it pass. Anything doing
+ * `fn.call(...)` or `fn.bind(...)` with a router had the same hole, and has had it for as long as
+ * express.Router() has handed back a function.
+ *
+ * An intermediate object rather than copying the methods onto the function, so that the class
+ * prototype stays in the chain: express.application is that prototype, and adding a method to it
+ * has to reach apps that already exist.
+ *
+ * constructor is deliberately not among the names taken from Function.prototype. It is Function
+ * there, and code here asks `this.constructor.name === "Application"`.
+ *
+ * @param {object} classPrototype
+ * @returns {object}
+ */
+function callablePrototypeFor(classPrototype) {
+    let prototype = callablePrototypes.get(classPrototype);
+    if (prototype) {
+        return prototype;
+    }
+    prototype = Object.create(classPrototype);
+    for (const name of ["apply", "call", "bind", "toString"]) {
+        Object.defineProperty(prototype, name, {
+            value: /** @type {any} */ (Function.prototype)[name],
+            writable: true,
+            configurable: true,
+            enumerable: false
+        });
+    }
+    callablePrototypes.set(classPrototype, prototype);
+    return prototype;
+}
+
 /**
  * The default error page, which is the one Express produces: the stack in a pre, and nothing else.
  * What reaches it has already been redacted when the environment calls for it.
@@ -178,7 +220,7 @@ module.exports = class Router extends EventEmitter {
             }
         );
         Object.assign(fn, this);
-        Object.setPrototypeOf(fn, Object.getPrototypeOf(this));
+        Object.setPrototypeOf(fn, callablePrototypeFor(Object.getPrototypeOf(this)));
         return fn;
     }
 

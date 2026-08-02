@@ -56,6 +56,25 @@ function optimizedFor(paths, extra) {
     });
 }
 
+test("a callable app or router is still a usable function", () => {
+    // Setting a function's prototype to a class prototype takes Function.prototype out of its
+    // chain, and apply, call and bind with it. Node emits a request to its listener with
+    // handler.apply, so an app without one is not something http.createServer can serve: that was
+    // a CI failure on Node 24 while Node 26 called the listener another way and passed.
+    for (const callable of [express(), express.Router()]) {
+        assert.strictEqual(typeof callable, "function");
+        assert.strictEqual(typeof callable.apply, "function");
+        assert.strictEqual(typeof callable.call, "function");
+        assert.strictEqual(typeof callable.bind, "function");
+    }
+
+    // and the class prototype is still in the chain, which is what express.application is for:
+    // a method added there has to reach apps that already exist
+    const app = express();
+    assert.strictEqual(app.constructor.name, "Application");
+    assert.strictEqual(typeof app.listen, "function");
+});
+
 test("a plain path is served by the native router", async () => {
     const optimized = await optimizedFor(["/", "/health", "/a/b/c", "/api/v1/users"]);
     for (const [path, isOptimized] of Object.entries(optimized)) {
