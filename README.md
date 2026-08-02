@@ -11,14 +11,6 @@ ESM and TypeScript work the same way, named imports included:
 ```ts
 import express, { Router, json } from "fulmine.js";
 import type { Request, Response } from "fulmine.js";
-
-const app = express();
-
-app.get("/hello/:name", (req: Request, res: Response) => {
-    res.json({ hello: req.params.name });
-});
-
-app.listen(3000, () => console.log("listening"));
 ```
 
 There is a command that does that replacing for you, across a whole project, and then tells you the handful of things that behave differently:
@@ -29,16 +21,14 @@ npx fulmine.js migrate             # do it
 npx fulmine.js differences         # just the list of what to check by hand
 ```
 
-It reads each file with a parser rather than searching the text, so `express-session` and the word "express" in a string or a comment are left alone. See [Migrating](#migrating) for what it handles and what it deliberately does not.
+See [Migrating](#migrating) for what it handles and what it deliberately does not.
 
 [![Node.js >= 22.0.0](https://img.shields.io/badge/Node.js-%3E=22.0.0-green)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](./LICENSE)
 
-> **Status: work in progress.** Not published to npm yet. The API is the Express 5 API; the parts that differ are listed under [Differences from Express](#differences-from-express).
-
 ## Why this exists
 
-There are several fast HTTP servers for Node built on µWebSockets. What is scarce is one you can actually drop into an existing Express application without rewriting it.
+There are several fast HTTP servers for Node built on [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js). What is scarce is one you can actually drop into an existing Express application without rewriting it.
 
 Compatibility here is not a claim, it is a test suite. Every test runs against real Express first and then against Fulmine, and the outputs have to match byte for byte. That is what makes `helmet`, `cors`, `passport`, `morgan`, `multer`, `express-session` and the rest of the ecosystem work rather than "mostly work".
 
@@ -46,30 +36,22 @@ Compatibility here is not a claim, it is a test suite. Every test runs against r
 
 Fulmine is faster than Express where the framework itself is doing the work, and the same speed where it is not. Both halves of that sentence matter, so here is the honest version.
 
-**Where it is clearly faster.** Routing and dispatch, request shapes with params and query strings, connection handling. Across the last nine CI runs these land between 1.7x and 3x: plain routing 1.7x to 2.3x, an API endpoint with params and a query 1.8x to 2.7x, nested routers 2.2x to 2.5x, a urlencoded body 2.7x to 3x.
-
-A thousand-route table is the outlier, anywhere from 5.5x to 17x. That spread is not the code changing under it. Express walks its routes one at a time while this one is answered by a native lookup, so the gap is set by how much room the load generator has left on the day: on a fast runner Express stays where it is and this side runs away, on a slow one both are held back together.
+**Where it is clearly faster.** Routing and dispatch, request shapes with params and query strings, connection handling: land between 1.7x and 3x: plain routing 1.7x to 2.3x, an API endpoint with params and a query 1.8x to 2.7x, nested routers 2.2x to 2.5x, a urlencoded body 2.7x to 3x.
 
 **Where it is a wash.** Any request whose cost is dominated by work both servers hand to the same library. A 512 KiB JSON body is `JSON.parse`, a gzipped response is zlib, a hashed upload is OpenSSL, a 5 MiB stream is memory bandwidth. On those the ratio is capped by arithmetic somewhere around 1.0x to 1.2x, and no amount of work on either server moves it. The benchmark labels those rows rather than quietly publishing them as if the two were equivalent.
-
-**What that means for your application.** If a request spends 1 ms in your database and 40 µs in the framework, a 3x framework speedup is worth about 1% end to end. If you are serving a gateway, a proxy, static assets, health endpoints or anything with a high request rate and little work per request, it is worth a great deal more. Pick accordingly.
 
 Two things worth knowing before comparing numbers with anyone:
 
 - **Node 24 moved the baseline.** Express got roughly 3x faster on the routing benchmarks between Node 22 and Node 24, while a µWS-based server barely moved, because the gain came from `node:http`. Any comparison published before mid-2026 overstates the current gap.
-- **Ratios are not portable across runs.** GitHub's runners vary enough that the same code measures 15k or 28k req/sec on the same row. Only compare figures produced in the same run. That is why the numbers above are ranges over nine runs rather than one impressive row: the same commit measured 5.5x and 17x on the thousand-route table a few hours apart.
+- **Ratios are not portable across runs.** GitHub's runners vary enough that the same code measures 15k or 28k req/sec on the same row. Only compare figures produced in the same run.
 
 The current table is generated by CI on every push and pull request, so it reflects the code rather than a snapshot somebody took once. See [`benchmark/README.md`](./benchmark/README.md) to run it yourself.
 
 ## Attribution
 
-Fulmine is a derivative work of [Ultimate Express](https://github.com/dimdenGD/ultimate-express) by [@dimdenGD](https://github.com/dimdenGD), used under the Apache License 2.0. The full commit history is preserved, so the original authorship is visible in the repository itself:
+Fulmine is a derivative work of [Ultimate Express](https://github.com/dimdenGD/ultimate-express) by [@dimdenGD](https://github.com/dimdenGD), used under the Apache License 2.0. The full commit history is preserved, so the original authorship is visible in the repository itself.
 
-```sh
-git shortlog -sn
-```
-
-**Special thanks to [@dimdenGD](https://github.com/dimdenGD).** Ultimate Express is the hard part of this project, and it was already done before Fulmine existed: the native µWS route compilation, the declarative response path, the request and response objects rebuilt on top of a socket API that shares almost nothing with `node:http`, and the test harness that checks compatibility by running everything against real Express rather than asserting it. Everything here stands on that work.
+**Special thanks to [@dimdenGD](https://github.com/dimdenGD).** Ultimate Express is the hard part of this project, and it was already done before Fulmine existed. Everything here stands on that work.
 
 Fulmine is not affiliated with, endorsed by, or maintained by the authors of Ultimate Express. See [`NOTICE`](./NOTICE) for the list of significant changes.
 
@@ -91,12 +73,6 @@ npx fulmine.js migrate [dir]       # defaults to the current directory
 npx fulmine.js migrate --dry-run   # say what it would rewrite and rewrite nothing
 npx fulmine.js differences         # print the list below and change nothing
 ```
-
-**What it rewrites.** `require("express")`, `import ... from "express"`, `export * from "express"`, dynamic `import("express")`, and in TypeScript also `import type` and `import x = require("express")`. It reads each file with a parser rather than searching the text, so `express-session`, the word "express" in a string, and a commented-out import are all left alone. Quote style is preserved.
-
-**What it needs.** `.js`, `.mjs` and `.cjs` are read with acorn, which ships with this package. `.ts`, `.mts`, `.cts` and `.tsx` need the `typescript` package, which it borrows from the project being migrated rather than shipping a second parser; if there is none it names the files it left alone instead of skipping them quietly.
-
-**What it will not do.** `node_modules`, `dist`, `build`, `coverage` and dotted directories are not walked. A file that does not parse is reported and left as it was. Nothing but the module specifier is ever changed, which is why the command finishes by printing the list below: those are the things no rewrite can find for you.
 
 ## Differences from Express
 
@@ -152,7 +128,7 @@ app.listen(3000, () => {
 1. Fulmine tries to optimize routing as much as possible, but it's only possible if:
 
 - `case sensitive routing` is enabled (it is by default, unlike in normal Express).
-- the path is a plain string, with no `:param`, no `*splat` and no `{}` group. Note that `+`, `()` and `[]` are not slow paths, they are not valid Express 5 paths at all and throw when the route is registered.
+- the path is a plain string, with no `:param`, no `*splat` and no `{}` group.
 
 Optimized routes can be up to 10 times faster than normal routes, as they're using native uWS router and have pre-calculated path.
 
@@ -168,7 +144,7 @@ On top of that, a handler simple enough to be read at registration time is compi
 
 3. Do not use `body-parser` module. Instead use built-in `express.text()`, `express.json()` etc.
 
-4. If a route answers with a JSON shape you know in advance, [express-fast-json-stringify](https://www.npmjs.com/package/express-fast-json-stringify) compiles that shape into a serializer and `res.fastJson()` replaces `res.json()`. `JSON.stringify()` has to walk an object it knows nothing about; a compiled serializer does not. It is tested here for compatibility.
+4. If a route answers with a JSON shape you know in advance, [express-fast-json-stringify](https://www.npmjs.com/package/express-fast-json-stringify) compiles that shape into a serializer and `res.fastJson()` replaces `res.json()`. `JSON.stringify()` has to walk an object it knows nothing about; a compiled serializer does not.
 
 5. Do not set `body methods` to read body of requests with GET method or other methods that don't need a body. Reading body makes endpoint about 15% slower.
 
@@ -225,8 +201,7 @@ const app = express({
 ## Versioning
 
 **The major number tracks Express, not semver.** Fulmine 5.x follows Express 5. If Express 6
-arrives, Fulmine goes to 6, and that is the only reason the major ever moves. It is set by hand,
-never derived from the commits.
+arrives, Fulmine goes to 6, and that is the only reason the major ever moves.
 
 Read the rest of the number normally: minor for new behaviour, patch for fixes.
 
