@@ -33,8 +33,18 @@ try {
 }
 
 // The factory doubles as a namespace, the way Express does it: Router, static and the body
-// parsers all hang off the same function that creates an app. Naming that shape here is what
-// lets the assignments below be checked rather than waved through.
+// parsers all hang off the same function that creates an app.
+//
+// Assigned onto module.exports directly, and not through a local alias, because that is what
+// decides whether `import { Router } from "fulmine.js"` works at all. Node works out which named
+// exports a CommonJS module can offer an ESM importer by reading this file as text with
+// cjs-module-lexer, which recognises `module.exports.name =` and cannot see through an alias.
+// Nothing is executed to find out, so the runtime value is beside the point.
+//
+// Which is also why the block of `exports.x = ...` this file used to end with was not the dead
+// code it looked like. It was dead for require(), since assigning module.exports detaches
+// `exports` from it, and it was doing the entire job for import. Removing it took the named
+// imports with it, and nothing failed: the tests are all CommonJS.
 /**
  * @type {typeof Application & {
  *   Router: Function,
@@ -48,10 +58,10 @@ try {
  *   raw: Function
  * }}
  */
-const fulmine = /** @type {any} */ (Application);
+module.exports = /** @type {any} */ (Application);
 
 // converts router to a function and makes it callable
-fulmine.Router = function (options) {
+module.exports.Router = function (options) {
     const router = new Router(options);
     const fn = function (req, res, next) {
         router._routeRequest(req, res, 0).then((routed) => {
@@ -65,21 +75,13 @@ fulmine.Router = function (options) {
     return fn;
 };
 
-fulmine.request = Request.prototype;
-fulmine.response = Response.prototype;
-// the third of the trio, and the one that was missing: adding a method here adds it to every app,
-// the same as express.application
-fulmine.application = Application.Application.prototype;
+module.exports.request = Request.prototype;
+module.exports.response = Response.prototype;
+// the third of the trio: adding a method here adds it to every app, the same as express.application
+module.exports.application = Application.Application.prototype;
 
-fulmine.static = middlewares.static;
-
-fulmine.json = middlewares.json;
-fulmine.urlencoded = middlewares.urlencoded;
-fulmine.text = middlewares.text;
-fulmine.raw = middlewares.raw;
-
-// Everything above is hung off this same object, which is what makes express.Router and the rest
-// reachable. A block of `exports.x = ...` used to follow this line and did nothing at all:
-// assigning module.exports detaches `exports` from it, so those nine lines wrote to an object
-// nobody could reach. express.application was only in that block, which is how it went missing.
-module.exports = Application;
+module.exports.static = middlewares.static;
+module.exports.json = middlewares.json;
+module.exports.urlencoded = middlewares.urlencoded;
+module.exports.text = middlewares.text;
+module.exports.raw = middlewares.raw;

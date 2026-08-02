@@ -6,6 +6,21 @@ A drop-in replacement for Express 5, running on [µWebSockets.js](https://github
 const express = require("fulmine.js"); // instead of require("express")
 ```
 
+ESM and TypeScript work the same way, named imports included:
+
+```ts
+import express, { Router, json } from "fulmine.js";
+import type { Request, Response } from "fulmine.js";
+
+const app = express();
+
+app.get("/hello/:name", (req: Request, res: Response) => {
+    res.json({ hello: req.params.name });
+});
+
+app.listen(3000, () => console.log("listening"));
+```
+
 There is a command that does that replacing for you, across a whole project, and then tells you the handful of things that behave differently:
 
 ```sh

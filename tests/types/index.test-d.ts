@@ -158,3 +158,32 @@ expectAssignable<Server>(configured.listen((_token) => {}));
 
 // an existing uWS app can be handed in instead of letting Fulmine create one
 express({ uwsApp: configured.uwsApp }).listen(3001).close();
+
+// The named exports, which are a separate question from the default one: Node decides which of
+// them an ESM importer can have by reading src/index.js with cjs-module-lexer, and TypeScript
+// decides by reading src/types.d.ts. Both have to agree, and the runtime half is pinned by
+// tests/tests/app/app-esm-named-exports.js.
+import {
+    Router as NamedRouter,
+    json as namedJson,
+    urlencoded as namedUrlencoded,
+    text as namedText,
+    raw as namedRaw,
+    static as namedStatic
+} from "fulmine.js";
+import type { Request as FulmineRequest, Response as FulmineResponse } from "fulmine.js";
+
+expectType<IRouter>(NamedRouter());
+expectAssignable<RequestHandler>(namedJson());
+expectAssignable<RequestHandler>(namedUrlencoded());
+expectAssignable<RequestHandler>(namedText());
+expectAssignable<RequestHandler>(namedRaw());
+expectAssignable<RequestHandler>(namedStatic("public"));
+
+// the type names come through as well, which is what the README example uses
+const typedHandler = (req: FulmineRequest, res: FulmineResponse) => {
+    // a wildcard parameter is captured as an array, so a value is not always a string
+    expectAssignable<Record<string, string | string[]>>(req.params);
+    res.json({ ok: true });
+};
+expectAssignable<RequestHandler>(typedHandler);
