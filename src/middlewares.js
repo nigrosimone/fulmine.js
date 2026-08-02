@@ -22,32 +22,25 @@ const zlib = require("fast-zlib");
 const typeis = require("type-is");
 const querystring = require("fast-querystring");
 const { AsyncResource } = require("async_hooks");
-const { fastQueryParse, NullObject } = require("./utils.js");
+const { fastQueryParse, NullObject, asStatError, httpError } = require("./utils.js");
 
 // largest content-length we will allocate a body buffer for up front. above this the body is
 // collected chunk by chunk instead, so a declared-but-unsent body cannot pin more memory than a
 // real one of the same size would
 const MAX_PREALLOCATED_BODY = 1024 * 1024;
 
-// The status send picks for a failed stat. Anything else is the file being there but unreadable,
-// which is the server's problem and not the request's.
-const STAT_ERROR_STATUS = { ENAMETOOLONG: 404, ENOTDIR: 404, ENOENT: 404 };
-
-/**
- * Marks an fs error the way send does before handing it to next(), so an error handler reading
- * err.status or err.statusCode finds what it would find behind Express. The three properties are
- * assigned in this order because they are serialised in insertion order, and an error handler that
- * answers with res.send(err) sends them.
- *
- * @param {any} err
- * @returns {any} the same error
- */
-function asSendError(err) {
-    err.expose = false;
-    err.statusCode = STAT_ERROR_STATUS[err.code] ?? 500;
-    err.status = err.statusCode;
-    return err;
-}
+// The failures express.static answers by moving on to the next handler rather than by reporting
+// them, when fallthrough is on. They all mean the same thing: the request is not a file here.
+//
+// serve-static decides this by remembering whether send got as far as settling on a file, and
+// forwards everything after that point. The list is the same thing said from the other side, since
+// by the time this hands over, the file has been found and stat'ed already: what is left to fail
+// is a dotfile rule or a path that will not decode.
+//
+// A 412 and a 416 are not on it, and that is the point of the list. Both are about a file that
+// exists and about conditions the client itself set, and falling through swallowed them: a Range
+// Not Satisfiable came back as a 404, which tells the client its file is gone when it is not.
+const FALLTHROUGH_STATUSES = new Set([400, 403, 404]);
 
 /**
  * A path with any run of leading slashes reduced to one.
@@ -176,9 +169,11 @@ function serveStatic(root, options) {
         try {
             url = decodeURIComponent(iq !== -1 ? req.url.substring(0, iq) : req.url);
         } catch (e) {
+            // 400 and not 404: send answers a path it cannot decode with a Bad Request, since
+            // nothing was asked for that could be missing
             if (!options.fallthrough) {
-                res.status(404);
-                return next(new Error("Not found"));
+                res.status(400);
+                return next(httpError(400));
             } else return next();
         }
         let _path = url;
@@ -186,7 +181,7 @@ function serveStatic(root, options) {
         if (options.root && !fullpath.startsWith(path.resolve(options.root))) {
             if (!options.fallthrough) {
                 res.status(403);
-                return next(new Error("Forbidden"));
+                return next(httpError(403));
             } else return next();
         }
 
@@ -214,7 +209,7 @@ function serveStatic(root, options) {
                     // error handler with its errno, code, syscall and path still on it, and an
                     // error handler doing res.send(err) sends those as JSON. Passing the string
                     // sent an HTML page instead.
-                    return next(asSendError(err));
+                    return next(asStatError(err));
                 } else return next();
             }
         }
@@ -231,7 +226,7 @@ function serveStatic(root, options) {
                 } else {
                     if (!options.fallthrough) {
                         res.status(404);
-                        return next(new Error("Not found"));
+                        return next(httpError(404));
                     } else return next();
                 }
             }
@@ -242,10 +237,19 @@ function serveStatic(root, options) {
                 } catch (err) {
                     if (!options.fallthrough) {
                         res.status(404);
-                        return next(new Error("Not found"));
+                        // the fs error, as above: the index file is missing and the error handler
+                        // is told which one and where
+                        return next(asStatError(err));
                     } else return next();
                 }
             } else {
+                // a directory with no index to serve is a Not Found, and saying so is the whole
+                // point of fallthrough: false. This moved on to the next handler instead, so the
+                // application's own 404 answered where serve-static's error handler should have.
+                if (!options.fallthrough) {
+                    res.status(404);
+                    return next(httpError(404));
+                }
                 return next();
             }
         }
@@ -254,7 +258,7 @@ function serveStatic(root, options) {
 
         return res.sendFile(_path, options, (e) => {
             if (e) {
-                next(!options.fallthrough ? e : undefined);
+                next(options.fallthrough && FALLTHROUGH_STATUSES.has(e.status) ? undefined : e);
             }
         });
     };

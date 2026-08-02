@@ -21,6 +21,7 @@ const proxyaddr = require("proxy-addr");
 const qs = require("qs");
 const querystring = require("fast-querystring");
 const etag = require("etag");
+const statuses = require("statuses");
 const { Stats } = require("fs");
 
 const EMPTY_REGEX = new RegExp(``);
@@ -714,6 +715,51 @@ function withUtf8Charset(value) {
     return CHARSET_PARAM.test(value) ? value.replace(CHARSET_PARAM, UTF8_CHARSET) : `${value}${UTF8_CHARSET}`;
 }
 
+// The status send picks for a failed stat. Anything else is the file being there but unreadable,
+// which is the server's problem and not the request's.
+const STAT_ERROR_STATUS = { ENAMETOOLONG: 404, ENOTDIR: 404, ENOENT: 404 };
+
+/**
+ * The error send and serve-static report a refusal with, for the file-serving code here to report
+ * the same one.
+ *
+ * They build these with http-errors, so they carry `status`, `statusCode` and `expose`, and the
+ * error handler every Express application has, `res.status(err.status || 500)`, reads one of them.
+ * Without a status a Forbidden, a Not Found, a Precondition Failed and a Range Not Satisfiable all
+ * came out of that handler as 500: the client cannot tell its own bad request from a broken
+ * server, and whatever counts 5xx counts it against the server.
+ *
+ * The message is the status's own name for the same reason, since http-errors takes it from there.
+ *
+ * @param {number} status
+ * @returns {any}
+ */
+function httpError(status) {
+    const err = /** @type {any} */ (new Error(statuses.message[status]));
+    err.expose = status < 500;
+    err.statusCode = status;
+    err.status = status;
+    return err;
+}
+
+/**
+ * Marks an fs error the way send does before it is handed on, so an error handler reading
+ * err.status or err.statusCode finds what it would find behind Express. The three properties are
+ * assigned in this order because they are serialised in insertion order, and an error handler that
+ * answers with res.send(err) sends them.
+ *
+ * The error itself is returned rather than a new one, so its errno, code, syscall and path survive.
+ *
+ * @param {any} err
+ * @returns {any} the same error
+ */
+function asStatError(err) {
+    err.expose = false;
+    err.statusCode = STAT_ERROR_STATUS[err.code] ?? 500;
+    err.status = err.statusCode;
+    return err;
+}
+
 // fast null object
 // A constructor whose instances have no prototype, so a key from a request body or a query string
 // cannot reach Object.prototype. Typed as returning a plain record: without that, assigning one
@@ -747,5 +793,7 @@ module.exports = {
     escapeHtml,
     withDefaultCharset,
     withUtf8Charset,
+    asStatError,
+    httpError,
     EMPTY_REGEX
 };

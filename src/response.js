@@ -31,6 +31,8 @@ const {
     escapeHtml,
     withDefaultCharset,
     withUtf8Charset,
+    asStatError,
+    httpError,
     NullObject
 } = require("./utils.js");
 const { Writable } = require("stream");
@@ -572,8 +574,13 @@ module.exports = class Response extends Writable {
      * @param {(err?: Error) => void} [callback] called once sent, or with the error
      */
     sendFile(path, options = new NullObject(), callback) {
-        if (typeof path !== "string") {
+        if (!path) {
             throw new TypeError("path argument is required to res.sendFile");
+        }
+        // a separate message from the one above, as Express has: "required" is wrong for an
+        // argument that was passed and was a number
+        if (typeof path !== "string") {
+            throw new TypeError("path must be a string to res.sendFile");
         }
         if (typeof options === "function") {
             callback = /** @type {any} */ (options);
@@ -615,8 +622,10 @@ module.exports = class Response extends Writable {
 
         // path checks
         if (!options.root && !isAbsolute(path)) {
-            this.status(500);
-            return done(new Error("path must be absolute or specify root to res.sendFile"));
+            // thrown rather than reported to the callback, as Express throws it. A relative path
+            // with no root is the calling code being wrong, not the request, and there is nothing
+            // the caller's error branch could usefully do with it.
+            throw new TypeError("path must be absolute or specify root to res.sendFile");
         }
         if (!options.skipEncodePath) {
             path = encodeURI(path);
@@ -626,22 +635,22 @@ module.exports = class Response extends Writable {
         const decoded = decode(path);
         if (decoded === -1) {
             this.status(400);
-            return done(new Error("Bad Request"));
+            return done(httpError(400));
         }
         path = decoded;
         if (~path.indexOf("\0")) {
             this.status(400);
-            return done(new Error("Bad Request"));
+            return done(httpError(400));
         }
         if (UP_PATH_REGEXP.test(path)) {
             this.status(403);
-            return done(new Error("Forbidden"));
+            return done(httpError(403));
         }
         const parts = Path.normalize(path).split(Path.sep);
         const fullpath = options.root ? Path.resolve(Path.join(options.root, path)) : path;
         if (options.root && !fullpath.startsWith(Path.resolve(options.root))) {
             this.status(403);
-            return done(new Error("Forbidden"));
+            return done(httpError(403));
         }
 
         // dotfile checks
@@ -651,19 +660,19 @@ module.exports = class Response extends Writable {
                     break;
                 case "deny":
                     this.status(403);
-                    return done(new Error("Forbidden"));
+                    return done(httpError(403));
                 case "ignore_files": {
                     const len = parts.length;
                     if (len > 1 && parts[len - 1].startsWith(".")) {
                         this.status(404);
-                        return done(new Error("Not found"));
+                        return done(httpError(404));
                     }
                     break;
                 }
                 case "ignore":
                 default:
                     this.status(404);
-                    return done(new Error("Not found"));
+                    return done(httpError(404));
             }
         }
 
@@ -672,11 +681,19 @@ module.exports = class Response extends Writable {
             try {
                 stat = fs.statSync(fullpath);
             } catch (err) {
-                return done(/** @type {Error} */ (err));
+                // the fs error itself, carrying its errno and path, with send's status written on
+                // it: a missing file is the request's 404, an unreadable one is the server's 500
+                return done(asStatError(/** @type {any} */ (err)));
             }
             if (stat.isDirectory()) {
+                // Express reports a directory as an EISDIR with no status, because send tells it
+                // apart from an error: it emits "directory", and res.sendFile has no listener for
+                // one. So this is not a 404, and an error handler reading err.code sees the code
+                // it expects.
                 this.status(404);
-                return done(new Error(`Not found`));
+                const err = /** @type {any} */ (new Error("EISDIR, read"));
+                err.code = "EISDIR";
+                return done(err);
             }
         }
 
@@ -695,7 +712,11 @@ module.exports = class Response extends Writable {
         }
         if (options.headers) {
             for (const header in options.headers) {
-                this.set(header, options.headers[header]);
+                // setHeader, not set: Express hands these to send, which writes them through node's
+                // setHeader, so a Content-Type given here is written exactly as given. res.set would
+                // append a charset and turn "text/x-custom" into "text/x-custom; charset=utf-8",
+                // which is a different media type from the one the caller asked for.
+                this.setHeader(header, options.headers[header]);
             }
         }
         if (options.setHeaders) {
@@ -722,7 +743,7 @@ module.exports = class Response extends Writable {
         // conditional requests
         if (isPreconditionFailure(this.req, this)) {
             this.status(412);
-            return done(new Error("Precondition Failed"));
+            return done(httpError(412));
         }
 
         // range requests
@@ -743,7 +764,7 @@ module.exports = class Response extends Writable {
                 if (ranges === -1) {
                     this.status(416);
                     this.headers["content-range"] = `bytes */${stat.size}`;
-                    return done(new Error("Range Not Satisfiable"));
+                    return done(httpError(416));
                 }
                 if (ranges !== -2 && ranges.length === 1) {
                     this.status(206);
