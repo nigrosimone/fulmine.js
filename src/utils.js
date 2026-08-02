@@ -559,6 +559,38 @@ function decode(path) {
     }
 }
 
+/**
+ * A route parameter as the application should see it, which means decoded.
+ *
+ * Express decodes every captured parameter, so `/users/caff%C3%A8` arrives as "caffè" and
+ * `/files/a%2Fb` as "a/b", with the encoded slash staying inside the one segment it was written in.
+ * This project handed over whatever was on the wire until 2026-08-02.
+ *
+ * A percent sequence that will not decode is the client's mistake, so it becomes a 400 rather than
+ * an exception nobody catches or a broken string passed quietly through. Express words it the same
+ * way, down to the message.
+ *
+ * @param {string} value
+ * @returns {string}
+ * @throws {any} carrying status 400 when the value cannot be decoded
+ */
+function decodeParam(value) {
+    // the common case, and worth the check: a parameter is usually a number or a word, and
+    // decodeURIComponent is not free
+    if (value.indexOf("%") === -1) {
+        return value;
+    }
+    try {
+        return decodeURIComponent(value);
+    } catch {
+        const err = /** @type {any} */ (new Error(`Failed to decode param '${value}'`));
+        err.status = 400;
+        err.statusCode = 400;
+        err.expose = true;
+        throw err;
+    }
+}
+
 const UP_PATH_REGEXP = /(?:^|[\\/])\.\.(?:[\\/]|$)/;
 
 /**
@@ -915,6 +947,7 @@ module.exports = {
     UP_PATH_REGEXP,
     NullObject,
     decode,
+    decodeParam,
     containsDotFile,
     parseTokenList,
     parseHttpDate,

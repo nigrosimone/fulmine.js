@@ -18,6 +18,7 @@ limitations under the License.
 const {
     patternToRegex,
     getPatternMeta,
+    decodeParam,
     needsConversionToRegex,
     findIndexStartingFrom,
     canBeOptimized,
@@ -659,7 +660,7 @@ module.exports = class Router extends EventEmitter {
                 if (value === undefined) {
                     continue;
                 }
-                obj[name] = value;
+                obj[name] = decodeParam(value);
             }
             return obj;
         }
@@ -675,7 +676,9 @@ module.exports = class Router extends EventEmitter {
             if (value === undefined) {
                 continue;
             }
-            obj[name] = isWildcard[i] ? value.split("/") : value;
+            // a wildcard is an array of segments in v5, and each segment is decoded on its own so
+            // that an encoded slash inside one stays inside it
+            obj[name] = isWildcard[i] ? value.split("/").map(decodeParam) : decodeParam(value);
         }
         return obj;
     }
@@ -702,7 +705,16 @@ module.exports = class Router extends EventEmitter {
                     path = path.replace(fullMountpath, "");
                 }
             }
-            req.params = this._extractParams(route.pattern, path);
+            try {
+                req.params = this._extractParams(route.pattern, path);
+            } catch (err) {
+                // a parameter that will not decode. Express throws out of the match and lets the
+                // error reach the error handler, which answers 400, so the route is skipped rather
+                // than run with a value nobody can read.
+                req._error = err;
+                req._errorKey = route.routeKey;
+                return "route";
+            }
             if (req._paramStack.length > 0) {
                 for (const params of req._paramStack) {
                     req.params = Object.assign(Object.create(null), params, req.params);
