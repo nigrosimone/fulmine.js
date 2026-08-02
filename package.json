@@ -8,6 +8,7 @@
     },
     "scripts": {
         "test": "node tests/index.js",
+        "test:unit": "node --test \"tests/unit/*.test.js\"",
         "test:types": "tsd --files tests/types/*.test-d.ts",
         "benchmark:compare": "node benchmark/run.js",
         "cover": "npm run cover:unit && npm run cover:report",

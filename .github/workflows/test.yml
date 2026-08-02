@@ -55,6 +55,12 @@ jobs:
             - name: Run tests
               run: npm run test
 
+            # the pure functions, which the comparison suite cannot reach: it runs each test
+            # against Express and against this and compares the output, which says nothing about a
+            # branch no request happens to take
+            - name: Run unit tests
+              run: npm run test:unit
+
             - name: Run type compatibility tests
               run: npm run test:types
 

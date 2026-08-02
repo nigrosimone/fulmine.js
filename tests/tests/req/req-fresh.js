@@ -5,9 +5,26 @@ const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
+// Counted rather than logged as they happen. The five requests below go out at once, and a log
+// written when a response finishes lands among the lines the client prints for the others, in an
+// order that depends on which response came back first: the helper orders the client's own lines
+// and can do nothing about a second source. On this machine it happened to be stable, and on CI it
+// was not. The counts say the same thing at a fixed point, and say a little more besides, since
+// close following finish is what actually has to hold.
+let finished = 0;
+let closed = 0;
+let closedAfterFinish = 0;
+
 app.get("/test", (req, res) => {
-    res.once("finish", () => console.log("finish"));
-    res.once("close", () => console.log("close"));
+    let sawFinish = false;
+    res.once("finish", () => {
+        sawFinish = true;
+        finished++;
+    });
+    res.once("close", () => {
+        closed++;
+        if (sawFinish) closedAfterFinish++;
+    });
     res.set("ETag", '"123"');
     res.send([req.fresh, req.stale]);
 });
@@ -62,6 +79,7 @@ app.listen(13333, async () => {
         texts,
         responses.map((res) => res.status)
     );
+    console.log("finish:", finished, "close:", closed, "close after finish:", closedAfterFinish);
 
     process.exit(0);
 });
