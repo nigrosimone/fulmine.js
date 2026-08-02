@@ -26,9 +26,14 @@ jobs:
                       ${{ runner.os }}-node-
 
             - name: Set up Node.js
+              # Changing this moves every ratio in the summary without a line of this project
+              # changing, because the other arm is node:http and node:http keeps getting faster:
+              # the jump from 22 to 24 was Express roughly tripling on some scenarios, which read
+              # as a regression here and was not one. Compare summaries across runs only when this
+              # number is the same in both.
               uses: actions/setup-node@v3
               with:
-                  node-version: "24"
+                  node-version: "26"
 
             - name: Install dependencies
               run: npm install --include=dev
