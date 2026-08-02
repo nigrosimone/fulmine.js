@@ -6,6 +6,16 @@ A drop-in replacement for Express 5, running on [µWebSockets.js](https://github
 const express = require("fulmine.js"); // instead of require("express")
 ```
 
+There is a command that does that replacing for you, across a whole project, and then tells you the handful of things that behave differently:
+
+```sh
+npx fulmine.js migrate --dry-run   # say what it would change, change nothing
+npx fulmine.js migrate             # do it
+npx fulmine.js differences         # just the list of what to check by hand
+```
+
+It reads each file with a parser rather than searching the text, so `express-session` and the word "express" in a string or a comment are left alone. See [Migrating](#migrating) for what it handles and what it deliberately does not.
+
 [![Node.js >= 22.0.0](https://img.shields.io/badge/Node.js-%3E=22.0.0-green)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](./LICENSE)
 
@@ -55,17 +65,23 @@ It is likewise not affiliated with the OpenJS Foundation or the Express.js proje
 - **`uwebsockets-express`** is closer to a drop-in replacement, but misses a lot of the API, depends on Express by calling its methods under the hood, and does not use the native µWS router.
 - **`express` on Bun** benefits from Bun using µWS for its HTTP module, but performs no µWS-specific optimisations.
 
-## Differences from Express
+## Migrating
 
-In a lot of cases, you can just replace `require("express")` with `require("fulmine.js")` and everything works the same. There is a command that does the replacing:
+In a lot of cases, replacing `require("express")` with `require("fulmine.js")` is the whole migration. `npx fulmine.js migrate` does that across a project:
 
 ```sh
-npx fulmine.js migrate            # rewrite the imports under the current directory
-npx fulmine.js migrate --dry-run  # say what it would rewrite and rewrite nothing
-npx fulmine.js differences        # print the list below and change nothing
+npx fulmine.js migrate [dir]       # defaults to the current directory
+npx fulmine.js migrate --dry-run   # say what it would rewrite and rewrite nothing
+npx fulmine.js differences         # print the list below and change nothing
 ```
 
-It reads each file rather than searching the text, so `express-session` and the word "express" in a string or a comment are left alone, and a file it cannot parse is reported instead of rewritten. `.js`, `.mjs` and `.cjs` are read with acorn; `.ts`, `.mts`, `.cts` and `.tsx` need the `typescript` package, which it borrows from the project being migrated rather than shipping a second parser, and it says so if there is none. `import type`, `import x = require()` and dynamic `import()` are all handled. It changes the import and nothing else, then prints what to check by hand. That list is this one:
+**What it rewrites.** `require("express")`, `import ... from "express"`, `export * from "express"`, dynamic `import("express")`, and in TypeScript also `import type` and `import x = require("express")`. It reads each file with a parser rather than searching the text, so `express-session`, the word "express" in a string, and a commented-out import are all left alone. Quote style is preserved.
+
+**What it needs.** `.js`, `.mjs` and `.cjs` are read with acorn, which ships with this package. `.ts`, `.mts`, `.cts` and `.tsx` need the `typescript` package, which it borrows from the project being migrated rather than shipping a second parser; if there is none it names the files it left alone instead of skipping them quietly.
+
+**What it will not do.** `node_modules`, `dist`, `build`, `coverage` and dotted directories are not walked. A file that does not parse is reported and left as it was. Nothing but the module specifier is ever changed, which is why the command finishes by printing the list below: those are the things no rewrite can find for you.
+
+## Differences from Express
 
 - `app.listen()` returns the app, not an `http.Server`. There is no node server underneath, so `server.close()`, `server.address()` and anything that attaches itself to a real `http.Server` need a look. `app.close()`, `app.address()` and `app.listening` are there and do what you would expect.
 - `case sensitive routing` is enabled by default.
@@ -221,6 +237,7 @@ In general, basically all features and options are supported. Use the [Express 5
 - 🚧 express.request (this is not a constructor but a prototype for replacing methods)
 - 🚧 express.response (this is not a constructor but a prototype for replacing methods)
 - 🚧 express.application (likewise: a method added here is on every app)
+- ❌ express.Route. `app.route("/path").get(...).post(...)` works and is what almost everyone means by this; what is missing is the class itself, for constructing a route and wiring it up by hand.
 
 ### Application
 
@@ -266,6 +283,11 @@ In general, basically all features and options are supported. Use the [Express 5
 - ✅ view cache
 - ✅ view engine
 - ✅ x-powered-by
+
+Two of these keep a compiled form alongside the value, which you can also set directly:
+
+- `etag fn`, the function that produces an ETag. Setting `etag` compiles one; setting this replaces it.
+- `query parser fn`, likewise for `query parser`.
 
 Fulmine adds one of its own:
 
@@ -408,3 +430,31 @@ Any Express view engine should work. Here's list of engines we include in our te
 - ✅ [express-art-template](https://npmjs.com/package/express-art-template)
 - ✅ [express-handlebars](https://npmjs.com/package/express-handlebars)
 - ✅ [swig](https://npmjs.com/package/swig)
+
+## Working on Fulmine
+
+```sh
+npm test                  # the comparison suite: every test runs against Express, then against
+                          # Fulmine, and the two outputs have to match byte for byte
+npm test middlewares      # one category
+npm test tests/tests/res/res-send.js   # one file
+
+npm run test:unit         # the pure functions, which the comparison cannot reach
+npm run test:types        # the TypeScript declarations, through tsd
+npm run typecheck         # checkJs over src, which is where the JSDoc types are checked
+
+npm run lint              # eslint, including the rule that every function in src carries a JSDoc block
+npm run format            # prettier
+npm run cover             # the comparison suite under nyc, then an HTML report
+
+npm run benchmark:compare -- --duration 20      # against Express, scenario by scenario
+npm run benchmark:ab -- --against main          # this working tree against another revision
+```
+
+The comparison suite is the load-bearing one. A test is a file that prints; the runner executes it
+twice, once with `express` and once with this, and fails on any difference. That is why adding a
+test means writing something that prints what you want compared, and why a test that prints from
+both the server and the client at once is a bug: the two orderings are a race.
+
+`benchmark/README.md` covers measuring, including why the A/B runs pipelined by default and why a
+null control matters.
