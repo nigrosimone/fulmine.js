@@ -63,10 +63,15 @@ function removeDuplicateSlashes(path) {
     return path.replace(/\/{2,}/g, "/");
 }
 
+// the opening of a named capture group, which is how the parameter names are read back out of a
+// finished pattern
+const NAMED_GROUP = /\(\?<([^>]+)>/g;
+
 /**
- * A compiled path pattern. The wildcard names ride along on the regex itself, because that is the
- * only thing the router still has by the time it needs to split a wildcard's value into an array.
- * @typedef {RegExp & {_wildcardNames?: string[]}} PathRegExp
+ * A compiled path pattern. The names ride along on the regex itself, because that is the only thing
+ * the router still has by the time it needs to read a match: which names it captures, in order, and
+ * which of those are wildcards and have to be split into an array.
+ * @typedef {RegExp & {_wildcardNames?: string[], _paramNames?: string[], _paramIsWildcard?: boolean[]}} PathRegExp
  */
 
 /**
@@ -230,6 +235,16 @@ function patternToRegex(pattern, isPrefix = false) {
 
     const regex = /** @type {PathRegExp} */ (new RegExp(`^${regexPattern}${isPrefix ? "(?=$|/)" : "$"}`));
     regex._wildcardNames = wildcardNames;
+    // The names this regex captures, in the order it captures them, and which of them are
+    // wildcards. Both are read back out of the pattern that was just built rather than collected on
+    // the way, so there is one list and it cannot disagree with the regex.
+    //
+    // They exist so that a match can be read by asking for each name in turn. Walking match.groups
+    // with for-in instead, and asking an array whether each name is a wildcard, cost 349ns against
+    // 176 for the same answer, and this runs for every request that matches a route with a
+    // parameter in it.
+    regex._paramNames = [...regexPattern.matchAll(NAMED_GROUP)].map((m) => m[1]);
+    regex._paramIsWildcard = regex._paramNames.map((name) => wildcardNames.includes(name));
     return regex;
 }
 

@@ -634,17 +634,41 @@ module.exports = class Router extends EventEmitter {
             path = path.slice(0, -1);
         }
         const match = pattern.exec(path);
-        const obj = { __proto__: null };
-        const wildcardNames = pattern._wildcardNames;
-        if (match?.groups) {
-            for (const name in match.groups) {
-                const value = match.groups[name];
-                // an optional group that did not match is absent in v5, not present as undefined
+        // Object.create(null) rather than the { __proto__: null } literal, which is the same object
+        // for 9ns more. Null-prototyped either way, as Express 5 makes params.
+        const obj = Object.create(null);
+        if (!match?.groups) {
+            return obj;
+        }
+
+        const groups = match.groups;
+        const names = pattern._paramNames;
+        if (names === undefined) {
+            // a RegExp the application supplied itself, which has no list attached to it
+            const wildcardNames = pattern._wildcardNames;
+            for (const name in groups) {
+                const value = groups[name];
                 if (value === undefined) {
                     continue;
                 }
                 obj[name] = wildcardNames?.includes(name) ? value.split("/") : value;
             }
+            return obj;
+        }
+
+        // asking for each name in turn rather than walking the groups object, which is a
+        // null-prototype dictionary and slow to enumerate, and reading the wildcard answer that was
+        // worked out when the pattern was compiled instead of searching an array for it
+        // built alongside _paramNames, so it is there whenever that is
+        const isWildcard = /** @type {boolean[]} */ (pattern._paramIsWildcard);
+        for (let i = 0, len = names.length; i < len; i++) {
+            const name = names[i];
+            const value = groups[name];
+            // an optional group that did not match is absent in v5, not present as undefined
+            if (value === undefined) {
+                continue;
+            }
+            obj[name] = isWildcard[i] ? value.split("/") : value;
         }
         return obj;
     }
@@ -662,7 +686,7 @@ module.exports = class Router extends EventEmitter {
     _preprocessRequest(req, res, route) {
         req.route = route;
         if (route.optimizedParams) {
-            req.params = Object.assign({ __proto__: null }, req.optimizedParams);
+            req.params = Object.assign(Object.create(null), req.optimizedParams);
         } else if (route.complex) {
             let path = req._originalPath;
             if (req._stack.length > 0) {
@@ -674,14 +698,14 @@ module.exports = class Router extends EventEmitter {
             req.params = this._extractParams(route.pattern, path);
             if (req._paramStack.length > 0) {
                 for (const params of req._paramStack) {
-                    req.params = Object.assign({ __proto__: null }, params, req.params);
+                    req.params = Object.assign(Object.create(null), params, req.params);
                 }
             }
         } else {
             req.params = {};
             if (req._paramStack.length > 0) {
                 for (const params of req._paramStack) {
-                    req.params = Object.assign({ __proto__: null }, params, req.params);
+                    req.params = Object.assign(Object.create(null), params, req.params);
                 }
             }
         }
