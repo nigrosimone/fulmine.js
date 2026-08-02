@@ -277,7 +277,7 @@ class Application extends Router {
      * route took natively. It walks this app's own chain and, when nothing in it answered, decides
      * between an error, the automatic OPTIONS reply and a 404.
      */
-    #createRequestHandler() {
+    _createRequestHandler() {
         this.uwsApp.any("/*", async (res, req) => {
             const { request, response } = this.handleRequest(res, req);
 
@@ -323,7 +323,7 @@ class Application extends Router {
      */
     listen(port, host, callback) {
         this._compileOptimizedRoutes();
-        this.#createRequestHandler();
+        this._createRequestHandler();
         // support listen(callback)
         if (!callback && typeof port === "function") {
             callback = port;
@@ -567,23 +567,16 @@ class Application extends Router {
     }
 }
 
-// An app is an object here, where in Express it is a function. Router._asCallable() would make it
-// one, it was tried, and it works: vhost("api.example.com", subApp) then calls the app and the app
-// answers, which is what the callable form is for.
+// An app is a function, as it is in Express, and not the Application instance whose properties it
+// carries. Middleware that takes a whole app and calls it, vhost being the one everybody meets, was
+// given something it could not call.
 //
-// It was reverted because supertest is worth more than vhost is. `request(app)` reads
-// `typeof app === "function"` and, when it is one, wraps it in http.createServer and hands it
-// node's IncomingMessage and ServerResponse. There is no node HTTP server under this, so the
-// request has nothing to be routed against and every call times out. As an object, supertest takes
-// the other branch, calls app.listen(0) and makes a real request, which works today.
-//
-// Middleware that calls an app keeps working when it runs inside the chain, because there it is
-// handed this project's own req and res: app.handle(req, res, next) is the form to give it, and
-// vhost is the one case that cannot be written that way. Making both work means a shim presenting
-// a node request behind the uWS calls Request and Response make, which is a real piece of work and
-// not this one.
+// This was tried once before and reverted the same day, because a callable app broke supertest:
+// `request(app)` reads `typeof app === "function"` and wraps whatever it finds in
+// http.createServer, and there was nothing underneath that could serve node's IncomingMessage, so
+// every call timed out. src/node-shim.js is what closes that hole, and it is why this is safe now.
 module.exports = function (options) {
-    return new Application(options);
+    return new Application(options)._asCallable();
 };
 
 // the class itself, so index.js can expose its prototype as express.application does. Adding a

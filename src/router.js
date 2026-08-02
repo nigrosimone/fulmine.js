@@ -29,6 +29,7 @@ const Request = require("./request.js");
 const { EventEmitter } = require("tseep");
 const compileDeclarative = require("./declarative.js");
 const statuses = require("statuses");
+const { isNodeRequest, serveNodeRequest } = require("./node-shim.js");
 
 const resCodes = {},
     resDecMethods = ["set", "setHeader", "header", "send", "end", "append", "status"];
@@ -192,6 +193,13 @@ module.exports = class Router extends EventEmitter {
      * @returns {Promise<void>}
      */
     async handle(req, res, next) {
+        // A request from node's own HTTP server rather than from uWS, which is what arrives when
+        // the app was handed to http.createServer or to anything that does that for you. It is
+        // served through a shim rather than refused, since refusing is what made the app unusable
+        // as a request listener at all.
+        if (isNodeRequest(req)) {
+            return serveNodeRequest(this, req, /** @type {any} */ (res), next);
+        }
         // an app taking over a request becomes that request's app, as it does when mounted, so
         // req.app.get("view engine") inside a sub-app reads the sub-app's settings and not the
         // settings of whatever handed the request over. A plain router is not an app and leaves it
