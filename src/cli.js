@@ -29,7 +29,8 @@ const FROM = "express";
 const TO = "fulmine.js";
 
 const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", "coverage", ".nyc_output", ".next"]);
-const EXTENSIONS = new Set([".js", ".mjs", ".cjs"]);
+const EXTENSIONS = new Set([".js", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".tsx"]);
+const TYPESCRIPT_EXTENSIONS = new Set([".ts", ".mts", ".cts", ".tsx"]);
 
 // Printed after a migration, and by `npx fulmine.js differences` on its own. Each one is something
 // a working Express 5 app can depend on and that Fulmine answers differently.
@@ -104,6 +105,80 @@ function collectFiles(dir) {
         }
     }
     return found.sort();
+}
+
+/**
+ * The TypeScript compiler belonging to the project being migrated, or null when it has none.
+ *
+ * acorn cannot read TypeScript, and shipping a parser that can would put megabytes into this
+ * package for a command most people run once. A TypeScript project already has the compiler, so
+ * it is resolved from there. A project without one is told its .ts files were left alone rather
+ * than having them quietly skipped, which is what happened before they were looked at at all.
+ *
+ * @param {string} target directory being migrated
+ * @returns {any|null}
+ */
+function loadTypeScript(target) {
+    try {
+        return require(require.resolve("typescript", { paths: [target, process.cwd()] }));
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * The same specifiers, out of a TypeScript file. A separate walk because the compiler's tree is
+ * not ESTree: the node kinds are different and children are visited through forEachChild.
+ *
+ * @param {string} source
+ * @param {string} fileName decides whether JSX is allowed, so a .tsx angle bracket is not a cast
+ * @param {any} ts the compiler
+ * @returns {{start: number, end: number}[]}
+ */
+function findSpecifiersTypeScript(source, fileName, ts) {
+    const sourceFile = ts.createSourceFile(
+        fileName,
+        source,
+        ts.ScriptTarget.Latest,
+        true,
+        fileName.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+    );
+
+    /** @type {{start: number, end: number}[]} */
+    const found = [];
+    const take = (node) => found.push({ start: node.getStart(sourceFile), end: node.getEnd() });
+
+    const visit = (node) => {
+        // import express from "express", import type { Request } from "express", export * from it.
+        // A type-only import is rewritten too: the types come from the new package as well.
+        if (
+            (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+            node.moduleSpecifier &&
+            ts.isStringLiteral(node.moduleSpecifier) &&
+            node.moduleSpecifier.text === FROM
+        ) {
+            take(node.moduleSpecifier);
+        } else if (
+            // import express = require("express"), which is TypeScript's own spelling
+            ts.isImportEqualsDeclaration(node) &&
+            ts.isExternalModuleReference(node.moduleReference) &&
+            ts.isStringLiteral(node.moduleReference.expression) &&
+            node.moduleReference.expression.text === FROM
+        ) {
+            take(node.moduleReference.expression);
+        } else if (ts.isCallExpression(node)) {
+            const isRequire = ts.isIdentifier(node.expression) && node.expression.text === "require";
+            const isDynamicImport = node.expression.kind === ts.SyntaxKind.ImportKeyword;
+            const arg = node.arguments[0];
+            if ((isRequire || isDynamicImport) && arg && ts.isStringLiteral(arg) && arg.text === FROM) {
+                take(arg);
+            }
+        }
+        ts.forEachChild(node, visit);
+    };
+
+    visit(sourceFile);
+    return found;
 }
 
 /**
@@ -215,6 +290,12 @@ Options:
     let changedImports = 0;
     /** @type {string[]} */
     const unparsed = [];
+    /** @type {string[]} */
+    const needTypeScript = [];
+
+    // resolved once, and only if there is anything to use it on
+    const hasTypeScriptFiles = files.some((file) => TYPESCRIPT_EXTENSIONS.has(path.extname(file)));
+    const ts = hasTypeScriptFiles ? loadTypeScript(target) : null;
 
     for (const file of files) {
         const source = fs.readFileSync(file, "utf8");
@@ -222,7 +303,13 @@ Options:
         // cannot contain the specifier at all
         if (!source.includes(FROM)) continue;
 
-        const specifiers = findSpecifiers(source);
+        const isTypeScript = TYPESCRIPT_EXTENSIONS.has(path.extname(file));
+        if (isTypeScript && !ts) {
+            needTypeScript.push(path.relative(target, file));
+            continue;
+        }
+
+        const specifiers = isTypeScript ? findSpecifiersTypeScript(source, file, ts) : findSpecifiers(source);
         if (specifiers === null) {
             unparsed.push(path.relative(target, file));
             continue;
@@ -244,6 +331,15 @@ Options:
     if (unparsed.length) {
         console.log(`\n${unparsed.length} file(s) could not be parsed and were left alone:`);
         for (const file of unparsed) console.log(`  ${file}`);
+    }
+
+    if (needTypeScript.length) {
+        console.log(
+            `\n${needTypeScript.length} TypeScript file(s) were left alone: reading them needs the` +
+                ` typescript package, and it is not installed here.\nInstall it and run this again,` +
+                ` or rewrite these by hand:`
+        );
+        for (const file of needTypeScript) console.log(`  ${file}`);
     }
 
     console.log(

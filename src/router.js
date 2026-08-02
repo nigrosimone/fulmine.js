@@ -74,6 +74,18 @@ const supportedUwsMethods = new Set(["GET", "POST", "PUT", "DELETE", "PATCH", "O
 
 const regExParam = /:(\w+)/g;
 
+// Why this file names its internals with an underscore instead of making them truly private.
+//
+// express.Router() does not hand back a Router. It hands back a function with the router's own
+// properties copied onto it and the router's prototype set behind it, so that the router can be
+// used as middleware by calling it. Object.assign copies properties, and a # field is not a
+// property: it is an internal slot keyed by the class. Convert _routes to #routes and every
+// callable router throws "Cannot read private member" the first time a method touches it.
+//
+// So: # is for a class whose instances are always real instances, which here means Request,
+// Response and Application. Everything on Router, and everything one class reads off another's
+// instance such as req._opPath, stays an underscore because it has to.
+
 function generateErrorPageHtml(err) {
     return (
         `<!DOCTYPE html>\n` +

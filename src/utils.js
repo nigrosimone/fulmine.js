@@ -357,7 +357,7 @@ function deprecated(oldMethod, newMethod, full = false) {
             second: "numeric",
             timeZone: "GMT",
             timeZoneName: "short"
-        })} u-express deprecated ${oldMethod}: Use ${newMethod} instead at ${pos}`
+        })} fulmine.js deprecated ${oldMethod}: Use ${newMethod} instead at ${pos}`
     );
 }
 

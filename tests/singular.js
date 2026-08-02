@@ -16,7 +16,7 @@ if (!path) {
 }
 
 if (u) {
-    console.log("Running as µExpress");
+    console.log("Running as Fulmine");
     const code = fs.readFileSync(path, "utf8");
     fs.writeFileSync(
         path,

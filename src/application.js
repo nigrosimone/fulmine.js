@@ -559,3 +559,7 @@ class Application extends Router {
 module.exports = function (options) {
     return new Application(options);
 };
+
+// the class itself, so index.js can expose its prototype as express.application does. Adding a
+// method to that prototype adds it to every app, which is what the property is for.
+module.exports.Application = Application;

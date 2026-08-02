@@ -29,6 +29,23 @@ const FIXTURES = {
         'const lazy = await import("express");',
         "export default [express, Router, lazy];"
     ].join("\n"),
+    // TypeScript has spellings of its own, and acorn cannot read any of them, so these go through
+    // the compiler the project being migrated already has
+    "typed.ts": [
+        'import express from "express";',
+        'import type { Request, Response } from "express";',
+        'import session from "express-session";',
+        'import legacy = require("express");',
+        'const lazy = import("express");',
+        'const notAnImport = "express";',
+        "const app: express.Application = express();",
+        "export default [app, session, legacy, lazy, notAnImport, {} as Request, {} as Response];"
+    ].join("\n"),
+    "component.tsx": [
+        'import express from "express";',
+        "const el = <div className='x'>hi</div>;",
+        "export default [express, el];"
+    ].join("\n"),
     "unparsable.js": 'const express = require("express"',
     "node_modules/dep/index.js": 'const express = require("express");'
 };
@@ -52,11 +69,13 @@ try {
         "a dry run rewrites nothing",
         fs.readFileSync(path.join(root, "cjs.js"), "utf8").includes('require("express")')
     );
-    assert("a dry run still counts what it found", dryRun.includes("would rewrite 6 import(s) in 2 file(s)"));
+    assert("a dry run still counts what it found", dryRun.includes("would rewrite 11 import(s) in 4 file(s)"));
 
     const migrated = execFileSync(process.execPath, [cli, "migrate", root]).toString();
     const cjs = fs.readFileSync(path.join(root, "cjs.js"), "utf8");
     const esm = fs.readFileSync(path.join(root, "esm.mjs"), "utf8");
+    const typed = fs.readFileSync(path.join(root, "typed.ts"), "utf8");
+    const component = fs.readFileSync(path.join(root, "component.tsx"), "utf8");
 
     assert("require is rewritten", cjs.includes('require("fulmine.js")'));
     assert("the quote style is kept", cjs.includes("require('fulmine.js')"));
@@ -65,6 +84,27 @@ try {
     assert("a comment is left alone", cjs.includes('// require("express") in a comment'));
     assert("import, export and dynamic import are all rewritten", !esm.includes('"express"'));
     assert("import from is rewritten", esm.includes('import express from "fulmine.js";'));
+    assert(
+        "a type-only import is rewritten too",
+        typed.includes('import type { Request, Response } from "fulmine.js";')
+    );
+    assert("import equals require is rewritten", typed.includes('import legacy = require("fulmine.js");'));
+    assert(
+        "every TypeScript import is rewritten",
+        !typed.includes('from "express"') && !typed.includes('require("express")')
+    );
+    assert(
+        "a type annotation naming the local binding is left alone",
+        typed.includes("const app: express.Application")
+    );
+    assert(
+        "a string that is not an import is left alone in TypeScript too",
+        typed.includes('const notAnImport = "express";')
+    );
+    assert(
+        "tsx is rewritten and its JSX survives",
+        component.includes('from "fulmine.js"') && component.includes("<div className='x'>")
+    );
     assert(
         "a file that does not parse is left alone",
         fs.readFileSync(path.join(root, "unparsable.js"), "utf8").includes('require("express"')

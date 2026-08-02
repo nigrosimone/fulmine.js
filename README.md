@@ -65,7 +65,7 @@ npx fulmine.js migrate --dry-run  # say what it would rewrite and rewrite nothin
 npx fulmine.js differences        # print the list below and change nothing
 ```
 
-It reads each file rather than searching the text, so `express-session` and the word "express" in a string or a comment are left alone, and a file it cannot parse is reported instead of rewritten. It changes the import and nothing else, then prints what to check by hand. That list is this one:
+It reads each file rather than searching the text, so `express-session` and the word "express" in a string or a comment are left alone, and a file it cannot parse is reported instead of rewritten. `.js`, `.mjs` and `.cjs` are read with acorn; `.ts`, `.mts`, `.cts` and `.tsx` need the `typescript` package, which it borrows from the project being migrated rather than shipping a second parser, and it says so if there is none. `import type`, `import x = require()` and dynamic `import()` are all handled. It changes the import and nothing else, then prints what to check by hand. That list is this one:
 
 - `app.listen()` returns the app, not an `http.Server`. There is no node server underneath, so `server.close()`, `server.address()` and anything that attaches itself to a real `http.Server` need a look. `app.close()`, `app.address()` and `app.listening` are there and do what you would expect.
 - `case sensitive routing` is enabled by default.
@@ -220,6 +220,7 @@ In general, basically all features and options are supported. Use the [Express 5
 - ✅ express.raw()
 - 🚧 express.request (this is not a constructor but a prototype for replacing methods)
 - 🚧 express.response (this is not a constructor but a prototype for replacing methods)
+- 🚧 express.application (likewise: a method added here is on every app)
 
 ### Application
 

@@ -40,6 +40,7 @@ try {
  *   Router: Function,
  *   request: object,
  *   response: object,
+ *   application: object,
  *   static: Function,
  *   json: Function,
  *   urlencoded: Function,
@@ -66,6 +67,9 @@ fulmine.Router = function (options) {
 
 fulmine.request = Request.prototype;
 fulmine.response = Response.prototype;
+// the third of the trio, and the one that was missing: adding a method here adds it to every app,
+// the same as express.application
+fulmine.application = Application.Application.prototype;
 
 fulmine.static = middlewares.static;
 
@@ -74,15 +78,8 @@ fulmine.urlencoded = middlewares.urlencoded;
 fulmine.text = middlewares.text;
 fulmine.raw = middlewares.raw;
 
+// Everything above is hung off this same object, which is what makes express.Router and the rest
+// reachable. A block of `exports.x = ...` used to follow this line and did nothing at all:
+// assigning module.exports detaches `exports` from it, so those nine lines wrote to an object
+// nobody could reach. express.application was only in that block, which is how it went missing.
 module.exports = Application;
-
-// re-export some named exports for compatibility
-exports.application = Application;
-exports.request = Request.prototype;
-exports.response = Response.prototype;
-exports.Router = Router;
-exports.json = middlewares.json;
-exports.raw = middlewares.raw;
-exports.static = middlewares.static;
-exports.text = middlewares.text;
-exports.urlencoded = middlewares.urlencoded;
