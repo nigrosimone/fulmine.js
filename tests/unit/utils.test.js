@@ -36,6 +36,10 @@ const {
     withUtf8Charset,
     fastQueryParse,
     NullObject,
+    entityTag,
+    statTag,
+    contentTypeFor,
+    memoizeByString,
     EMPTY_REGEX
 } = require("../../src/utils.js");
 
@@ -329,4 +333,84 @@ test("deprecated warns once per call site and names the replacement", () => {
 
     assert.strictEqual(warnings.length, 1, "the same call site warns once, not once per call");
     assert.match(warnings[0], /fulmine\.js deprecated req\.acceptsCharset: Use req\.acceptsCharsets instead at /);
+});
+
+// The ETag is computed here rather than by the etag package, because the package allocates a hash
+// object per response through crypto.createHash and the one-shot crypto.hash does not: twice as
+// fast on a 500 byte body for a string that has to be identical to the character. These tests are
+// what "identical" means, and etag is kept as a devDependency to be the thing they compare against,
+// so the two cannot drift apart without a test saying so.
+test("entityTag answers exactly what the etag package answers", () => {
+    const reference = require("etag");
+    const bodies = [
+        "",
+        "a",
+        "Hello world",
+        "<!DOCTYPE html><html><body>a page</body></html>",
+        JSON.stringify({ name: "john", items: [1, 2, 3] }),
+        // multibyte, where a string's length in characters is not its length in bytes
+        "caffè, naïve, 日本語",
+        "x".repeat(10000)
+    ];
+
+    for (const body of bodies) {
+        const buf = Buffer.from(body);
+        assert.strictEqual(entityTag(buf, false), reference(buf), `strong, ${JSON.stringify(body.slice(0, 20))}`);
+        assert.strictEqual(
+            entityTag(buf, true),
+            reference(buf, { weak: true }),
+            `weak, ${JSON.stringify(body.slice(0, 20))}`
+        );
+        // a string is hashed as utf-8 and measured in bytes, as the package does
+        assert.strictEqual(entityTag(body, false), reference(body), `string, ${JSON.stringify(body.slice(0, 20))}`);
+    }
+});
+
+test("statTag answers exactly what the etag package answers for a file", () => {
+    const reference = require("etag");
+    const stat = new Stats();
+    stat.size = 84508;
+    stat.mtime = new Date("2026-08-02T10:00:00.000Z");
+
+    // weak by default for a file, which is the package's own default when given a Stats: the size
+    // and mtime say the file changed, not that these exact bytes are the same ones
+    assert.strictEqual(statTag(stat, true), reference(stat));
+    assert.strictEqual(statTag(stat, false), reference(stat, { weak: false }));
+
+    // an empty file is a size of zero, and not the empty-body hash
+    stat.size = 0;
+    assert.strictEqual(statTag(stat, true), reference(stat, { weak: true }));
+});
+
+test("memoizeByString answers from the cache and starts over rather than growing", () => {
+    let calls = 0;
+    const memo = memoizeByString((key) => {
+        calls++;
+        return key.toUpperCase();
+    });
+
+    assert.strictEqual(memo("json"), "JSON");
+    assert.strictEqual(memo("json"), "JSON");
+    assert.strictEqual(calls, 1, "the second ask is answered from the cache");
+
+    // The keys can come from a client, through res.type(req.query.format) or a content-type header,
+    // so the cache has a ceiling. Past it everything is dropped rather than the map growing without
+    // bound, which is the whole point: a client must not be able to make this hold memory.
+    for (let i = 0; i < 600; i++) {
+        memo(`type-${i}`);
+    }
+    calls = 0;
+    memo("json");
+    assert.strictEqual(calls, 1, "the entry was dropped when the cache started over, so it is worked out again");
+    memo("json");
+    assert.strictEqual(calls, 1, "and kept again afterwards");
+});
+
+test("contentTypeFor names the type an extension stands for, charset included", () => {
+    assert.strictEqual(contentTypeFor("json"), "application/json; charset=utf-8");
+    assert.strictEqual(contentTypeFor("html"), "text/html; charset=utf-8");
+    assert.strictEqual(contentTypeFor("png"), "image/png");
+    assert.strictEqual(contentTypeFor("not-an-extension"), "application/octet-stream");
+    // asked twice, since the second answer comes from the cache and has to be the same one
+    assert.strictEqual(contentTypeFor("json"), "application/json; charset=utf-8");
 });

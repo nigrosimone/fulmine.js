@@ -33,6 +33,8 @@ const {
     withUtf8Charset,
     asStatError,
     httpError,
+    contentTypeFor,
+    statTag,
     NullObject
 } = require("./utils.js");
 const { Writable } = require("stream");
@@ -46,7 +48,6 @@ const { sign } = require("cookie-signature");
 const { EventEmitter } = require("events");
 const http = require("http");
 const ms = require("ms");
-const etag = require("etag");
 
 const outgoingMessage = new http.OutgoingMessage();
 const symbols = Object.getOwnPropertySymbols(outgoingMessage);
@@ -727,7 +728,7 @@ module.exports = class Response extends Writable {
         // the etag package, so neither a custom fn nor app.set("etag", "strong") reaches a file's
         // ETag on Express either.
         if (options.etag && !this.headers["etag"]) {
-            this.headers["etag"] = etag(stat, { weak: true });
+            this.headers["etag"] = statTag(stat, true);
         }
         if (!options.etag) {
             this.req.noEtag = true;
@@ -1280,7 +1281,7 @@ module.exports = class Response extends Writable {
      * @returns {this}
      */
     type(type) {
-        const ct = type.indexOf("/") === -1 ? mime.contentType(type) || "application/octet-stream" : type;
+        const ct = type.indexOf("/") === -1 ? contentTypeFor(type) : type;
 
         return this.set("content-type", ct);
     }

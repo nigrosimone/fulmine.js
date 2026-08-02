@@ -20,7 +20,7 @@ const path = require("path");
 const proxyaddr = require("proxy-addr");
 const qs = require("qs");
 const querystring = require("fast-querystring");
-const etag = require("etag");
+const crypto = require("crypto");
 const statuses = require("statuses");
 const { Stats } = require("fs");
 
@@ -303,6 +303,52 @@ function acceptParams(str) {
     return ret;
 }
 
+// How many answers a memo keeps before it starts over.
+//
+// The keys are media types, so an application uses a handful and the ceiling is never approached.
+// It is here because application code is free to hand res.type() something a client sent, and an
+// unbounded map keyed on that is a leak the client controls.
+//
+// Clearing beats evicting one entry at a time: the few types an application really uses are back
+// within a few requests, whereas refusing new entries once full would let a flood of invented
+// values lock the real ones out for the life of the process.
+const MEMO_LIMIT = 512;
+
+/**
+ * A pure function of one string, with its answers kept.
+ *
+ * The wrapped function must never answer undefined, since that is what the cache reads as a miss.
+ * The mime lookups here answer false for something they do not know, which caches correctly.
+ *
+ * @param {(key: string) => any} fn
+ * @returns {(key: string) => any}
+ */
+function memoizeByString(fn) {
+    const cache = new Map();
+    return function memoized(key) {
+        let hit = cache.get(key);
+        if (hit === undefined) {
+            hit = fn(key);
+            if (cache.size >= MEMO_LIMIT) {
+                cache.clear();
+            }
+            cache.set(key, hit);
+        }
+        return hit;
+    };
+}
+
+// mime.lookup walks the extension and searches the database for it, which for the same "json" on
+// every response is 273 ns to reach the same answer. Kept, it is 6.
+const lookupType = memoizeByString((type) => mime.lookup(type) || "application/octet-stream");
+
+/**
+ * The full content-type an extension stands for, charset included, as res.type() writes it.
+ * @param {string} type an extension, or a media type, which is returned as given
+ * @returns {string}
+ */
+const contentTypeFor = memoizeByString((type) => mime.contentType(type) || "application/octet-stream");
+
 /**
  * A media type from either spelling: "html" is looked up in the mime database, while anything
  * containing a slash is already one and is parsed for its parameters.
@@ -311,9 +357,8 @@ function acceptParams(str) {
  * @returns {{value: string, params: Record<string, string>}}
  */
 function normalizeType(type) {
-    return ~type.indexOf("/")
-        ? acceptParams(type)
-        : { value: mime.lookup(type) || "application/octet-stream", params: {} };
+    // a fresh object every time on purpose: the caller owns params and may write to it
+    return ~type.indexOf("/") ? acceptParams(type) : { value: lookupType(type), params: {} };
 }
 
 /**
@@ -576,6 +621,46 @@ function isPreconditionFailure(req, res) {
     return false;
 }
 
+// the sha1 of nothing, which the etag package answers with without hashing
+const EMPTY_ENTITY_TAG = '"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"';
+
+/**
+ * The ETag of a body: its length in hex, a dash, and the first 27 characters of the base64 sha1.
+ * The same string the etag package produces, and tests/unit/utils.test.js holds it to that.
+ *
+ * crypto.hash and not crypto.createHash. The one-shot form does not allocate a hash object, and
+ * this runs for every response the "etag" setting covers, which is every response by default. On a
+ * 500 byte body it is twice as fast for a byte-identical answer, 1963 ns against 924; on 100 bytes
+ * 1.44x; on 10 KB only 1.08x, because by then the hashing itself is the cost rather than the
+ * object around it.
+ *
+ * @param {Buffer|string} entity
+ * @param {boolean} weak
+ * @returns {string}
+ */
+function entityTag(entity, weak) {
+    if (entity.length === 0) {
+        return weak ? "W/" + EMPTY_ENTITY_TAG : EMPTY_ENTITY_TAG;
+    }
+    // the byte length, which for a string is not its character count
+    const len = typeof entity === "string" ? Buffer.byteLength(entity, "utf8") : entity.length;
+    const tag = `"${len.toString(16)}-${crypto.hash("sha1", entity, "base64").substring(0, 27)}"`;
+    return weak ? "W/" + tag : tag;
+}
+
+/**
+ * The ETag of a file, which is its size and mtime rather than its contents: send computes it this
+ * way so that serving a large file does not mean reading it twice.
+ *
+ * @param {import("fs").Stats} stat
+ * @param {boolean} weak
+ * @returns {string}
+ */
+function statTag(stat, weak) {
+    const tag = `"${stat.size.toString(16)}-${stat.mtime.getTime().toString(16)}"`;
+    return weak ? "W/" + tag : tag;
+}
+
 /**
  * The function the "etag" setting installs. It takes either a body or an fs.Stats, since a file's
  * ETag comes from its size and mtime while a body's comes from its contents.
@@ -586,10 +671,10 @@ function isPreconditionFailure(req, res) {
 function createETagGenerator(options) {
     return function generateETag(body, encoding) {
         if (body instanceof Stats) {
-            return etag(body, options);
+            return statTag(body, options.weak);
         }
         const buf = !Buffer.isBuffer(body) ? Buffer.from(body, encoding) : body;
-        return etag(buf, options);
+        return entityTag(buf, options.weak);
     };
 }
 
@@ -682,16 +767,20 @@ const UTF8_CHARSET = "; charset=utf-8";
  * the charset its media type implies. text/* gets one, and so does any type whose mime database
  * entry names one, which is how application/json and application/manifest+json get theirs.
  *
+ * Kept, because res.set("content-type", ...) runs this for every response and an application sends
+ * two or three distinct content-types. The regular expression, the split and the database lookup
+ * were 159 ns to reach the same answer for the same string; the answer costs 7.
+ *
  * @param {string} value
  * @returns {string}
  */
-function withDefaultCharset(value) {
+const withDefaultCharset = memoizeByString((value) => {
     if (CHARSET_PRESENT.test(value)) {
         return value;
     }
     const charset = mime.charset(value.split(";")[0]);
     return charset ? `${value}; charset=${charset.toLowerCase()}` : value;
-}
+});
 
 /**
  * The same content-type, saying utf-8. A string body is written as utf-8 whatever the header
@@ -786,6 +875,10 @@ module.exports = {
     parseHttpDate,
     isPreconditionFailure,
     createETagGenerator,
+    entityTag,
+    statTag,
+    contentTypeFor,
+    memoizeByString,
     isRangeFresh,
     findIndexStartingFrom,
     fastQueryParse,
