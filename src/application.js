@@ -567,6 +567,21 @@ class Application extends Router {
     }
 }
 
+// An app is an object here, where in Express it is a function. Router._asCallable() would make it
+// one, it was tried, and it works: vhost("api.example.com", subApp) then calls the app and the app
+// answers, which is what the callable form is for.
+//
+// It was reverted because supertest is worth more than vhost is. `request(app)` reads
+// `typeof app === "function"` and, when it is one, wraps it in http.createServer and hands it
+// node's IncomingMessage and ServerResponse. There is no node HTTP server under this, so the
+// request has nothing to be routed against and every call times out. As an object, supertest takes
+// the other branch, calls app.listen(0) and makes a real request, which works today.
+//
+// Middleware that calls an app keeps working when it runs inside the chain, because there it is
+// handed this project's own req and res: app.handle(req, res, next) is the form to give it, and
+// vhost is the one case that cannot be written that way. Making both work means a shim presenting
+// a node request behind the uWS calls Request and Response make, which is a real piece of work and
+// not this one.
 module.exports = function (options) {
     return new Application(options);
 };

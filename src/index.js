@@ -60,19 +60,10 @@ try {
  */
 module.exports = /** @type {any} */ (Application);
 
-// converts router to a function and makes it callable
+// a router is a function too, for the same reason an app is: it has to be callable to be usable as
+// middleware
 module.exports.Router = function (options) {
-    const router = new Router(options);
-    const fn = function (req, res, next) {
-        router._routeRequest(req, res, 0).then((routed) => {
-            if (!routed) {
-                next();
-            }
-        });
-    };
-    Object.assign(fn, router);
-    Object.setPrototypeOf(fn, Object.getPrototypeOf(router));
-    return fn;
+    return new Router(options)._asCallable();
 };
 
 module.exports.request = Request.prototype;

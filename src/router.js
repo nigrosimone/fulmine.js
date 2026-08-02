@@ -79,8 +79,9 @@ const regExParam = /:(\w+)/g;
 // express.Router() does not hand back a Router. It hands back a function with the router's own
 // properties copied onto it and the router's prototype set behind it, so that the router can be
 // used as middleware by calling it. Object.assign copies properties, and a # field is not a
-// property: it is an internal slot keyed by the class. Convert _routes to #routes and every
-// callable router throws "Cannot read private member" the first time a method touches it.
+// property: it is an internal slot keyed by the class, and the function is not an instance of that
+// class however its prototype is set. Convert _routes to #routes and every callable router throws
+// "Cannot read private member" the first time a method touches it.
 //
 // So: # is for a class whose instances are always real instances, which here means Request,
 // Response and Application. Everything on Router, and everything one class reads off another's
@@ -146,11 +147,60 @@ module.exports = class Router extends EventEmitter {
         if (typeof this.settings["case sensitive routing"] === "undefined") {
             this.settings["case sensitive routing"] = true;
         }
+    }
 
-        for (const method of methods) {
-            this[method] = (path, ...callbacks) => {
-                return this.createRoute(method, path, this, ...callbacks);
-            };
+    /**
+     * This router as middleware: a function that routes the request and calls next() when nothing
+     * in it answered. What express.Router() hands back, since a router has to be callable to be
+     * usable as middleware.
+     *
+     * Not a Router. It is a function carrying the router's own properties with the router's
+     * prototype behind it, which is why nothing in this file may be a # field.
+     *
+     * The state is shared rather than copied: every property here is the same object the instance
+     * held, so the two are one router seen twice. Nothing keeps the instance afterwards.
+     *
+     * An app is deliberately not made callable this way, for the reason written next to the
+     * factory at the end of application.js.
+     *
+     * @returns {any} the callable
+     */
+    _asCallable() {
+        // the prototype it is about to be given is the one carrying handle(), which nothing can
+        // see from here
+        const fn = /** @type {any} */ (
+            function (req, res, next) {
+                return fn.handle(req, res, next);
+            }
+        );
+        Object.assign(fn, this);
+        Object.setPrototypeOf(fn, Object.getPrototypeOf(this));
+        return fn;
+    }
+
+    /**
+     * Routes a request through this router, the way Express's app.handle and router.handle do.
+     *
+     * next is called when no route answered, so a router that matches nothing hands the request
+     * back to whatever is running it rather than ending it. Without one, an unmatched request is
+     * simply left alone.
+     *
+     * @param {any} req
+     * @param {any} res
+     * @param {(err?: any) => void} [next]
+     * @returns {Promise<void>}
+     */
+    async handle(req, res, next) {
+        // an app taking over a request becomes that request's app, as it does when mounted, so
+        // req.app.get("view engine") inside a sub-app reads the sub-app's settings and not the
+        // settings of whatever handed the request over. A plain router is not an app and leaves it
+        // alone, which is what Express's router.handle does too.
+        if (this.constructor.name === "Application") {
+            req.app = this;
+        }
+        const routed = await this._routeRequest(req, res, 0);
+        if (!routed && next) {
+            next();
         }
     }
 
@@ -1051,3 +1101,19 @@ module.exports = class Router extends EventEmitter {
         response.send(err);
     }
 };
+
+// The verb methods, on the prototype rather than built per instance in the constructor.
+//
+// They have to be on the prototype for a callable router to be one router. As own arrows they
+// closed over the instance they were built on, so the copy _asCallable() makes answered with that
+// instance: express.Router().post("/a", h) handed back the object the callable was copied from,
+// and a chain carried on against something nobody else was holding. Sharing the same _routes array
+// hid it, but only until something replaced an array instead of pushing to one.
+//
+// It costs nothing to prefer, either. The list is long and there was one closure per name for
+// every router and every app in the process; now there is one per name for the process.
+for (const method of methods) {
+    module.exports.prototype[method] = function (path, ...callbacks) {
+        return this.createRoute(method, path, this, ...callbacks);
+    };
+}
