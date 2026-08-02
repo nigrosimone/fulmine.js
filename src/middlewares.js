@@ -49,6 +49,14 @@ function asSendError(err) {
     return err;
 }
 
+/**
+ * express.static, which is a thin front for res.sendFile: it resolves the path, refuses anything
+ * that climbs out of the root, applies the dotfiles and index rules, and hands the rest over.
+ *
+ * @param {string} root directory to serve from
+ * @param {object} [options] index, redirect, fallthrough, dotfiles, extensions, setHeaders, etag
+ * @returns {(req: any, res: any, next: (err?: any) => void) => any}
+ */
 function serveStatic(root, options) {
     if (!options) options = new NullObject();
     if (typeof options.index === "undefined") options.index = "index.html";
@@ -159,6 +167,13 @@ function serveStatic(root, options) {
     };
 }
 
+/**
+ * The decompressor for a Content-Encoding, or undefined when the body is not compressed. An
+ * encoding nobody knows throws, since decoding it wrong is worse than refusing.
+ *
+ * @param {string|undefined} contentEncoding
+ * @returns {any|undefined}
+ */
 function createInflate(contentEncoding) {
     const encoding = (contentEncoding || "identity").toLowerCase();
     switch (encoding) {
@@ -175,6 +190,17 @@ function createInflate(contentEncoding) {
     }
 }
 
+/**
+ * Builds one of the body parsers. All four share the same work, which is deciding whether this
+ * request has a body worth reading, collecting it within the size limit, decompressing it and
+ * handing the bytes over; they differ only in the content type they claim by default and in what
+ * they turn the bytes into.
+ *
+ * @param {string} defaultType the type matched when the caller names none
+ * @param {(...args: any[]) => any} beforeReturn turns the collected bytes into req.body. Called
+ *   with the body, the request, the response, next and the options
+ * @returns {(options?: object) => Function} the middleware factory
+ */
 function createBodyParser(defaultType, beforeReturn) {
     return function (options) {
         if (typeof options !== "object") {
@@ -300,6 +326,13 @@ function createBodyParser(defaultType, beforeReturn) {
             // call next() again and the second response would throw
             let finished = false;
 
+            /**
+             * One chunk from uWS. Decompresses it, counts it against the limit and keeps it. The
+             * finished flag matters: uWS goes on delivering chunks after an oversized body has
+             * been refused, and without it every further chunk would answer the request again.
+             *
+             * @param {any} buf a Buffer, or an ArrayBuffer straight from uWS
+             */
             function onData(buf) {
                 if (finished) {
                     return;
@@ -334,6 +367,7 @@ function createBodyParser(defaultType, beforeReturn) {
                 abs.push(Buffer.from(buf));
             }
 
+            /** The body is complete: assemble it, hand it to the parser and continue routing. */
             function onEnd() {
                 if (finished) {
                     return;

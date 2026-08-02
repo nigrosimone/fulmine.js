@@ -111,6 +111,7 @@
         "errorhandler": "^1.5.2",
         "eslint": "^10.8.0",
         "eslint-config-prettier": "^10.1.8",
+        "eslint-plugin-jsdoc": "^63.3.2",
         "eventsource": "^4.1.0",
         "exit-hook": "^2.2.1",
         "express": "^5",

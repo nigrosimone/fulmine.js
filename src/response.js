@@ -57,6 +57,12 @@ const HIGH_WATERMARK = 128 * 1024;
 const STATUSES_WITHOUT_BODY = new Set([204, 304]);
 
 class Socket extends EventEmitter {
+    /**
+     * Enough of a node socket for the middleware that reaches for one. There is no socket object
+     * in uWS to hand over, so this stands in and forwards what it can to the response.
+     *
+     * @param {any} response
+     */
     constructor(response) {
         super();
         this.response = response;
@@ -105,6 +111,15 @@ module.exports = class Response extends Writable {
 
     req;
 
+    /**
+     * Built for every request, right after the Request it belongs to. The headers start with the
+     * two that describe the connection, since every response carries them, and x-powered-by only
+     * when the setting asks for it.
+     *
+     * @param {any} res the uWS response
+     * @param {any} req the Request, already built, which is where the connection header is read from
+     * @param {any} app the application or router this request arrived at
+     */
     constructor(res, req, app) {
         super();
         this._req = req;
@@ -861,8 +876,8 @@ module.exports = class Response extends Writable {
 
     /**
      * The Express name for set(), including the charset it adds to a content-type.
-     * @param {string|Record<string, any>} field
-     * @param {string|string[]} [value]
+     * @param {any} field a header name, or an object of them
+     * @param {any} [value]
      * @returns {this}
      */
     header(field, value) {
@@ -1183,7 +1198,9 @@ module.exports = class Response extends Writable {
         this.location(/** @type {string} */ (url));
         this.status(status);
 
-        const address = this.get("Location");
+        // a string, because location() has just set it to one. get() has to allow the array form for
+        // the headers that can repeat, and escapeHtml quite reasonably only takes a string
+        const address = /** @type {string} */ (this.get("Location"));
         let body;
         // Support text/{plain,html} by default
         if (forceHtml) {

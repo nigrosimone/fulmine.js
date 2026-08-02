@@ -136,6 +136,16 @@ module.exports = class Request extends Readable {
 
     noEtag;
 
+    /**
+     * Built for every request, before any route has been looked at, which is why so little happens
+     * here: the headers are copied out because uWS only lends them for the length of this call, and
+     * everything derived from them is left until something asks. The body is only subscribed to for
+     * the methods that carry one.
+     *
+     * @param {any} req the uWS request, readable only during this call
+     * @param {any} res the uWS response
+     * @param {any} app the application or router this request arrived at
+     */
     constructor(req, res, app) {
         super({ highWaterMark: 128 * 1024 });
         this._res = res;

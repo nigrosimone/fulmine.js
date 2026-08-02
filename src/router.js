@@ -86,6 +86,13 @@ const regExParam = /:(\w+)/g;
 // Response and Application. Everything on Router, and everything one class reads off another's
 // instance such as req._opPath, stays an underscore because it has to.
 
+/**
+ * The default error page, which is the one Express produces: the stack in a pre, and nothing else.
+ * What reaches it has already been redacted when the environment calls for it.
+ *
+ * @param {any} err
+ * @returns {string}
+ */
 function generateErrorPageHtml(err) {
     return (
         `<!DOCTYPE html>\n` +
@@ -108,6 +115,10 @@ module.exports = class Router extends EventEmitter {
 
     uwsApp;
 
+    /**
+     * @param {object} [settings] router options. caseSensitive and strict are accepted under the
+     *   names Express's Router takes, and stored under the setting names the rest of the code reads
+     */
     constructor(settings = {}) {
         super();
 
@@ -236,7 +247,7 @@ module.exports = class Router extends EventEmitter {
      * a plain string is compiled into a regular expression and marked complex.
      *
      * @param {string} method HTTP method, or USE for a mount
-     * @param {string|string[]|RegExp|undefined} path
+     * @param {any} path one path or several
      * @param {any} [parent] what to return, so chaining lands on the app rather than the router
      * @param {...any} callbacks
      * @returns {any} parent

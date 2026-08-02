@@ -42,6 +42,11 @@ let taskKey = 0;
 const workerTasks = new NullObject();
 
 class FSWorker {
+    /**
+     * A worker thread that does nothing but read files, so a read does not sit on the event loop.
+     * It is unref'd, so an idle one does not keep the process alive, and it is shared between every
+     * app in the process rather than started per app.
+     */
     constructor() {
         this.busy = false;
         this.worker = new Worker(path.join(__dirname, "worker.js"));
@@ -67,6 +72,12 @@ class FSWorker {
 }
 
 class Application extends Router {
+    /**
+     * @param {object} [settings] the options express() takes. uwsOptions goes to uWS and decides
+     *   between an HTTP, an HTTPS and an HTTP/3 server; threads sizes the file-reading pool, and 0
+     *   turns it off; uwsApp adopts an existing uWS app instead of making one. Everything else is
+     *   an application setting and lands next to the defaults.
+     */
     constructor(settings = new NullObject()) {
         super(settings);
         if (!settings?.uwsOptions) {

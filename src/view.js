@@ -20,6 +20,14 @@ const fs = require("fs");
 const { NullObject } = require("./utils.js");
 
 module.exports = class View {
+    /**
+     * Resolves a template name to a file, so that render() has something to hand the engine. An
+     * absolute name is taken as it stands; anything else is looked for under each configured root.
+     *
+     * @param {string} name template name, with or without its extension
+     * @param {any} options defaultEngine, root and engines. Loosely typed on purpose: the
+     *   constructor throws when what it needs is missing rather than checking each use
+     */
     constructor(name, options) {
         this.name = name;
         this.options = options ? Object.assign({}, options) : new NullObject();
@@ -148,6 +156,13 @@ module.exports = class View {
     }
 };
 
+/**
+ * fs.statSync that answers undefined instead of throwing, since a template that is not there is
+ * the ordinary case while looking through several roots.
+ *
+ * @param {string} path
+ * @returns {import("fs").Stats|undefined}
+ */
 function tryStat(path) {
     try {
         return fs.statSync(path);

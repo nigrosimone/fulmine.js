@@ -25,6 +25,16 @@ const { Stats } = require("fs");
 
 const EMPTY_REGEX = new RegExp(``);
 
+/**
+ * Parses a query string the way the "extended" parser is expected to, which means qs and its
+ * support for nested keys, but without paying for qs on the strings that cannot need it. A short
+ * query with no bracket and no dot goes through fast-querystring instead, which is several times
+ * quicker and produces the same answer for that shape.
+ *
+ * @param {string} query the query string, without the leading "?"
+ * @param {object} [options] passed through to qs when it is used
+ * @returns {Record<string, any>} null-prototype, so a key from the query cannot reach Object.prototype
+ */
 function fastQueryParse(query, options) {
     // the result keeps a null prototype, which is why req.query prints as "[Object: null
     // prototype] {}". Spreading it into a plain object would put Object.prototype keys back
@@ -41,6 +51,13 @@ function fastQueryParse(query, options) {
     return Object.assign({ __proto__: null }, qs.parse(query, options));
 }
 
+/**
+ * Collapses runs of slashes, so //a///b reads as /a/b. Express does the same before matching, and
+ * without it a path could dodge a route by being written with an extra slash.
+ *
+ * @param {string} path
+ * @returns {string}
+ */
 function removeDuplicateSlashes(path) {
     return path.replace(/\/{2,}/g, "/");
 }
@@ -215,6 +232,13 @@ function patternToRegex(pattern, isPrefix = false) {
     return regex;
 }
 
+/**
+ * Whether a path has anything in it that a string comparison cannot answer, which is a parameter,
+ * a wildcard or an optional group. A regular expression is already compiled, so it needs nothing.
+ *
+ * @param {string|RegExp} pattern
+ * @returns {boolean}
+ */
 function needsConversionToRegex(pattern) {
     if (pattern instanceof RegExp) {
         return false;
@@ -223,6 +247,14 @@ function needsConversionToRegex(pattern) {
     return pattern.includes("*") || pattern.includes(":") || pattern.includes("{");
 }
 
+/**
+ * Whether a path is a plain literal, which is what makes a route eligible for the native uWS
+ * router. Not simply the opposite of needsConversionToRegex: a RegExp answers false to both, since
+ * it needs no conversion and cannot be optimized either.
+ *
+ * @param {string|RegExp} pattern
+ * @returns {boolean}
+ */
 function canBeOptimized(pattern) {
     if (pattern instanceof RegExp) {
         return false;
@@ -230,6 +262,13 @@ function canBeOptimized(pattern) {
     return !pattern.includes("*") && !pattern.includes("{") && !pattern.includes(":");
 }
 
+/**
+ * Splits one entry of an Accept-style header into its value and its parameters, with q pulled out
+ * as the quality since that is the one every caller wants.
+ *
+ * @param {string} str a single entry, such as "text/html;q=0.8;level=1"
+ * @returns {{value: string, quality: number, params: Record<string, string>}}
+ */
 function acceptParams(str) {
     const length = str.length;
     const colonIndex = str.indexOf(";");
@@ -263,12 +302,30 @@ function acceptParams(str) {
     return ret;
 }
 
+/**
+ * A media type from either spelling: "html" is looked up in the mime database, while anything
+ * containing a slash is already one and is parsed for its parameters.
+ *
+ * @param {string} type an extension or a full media type
+ * @returns {{value: string, params: Record<string, string>}}
+ */
 function normalizeType(type) {
     return ~type.indexOf("/")
         ? acceptParams(type)
         : { value: mime.lookup(type) || "application/octet-stream", params: {} };
 }
 
+/**
+ * JSON.stringify, plus the escaping the "json escape" setting asks for: <, > and & become their
+ * unicode escapes, so a string in the body cannot close a script tag in an HTML page that embeds
+ * the response.
+ *
+ * @param {any} value
+ * @param {any} [replacer] the "json replacer" setting
+ * @param {string|number} [spaces] the "json spaces" setting
+ * @param {boolean} [escape] the "json escape" setting
+ * @returns {string}
+ */
 function stringify(value, replacer, spaces, escape) {
     let json = replacer || spaces ? JSON.stringify(value, replacer, spaces) : JSON.stringify(value);
 
@@ -309,6 +366,14 @@ const defaultSettings = {
     "declarative responses": true
 };
 
+/**
+ * Turns whatever "trust proxy" was set to into the function proxy-addr wants: a predicate saying
+ * whether the address at hop i is trusted. true trusts everything, a number trusts that many hops,
+ * and a string or a list is read as addresses and subnet names.
+ *
+ * @param {boolean|number|string|string[]|Function} val
+ * @returns {Function}
+ */
 function compileTrust(val) {
     if (typeof val === "function") return val;
 
@@ -337,6 +402,15 @@ function compileTrust(val) {
 }
 
 const shownWarnings = new Set();
+/**
+ * Warns once per call site that a method has a newer name, in the format the deprecate package
+ * uses, so the output sits alongside the warnings Express's own dependencies produce. Once per
+ * site rather than once per call: the same line warning on every request would be a flood.
+ *
+ * @param {string} oldMethod
+ * @param {string} newMethod
+ * @param {boolean} [full] print the whole stack rather than the one frame that called it
+ */
 function deprecated(oldMethod, newMethod, full = false) {
     const err = new Error();
     // V8 always fills this in for an Error made right here
@@ -361,6 +435,16 @@ function deprecated(oldMethod, newMethod, full = false) {
     );
 }
 
+/**
+ * findIndex, but resuming from a position. The router walks the same route list many times per
+ * request, each time picking up after the route it just ran, and Array.findIndex has no way to
+ * start anywhere but the beginning.
+ *
+ * @param {any[]} arr
+ * @param {(item: any, index: number, arr: any[]) => boolean} fn
+ * @param {number} [index] where to start
+ * @returns {number} the index, or -1
+ */
 function findIndexStartingFrom(arr, fn, index = 0) {
     for (let i = index, end = arr.length; i < end; i++) {
         if (fn(arr[i], i, arr)) {
@@ -370,6 +454,13 @@ function findIndexStartingFrom(arr, fn, index = 0) {
     return -1;
 }
 
+/**
+ * decodeURIComponent that answers rather than throwing. A malformed escape in a URL is a bad
+ * request and not an exception, so callers check for the sentinel and answer 400.
+ *
+ * @param {string} path
+ * @returns {string|-1} -1 when the path cannot be decoded
+ */
 function decode(path) {
     try {
         return decodeURIComponent(path);
@@ -380,6 +471,13 @@ function decode(path) {
 
 const UP_PATH_REGEXP = /(?:^|[\\/])\.\.(?:[\\/]|$)/;
 
+/**
+ * Whether any segment is a dotfile. A single "." is not one, being the current directory, which is
+ * why the length is checked before the first character.
+ *
+ * @param {string[]} parts the path split on slashes
+ * @returns {boolean}
+ */
 function containsDotFile(parts) {
     for (let i = 0, len = parts.length; i < len; i++) {
         const part = parts[i];
@@ -391,6 +489,13 @@ function containsDotFile(parts) {
     return false;
 }
 
+/**
+ * Splits a comma-separated header value into its tokens, trimming the spaces around each. Written
+ * out by hand rather than with split and trim because it runs for every conditional request.
+ *
+ * @param {string} str
+ * @returns {string[]}
+ */
 function parseTokenList(str) {
     let end = 0;
     const list = [];
@@ -424,11 +529,27 @@ function parseTokenList(str) {
     return list;
 }
 
+/**
+ * An HTTP date as a timestamp, or NaN when it is missing or unreadable. NaN rather than a throw
+ * because every comparison against it is false, which is the answer a bad date should give.
+ *
+ * @param {string|undefined} date
+ * @returns {number}
+ */
 function parseHttpDate(date) {
     const timestamp = date && Date.parse(date);
     return typeof timestamp === "number" ? timestamp : NaN;
 }
 
+/**
+ * Whether the request's If-Match or If-Unmodified-Since says the copy the client is acting on is
+ * no longer the current one, which is a 412 rather than a 304: the client asked to be stopped if
+ * anything had changed.
+ *
+ * @param {any} req
+ * @param {any} res
+ * @returns {boolean}
+ */
 function isPreconditionFailure(req, res) {
     const match = req.headers["if-match"];
 
@@ -454,6 +575,13 @@ function isPreconditionFailure(req, res) {
     return false;
 }
 
+/**
+ * The function the "etag" setting installs. It takes either a body or an fs.Stats, since a file's
+ * ETag comes from its size and mtime while a body's comes from its contents.
+ *
+ * @param {{weak: boolean}} options
+ * @returns {(body: any, encoding?: BufferEncoding) => string}
+ */
 function createETagGenerator(options) {
     return function generateETag(body, encoding) {
         if (body instanceof Stats) {
@@ -464,6 +592,15 @@ function createETagGenerator(options) {
     };
 }
 
+/**
+ * Whether an If-Range still holds, which decides between answering the range that was asked for
+ * and sending the whole file. It may carry either an ETag or a date, and a date only counts when
+ * it matches Last-Modified exactly.
+ *
+ * @param {any} req
+ * @param {any} res
+ * @returns {boolean}
+ */
 function isRangeFresh(req, res) {
     const ifRange = req.headers["if-range"];
     if (!ifRange) {
@@ -481,6 +618,13 @@ function isRangeFresh(req, res) {
     return parseHttpDate(lastModified) <= parseHttpDate(ifRange);
 }
 
+/**
+ * Escapes the five characters that would otherwise be markup. Written as a scan rather than a
+ * chain of replaces because it runs on every error page and every redirect body.
+ *
+ * @param {string} str
+ * @returns {string}
+ */
 function escapeHtml(str) {
     const s = String(str);
     const len = s.length;

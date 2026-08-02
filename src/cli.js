@@ -352,6 +352,7 @@ Options:
     return 0;
 }
 
+/** Prints the list above, which is what migrate ends with and what the differences command prints alone. */
 function printDifferences() {
     console.log(`\nWhat to check by hand, since no rewrite can find these for you:\n`);
     for (const [title, detail] of DIFFERENCES) {

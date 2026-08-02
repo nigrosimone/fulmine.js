@@ -543,6 +543,14 @@ module.exports = function compileDeclarative(cb, app) {
                         body.push({ type: arg.object.property.name, value: arg.property.name });
                     } else if (arg.type === "BinaryExpression") {
                         const stuff = [];
+                        /**
+                         * Reads a chain of string concatenations right to left, collecting each side as either a
+                         * literal or a param or query value. Returns false for anything else, which is what makes
+                         * the whole handler fall back.
+                         *
+                         * @param {any} node a BinaryExpression
+                         * @returns {boolean}
+                         */
                         function check(node) {
                             if (node.right.type === "Literal") {
                                 stuff.push({ type: "text", value: node.right.value });
@@ -674,6 +682,16 @@ module.exports = function compileDeclarative(cb, app) {
     }
 };
 
+/**
+ * Every node in the tree matching the predicate, in the order the named edges below are followed.
+ * The edges are written out rather than discovered, which is why compileDeclarative first refuses
+ * any node type that is not on the understood list: a shape this walk cannot see through would
+ * otherwise be compiled as though it were empty.
+ *
+ * @param {any} node
+ * @param {(node: any) => boolean} fn
+ * @returns {any[]}
+ */
 function filterNodes(node, fn) {
     const filtered = [];
     if (fn(node)) {
