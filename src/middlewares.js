@@ -30,6 +30,9 @@ const { fastQueryParse, NullObject, asStatError, httpError, memoizeByString } = 
 // real one of the same size would
 const MAX_PREALLOCATED_BODY = 1024 * 1024;
 
+// what the finish pass feeds zlib: no bytes, only the flush flag
+const EMPTY_BUFFER = Buffer.alloc(0);
+
 // The failures express.static answers by moving on to the next handler rather than by reporting
 // them, when fallthrough is on. They all mean the same thing: the request is not a file here.
 //
@@ -351,6 +354,16 @@ function serveStatic(root, options) {
             }
         }
 
+        // a file asked for with a trailing slash is not that file: send stats the path slash and
+        // all and gets ENOTDIR, so a root mounted as a file answers 404 there, not the file
+        if (req.endsWithSlash && !stat.isDirectory()) {
+            if (!options.fallthrough) {
+                res.status(404);
+                return next(httpError(404));
+            }
+            return next();
+        }
+
         if (stat.isDirectory()) {
             if (!req.endsWithSlash) {
                 if (options.redirect) {
@@ -430,6 +443,9 @@ function createInflate(contentEncoding) {
         default:
             return false;
     }
+    // the flag the final flush passes, so a truncated stream errors instead of resolving empty
+    /** @type {any} */ (stream)._finishFlag =
+        encoding === "br" ? zlib.constants.BROTLI_OPERATION_FINISH : zlib.constants.Z_FINISH;
     return stream;
 }
 
@@ -648,6 +664,66 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             let finished = false;
 
             /**
+             * A zlib throw becomes the 400 body-parser answers a corrupt body with.
+             *
+             * zlib reports it twice: process() throws, and the stream emits 'error' a tick
+             * later. fast-zlib removes its own listeners on the way out, so that second one
+             * lands on nothing, and an unhandled 'error' event ends the process: a corrupt
+             * gzip body was enough to take the server down. The listener goes on after the
+             * throw, since process() would have removed it.
+             *
+             * @param {any} err what inflate.process threw
+             */
+            function failInflate(err) {
+                /** @type {any} */ (inflate).instance?.on?.("error", () => {});
+                finished = true;
+                abs.length = 0;
+                target = null;
+                err.status = 400;
+                err.statusCode = 400;
+                err.expose = true;
+                next(err);
+            }
+
+            /**
+             * Counts a decompressed chunk against the limit and keeps it. Answers whether the
+             * caller may go on, since passing the limit answers the request right here.
+             *
+             * @param {Buffer} buf
+             * @returns {boolean}
+             */
+            function keepChunk(buf) {
+                totalSize += buf.length;
+                if (totalSize > options.limit) {
+                    finished = true;
+                    abs.length = 0;
+                    target = null;
+                    next(
+                        bodyError("request entity too large", 413, "entity.too.large", {
+                            limit: options.limit,
+                            received: totalSize
+                        })
+                    );
+                    return false;
+                }
+
+                if (target) {
+                    if (targetOffset + buf.length <= target.length) {
+                        buf.copy(target, targetOffset);
+                        targetOffset += buf.length;
+                        return true;
+                    }
+                    // more body than content-length promised: keep what we have and fall back
+                    abs.push(Buffer.from(target.subarray(0, targetOffset)));
+                    target = null;
+                }
+
+                // shallow copy, to avoid shared references for large bodies.
+                abs.push(Buffer.from(buf));
+                return true;
+            }
+
+            /**
              * One chunk from uWS. Decompresses it, counts it against the limit and keeps it. The
              * finished flag matters: uWS goes on delivering chunks after an oversized body has
              * been refused, and without it every further chunk would answer the request again.
@@ -665,52 +741,13 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                     try {
                         buf = inflate.process(buf);
                     } catch (e) {
-                        // a body that does not decompress is the client's mistake, and zlib throwing
-                        // here used to escape into whatever called us.
-                        //
-                        // zlib reports it twice: process() throws, and the stream emits 'error' a
-                        // tick later. fast-zlib removes its own listeners on the way out, so that
-                        // second one lands on nothing, and an unhandled 'error' event ends the
-                        // process: a corrupt gzip body was enough to take the server down. The
-                        // listener goes on after the throw, since process() would have removed it
-                        /** @type {any} */ (inflate).instance?.on?.("error", () => {});
-                        finished = true;
-                        abs.length = 0;
-                        target = null;
-                        const err = /** @type {any} */ (e);
-                        err.status = 400;
-                        err.statusCode = 400;
-                        err.expose = true;
-                        return next(err);
+                        // a body that does not decompress is the client's mistake, and zlib
+                        // throwing here used to escape into whatever called us
+                        return failInflate(e);
                     }
                 }
 
-                totalSize += buf.length;
-                if (totalSize > options.limit) {
-                    finished = true;
-                    abs.length = 0;
-                    target = null;
-                    return next(
-                        bodyError("request entity too large", 413, "entity.too.large", {
-                            limit: options.limit,
-                            received: totalSize
-                        })
-                    );
-                }
-
-                if (target) {
-                    if (targetOffset + buf.length <= target.length) {
-                        buf.copy(target, targetOffset);
-                        targetOffset += buf.length;
-                        return;
-                    }
-                    // more body than content-length promised: keep what we have and fall back
-                    abs.push(Buffer.from(target.subarray(0, targetOffset)));
-                    target = null;
-                }
-
-                // shallow copy, to avoid shared references for large bodies.
-                abs.push(Buffer.from(buf));
+                keepChunk(buf);
             }
 
             /** The body is complete: assemble it, hand it to the parser and continue routing. */
@@ -719,6 +756,20 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                     return;
                 }
                 finished = true;
+                if (inflate) {
+                    // the flush per chunk cannot tell a complete stream from one cut short, so
+                    // the finish pass asks zlib outright: a truncated gzip body used to resolve
+                    // to whatever bytes had come out, where body-parser answers 400
+                    let tail;
+                    try {
+                        tail = inflate.process(EMPTY_BUFFER, inflate._finishFlag);
+                    } catch (e) {
+                        return failInflate(e);
+                    }
+                    if (tail.length && !keepChunk(tail)) {
+                        return;
+                    }
+                }
                 // fewer bytes than content-length promised: the request was cut short, and parsing
                 // what did arrive would answer as though it were the whole thing. Not when
                 // inflating, where content-length counts the compressed bytes and totalSize the

@@ -10,7 +10,10 @@
 //
 // It clones expressjs/express at the tag matching the installed `express` devDependency, swaps its
 // index.js for one that requires src/index.js from here, and runs mocha one file at a time. The
-// clone lives in node_modules/.cache/express-suite and is reused; pass --refresh to throw it away.
+// The clone lives in node_modules/express-suite-clone and is reused; pass --refresh to throw it
+// away. Not under .cache: send answers 404 to any absolute path with a dot segment, so from a
+// dotted directory 55 sendFile and download tests fail identically for express and for us,
+// measuring the path instead of the framework.
 //
 // This is a bug mine, not a gate. In one afternoon it found: body parser errors that carried no
 // status, so every bad body was answered 500 instead of 400, 413 or 415; express.json() accepting
@@ -44,7 +47,7 @@ const { spawn, spawnSync } = require("child_process");
 
 const ROOT = path.join(__dirname, "..");
 const REPO = "https://github.com/expressjs/express.git";
-const DEFAULT_DIR = path.join(ROOT, "node_modules", ".cache", "express-suite");
+const DEFAULT_DIR = path.join(ROOT, "node_modules", "express-suite-clone");
 const SHIM_MARKER = "written by tools/express-suite.js";
 // Express's own `npm test` adds --check-leaks and includes test/acceptance. Neither is wanted here:
 // the acceptance files run Express's example applications, which is not compatibility, and a leak

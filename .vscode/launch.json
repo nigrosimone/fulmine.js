@@ -5,21 +5,6 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Attach demo",
-            "port": 9229,
-            "request": "attach",
-            "skipFiles": ["<node_internals>/**"],
-            "type": "node"
-        },
-        {
-            "type": "node",
-            "request": "launch",
-            "name": "Launch demo",
-            "skipFiles": ["<node_internals>/**"],
-            "args": ["--inspect=9229"],
-            "program": "${workspaceFolder}\\demo\\index.js"
-        },
-        {
             "type": "node",
             "request": "launch",
             "name": "Launch current test",

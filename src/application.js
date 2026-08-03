@@ -29,6 +29,8 @@ const {
     NullObject
 } = require("./utils.js");
 const querystring = require("fast-querystring");
+const Request = require("./request.js");
+const Response = require("./response.js");
 const ViewClass = require("./view.js");
 const path = require("path");
 const os = require("os");
@@ -36,6 +38,10 @@ const { Worker } = require("worker_threads");
 const cluster = require("cluster");
 
 const cpuCount = os.cpus().length;
+
+// marks a "trust proxy" that was never set by the application, under the key express uses, so a
+// mounted sub-app knows it may inherit the parent's
+const trustProxyDefaultSymbol = "@@symbol:trust_proxy_default";
 
 const workers = [];
 let taskKey = 0;
@@ -101,9 +107,69 @@ class Application extends Router {
         this.ssl = settings.uwsOptions.key_file_name && settings.uwsOptions.cert_file_name;
         this.cache = new NullObject();
         this.engines = { __proto__: null };
-        this.locals = {
-            settings: this.settings
+        // a null prototype, as express gives app.locals, so a local named like an Object method
+        // is just a local
+        this.locals = Object.create(null);
+        this.locals.settings = this.settings;
+        // each app gets its own request/response prototype layer, so extending app.request cannot
+        // leak into another app; a mounted sub-app re-parents its layer onto the parent's below.
+        // The constructors are written out: the implicit derived one spreads its arguments, which
+        // was an allocation on every request
+        this._request = class extends Request {
+            /**
+             * @param {any} req
+             * @param {any} res
+             * @param {any} app
+             */
+            constructor(req, res, app) {
+                super(req, res, app);
+            }
         };
+        this._response = class extends Response {
+            /**
+             * @param {any} res
+             * @param {any} req
+             * @param {any} app
+             */
+            constructor(res, req, app) {
+                super(res, req, app);
+            }
+
+            /**
+             * Node counts an explicit writeHead as the head gone out; remembered here so the
+             * automatic OPTIONS reply can refuse to add headers after it, as express's does.
+             *
+             * @param {number} statusCode
+             * @param {string|Record<string, any>} [statusMessage]
+             * @param {Record<string, any>} [headers]
+             * @returns {this}
+             */
+            writeHead(statusCode, statusMessage, headers) {
+                this._headWritten = true;
+                return super.writeHead(statusCode, statusMessage, headers);
+            }
+        };
+        this.request = this._request.prototype;
+        this.response = this._response.prototype;
+        this.on("mount", (parent) => {
+            // the parent's extensions show through, and an override here stays here. Only an
+            // application has a layer to hang onto: a plain router mount leaves things alone
+            if (parent.request) {
+                Object.setPrototypeOf(this.request, parent.request);
+            }
+            if (parent.response) {
+                Object.setPrototypeOf(this.response, parent.response);
+            }
+            // a "trust proxy" this app never set is inherited from the parent, as express does:
+            // the defaults are deleted so get() falls through to the parent's value
+            if (
+                this.settings[trustProxyDefaultSymbol] === true &&
+                typeof parent.settings["trust proxy fn"] === "function"
+            ) {
+                delete this.settings["trust proxy"];
+                delete this.settings["trust proxy fn"];
+            }
+        });
         this.listenCalled = false;
         this.workers = [];
         for (let i = 0; i < settings.threads; i++) {
@@ -122,6 +188,11 @@ class Application extends Router {
         this._listenSocket = undefined;
         this._pendingResponses = new Set();
         this._draining = false;
+        // read here, at construction, the way express does; an empty NODE_ENV means development,
+        // which the ?? in the shared default would miss
+        if (typeof this.settings.env === "undefined") {
+            this.settings.env = process.env.NODE_ENV || "development";
+        }
         for (const key in defaultSettings) {
             if (typeof this.settings[key] === "undefined") {
                 if (typeof defaultSettings[key] === "function") {
@@ -131,6 +202,11 @@ class Application extends Router {
                 }
             }
         }
+        // non-enumerable, so the marker never shows up walking the settings
+        Object.defineProperty(this.settings, trustProxyDefaultSymbol, {
+            configurable: true,
+            value: true
+        });
         this.set("view", ViewClass);
         this.set("views", path.resolve("views"));
     }
@@ -186,19 +262,29 @@ class Application extends Router {
         }
         if (key === "trust proxy") {
             if (!value) {
-                delete this.settings["trust proxy fn"];
+                // compiled, not deleted: an explicit false must shadow a parent's setting when
+                // this app is mounted, and a deleted key would read straight through to it
+                this.settings["trust proxy fn"] = compileTrust(false);
             } else {
                 this.settings["trust proxy fn"] = compileTrust(value);
             }
+            // set explicitly, so a mount no longer inherits the parent's
+            Object.defineProperty(this.settings, trustProxyDefaultSymbol, {
+                configurable: true,
+                value: false
+            });
         } else if (key === "query parser") {
             if (value === "extended") {
                 this.settings["query parser fn"] = fastQueryParse;
-            } else if (value === "simple") {
+            } else if (value === "simple" || value === true) {
                 this.settings["query parser fn"] = querystring.parse;
             } else if (typeof value === "function") {
                 this.settings["query parser fn"] = value;
-            } else {
+            } else if (value === false) {
                 this.settings["query parser fn"] = undefined;
+            } else {
+                // express's wording, which applications match on
+                throw new TypeError("unknown value for query parser function: " + value);
             }
         } else if (key === "views") {
             // a list of directories is searched in order by View.lookup, each resolved here once
@@ -220,7 +306,8 @@ class Application extends Router {
                         delete this.settings["etag fn"];
                         break;
                     default:
-                        throw new Error(`Invalid etag mode: ${value}`);
+                        // express's wording, which applications match on
+                        throw new TypeError("unknown value for etag function: " + value);
                 }
             }
         }
@@ -326,21 +413,22 @@ class Application extends Router {
      *
      * @param {number|string} [port] port, or a unix socket path; 0 picks a free port
      * @param {string} [host] interface to bind; every interface when omitted
+     * @param {number} [backlog] accepted for node's signature; uWS sizes its own queue
      * @param {(err?: Error) => void} [callback] called once bound, or with the bind error
      * @returns {this} the app, which doubles as the server handle
      */
-    listen(port, host, callback) {
+    listen(port, host, backlog, callback) {
         this._compileOptimizedRoutes();
         this._createRequestHandler();
-        // support listen(callback)
-        if (!callback && typeof port === "function") {
+        // node's shapes: (cb), (port, cb), (port, host, cb) and (port, host, backlog, cb)
+        if (typeof port === "function") {
             callback = port;
             port = 0;
-        }
-        // support listen(port, callback)
-        if (typeof host === "function") {
+        } else if (typeof host === "function") {
             callback = host;
             host = undefined;
+        } else if (typeof backlog === "function") {
+            callback = backlog;
         }
         // bare listen() and listen(undefined, cb) bind an OS-assigned port, as node does; left
         // undefined the port fell through to the unix-socket branch below

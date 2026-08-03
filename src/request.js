@@ -83,6 +83,20 @@ function formatIPv6(groups) {
     return out;
 }
 
+/**
+ * Whether node would report an IPv4 peer of this app in mapped form, "::ffff:a.b.c.d". Node maps
+ * it whenever the listener is dual stack, which is every listen() not given an IPv4 address to
+ * bind. uWS already hands mapped peers over as sixteen bytes; four bytes only reach req.ip from a
+ * v4-bound native listener or through the node shim, whose server supertest binds dual stack.
+ *
+ * @param {any} app the application the request arrived at
+ * @returns {boolean}
+ */
+function mapsIPv4Peer(app) {
+    const host = app._listenHost;
+    return !(host && isIP(host) === 4);
+}
+
 const discardedDuplicates = new Set([
     "age",
     "authorization",
@@ -161,6 +175,12 @@ module.exports = class Request extends Readable {
             // after this and reads the flag.
             if (key.length === 10 && key === "connection" && value.length === 5 && value.toLowerCase() === "close") {
                 this._connectionClose = true;
+            } else if (
+                (key.length === 14 && key === "content-length") ||
+                (key.length === 17 && key === "transfer-encoding")
+            ) {
+                // noticed here so the body decision below does not build the headers object
+                this._declaresBody = true;
             }
         });
         this.routeCount = 1;
@@ -227,7 +247,12 @@ module.exports = class Request extends Readable {
             this.method === "PUT" ||
             this.method === "PATCH" ||
             this.method === "QUERY" ||
-            (additionalMethods && additionalMethods.includes(this.method))
+            (additionalMethods && additionalMethods.includes(this.method)) ||
+            // any request that declares a body carries one, whatever the verb: a GET with
+            // content-length left unread would end this stream empty and poison the keep-alive
+            // connection with its unconsumed bytes. uWS itself discards GET bodies, so this is
+            // the node shim's path
+            this._declaresBody
         ) {
             this._res.onData((ab, isLast) => {
                 this.receivedData = true;
@@ -405,7 +430,10 @@ module.exports = class Request extends Readable {
      * @returns {string}
      */
     get protocol() {
-        const proto = this.app.ssl ? "https" : "http";
+        // express reads socket.encrypted, and middleware does assign to the stand-in; the app's
+        // own ssl flag answers when nothing has built the stand-in yet
+        const conn = this.#cachedConnection;
+        const proto = (conn ? conn.encrypted : this.app.ssl) ? "https" : "http";
         const trust = this.app.get("trust proxy fn");
         if (!trust) {
             return proto;
@@ -481,7 +509,7 @@ module.exports = class Request extends Readable {
 
     /**
      * The hostname's subdomains, furthest from the root first, dropping the last
-     * "subdomain offset" labels. Empty for an IP address.
+     * "subdomain offset" labels. An IP host is one label, never split on its dots.
      * @returns {string[]}
      */
     get subdomains() {
@@ -490,15 +518,14 @@ module.exports = class Request extends Readable {
         }
 
         const hostname = this.hostname;
-        if (!hostname || isIP(hostname)) {
+        if (!hostname) {
             return (this.#cachedSubdomains = []);
         }
 
         const offset = this.app.get("subdomain offset");
-        const parts = hostname.split(".");
-        const subdomains = parts.reverse().slice(offset);
+        const parts = isIP(hostname) ? [hostname] : hostname.split(".").reverse();
 
-        return (this.#cachedSubdomains = subdomains);
+        return (this.#cachedSubdomains = parts.slice(offset));
     }
 
     /**
@@ -531,7 +558,7 @@ module.exports = class Request extends Readable {
         if (!this.rawIp) {
             if (finished) {
                 // fallback once
-                return "127.0.0.1";
+                return mapsIPv4Peer(this.app) ? "::ffff:127.0.0.1" : "127.0.0.1";
             }
             this.rawIp = this._res.getRemoteAddress();
         }
@@ -540,6 +567,9 @@ module.exports = class Request extends Readable {
         if (this.rawIp.byteLength === 4) {
             // ipv4
             ip = new Uint8Array(this.rawIp).join(".");
+            if (mapsIPv4Peer(this.app)) {
+                ip = "::ffff:" + ip;
+            }
         } else if (this.rawIp.byteLength === 16) {
             // ipv6
             const dv = new DataView(this.rawIp);

@@ -616,7 +616,17 @@ module.exports = class Response extends Writable {
         if (!options) options = new NullObject();
         // the callback is optional: without one, errors go to next(). The router assigns req.next
         // before any handler can run, so by the time sendFile is reachable it is always there.
-        const done = /** @type {(err?: Error) => void} */ (callback ?? this.req.next);
+        // Express's completion handler, exactly: a callback hears everything and the response is
+        // left alone, so it can still answer 200 after a 404 error. Without one, a directory
+        // falls through as a plain next(), and aborts and write errors go nowhere.
+        const next = this.req.next;
+        const done = /** @type {(err?: any) => void} */ (
+            (err) => {
+                if (callback) return callback(err);
+                if (err && err.code === "EISDIR") return next();
+                if (err && err.code !== "ECONNABORTED" && err.syscall !== "write") next(err);
+            }
+        );
         // default options
         // Normalised the way send does, and it is not fussiness: max-age takes a non-negative
         // integer count of seconds, so 0.5, -1 and Infinity are all invalid, and a client that
@@ -661,12 +671,10 @@ module.exports = class Response extends Writable {
         // it can go back into path
         const decoded = decode(path);
         if (decoded === -1) {
-            this.status(400);
             return done(httpError(400));
         }
         path = decoded;
         if (~path.indexOf("\0")) {
-            this.status(400);
             return done(httpError(400));
         }
         // send's two branches: with a root the path is normalized first, so an in-root ".." like
@@ -676,18 +684,15 @@ module.exports = class Response extends Writable {
         if (options.root) {
             path = Path.normalize("." + Path.sep + path);
             if (UP_PATH_REGEXP.test(path)) {
-                this.status(403);
                 return done(httpError(403));
             }
             parts = path.split(Path.sep);
             fullpath = Path.resolve(Path.join(options.root, path));
             if (!fullpath.startsWith(Path.resolve(options.root))) {
-                this.status(403);
                 return done(httpError(403));
             }
         } else {
             if (UP_PATH_REGEXP.test(path)) {
-                this.status(403);
                 return done(httpError(403));
             }
             parts = Path.normalize(path).split(Path.sep);
@@ -700,21 +705,18 @@ module.exports = class Response extends Writable {
                 case "allow":
                     break;
                 case "deny":
-                    this.status(403);
                     return done(httpError(403));
                 case "ignore_files": {
                     // the file segment alone: with a root the normalized parts no longer carry a
                     // leading empty segment, so a bare dotfile can be the only part
                     const len = parts.length;
                     if (parts[len - 1].startsWith(".")) {
-                        this.status(404);
                         return done(httpError(404));
                     }
                     break;
                 }
                 case "ignore":
                 default:
-                    this.status(404);
                     return done(httpError(404));
             }
         }
@@ -732,8 +734,7 @@ module.exports = class Response extends Writable {
                 // Express reports a directory as an EISDIR with no status, because send tells it
                 // apart from an error: it emits "directory", and res.sendFile has no listener for
                 // one. So this is not a 404, and an error handler reading err.code sees the code
-                // it expects.
-                this.status(404);
+                // it expects. Without a callback, done() turns it into a plain next().
                 const err = /** @type {any} */ (new Error("EISDIR, read"));
                 err.code = "EISDIR";
                 return done(err);
@@ -785,17 +786,38 @@ module.exports = class Response extends Writable {
 
         // conditional requests
         if (isPreconditionFailure(this.req, this)) {
-            this.status(412);
             return done(httpError(412));
         }
 
+        // if-modified-since, if-none-match. Before range handling, as send orders it: a fresh
+        // request with an unsatisfiable Range gets the 304, never the 416.
+        if (this.req.fresh) {
+            // the same fields send removes: everything describing a body that is not being sent.
+            delete this.headers["content-type"];
+            delete this.headers["content-encoding"];
+            delete this.headers["content-language"];
+            delete this.headers["content-length"];
+            this.status(304);
+            this.end();
+            // the response is complete, so a callback hears about it. Never done(): on success
+            // that would be next(), and the request would fall through to the next handler.
+            if (callback) callback();
+            return;
+        }
+
+        // the start and end options, before the Range header: send serves ranges relative to the
+        // window they select, so both the parse and the Content-Range total use the windowed len
+        let offset = options.start || 0;
+        let len = Math.max(0, stat.size - offset);
+        if (options.end !== undefined) {
+            const bytes = options.end - offset + 1;
+            if (len > bytes) len = bytes;
+        }
+
         // range requests
-        let offset = 0,
-            len = stat.size,
-            ranged = false;
         if (options.acceptRanges) {
             if (this.req.headers.range) {
-                let ranges = this.req.range(stat.size, {
+                let ranges = this.req.range(len, {
                     combine: true
                 });
 
@@ -805,44 +827,36 @@ module.exports = class Response extends Writable {
                 }
 
                 if (ranges === -1) {
-                    this.status(416);
-                    this.headers["content-range"] = `bytes */${stat.size}`;
+                    // the header goes on the response itself, as send writes it before raising
+                    // the error, and the status stays on the error for the handler to apply
+                    this.headers["content-range"] = `bytes */${len}`;
                     return done(httpError(416));
                 }
                 if (ranges !== -2 && ranges.length === 1) {
                     this.status(206);
                     const range = ranges[0];
-                    this.headers["content-range"] = `bytes ${range.start}-${range.end}/${stat.size}`;
-                    offset = range.start;
+                    this.headers["content-range"] = `bytes ${range.start}-${range.end}/${len}`;
+                    offset += range.start;
                     len = range.end - range.start + 1;
-                    ranged = true;
                 }
             }
         }
 
-        // if-modified-since, if-none-match
-        if (this.req.fresh) {
-            // the same fields send removes: everything describing a body that is not being sent.
-            // Content-Range goes too, since a 304 answers the whole conditional request and not
-            // the range that was asked for.
-            delete this.headers["content-type"];
-            delete this.headers["content-encoding"];
-            delete this.headers["content-language"];
-            delete this.headers["content-length"];
-            delete this.headers["content-range"];
-            this.status(304);
-            return this.end();
-        }
+        // anything but the whole file, whether from a Range header or the start/end options,
+        // has to go through the read stream with explicit bounds
+        const partial = offset > 0 || len < stat.size;
 
         if (this.req.method === "HEAD") {
             // len, not stat.size: a ranged HEAD answers with the length of the selected part,
             // as send sets it before ending
-            this.set("Content-Length", len);
-            return this.end();
+            this.set("Content-Length", String(len));
+            this.end();
+            if (callback) callback();
+            return;
         }
 
         // serve smaller files using workers
-        if (this.app.workers.length && stat.size < 768 * 1024 && !ranged) {
+        if (this.app.workers.length && stat.size < 768 * 1024 && !partial) {
             this.app
                 .readFileWithWorker(fullpath)
                 .then((data) => {
@@ -872,12 +886,12 @@ module.exports = class Response extends Writable {
             const opts = {
                 highWaterMark: HIGH_WATERMARK
             };
-            if (ranged) {
+            if (partial) {
                 opts.start = offset;
                 opts.end = Math.max(offset, offset + len - 1);
             }
             const file = fs.createReadStream(fullpath, opts);
-            this.set("Content-Length", len);
+            this.set("Content-Length", String(len));
             // pipe() forwards nothing from the source, so a read error after the stat, the file
             // gone or unreadable, must reach next()/the callback instead of crashing the process
             file.on("error", (err) => {
@@ -896,6 +910,11 @@ module.exports = class Response extends Writable {
                 this.removeListener("close", cleanup);
                 socket?.removeListener("close", cleanup);
             });
+            // "end" only fires on a full read, and never together with "error", so the callback
+            // hears about completion exactly once, as it does on the worker path
+            if (callback) {
+                file.once("end", () => callback());
+            }
             file.pipe(this);
         }
     }
@@ -915,16 +934,16 @@ module.exports = class Response extends Writable {
         let done = callback;
         /** @type {string|null|undefined} */
         let name = filename;
-        let opts = options || new NullObject();
+        let opts = options || null;
 
         // support function as second or third arg
         if (typeof filename === "function") {
             done = /** @type {any} */ (filename);
             name = null;
-            opts = {};
+            opts = null;
         } else if (typeof options === "function") {
             done = /** @type {any} */ (options);
-            opts = {};
+            opts = null;
         }
 
         // support optional filename, where options may be in it's place
@@ -932,15 +951,31 @@ module.exports = class Response extends Writable {
             name = null;
             opts = filename;
         }
-        if (!name) {
-            name = Path.basename(path);
-        }
-        if (!opts.root && !isAbsolute(path)) {
-            opts.root = process.cwd();
+
+        // Handed to sendFile as a header option rather than set here, as Express does: headers
+        // from the options only go out once the stat has succeeded, so a 404 or a 403 carries no
+        // Content-Disposition. The Content-Type still comes from the file's own extension.
+        const headers = {
+            "Content-Disposition": contentDisposition(name || path)
+        };
+
+        // merge user-provided headers, which never get to override the disposition
+        if (opts && opts.headers) {
+            for (const key of Object.keys(opts.headers)) {
+                if (key.toLowerCase() !== "content-disposition") {
+                    headers[key] = opts.headers[key];
+                }
+            }
         }
 
-        this.attachment(name);
-        this.sendFile(path, opts, done);
+        // merge user-provided options
+        const merged = Object.create(opts ?? null);
+        merged.headers = headers;
+
+        // resolved here so a relative path works against cwd, exactly as Express resolves it
+        const fullPath = !merged.root ? Path.resolve(path) : path;
+
+        return this.sendFile(fullPath, merged, done);
     }
 
     /**
@@ -1362,7 +1397,8 @@ module.exports = class Response extends Writable {
                     body = `<p>${statuses.message[status]}. Redirecting to ${escapeHtml(address)}</p>`;
                 },
                 default: () => {
-                    this.set("Content-Type", "text/plain; charset=utf-8");
+                    // no Content-Type on purpose: Express leaves the header off entirely when
+                    // the client accepts neither text nor html
                     body = "";
                 }
             });

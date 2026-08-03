@@ -249,6 +249,32 @@ class Walk {
     }
 
     /**
+     * A hop while the request carries an error, or over an error handler it cannot run: the
+     * handler is invoked when the error is its to catch, everything else is skipped.
+     *
+     * @param {number} kind what the callback is, one of the CALLBACK_ constants
+     * @param {Function} callback
+     */
+    errorHop(kind, callback) {
+        const req = this.req;
+        const route = this.route;
+        if (req._error && kind === CALLBACK_ERROR && route.routeKey >= req._errorKey) {
+            const out = this.router._handleError(req._error, callback, req, this.res);
+            if (out instanceof Promise) {
+                // an error handler's rejected promise moves on to the next error handler, and
+                // a bare rejection gets the error express invents for it
+                out.catch((err) => {
+                    req._error = err || new Error("Rejected promise");
+                    req._errorKey = route.routeKey;
+                    return this.step(undefined);
+                });
+            }
+            return;
+        }
+        return this.step(undefined);
+    }
+
+    /**
      * One hop, which is what next() does: with nothing, run the route's next callback; with "route",
      * leave the route; with anything else, remember it as the error and carry on.
      *
@@ -262,6 +288,11 @@ class Walk {
         if (thingamabob) {
             if (thingamabob === "route") {
                 if (route.use && !route.keepMount) {
+                    // a rewrite done inside this middleware is taken now: the pop below recomputes
+                    // req.url from the original path and would silently revert it
+                    if (req.url !== req._lastUrl) {
+                        req._absorbUrlRewrite();
+                    }
                     if (req._stack.pop() !== "") {
                         req._stackMounted--;
                     }
@@ -347,7 +378,17 @@ class Walk {
                     }
                     if (routed) return this.resolve(true);
                     if (req._isOptions && req._matchedMethods.size) {
-                        // OPTIONS routing is different, it stops in the router if matched
+                        // OPTIONS routing is different, it stops in the router if matched.
+                        // Express answers as the router hands back, so a throw while answering,
+                        // a head already written being the way, walks on to later error handlers
+                        if (!req._error) {
+                            try {
+                                router._sendOptionsReply(req, res);
+                                return this.resolve(true);
+                            } catch (err) {
+                                return this.step(err);
+                            }
+                        }
                         return this.resolve(false);
                     }
                     this.step(undefined);
@@ -356,13 +397,10 @@ class Walk {
                 // instead of dying as an unhandled rejection
                 .catch(this.reject);
         } else {
-            // handle errors and error handlers
+            // errors and error handlers live out of line: this is the cold path, and its size
+            // was pushing step past the inlining threshold
             if (req._error || kind === CALLBACK_ERROR) {
-                if (req._error && kind === CALLBACK_ERROR && route.routeKey >= req._errorKey) {
-                    return router._handleError(req._error, callback, req, res);
-                } else {
-                    return this.step(undefined);
-                }
+                return this.errorHop(kind, callback);
             }
 
             try {
@@ -379,9 +417,10 @@ class Walk {
                 if (out instanceof Promise) {
                     // Express 5 forwards a rejected handler promise to the error middleware on its
                     // own, so there is nothing left for the "catch async errors" setting or for
-                    // express-async-errors to opt into
+                    // express-async-errors to opt into. A bare rejection carries no error, and
+                    // express invents this one for it
                     out.catch((err) => {
-                        req._error = err;
+                        req._error = err || new Error("Rejected promise");
                         req._errorKey = route.routeKey;
                         return this.step(undefined);
                     });
@@ -448,6 +487,14 @@ function useApp(req, app) {
     req.app = app;
     if (req.res) {
         req.res.app = app;
+    }
+    // an app's own request/response extensions apply while it runs: express re-parents both
+    // objects on entering a mounted app, and this is the equivalent hop
+    if (app.request && Object.getPrototypeOf(req) !== app.request) {
+        Object.setPrototypeOf(req, app.request);
+    }
+    if (app.response && req.res && Object.getPrototypeOf(req.res) !== app.response) {
+        Object.setPrototypeOf(req.res, app.response);
     }
 }
 
@@ -541,10 +588,10 @@ module.exports = class Router extends EventEmitter {
         /** @type {string|string[]} */
         this.mountpath = "/";
         this.settings = settings;
+        // the base classes; an Application replaces these with its own per-app subclasses, and a
+        // plain router has no request/response prototype layer, as in Express
         this._request = Request;
         this._response = Response;
-        this.request = this._request.prototype;
-        this.response = this._response.prototype;
 
         if (typeof settings.caseSensitive !== "undefined") {
             this.settings["case sensitive routing"] = settings.caseSensitive;
@@ -1072,13 +1119,16 @@ module.exports = class Router extends EventEmitter {
         const realFn = fn;
         const headFn = getChain.length === optimizedPath.length ? realFn : makeHandler(optimizedPath);
 
+        // the response prototype the route will really run under: its own app's, which sees a
+        // method patched there or inherited from a parent app, falling back to the registering app
+        const responseProto = /** @type {any} */ (route.owner)?.response ?? /** @type {any} */ (this).response;
         // check if route is declarative
         if (
             optimizedPath.length === 1 && // must not have middlewares
             route.callbacks.length === 1 && // must not have multiple callbacks
             typeof route.callbacks[0] === "function" && // must be a function
             route.paramCallbacks.size === 0 && // a param callback has to run, and this answers without running anything
-            !resDecMethods.some((method) => resCodes[method] !== this.response[method].toString()) && // must not have injected methods
+            !resDecMethods.some((method) => resCodes[method] !== responseProto[method].toString()) && // must not have injected methods
             this.get("declarative responses") // must have declarative responses enabled
         ) {
             const decRes = compileDeclarative(route.callbacks[0], this);
@@ -1491,6 +1541,29 @@ module.exports = class Router extends EventEmitter {
     }
 
     /**
+     * The automatic OPTIONS reply, built from the methods the walk collected. Throws instead of
+     * answering when the head has already been written, which is what node's setHeader would do
+     * and what lets an error handler see it, as in Express.
+     *
+     * @param {any} request
+     * @param {any} response
+     */
+    _sendOptionsReply(request, response) {
+        if (response._headWritten) {
+            throw new Error("Cannot set headers after they are sent to the client");
+        }
+        // Express 5 sorts the methods and joins them with ", ", so the header reads the same
+        // regardless of the order the routes happened to be registered in
+        const allowedMethods = Array.from(request._matchedMethods).sort().join(", ");
+        response.setHeader("Allow", allowedMethods);
+        // the router package answers this one itself, with a plain-text body, the nosniff
+        // header and end() rather than send(), so no ETag comes with it
+        response.setHeader("Content-Type", "text/plain");
+        response.setHeader("X-Content-Type-Options", "nosniff");
+        response.end(allowedMethods);
+    }
+
+    /**
      * How a request that nothing answered ends: with the error it carries, with the automatic
      * OPTIONS reply, or with a 404. The native chain, the app's catch-all handler and the node shim
      * all end here, so that they end a request the same way.
@@ -1503,15 +1576,12 @@ module.exports = class Router extends EventEmitter {
             return this._handleError(request._error, null, request, response);
         }
         if (request._isOptions && request._matchedMethods.size > 0) {
-            // Express 5 sorts the methods and joins them with ", ", so the header reads the same
-            // regardless of the order the routes happened to be registered in
-            const allowedMethods = Array.from(request._matchedMethods).sort().join(", ");
-            response.setHeader("Allow", allowedMethods);
-            // the router package answers this one itself, with a plain-text body, the nosniff
-            // header and end() rather than send(), so no ETag comes with it
-            response.setHeader("Content-Type", "text/plain");
-            response.setHeader("X-Content-Type-Options", "nosniff");
-            response.end(allowedMethods);
+            try {
+                this._sendOptionsReply(request, response);
+            } catch (err) {
+                // a head already written: the error answers instead, as express's does
+                this._handleError(err, null, request, response);
+            }
             return;
         }
         response.status(404);
