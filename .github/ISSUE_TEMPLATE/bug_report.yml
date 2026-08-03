@@ -1,0 +1,46 @@
+name: Bug report
+description: Something behaves differently from Express, crashes, or answers wrong bytes
+labels: [bug]
+body:
+    - type: markdown
+      attributes:
+          value: |
+              The single most useful thing you can attach is a **minimal reproducible example**: a
+              small script that starts an app, sends one request, and prints the wrong answer.
+              Most fixes here start life as exactly that file, and it usually becomes the test.
+    - type: textarea
+      id: repro
+      attributes:
+          label: Reproducible example
+          description: A self-contained script we can run with `node repro.js`. Trim it to the smallest app that still misbehaves.
+          placeholder: |
+              const express = require("fulmine.js");
+              const app = express();
+              app.get("/thing/:id", (req, res) => res.json(req.params));
+              app.listen(3000, async () => {
+                  const res = await fetch("http://localhost:3000/thing/42");
+                  console.log(res.status, await res.text()); // what I get vs what I expected
+              });
+      validations:
+          required: false
+    - type: textarea
+      id: behaviour
+      attributes:
+          label: What happens, and what should happen instead
+          description: If Express 5 answers differently, say what it answers. Byte-for-byte compatibility with Express is the bar, so "Express sends X, fulmine sends Y" is a complete bug report.
+      validations:
+          required: true
+    - type: input
+      id: version
+      attributes:
+          label: fulmine.js version
+          placeholder: 5.0.0
+      validations:
+          required: true
+    - type: input
+      id: environment
+      attributes:
+          label: Node version and platform
+          placeholder: node 26.3.0, linux x64
+      validations:
+          required: true
