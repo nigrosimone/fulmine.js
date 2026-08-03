@@ -32,6 +32,7 @@ const Request = require("./request.js");
 const { EventEmitter } = require("tseep");
 const compileDeclarative = require("./declarative.js");
 const statuses = require("statuses");
+const { METHODS } = require("http");
 const { isNodeRequest, serveNodeRequest } = require("./node-shim.js");
 
 const resCodes = {},
@@ -42,39 +43,6 @@ for (const method of resDecMethods) {
 
 let routeKey = 0;
 
-const methods = [
-    "all",
-    "post",
-    "put",
-    "delete",
-    "patch",
-    "options",
-    "head",
-    "trace",
-    "connect",
-    "checkout",
-    "copy",
-    "lock",
-    "mkcol",
-    "move",
-    "purge",
-    "propfind",
-    "proppatch",
-    "search",
-    "subscribe",
-    "unsubscribe",
-    "report",
-    "mkactivity",
-    "mkcalendar",
-    "checkout",
-    "merge",
-    "m-search",
-    "notify",
-    "subscribe",
-    "unsubscribe",
-    "search",
-    "query"
-];
 /**
  * Hands the request, and the response with it, to the app that is about to handle it.
  *
@@ -93,6 +61,13 @@ function useApp(req, app) {
     }
 }
 
+// Every verb node knows about, which is the list the methods package hands Express, and "all" on
+// top of it. Taken from node rather than written out: the written out one was missing acl, bind,
+// link, rebind, source, unbind, unlink and unlock, and had four of the others twice.
+//
+// GET is left out on purpose. get() is declared in the class, because it doubles as the settings
+// reader, and the loop at the end of this file would replace it.
+const methods = ["all", ...METHODS.filter((method) => method !== "GET").map((method) => method.toLowerCase())];
 const supportedUwsMethods = new Set(["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD", "CONNECT", "TRACE"]);
 
 const regExParam = /:(\w+)/g;
@@ -121,15 +96,20 @@ const callablePrototypes = new WeakMap();
  * and with it apply, call and bind. A function without apply is not something node will emit a
  * request to: `http.createServer(app)` failed with "handler.apply is not a function" on Node 24,
  * where Node 26 happened to call the listener another way and let it pass. Anything doing
- * `fn.call(...)` or `fn.bind(...)` with a router had the same hole, and has had it for as long as
- * express.Router() has handed back a function.
+ * `fn.call(...)` with a router had the same hole, and has had it for as long as express.Router()
+ * has handed back a function.
  *
  * An intermediate object rather than copying the methods onto the function, so that the class
  * prototype stays in the chain: express.application is that prototype, and adding a method to it
  * has to reach apps that already exist.
  *
- * constructor is deliberately not among the names taken from Function.prototype. It is Function
- * there, and code here asks `this.constructor.name === "Application"`.
+ * Two names are deliberately not taken from Function.prototype.
+ *
+ * constructor, because it is Function there, and code here asks `this.constructor.name`.
+ *
+ * bind, because BIND is an HTTP verb and app.bind is its route registrar. Express has the same
+ * collision and resolves it the same way, by copying its own bind over the function's, so an
+ * application that wanted Function.prototype.bind on a router has never had it in either.
  *
  * @param {object} classPrototype
  * @returns {object}
@@ -140,7 +120,7 @@ function callablePrototypeFor(classPrototype) {
         return prototype;
     }
     prototype = Object.create(classPrototype);
-    for (const name of ["apply", "call", "bind", "toString"]) {
+    for (const name of ["apply", "call", "toString"]) {
         Object.defineProperty(prototype, name, {
             value: /** @type {any} */ (Function.prototype)[name],
             writable: true,

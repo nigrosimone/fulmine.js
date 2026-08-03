@@ -83,14 +83,17 @@ function nativePaths(setup) {
 
 test("a callable app or router is still a usable function", () => {
     // Setting a function's prototype to a class prototype takes Function.prototype out of its
-    // chain, and apply, call and bind with it. Node emits a request to its listener with
-    // handler.apply, so an app without one is not something http.createServer can serve: that was
-    // a CI failure on Node 24 while Node 26 called the listener another way and passed.
+    // chain, and apply and call with it. Node emits a request to its listener with handler.apply,
+    // so an app without one is not something http.createServer can serve: that was a CI failure on
+    // Node 24 while Node 26 called the listener another way and passed.
     for (const callable of [express(), express.Router()]) {
         assert.strictEqual(typeof callable, "function");
         assert.strictEqual(typeof callable.apply, "function");
         assert.strictEqual(typeof callable.call, "function");
-        assert.strictEqual(typeof callable.bind, "function");
+        // and bind is the BIND verb, not Function.prototype.bind, which is the collision Express
+        // resolves the same way
+        callable.bind("/thing", () => {});
+        assert.strictEqual(callable._routes.at(-1).method, "BIND", "bind registers a route");
     }
 
     // and the class prototype is still in the chain, which is what express.application is for:
