@@ -643,7 +643,10 @@ module.exports = class Router extends EventEmitter {
         }
         console.error(err);
         if (response.statusCode === 200) {
-            response.statusCode = 500;
+            // the status the error carries, as express's own final handler reads it: a body that
+            // was too large or a request cut short is the client's 4xx, not a 500 from here
+            const status = err?.status ?? err?.statusCode;
+            response.statusCode = Number.isInteger(status) && status >= 400 && status <= 599 ? status : 500;
         }
         this._sendErrorPage(request, response, err, true);
     }
