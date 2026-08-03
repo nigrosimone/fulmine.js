@@ -144,6 +144,46 @@ test("a parameter that is not a whole segment is not", async () => {
     }
 });
 
+test("a mounted router's parameter routes are native when nothing after them could match", async () => {
+    // The one that matters for an application of any size, since routes live in routers. A native
+    // chain that runs out resumes after the mount rather than inside the router, so a route may
+    // only go native when no later route in that router could have answered instead: /orders/:id
+    // and /invoices/:id cannot both match anything, and neither can /orders/:id and its /items.
+    const paths = await nativePaths((app) => {
+        const router = express.Router();
+        router.get("/orders/:id", (req, res) => res.send("ok"));
+        router.get("/orders/:id/items", (req, res) => res.send("ok"));
+        router.get("/invoices/:id", (req, res) => res.send("ok"));
+        app.use("/api", router);
+    });
+    assert.deepStrictEqual(paths.filter((path) => path.startsWith("/api")).sort(), [
+        "/api/invoices/:id",
+        "/api/orders/:id",
+        "/api/orders/:id/items"
+    ]);
+});
+
+test("and not when something after them could", async () => {
+    const paths = await nativePaths((app) => {
+        // Express answers /users/me with /users/:id, since it was registered first, and µWS would
+        // answer it with /users/me, since it prefers the literal. Neither of the two can go native
+        const users = express.Router();
+        users.get("/users/:id", (req, res) => res.send("ok"));
+        users.get("/users/me", (req, res) => res.send("ok"));
+        app.use("/api", users);
+
+        // and middleware registered after a route could match anything at all
+        const things = express.Router();
+        things.get("/things/:id", (req, res) => res.send("ok"));
+        things.use((req, res, next) => next());
+        app.use("/other", things);
+    });
+    assert.deepStrictEqual(
+        paths.filter((path) => path.startsWith("/api") || path.startsWith("/other")),
+        []
+    );
+});
+
 test("a param callback does not send the route back to the slow path", async () => {
     // It used to. The native chain is walked by the app whatever it contains, so it consulted the
     // app's param callbacks, and a mounted router's own would never have fired. Every route carries

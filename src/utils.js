@@ -346,6 +346,40 @@ function canBeOptimizedWithParams(pattern) {
 }
 
 /**
+ * Whether two paths could both match the same request.
+ *
+ * Only ever asked about paths µWS could match itself, which are literal segments and whole-segment
+ * parameters, so the answer is structural: the same number of segments, and no position where both
+ * are literals that differ. `/orders/:id` and `/invoices/:id` cannot both match anything, nor can
+ * `/orders/:id` and `/orders/:id/items`, while `/users/:id` and `/users/me` both match /users/me.
+ *
+ * Nothing else is asked, because whether two arbitrary patterns share a path is not a question with
+ * a cheap answer, and the caller treats "do not know" as "yes".
+ *
+ * @param {string} a
+ * @param {string} b
+ * @returns {boolean}
+ */
+function pathsCanOverlap(a, b) {
+    const left = a.split("/");
+    const right = b.split("/");
+    if (left.length !== right.length) {
+        return false;
+    }
+    for (let i = 0; i < left.length; i++) {
+        if (left[i] === right[i]) {
+            continue;
+        }
+        // a parameter matches whatever is in that segment, so only two different literals settle it
+        if (left[i].charCodeAt(0) === 0x3a || right[i].charCodeAt(0) === 0x3a) {
+            continue;
+        }
+        return false;
+    }
+    return true;
+}
+
+/**
  * Splits one entry of an Accept-style header into its value and its parameters, with q pulled out
  * as the quality since that is the one every caller wants.
  *
@@ -1000,6 +1034,7 @@ module.exports = {
     fastQueryParse,
     canBeOptimized,
     canBeOptimizedWithParams,
+    pathsCanOverlap,
     escapeHtml,
     withDefaultCharset,
     withUtf8Charset,

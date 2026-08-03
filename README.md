@@ -128,7 +128,8 @@ app.listen(3000, () => {
 1. Fulmine tries to optimize routing as much as possible, but it's only possible if:
 
 - `case sensitive routing` is enabled (it is by default, unlike in normal Express).
-- the path is a plain string, with no `:param`, no `*splat` and no `{}` group.
+- the path is a plain string, or its parameters are whole segments: `/users/:id` and `/a/:b/c/:d` qualify, `/flights/:from-:to` does not, and neither does a `*splat` or a `{}` group.
+- inside a mounted router, nothing registered after the route in that router could match the same path. `/orders/:id`, `/orders/:id/items` and `/invoices/:id` are all optimized together, since no request reaches two of them. `/users/:id` followed by `/users/me` is not: Express answers `/users/me` with the first of the two and the native router would answer it with the second, so both go the ordinary way.
 
 Optimized routes can be up to 10 times faster than normal routes, as they're using native uWS router and have pre-calculated path.
 

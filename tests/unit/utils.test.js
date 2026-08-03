@@ -40,6 +40,7 @@ const {
     statTag,
     contentTypeFor,
     memoizeByString,
+    pathsCanOverlap,
     EMPTY_REGEX
 } = require("../../src/utils.js");
 
@@ -413,4 +414,15 @@ test("contentTypeFor names the type an extension stands for, charset included", 
     assert.strictEqual(contentTypeFor("not-an-extension"), "application/octet-stream");
     // asked twice, since the second answer comes from the cache and has to be the same one
     assert.strictEqual(contentTypeFor("json"), "application/json; charset=utf-8");
+});
+
+test("pathsCanOverlap is about whether two routes could answer the same request", () => {
+    // what decides whether a route inside a mounted router may go to the native router: it may,
+    // when nothing registered after it in that router could have answered instead
+    assert.strictEqual(pathsCanOverlap("/orders/:id", "/invoices/:id"), false, "different literals");
+    assert.strictEqual(pathsCanOverlap("/orders/:id", "/orders/:id/items"), false, "different lengths");
+    assert.strictEqual(pathsCanOverlap("/users/:id", "/users/me"), true, "a parameter matches the literal");
+    assert.strictEqual(pathsCanOverlap("/users/:id", "/users/:name"), true, "two parameters always can");
+    assert.strictEqual(pathsCanOverlap("/a/:b/c", "/a/x/c"), true);
+    assert.strictEqual(pathsCanOverlap("/a/:b/c", "/a/x/d"), false, "the last segment settles it");
 });

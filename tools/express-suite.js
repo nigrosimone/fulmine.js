@@ -295,7 +295,9 @@ async function main() {
     }
 
     if (args.json) {
-        const target = args.json === true ? path.join(ROOT, "express-suite.json") : path.resolve(String(args.json));
+        // next to the clone rather than in the repo, so --json with no path leaves nothing behind
+        const target =
+            args.json === true ? path.join(path.dirname(dir), "express-suite.json") : path.resolve(String(args.json));
         const data = rows.map((row) => ({
             name: row.name,
             passing: row.passing,

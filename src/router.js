@@ -23,6 +23,7 @@ const {
     findIndexStartingFrom,
     canBeOptimized,
     canBeOptimizedWithParams,
+    pathsCanOverlap,
     NullObject,
     EMPTY_REGEX
 } = require("./utils.js");
@@ -585,8 +586,10 @@ module.exports = class Router extends EventEmitter {
      * parameter matches many paths, so it has many possible siblings, where a literal has almost
      * none.
      *
-     * Conservative on purpose: a later pattern is assumed to overlap, since asking whether two
-     * patterns share any path is not a question with a cheap answer.
+     * Conservative where it has to be: a mount, or a pattern of a shape this cannot reason about,
+     * counts as an overlap without further questions. Two paths µWS could match itself are compared
+     * segment by segment instead, which is what makes a router of /orders/:id, /orders/:id/items and
+     * /invoices/:id routes native rather than only its last route.
      *
      * @param {any} route
      * @param {any[]} routes every route of the router this one belongs to
@@ -602,12 +605,16 @@ module.exports = class Router extends EventEmitter {
             if (!later.all && !later.use && later.method !== route.method) {
                 continue;
             }
-            if (later.use || later.pattern instanceof RegExp) {
+            if (later.use) {
                 return true;
             }
-            if (typeof later.path === "string" && route.pattern instanceof RegExp && route.pattern.test(later.path)) {
-                return true;
+            if (typeof later.path === "string" && canBeOptimizedWithParams(later.path)) {
+                if (pathsCanOverlap(route.path, later.path)) {
+                    return true;
+                }
+                continue;
             }
+            return true;
         }
         return false;
     }
