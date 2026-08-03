@@ -967,6 +967,22 @@ module.exports = class Router extends EventEmitter {
             }
             // on optimized routes, there can be more routes, so we have to use unoptimized routing and skip until we find route we stopped at
             req.app = this; // restore app in case the optimized path swapped it to a mounted sub-app
+            // and the mount itself, if the chain went into a mounted router and never came out. Its
+            // mount entries are marked keepMount so that nothing pops them while the chain runs,
+            // which leaves req.url, req.path and req.baseUrl relative to the mount. What resumes
+            // here is the app's own routing, where the path is the whole path again: a request for
+            // /alone/skip that fell out of the router mounted at /alone must not be offered to the
+            // app's routes as /skip.
+            if (req._stack.length > 0) {
+                req._stack.length = 0;
+                req._stackMounted = 0;
+                req.path = req._originalPath;
+                req.url = req._originalPath + req.urlQuery;
+                req._opPath =
+                    req.endsWithSlash && req._originalPath !== "/" && !this.get("strict routing")
+                        ? req._originalPath.slice(0, -1)
+                        : req._originalPath;
+            }
             // an error that propagated out of a mounted router's optimized chain is attributed to the mount
             // (like normal dispatch does when a sub-router returns an error), so parent error handlers declared
             // before the mount don't catch it - the router's leaf can have a lower routeKey than those handlers
@@ -1112,6 +1128,12 @@ module.exports = class Router extends EventEmitter {
             if (!callback) {
                 return next("route");
             }
+            // skipping routes we already went through via optimized path. Before the Router branch
+            // below and not after it: a mount whose chain was compiled has already run, and running
+            // it again would answer from inside the router a request that had just left it
+            if (!skipCheck && skipUntil && skipUntil.routeKey >= route.routeKey) {
+                return next();
+            }
             if (callback instanceof Router) {
                 if (callback.constructor.name === "Application") {
                     req.app = callback;
@@ -1157,10 +1179,6 @@ module.exports = class Router extends EventEmitter {
                         return next();
                     }
 
-                    // skipping routes we already went through via optimized path
-                    if (!skipCheck && skipUntil && skipUntil.routeKey >= route.routeKey) {
-                        return next();
-                    }
                     const out = callback(req, res, next);
                     if (out instanceof Promise) {
                         // Express 5 forwards a rejected handler promise to the error middleware on
