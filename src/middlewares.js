@@ -20,6 +20,7 @@ const path = require("path");
 const bytes = require("bytes");
 const zlib = require("fast-zlib");
 const typeis = require("type-is");
+const qs = require("qs");
 const querystring = require("fast-querystring");
 const { AsyncResource } = require("async_hooks");
 const { fastQueryParse, NullObject, asStatError, httpError, memoizeByString } = require("./utils.js");
@@ -71,6 +72,123 @@ function collapseLeadingSlashes(path) {
  */
 function stripBom(text) {
     return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
+let iconv;
+
+/**
+ * iconv-lite, loaded only when a request names a charset the Buffer cannot decode, so the common
+ * utf-8 request never pays for it.
+ *
+ * @returns {any}
+ */
+function loadIconv() {
+    if (!iconv) iconv = require("iconv-lite");
+    return iconv;
+}
+
+// charsets decoded straight through the Buffer, without iconv
+const BUFFER_CHARSETS = new Set(["utf-8", "utf-16le", "latin1", "iso-8859-1"]);
+
+/**
+ * The charset parameter of a content-type, trimmed and lowercased, or undefined when there is
+ * none. The value may be quoted, and the quotes are not part of the charset.
+ *
+ * @param {string|undefined} contentType
+ * @returns {string|undefined}
+ */
+function charsetOf(contentType) {
+    if (!contentType) {
+        return undefined;
+    }
+    let index = contentType.indexOf("charset=");
+    if (index === -1) {
+        // parameter names are case-insensitive; the lowercase spelling is the fast path, and any
+        // other is only looked for when the type carries parameters at all
+        if (contentType.indexOf(";") === -1) {
+            return undefined;
+        }
+        const match = /charset=/i.exec(contentType);
+        if (match === null) {
+            return undefined;
+        }
+        index = match.index;
+    }
+    let value = contentType.substring(index + 8);
+    const semicolonIndex = value.indexOf(";");
+    if (semicolonIndex !== -1) {
+        value = value.substring(0, semicolonIndex);
+    }
+    value = value.trim();
+    if (value.charCodeAt(0) === 0x22 && value.charCodeAt(value.length - 1) === 0x22) {
+        value = value.slice(1, -1);
+    }
+    return value ? value.toLowerCase() : undefined;
+}
+
+/**
+ * The 415 a charset nobody can decode gets, worded as body-parser words it.
+ *
+ * @param {string} charset already lowercased
+ * @returns {Error}
+ */
+function charsetError(charset) {
+    return bodyError('unsupported charset "' + charset.toUpperCase() + '"', 415, "charset.unsupported", {
+        charset
+    });
+}
+
+/**
+ * The body decoded under a charset: through the Buffer when node knows the name, through
+ * iconv-lite otherwise. iconv strips a byte order mark on its own; the Buffer paths keep it,
+ * which is why the json parser strips it separately.
+ *
+ * @param {Buffer} buf
+ * @param {string} encoding already lowercased, and already known to be decodable
+ * @returns {string}
+ */
+function decodeBody(buf, encoding) {
+    switch (encoding) {
+        case "utf-8":
+            return buf.toString();
+        case "utf-16le":
+            return buf.toString("utf-16le");
+        case "latin1":
+        case "iso-8859-1":
+            return buf.toString("latin1");
+        default:
+            return loadIconv().decode(buf, encoding);
+    }
+}
+
+/**
+ * Runs the caller's verify hook the way body-parser does, an empty body included; a throw becomes
+ * the 403 entity.verify.failed error. Answers whether parsing may continue.
+ *
+ * @param {any} req
+ * @param {any} res
+ * @param {(err?: any) => void} next
+ * @param {any} options
+ * @param {Buffer} buf
+ * @returns {boolean}
+ */
+function runVerify(req, res, next, options, buf) {
+    if (!options.verify) {
+        return true;
+    }
+    try {
+        options.verify(req, res, buf);
+        return true;
+    } catch (e) {
+        const err = /** @type {any} */ (e);
+        next(
+            bodyError(err.message, err.status ?? err.statusCode ?? 403, err.type ?? "entity.verify.failed", {
+                body: buf,
+                stack: err.stack
+            })
+        );
+        return false;
+    }
 }
 
 /**
@@ -141,7 +259,9 @@ function serveStatic(root, options) {
     if (typeof root !== "string") {
         throw new TypeError("root path must be a string");
     }
-    if (!options) options = new NullObject();
+    // a copy, as serve-static's Object.create(options): everything below writes into it, and two
+    // mounts sharing one options object would otherwise also share one root
+    options = Object.assign(new NullObject(), options);
     if (typeof options.index === "undefined") options.index = "index.html";
     if (typeof options.redirect === "undefined") options.redirect = true;
     if (typeof options.fallthrough === "undefined") options.fallthrough = true;
@@ -321,11 +441,14 @@ function createInflate(contentEncoding) {
  *
  * @param {string} defaultType the type matched when the caller names none
  * @param {(...args: any[]) => any} beforeReturn turns the collected bytes into req.body. Called
- *   with the body, the request, the response, next and the options
+ *   with the request, the response, next, the options, the body and its charset
  * @param {(options: any) => void} [checkOptions] whatever this parser alone has to check
+ * @param {string} [charsetPolicy] which charsets this parser accepts, as body-parser draws the
+ *   lines: "utf" (json, utf-* only), "urlencoded" (utf-8 and iso-8859-1), "any" (anything iconv
+ *   knows), or undefined for a parser that never decodes (raw)
  * @returns {(options?: object) => Function} the middleware factory
  */
-function createBodyParser(defaultType, beforeReturn, checkOptions) {
+function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy) {
     return function (options) {
         // a copy, because everything below writes the parsed values back: with the caller's own
         // object, altering it after the parser was built would alter the parser
@@ -351,6 +474,8 @@ function createBodyParser(defaultType, beforeReturn, checkOptions) {
         if (typeof options.type === "undefined") options.type = defaultType;
         if (typeof options.type === "string") {
             if (!options.type.includes("*")) {
+                // kept as written: type-is lowercases the header but not the option, so an option
+                // in the wrong case never matches, and the same has to hold here
                 options.simpleType = options.type;
             }
             options.type = [options.type];
@@ -406,7 +531,9 @@ function createBodyParser(defaultType, beforeReturn, checkOptions) {
             if (options.simpleType) {
                 const semicolonIndex = type.indexOf(";");
                 const clearType = semicolonIndex !== -1 ? type.substring(0, semicolonIndex) : type;
-                if (clearType !== options.simpleType) {
+                // the exact compare stays the fast path; the trim and lowercase only run when it
+                // fails, for "Application/JSON" and the legal whitespace before a ";"
+                if (clearType !== options.simpleType && clearType.trim().toLowerCase() !== options.simpleType) {
                     return next();
                 }
             } else {
@@ -421,11 +548,33 @@ function createBodyParser(defaultType, beforeReturn, checkOptions) {
                 }
             }
 
+            // the charset is settled before anything is read, as body-parser settles it: a bad one
+            // answers 415 even for an empty body, and before the verify hook can run
+            let encoding;
+            if (charsetPolicy) {
+                encoding = charsetOf(type) ?? options.defaultCharset;
+                if (
+                    (charsetPolicy === "utf" && encoding.slice(0, 4) !== "utf-") ||
+                    (charsetPolicy === "urlencoded" && encoding !== "utf-8" && encoding !== "iso-8859-1")
+                ) {
+                    return next(charsetError(encoding));
+                }
+                if (!BUFFER_CHARSETS.has(encoding) && !loadIconv().encodingExists(encoding)) {
+                    return next(charsetError(encoding));
+                }
+            }
+
             // an empty body still has to produce this parser's empty value the way express does -
             // {} for json and urlencoded, '' for text, an empty Buffer for raw - rather than leaving
-            // req.body as the placeholder object. there is nothing to read, so run the tail directly
+            // req.body as the placeholder object. there is nothing to read, so run the tail directly,
+            // and the verify hook still runs first: webhook signature checks rely on that
             if (Number(length) === 0) {
-                return beforeReturn(req, res, next, options, Buffer.alloc(0));
+                req.bodyRead = true;
+                const empty = Buffer.alloc(0);
+                if (!runVerify(req, res, next, options, empty)) {
+                    return;
+                }
+                return beforeReturn(req, res, next, options, empty, encoding);
             }
 
             // skip reading too large body
@@ -592,25 +741,10 @@ function createBodyParser(defaultType, beforeReturn, checkOptions) {
                     : abs.length === 1
                       ? abs[0]
                       : Buffer.concat(abs);
-                if (options.verify) {
-                    try {
-                        options.verify(req, res, buf);
-                    } catch (e) {
-                        const err = /** @type {any} */ (e);
-                        return next(
-                            bodyError(
-                                err.message,
-                                err.status ?? err.statusCode ?? 403,
-                                err.type ?? "entity.verify.failed",
-                                {
-                                    body: buf,
-                                    stack: err.stack
-                                }
-                            )
-                        );
-                    }
+                if (!runVerify(req, res, next, options, buf)) {
+                    return;
                 }
-                beforeReturn(req, res, next, options, buf);
+                beforeReturn(req, res, next, options, buf, encoding);
             }
 
             // reading data directly from uWS is faster than from a stream
@@ -631,76 +765,71 @@ function createBodyParser(defaultType, beforeReturn, checkOptions) {
     };
 }
 
-const json = createBodyParser("application/json", function (req, res, next, options, buf) {
-    if (buf.length === 0) {
-        req.body = {};
-        return next();
-    }
-    // A leading byte order mark is removed rather than parsed. body-parser never sees one either:
-    // it decodes through iconv, which strips it, so by the time the first character is looked at
-    // the mark is gone. JSON.parse would refuse it, so without this a body saved by an editor that
-    // writes a BOM is answered 400 here and 200 by Express.
-    const text = stripBom(buf.toString());
-
-    // "strict" means only an object or an array is a body, which is body-parser's default and was
-    // not honoured here at all: the check read req.body before this function had parsed anything,
-    // so it looked at the previous request's body and passed. `express.json()` accepted a bare
-    // string or number where Express answers 400.
-    if (options.strict !== false) {
-        // Exactly the four characters body-parser skips, and no more. A BOM or a non-breaking
-        // space is not whitespace to it, so a body starting with one is a violation rather than
-        // something to skip past, and a wider class here would accept bodies Express refuses.
-        // eslint-disable-next-line no-control-regex
-        const first = text.match(/^[\x20\x09\x0a\x0d]*([^\x20\x09\x0a\x0d])/)?.[1];
-        if (first !== "{" && first !== "[") {
-            return next(bodyError(strictSyntaxMessage(text, first), 400, "entity.parse.failed", { body: text }));
+const json = createBodyParser(
+    "application/json",
+    function (req, res, next, options, buf, encoding) {
+        if (buf.length === 0) {
+            req.body = {};
+            return next();
         }
-    }
+        // A leading byte order mark is removed rather than parsed. body-parser never sees one
+        // either: it decodes through iconv, which strips it, so by the time the first character is
+        // looked at the mark is gone. JSON.parse would refuse it, so without this a body saved by
+        // an editor that writes a BOM is answered 400 here and 200 by Express.
+        const text = stripBom(decodeBody(buf, encoding));
 
-    try {
-        req.body = JSON.parse(text, options.reviver);
-    } catch (e) {
-        // the JSON error's own message, which is what body-parser keeps, so an application showing
-        // err.message still says where the parse gave up
-        const err = /** @type {any} */ (e);
-        return next(bodyError(err.message, 400, "entity.parse.failed", { body: text }));
-    }
+        // "strict" means only an object or an array is a body, which is body-parser's default and
+        // was not honoured here at all: the check read req.body before this function had parsed
+        // anything, so it looked at the previous request's body and passed. `express.json()`
+        // accepted a bare string or number where Express answers 400.
+        if (options.strict !== false) {
+            // Exactly the four characters body-parser skips, and no more. A BOM or a non-breaking
+            // space is not whitespace to it, so a body starting with one is a violation rather than
+            // something to skip past, and a wider class here would accept bodies Express refuses.
+            // eslint-disable-next-line no-control-regex
+            const first = text.match(/^[\x20\x09\x0a\x0d]*([^\x20\x09\x0a\x0d])/)?.[1];
+            if (first !== "{" && first !== "[") {
+                return next(bodyError(strictSyntaxMessage(text, first), 400, "entity.parse.failed", { body: text }));
+            }
+        }
 
-    next();
-});
+        try {
+            req.body = JSON.parse(text, options.reviver);
+        } catch (e) {
+            // the JSON error's own message, which is what body-parser keeps, so an application
+            // showing err.message still says where the parse gave up
+            const err = /** @type {any} */ (e);
+            return next(bodyError(err.message, 400, "entity.parse.failed", { body: text }));
+        }
+
+        next();
+    },
+    undefined,
+    // RFC 7159 sec 8.1, as body-parser reads it: json is a utf-* body or nothing
+    "utf"
+);
 
 const raw = createBodyParser("application/octet-stream", function (req, res, next, options, buf) {
     req.body = buf;
     next();
 });
 
-const text = createBodyParser("text/plain", function (req, res, next, options, buf) {
-    const contentType = req.headers["content-type"] ?? "";
-    const charsetIndex = contentType.indexOf("charset=");
-    let encoding = options.defaultCharset;
-    if (charsetIndex !== -1) {
-        encoding = contentType.substring(charsetIndex + 8);
-        const semicolonIndex = encoding.indexOf(";");
-        if (semicolonIndex !== -1) {
-            encoding = encoding.substring(0, semicolonIndex);
+const text = createBodyParser(
+    "text/plain",
+    function (req, res, next, options, buf, encoding) {
+        try {
+            req.body = decodeBody(buf, encoding);
+        } catch (e) {
+            return next(e);
         }
-        encoding = encoding.trim().toLowerCase();
-    }
-    if (encoding !== "utf-8" && encoding !== "utf-16le" && encoding !== "latin1") {
-        return next(
-            bodyError('unsupported charset "' + encoding.toUpperCase() + '"', 415, "charset.unsupported", {
-                charset: encoding.toLowerCase()
-            })
-        );
-    }
-    try {
-        req.body = buf.toString(encoding);
-    } catch (e) {
-        return next(e);
-    }
 
-    next();
-});
+        next();
+    },
+    undefined,
+    // body-parser's text has no allowlist: any charset iconv can decode is a body, and only an
+    // unknown one is the 415
+    "any"
+);
 
 // what qs is given for an extended body, which is not what it is given for a query string: these
 // are body-parser's numbers and they bound how much work one request can ask for
@@ -729,23 +858,59 @@ function parameterCount(body, limit) {
 
 const urlencoded = createBodyParser(
     "application/x-www-form-urlencoded",
-    function (req, res, next, options, buf) {
+    function (req, res, next, options, buf, encoding) {
         try {
-            const body = buf.toString();
-            if (parameterCount(body, options.parameterLimit) === undefined) {
+            const body = decodeBody(buf, encoding);
+            const count = parameterCount(body, options.parameterLimit);
+            if (count === undefined) {
                 return next(bodyError("too many parameters", 413, "parameters.too.many"));
             }
             // Express 5 defaults extended to false, so nested keys need opting in
             const extended = typeof options.extended !== "undefined" ? options.extended : false;
+            // qs has to know the charset itself for anything but utf-8, and the sentinel options
+            // change what a parse means, so those bodies skip the fast parsers
+            const needsQs = encoding !== "utf-8" || options.charsetSentinel || options.interpretNumericEntities;
             if (extended) {
-                req.body = fastQueryParse(body, {
+                // the ceiling body-parser gives qs: the array limit rises to the parameter count,
+                // so a form posting 150 array members still yields an array. count counts "&"
+                // separators where body-parser counts parameters, hence the + 1
+                const qsOptions = {
                     ...EXTENDED_QS_OPTIONS,
+                    depth: options.depth !== undefined ? options.depth : 32,
+                    arrayLimit: Math.max(100, count + 1),
+                    charsetSentinel: options.charsetSentinel,
+                    interpretNumericEntities: options.interpretNumericEntities,
+                    charset: encoding,
                     parameterLimit: options.parameterLimit
-                });
+                };
+                req.body = needsQs
+                    ? Object.assign(Object.create(null), qs.parse(body, qsOptions))
+                    : fastQueryParse(body, qsOptions);
+            } else if (needsQs) {
+                // body-parser's extended: false is still qs, with depth 0 and the count as the
+                // array ceiling; only qs decodes latin1 percent escapes as latin1
+                req.body = Object.assign(
+                    Object.create(null),
+                    qs.parse(body, {
+                        allowPrototypes: true,
+                        arrayLimit: count + 1,
+                        depth: 0,
+                        strictDepth: true,
+                        charsetSentinel: options.charsetSentinel,
+                        interpretNumericEntities: options.interpretNumericEntities,
+                        charset: encoding,
+                        parameterLimit: options.parameterLimit
+                    })
+                );
             } else {
                 req.body = querystring.parse(body);
             }
         } catch (e) {
+            // qs reports a depth overflow as a RangeError with its own wording; body-parser
+            // answers it 400, not a raw 500
+            if (e instanceof RangeError) {
+                return next(bodyError("The input exceeded the depth", 400, "querystring.parse.rangeError"));
+            }
             return next(e);
         }
         next();
@@ -757,7 +922,15 @@ const urlencoded = createBodyParser(
         }
         // truncated the way body-parser truncates it, so parameterLimit 10.1 stops at ten
         options.parameterLimit = isFinite(limit) ? limit | 0 : limit;
-    }
+        // depth is only qs's to enforce, so body-parser validates it only when extended will use it
+        if (typeof options.extended !== "undefined" ? options.extended : false) {
+            const depth = options.depth !== undefined ? options.depth : 32;
+            if (isNaN(depth) || depth < 0) {
+                throw new TypeError("option depth must be a zero or a positive number");
+            }
+        }
+    },
+    "urlencoded"
 );
 
 module.exports = {

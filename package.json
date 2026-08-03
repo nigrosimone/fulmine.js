@@ -73,6 +73,7 @@
         "fast-querystring": "^1.1.2",
         "fast-zlib": "^2.0.1",
         "fresh": "^2.0.0",
+        "iconv-lite": "^0.7.3",
         "mime-types": "^3.0.2",
         "ms": "^2.1.3",
         "proxy-addr": "^2.0.7",
