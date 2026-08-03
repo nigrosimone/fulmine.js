@@ -82,18 +82,16 @@ function parseArgs(argv) {
 }
 
 function run(command, commandArgs, cwd) {
-    const result = spawnSync(
-        // npm is a batch file on Windows, which will not spawn as "npm". Naming it outright rather
-        // than passing shell: true, which node warns about and which would need the arguments
-        // escaped by hand
-        process.platform === "win32" && command === "npm" ? "npm.cmd" : command,
-        commandArgs,
-        {
-            cwd,
-            encoding: "utf8",
-            stdio: "inherit"
-        }
-    );
+    // npm is a batch file on Windows, and node refuses to spawn one directly since the argument
+    // injection fix. Through the command interpreter, the way node's own shell option does it
+    const windowsNpm = process.platform === "win32" && command === "npm";
+    const file = windowsNpm ? process.env.ComSpec || "cmd.exe" : command;
+    const argv = windowsNpm ? ["/d", "/s", "/c", command, ...commandArgs] : commandArgs;
+    const result = spawnSync(file, argv, {
+        cwd,
+        encoding: "utf8",
+        stdio: "inherit"
+    });
     if (result.error) {
         throw result.error;
     }

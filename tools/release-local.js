@@ -28,13 +28,18 @@ function parseArgs(argv) {
     return args;
 }
 
-// npm and npx are batch files on Windows and will not spawn under their bare names
-function commandFor(command) {
-    return process.platform === "win32" && (command === "npm" || command === "npx") ? `${command}.cmd` : command;
+// npm and npx are batch files on Windows, and node refuses to spawn one directly since the argument
+// injection fix. Through the command interpreter, the way node's own shell option does it
+function spawnable(command, args) {
+    if (process.platform === "win32" && (command === "npm" || command === "npx")) {
+        return [process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", command, ...args]];
+    }
+    return [command, args];
 }
 
 function run(command, args, options = {}) {
-    const result = spawnSync(commandFor(command), args, { cwd: ROOT, stdio: "inherit", ...options });
+    const [file, argv] = spawnable(command, args);
+    const result = spawnSync(file, argv, { cwd: ROOT, stdio: "inherit", ...options });
     if (result.error) {
         throw result.error;
     }
@@ -44,7 +49,8 @@ function run(command, args, options = {}) {
 }
 
 function capture(command, args) {
-    const result = spawnSync(commandFor(command), args, { cwd: ROOT, encoding: "utf8" });
+    const [file, argv] = spawnable(command, args);
+    const result = spawnSync(file, argv, { cwd: ROOT, encoding: "utf8" });
     return { ok: result.status === 0, out: (result.stdout || "").trim(), err: (result.stderr || "").trim() };
 }
 
