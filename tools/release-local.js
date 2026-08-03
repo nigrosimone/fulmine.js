@@ -117,6 +117,19 @@ async function main() {
         fail(`HEAD is not ${remote}/${BRANCH}. Push or pull first`);
     }
 
+    // the changelog's links are built by conventional-changelog, which reads the remote named
+    // origin and nothing else. In a working copy where origin is still the project this was forked
+    // from, every link in the release notes points at that project
+    const originUrl = capture("git", ["remote", "get-url", "origin"]).out;
+    const repository = (pkg.repository?.url ?? "").replace(/^git\+/, "").replace(/\.git$/, "");
+    if (repository && !originUrl.replace(/\.git$/, "").endsWith(repository.replace(/^https?:\/\/[^/]+/, ""))) {
+        const message = `origin is ${originUrl}, not ${repository}. The changelog links would point there`;
+        if (!dryRun) {
+            fail(message);
+        }
+        console.log(message);
+    }
+
     const whoami = capture("npm", ["whoami"]);
     if (!whoami.ok) {
         // a rehearsal is worth running without a login, since everything after this is what it is
