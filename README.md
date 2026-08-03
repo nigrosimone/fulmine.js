@@ -59,10 +59,10 @@ It is likewise not affiliated with the OpenJS Foundation or the Express.js proje
 
 ## Difference from similar projects
 
-- **`ultimate-express`** is what Fulmine is derived from, and is the closest relative by far. It targets Express 4, keeps the v4 API surface and its deprecations, and is written in JavaScript. Fulmine targets Express 5 only, which removes the compatibility layer for everything v5 dropped, and is typed. If you are on Express 4, use `ultimate-express`.
+- **`ultimate-express`** is what Fulmine is derived from, and is the closest relative by far. It targets Express 4, keeps the v4 API surface and its deprecations. Fulmine targets Express 5 only, which removes the compatibility layer for everything v5 dropped, and is typed. If you are on Express 4, use `ultimate-express`.
 - **`hyper-express`** has a similar API but is not a drop-in replacement. It implements much of the functionality differently, which produces quirks that make switching an existing application difficult, and most Express middleware is unsupported.
 - **`uwebsockets-express`** is closer to a drop-in replacement, but misses a lot of the API, depends on Express by calling its methods under the hood, and does not use the native µWS router.
-- **`express` on Bun** benefits from Bun using µWS for its HTTP module, but performs no µWS-specific optimisations.
+- **`express` on Bun** benefits from Bun using µWS for its HTTP module, but performs no µWS-specific optimizations.
 
 ## Migrating
 
