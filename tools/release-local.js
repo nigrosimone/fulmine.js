@@ -146,7 +146,8 @@ async function main() {
     // release-it bumps, writes the CHANGELOG, commits and tags. It never publishes: npm.publish is
     // false in .release-it.cjs. Nothing is pushed here, so a failed publish leaves nothing behind
     console.log("\nbumping and tagging\n");
-    const releaseItArgs = ["release-it", version, "--ci", "--no-git.push"];
+    // no upstream needed: the push below is explicit, and the local branch here is not named main
+    const releaseItArgs = ["release-it", version, "--ci", "--no-git.push", "--no-git.requireUpstream"];
     if (dryRun) {
         releaseItArgs.push("--dry-run");
     }
