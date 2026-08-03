@@ -96,28 +96,10 @@ class Walk {
         const routes = this.routes;
         const router = this.router;
         // a middleware assigned req.url, which express honours: the rest of the walk matches the
-        // new path. One identity compare per hop, since the router writes both sides itself
-        if (req.url !== req._lastUrl) {
-            req._absorbUrlRewrite();
-            if (this.skipCheck) {
-                // the chain was computed for the old path, so ordinary routing takes over,
-                // skipping only what has already run
-                this.skipUntil = startIndex > 0 ? routes[startIndex - 1] : undefined;
-                if (req._stack.length > 0) {
-                    req._stack.length = 0;
-                    req._stackMounted = 0;
-                    req.path = req._originalPath;
-                    req.url = req._originalPath + req.urlQuery;
-                    req._opPath =
-                        req.endsWithSlash && req._originalPath !== "/" && !router.get("strict routing")
-                            ? req._originalPath.slice(0, -1)
-                            : req._originalPath;
-                    req._lastUrl = req.url;
-                }
-                this.routes = router._routes;
-                this.skipCheck = false;
-                return this.dispatch(0);
-            }
+        // new path. One identity compare per hop, since the router writes both sides itself; the
+        // handling lives out of line so this function stays small enough to inline
+        if (req.url !== req._lastUrl && this.takeUrlRewrite(startIndex)) {
+            return;
         }
         let routeIndex = startIndex;
         if (!this.skipCheck) {
@@ -185,6 +167,39 @@ class Walk {
     }
 
     /**
+     * Takes over a req.url a middleware assigned. On an ordinary walk the scan simply continues
+     * against the new path; a compiled chain was computed for the old one, so ordinary routing
+     * takes over, skipping only what has already run.
+     *
+     * @param {number} startIndex where dispatch was about to resume
+     * @returns {boolean} whether this rerouted the walk itself
+     */
+    takeUrlRewrite(startIndex) {
+        const req = this.req;
+        const router = this.router;
+        req._absorbUrlRewrite();
+        if (!this.skipCheck) {
+            return false;
+        }
+        this.skipUntil = startIndex > 0 ? this.routes[startIndex - 1] : undefined;
+        if (req._stack.length > 0) {
+            req._stack.length = 0;
+            req._stackMounted = 0;
+            req.path = req._originalPath;
+            req.url = req._originalPath + req.urlQuery;
+            req._opPath =
+                req.endsWithSlash && req._originalPath !== "/" && !router.get("strict routing")
+                    ? req._originalPath.slice(0, -1)
+                    : req._originalPath;
+            req._lastUrl = req.url;
+        }
+        this.routes = router._routes;
+        this.skipCheck = false;
+        this.dispatch(0);
+        return true;
+    }
+
+    /**
      * Enters the route the walk is on: a mount adjusts req.url, req.path and the mount stack on the
      * way in, and then the route's callbacks run one after another through next().
      *
@@ -200,18 +215,7 @@ class Walk {
                 // Application, but the compiled mount route has no callback to do it
                 useApp(req, route.mountApp);
             }
-            if (route.regexMount) {
-                // exec the same fixed-up path _pathMatches tested: a parent mount that consumed
-                // everything leaves "", where the pattern was matched against "/"
-                let mountPath = req._opPath;
-                if (req.endsWithSlash && mountPath.endsWith("/") && !router.get("strict routing")) {
-                    mountPath = mountPath.slice(0, -1);
-                }
-                const matched = route.pattern.exec(mountPath === "" ? "/" : mountPath);
-                req._stack.push(matched ? escapePathLiteral(matched[0]) : "");
-            } else {
-                req._stack.push(route.path);
-            }
+            req._stack.push(route.regexMount ? regexMountEntry(router, route, req) : route.path);
             // a use with no path consumes nothing, so everything below would work out the values
             // that are already there. Only skipped without a trailing slash, where the rules about
             // one cannot bite. An application is mostly pathless middleware, and this is per hop
@@ -389,6 +393,25 @@ class Walk {
             }
         }
     }
+}
+
+/**
+ * What a RegExp mount consumed of the path, escaped so the mount-stack join can compile it as a
+ * literal. Exec runs on the same fixed-up path _pathMatches tested: a parent mount that consumed
+ * everything leaves "", where the pattern was matched against "/".
+ *
+ * @param {any} router
+ * @param {any} route
+ * @param {any} req
+ * @returns {string}
+ */
+function regexMountEntry(router, route, req) {
+    let mountPath = req._opPath;
+    if (req.endsWithSlash && mountPath.endsWith("/") && !router.get("strict routing")) {
+        mountPath = mountPath.slice(0, -1);
+    }
+    const matched = route.pattern.exec(mountPath === "" ? "/" : mountPath);
+    return matched ? escapePathLiteral(matched[0]) : "";
 }
 
 /**

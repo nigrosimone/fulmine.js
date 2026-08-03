@@ -117,6 +117,9 @@ module.exports = class Response extends Writable {
 
     req;
 
+    /** @type {Set<any>|undefined} the app's live-response set, see Application#handleRequest */
+    _pendingIn;
+
     /**
      * Built for every request, right after the Request it belongs to. The headers start with the
      * two that describe the connection, since every response carries them, and x-powered-by only
@@ -171,6 +174,8 @@ module.exports = class Response extends Writable {
         });
         this.once("close", () => {
             this.#ended = true;
+            // the application's graceful close() waits on this set, see its handleRequest
+            this._pendingIn?.delete(this);
         });
     }
 
