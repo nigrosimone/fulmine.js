@@ -374,6 +374,10 @@ module.exports = class Router extends EventEmitter {
                     method === "USE" || needsConversionToRegex(path) ? patternToRegex(path, method === "USE") : path,
                 callbacks,
                 routeKey: routeKey++,
+                // the router this was registered on. Ordinary dispatch is done by that router, so
+                // it could ask itself, but an optimized chain is walked by the app whatever it
+                // contains, and param() callbacks belong to the router that declared them
+                owner: this,
                 use: method === "USE",
                 all: method === "ALL" || method === "USE",
                 gettable: method === "GET" || method === "HEAD"
@@ -490,15 +494,11 @@ module.exports = class Router extends EventEmitter {
                 } else if (
                     (canBeOptimized(route.path) ||
                         (canBeOptimizedWithParams(route.path) &&
-                            // app.param() and router.param() are the exception. The native chain is
-                            // run by the app, so it consults the app's callbacks, and a mounted
-                            // router's own would never fire. Rather than teach the chain who owns
-                            // each route, a path with parameters goes the slow way whenever any
-                            // param callback is registered: the callbacks are rare and this keeps
-                            // their ordering exactly as Express has it.
-                            router._paramCallbacks.size === 0 &&
-                            this._paramCallbacks.size === 0 &&
-                            // and inside a mounted router, only when nothing after it could match
+                            // inside a mounted router, only when nothing after it could match.
+                            // app.param() and router.param() used to be an exception here as well,
+                            // since the chain is walked by the app and the app would have consulted
+                            // its own callbacks; every route carries its router now, so the right
+                            // ones run and a router with param callbacks is optimized like any other
                             (!pathPrefix || !router._isFollowedByAnOverlap(route, router._routes)))) &&
                     supportedUwsMethods.has(route.method)
                 ) {
@@ -676,7 +676,7 @@ module.exports = class Router extends EventEmitter {
             optimizedPath.length === 1 && // must not have middlewares
             route.callbacks.length === 1 && // must not have multiple callbacks
             typeof route.callbacks[0] === "function" && // must be a function
-            this._paramCallbacks.size === 0 && // app.param() is not supported
+            (route.owner ?? this)._paramCallbacks.size === 0 && // a param callback has to run, and this answers without running anything
             !resDecMethods.some((method) => resCodes[method] !== this.response[method].toString()) && // must not have injected methods
             this.get("declarative responses") // must have declarative responses enabled
         ) {
@@ -850,7 +850,11 @@ module.exports = class Router extends EventEmitter {
             }
         }
 
-        if (this._paramCallbacks.size > 0) {
+        // the route's own router, not whoever is running the chain: an optimized chain is walked by
+        // the app even when it ends in a mounted router's route, and that router's param callbacks
+        // are the ones Express would run there
+        const paramCallbacks = (route.owner ?? this)._paramCallbacks;
+        if (paramCallbacks.size > 0) {
             // known issue, not introduced here: an async executor swallows anything it throws,
             // because the rejection has nowhere to go once the promise is already constructed.
             // app.param() callbacks that throw synchronously are therefore lost. Fixing it means
@@ -859,7 +863,7 @@ module.exports = class Router extends EventEmitter {
             // eslint-disable-next-line no-async-promise-executor
             return new Promise(async (resolve) => {
                 for (const param in req.params) {
-                    const pcs = this._paramCallbacks.get(param);
+                    const pcs = paramCallbacks.get(param);
                     // built here rather than for every request, since only an application using
                     // app.param() ever reaches this line
                     if (pcs && !req._gotParams?.has(param)) {
@@ -997,7 +1001,7 @@ module.exports = class Router extends EventEmitter {
         // chain of routes would otherwise blow, so force one every 300 routes
         // routeCount starts at 1 so the first route of a request (fresh stack) takes the sync path
         const continueRoute = this._preprocessRequest(req, res, route);
-        if (this._paramCallbacks.size !== 0 || req.routeCount % 300 === 0) {
+        if ((route.owner ?? this)._paramCallbacks.size !== 0 || req.routeCount % 300 === 0) {
             Promise.resolve(continueRoute).then(
                 (resumed) =>
                     this._runRoute(req, res, routeIndex, route, routes, skipCheck, skipUntil, resolve, reject, resumed),

@@ -56,6 +56,31 @@ function optimizedFor(paths, extra) {
     });
 }
 
+/**
+ * The paths that reached µWS, wherever they were registered. optimizedFor cannot see into a mounted
+ * router: a route reached through a mount is handed over as a copy carrying the prefix, so the
+ * route object in the router's own list never learns that it was optimized.
+ *
+ * @param {(app: any) => void} setup
+ * @returns {Promise<string[]>}
+ */
+function nativePaths(setup) {
+    return new Promise((resolve) => {
+        const app = express();
+        setup(app);
+        const registered = [];
+        const register = app._registerUwsRoute;
+        app._registerUwsRoute = function (route, chain) {
+            registered.push(route.path);
+            return register.call(this, route, chain);
+        };
+        app.listen(0, () => {
+            app.close();
+            resolve(registered);
+        });
+    });
+}
+
 test("a callable app or router is still a usable function", () => {
     // Setting a function's prototype to a class prototype takes Function.prototype out of its
     // chain, and apply, call and bind with it. Node emits a request to its listener with
@@ -119,14 +144,19 @@ test("a parameter that is not a whole segment is not", async () => {
     }
 });
 
-test("app.param() sends parameter routes back to the slow path", async () => {
-    // The native chain is run by the app, so it consults the app's param callbacks. A mounted
-    // router's own would never fire, and rather than teach the chain who owns each route, a path
-    // with parameters goes the slow way whenever any param callback is registered.
-    const optimized = await optimizedFor(["/users/:id"], (app) => app.param("id", (req, res, next) => next()));
-    assert.strictEqual(optimized["/users/:id"], false);
+test("a param callback does not send the route back to the slow path", async () => {
+    // It used to. The native chain is walked by the app whatever it contains, so it consulted the
+    // app's param callbacks, and a mounted router's own would never have fired. Every route carries
+    // the router it was registered on now, so the right callbacks run and both of these are native.
+    const paths = await nativePaths((app) => {
+        app.param("id", (req, res, next) => next());
+        app.get("/users/:id", (req, res) => res.send("ok"));
 
-    // a plain path has no parameters to call back about, so it is unaffected
-    const plain = await optimizedFor(["/health"], (app) => app.param("id", (req, res, next) => next()));
-    assert.strictEqual(plain["/health"], true);
+        const router = express.Router();
+        router.param("uid", (req, res, next) => next());
+        router.get("/profile/:uid", (req, res) => res.send("ok"));
+        app.use("/api", router);
+    });
+    assert.ok(paths.includes("/users/:id"), `expected /users/:id among ${paths.join(", ")}`);
+    assert.ok(paths.includes("/api/profile/:uid"), `expected /api/profile/:uid among ${paths.join(", ")}`);
 });
