@@ -1,7 +1,6 @@
 const childProcess = require("child_process");
 const fs = require("fs");
 const exitHook = require("exit-hook");
-const { exit } = require("process");
 
 let args = process.argv.slice(2);
 

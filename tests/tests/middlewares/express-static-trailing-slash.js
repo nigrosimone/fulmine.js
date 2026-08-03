@@ -26,7 +26,7 @@ app.listen(13333, async () => {
         fetchTest("http://localhost:13333/trailing/")
     ]);
 
-    const texts = await Promise.all(responses.map((r) => r.text()));
+    await Promise.all(responses.map((r) => r.text()));
 
     console.log(
         responses.map((r) => r.status),

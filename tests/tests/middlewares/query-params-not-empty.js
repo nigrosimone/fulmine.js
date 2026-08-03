@@ -14,7 +14,7 @@ app.post("/abc/:param1", (req, res) => {
 });
 
 app.listen(13333, async () => {
-    const responseBody = await fetchTest("http://localhost:13333/abc/param?test=1", {
+    await fetchTest("http://localhost:13333/abc/param?test=1", {
         method: "POST",
         body: JSON.stringify({
             abc: 123

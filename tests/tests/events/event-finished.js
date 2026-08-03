@@ -20,7 +20,7 @@ app.get("/test", (req, res) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const response = await fetchTest("http://localhost:13333/test", {
+    await fetchTest("http://localhost:13333/test", {
         method: "GET"
     });
 });

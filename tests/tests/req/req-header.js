@@ -53,7 +53,7 @@ app.listen(13333, async () => {
 
     const headers = [];
     headers.push(["X-Test", "test"]);
-    res = await sendRequest("GET", "http://localhost:13333/test", headers);
+    await sendRequest("GET", "http://localhost:13333/test", headers);
 
     process.exit(0);
 });

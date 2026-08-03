@@ -3,7 +3,6 @@
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");
 const path = require("path");
-const fs = require("fs");
 
 const app = express();
 

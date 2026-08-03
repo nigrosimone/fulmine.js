@@ -36,8 +36,7 @@ app.listen(13333, async () => {
         body += `${i} `;
     }
 
-    let res;
-    res = await fetchTest("http://localhost:13333/test", {
+    const res = await fetchTest("http://localhost:13333/test", {
         method: "POST",
         body: body
     });

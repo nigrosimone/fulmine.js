@@ -28,8 +28,8 @@ async function sendRequest(method, url) {
             client.on("end", () => {
                 const rawHttpMessage = fullData;
                 const parts = rawHttpMessage.split(/\r?\n\r?\n/);
-                const headersPart = parts[0];
-                const bodyPart = parts.slice(1).join("\n\n");
+                parts[0];
+                parts.slice(1).join("\n\n");
                 const headersEndIndex = rawHttpMessage.indexOf("\r\n\r\n") + 4;
                 const bodyBuffer = fullData.slice(headersEndIndex);
                 resolve(bodyBuffer);

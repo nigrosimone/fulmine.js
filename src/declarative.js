@@ -220,9 +220,8 @@ module.exports = function compileDeclarative(cb, app) {
         }
 
         const [req, res] = args;
-        let queryName,
-            paramsName,
-            queries = [],
+        let queryName, paramsName;
+        const queries = [],
             params = [];
 
         if (fn.params[0].type === "ObjectPattern") {
@@ -602,7 +601,7 @@ module.exports = function compileDeclarative(cb, app) {
 
         let decRes = new uWSAny.DeclarativeResponse();
 
-        if (statusCode != 200) {
+        if (statusCode !== 200) {
             const statusMessage = statuses.message[statusCode] ?? "";
             decRes = decRes.writeStatus(`${statusCode} ${statusMessage}`.trim());
             if (!headers.some((header) => header[0].toLowerCase() === "content-type")) {

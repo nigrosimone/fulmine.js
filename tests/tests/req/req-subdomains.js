@@ -34,17 +34,16 @@ app.get("/test", (req, res) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    let res;
-    res = await fetchTest("http://localhost:13333/test");
+    const res = await fetchTest("http://localhost:13333/test");
     console.log(await res.text());
 
-    res = await sendRequest("GET", "http://localhost:13333/test", "test.localhost.com");
-    res = await sendRequest("GET", "http://localhost:13333/test", "asdf.test.localhost.com");
-    res = await sendRequest("GET", "http://localhost:13333/test", "bob.asdf.test.localhost.com");
-    res = await sendRequest("GET", "http://localhost:13333/test", "localhost:3333");
+    await sendRequest("GET", "http://localhost:13333/test", "test.localhost.com");
+    await sendRequest("GET", "http://localhost:13333/test", "asdf.test.localhost.com");
+    await sendRequest("GET", "http://localhost:13333/test", "bob.asdf.test.localhost.com");
+    await sendRequest("GET", "http://localhost:13333/test", "localhost:3333");
 
-    res = await sendRequest("GET", "http://localhost:13333/test", "127.0.0.1");
-    res = await sendRequest("GET", "http://localhost:13333/test", "127.0.0.1:3333");
+    await sendRequest("GET", "http://localhost:13333/test", "127.0.0.1");
+    await sendRequest("GET", "http://localhost:13333/test", "127.0.0.1:3333");
 
     process.exit(0);
 });

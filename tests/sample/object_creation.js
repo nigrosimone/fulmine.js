@@ -23,27 +23,27 @@ function calculateStats(timings) {
 }
 
 const plainObjectTimings = benchmark(() => {
-    let plainObjects = [];
+    const plainObjects = [];
     for (let i = 0; i < cnt; i++) {
         plainObjects.push({});
     }
-    plainObjects = null; // Clear memory
+    null; // Clear memory
 });
 
 const nullObjectTimings = benchmark(() => {
-    let nullObjects = [];
+    const nullObjects = [];
     for (let i = 0; i < cnt; i++) {
         nullObjects.push(new NullObject());
     }
-    nullObjects = null; // Clear memory
+    null; // Clear memory
 });
 
 const nullObjectTimingsWithSpread = benchmark(() => {
-    let nullObjectsW = [];
+    const nullObjectsW = [];
     for (let i = 0; i < cnt; i++) {
         nullObjectsW.push({ ...new NullObject() });
     }
-    nullObjectsW = null; // Clear memory
+    null; // Clear memory
 });
 
 const plainObjectStats = calculateStats(plainObjectTimings);

@@ -44,42 +44,40 @@ app.listen(13333, async () => {
     trustedApp.listen(13334, async () => {
         console.log("Server is running on port 13333");
 
-        let res;
-
-        res = await fetchTest("http://localhost:13333/test");
+        const res = await fetchTest("http://localhost:13333/test");
         console.log(await res.text());
 
         // host with port
-        res = await sendRequest("GET", "http://localhost:13333/test", [["Host", "example.com:8080"]]);
+        await sendRequest("GET", "http://localhost:13333/test", [["Host", "example.com:8080"]]);
 
         // IPv6 literal with port
-        res = await sendRequest("GET", "http://localhost:13333/test", [["Host", "[::1]:13333"]]);
+        await sendRequest("GET", "http://localhost:13333/test", [["Host", "[::1]:13333"]]);
 
         // IPv6 literal without port
-        res = await sendRequest("GET", "http://localhost:13333/test", [["Host", "[::1]"]]);
+        await sendRequest("GET", "http://localhost:13333/test", [["Host", "[::1]"]]);
 
         // --- trust proxy tests ---
 
         // trusted: X-Forwarded-Host present
-        res = await sendRequest("GET", "http://localhost:13334/test", [
+        await sendRequest("GET", "http://localhost:13334/test", [
             ["Host", "real.host.com"],
             ["X-Forwarded-Host", "forwarded.example.com"]
         ]);
 
         // trusted: X-Forwarded-Host with comma (multiple values)
-        res = await sendRequest("GET", "http://localhost:13334/test", [
+        await sendRequest("GET", "http://localhost:13334/test", [
             ["Host", "real.host.com"],
             ["X-Forwarded-Host", "first.example.com, second.example.com"]
         ]);
 
         // trusted: X-Forwarded-Host with port
-        res = await sendRequest("GET", "http://localhost:13334/test", [
+        await sendRequest("GET", "http://localhost:13334/test", [
             ["Host", "real.host.com"],
             ["X-Forwarded-Host", "forwarded.example.com:8443"]
         ]);
 
         // trusted: no X-Forwarded-Host → should fallback to Host header
-        res = await sendRequest("GET", "http://localhost:13334/test", [["Host", "fallback.host.com"]]);
+        await sendRequest("GET", "http://localhost:13334/test", [["Host", "fallback.host.com"]]);
 
         process.exit(0);
     });

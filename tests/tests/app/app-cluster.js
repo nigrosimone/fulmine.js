@@ -4,7 +4,7 @@ const express = require("express");
 
 const cluster = require("cluster");
 
-const app = express();
+express();
 
 process.on("uncaughtException", (err) => {
     console.log({ error: err.message });

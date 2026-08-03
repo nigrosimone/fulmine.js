@@ -31,6 +31,16 @@ if (filterPath) {
     }
 }
 
+// how many files this run will go through, so every line can say where it is
+const plannedTotal = testCategories.reduce((count, category) => {
+    const names = fs.readdirSync(path.join(testPath, category)).filter((name) => name.endsWith(".js"));
+    if (filterPath && filterPath.endsWith(".js")) {
+        return count + names.filter((name) => path.basename(name) === path.basename(filterPath)).length;
+    }
+    return count + names.length;
+}, 0);
+let planned = 0;
+
 for (const testCategory of testCategories) {
     test(testCategory, async () => {
         // some tests write scratch directories next to themselves, and a leftover one
@@ -63,7 +73,7 @@ for (const testCategory of testCategories) {
             }
 
             await new Promise((resolve) => {
-                test(testDescription, async (t) => {
+                test(`${testDescription} (${++planned}/${plannedTotal})`, async (t) => {
                     if (marker === "OFF") {
                         t.skip();
                         return resolve();

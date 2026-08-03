@@ -26,6 +26,6 @@ app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
     const response = await fetchTest("http://localhost:13333/test");
-    console.log(response.headers.get("Set-Cookie").replace(/\d\d\:\d\d\:\d\d/g, "xx:xx:xx"));
+    console.log(response.headers.get("Set-Cookie").replace(/\d\d:\d\d:\d\d/g, "xx:xx:xx"));
     process.exit(0);
 });

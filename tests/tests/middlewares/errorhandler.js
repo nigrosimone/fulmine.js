@@ -8,7 +8,6 @@ const app = express();
 
 app.get("/abc", (req, res) => {
     throw new Error("test");
-    res.send(req.body);
 });
 
 app.use(
@@ -22,7 +21,7 @@ app.use(
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const response = await fetchTest("http://localhost:13333/abc");
+    await fetchTest("http://localhost:13333/abc");
 
     process.exit(0);
 });

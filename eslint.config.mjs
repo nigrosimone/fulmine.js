@@ -20,9 +20,9 @@ export default [
         rules: {
             // the codebase leans on hoisting and on catch parameters it does not always read
             "no-unused-vars": ["error", { args: "none", caughtErrors: "none" }],
-            eqeqeq: ["warn", "smart"],
+            eqeqeq: ["error", "smart"],
             "no-var": "error",
-            "prefer-const": ["warn", { destructuring: "all" }],
+            "prefer-const": ["error", { destructuring: "all" }],
             "no-console": "off",
             // several getters return undefined on purpose when there is nothing to report
             "getter-return": ["error", { allowImplicit: true }],
@@ -72,16 +72,12 @@ export default [
         }
     },
     {
-        // test files are fixtures whose only contract is the stdout they produce, and the runner
-        // rewrites them on every run. an unread `await fetch(...)` result or a redundant escape is
-        // not worth churning them over, so these stay visible as warnings rather than blocking lint
+        // test files are fixtures whose only contract is the stdout they produce, so a rule that
+        // would change what one prints is off rather than lowered to a warning. Nothing here is a
+        // warning: a warning is a thing nobody fixes
         files: ["tests/**/*.js", "tests/**/*.cjs"],
         rules: {
-            "no-unused-vars": "warn",
-            "no-useless-assignment": "warn",
-            "no-useless-escape": "warn",
-            "no-unreachable": "warn",
-            "no-useless-catch": "warn"
+            "no-useless-catch": "off"
         }
     },
     // formatting is prettier's job; this turns off every rule that would argue with it

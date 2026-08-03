@@ -65,7 +65,7 @@ app.listen(13333, async () => {
     headers.push(["Cookie", "test2=test2"]);
     headers.push(["content-type", "text/plain"]);
     headers.push(["content-type", "application/json"]);
-    res = await sendRequest("GET", "http://localhost:13333/test", headers);
+    await sendRequest("GET", "http://localhost:13333/test", headers);
 
     process.exit(0);
 });

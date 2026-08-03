@@ -73,7 +73,7 @@ app.listen(13333, async () => {
 
     // Test maxAge
     const maxageRes = await fetchTest("http://localhost:13333/maxage");
-    console.log("maxAge:", maxageRes.headers.get("Set-Cookie").replace(/\d\d\:\d\d\:\d\d/g, "xx:xx:xx"));
+    console.log("maxAge:", maxageRes.headers.get("Set-Cookie").replace(/\d\d:\d\d:\d\d/g, "xx:xx:xx"));
 
     // Test expires
     const expiresRes = await fetchTest("http://localhost:13333/expires");
@@ -105,7 +105,7 @@ app.listen(13333, async () => {
 
     // Test combined options
     const combinedRes = await fetchTest("http://localhost:13333/combined");
-    console.log("combined:", combinedRes.headers.get("Set-Cookie").replace(/\d\d\:\d\d\:\d\d/g, "xx:xx:xx"));
+    console.log("combined:", combinedRes.headers.get("Set-Cookie").replace(/\d\d:\d\d:\d\d/g, "xx:xx:xx"));
 
     process.exit(0);
 });

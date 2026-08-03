@@ -16,7 +16,7 @@ app.post("/abc", (req, res) => {
 });
 
 app.listen(13333, async () => {
-    const response = await fetchTest("http://localhost:13333/abc", {
+    await fetchTest("http://localhost:13333/abc", {
         method: "POST",
         body: JSON.stringify({
             abc: 123
