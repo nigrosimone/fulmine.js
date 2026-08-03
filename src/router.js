@@ -95,6 +95,30 @@ class Walk {
         const req = this.req;
         const routes = this.routes;
         const router = this.router;
+        // a middleware assigned req.url, which express honours: the rest of the walk matches the
+        // new path. One identity compare per hop, since the router writes both sides itself
+        if (req.url !== req._lastUrl) {
+            req._absorbUrlRewrite();
+            if (this.skipCheck) {
+                // the chain was computed for the old path, so ordinary routing takes over,
+                // skipping only what has already run
+                this.skipUntil = startIndex > 0 ? routes[startIndex - 1] : undefined;
+                if (req._stack.length > 0) {
+                    req._stack.length = 0;
+                    req._stackMounted = 0;
+                    req.path = req._originalPath;
+                    req.url = req._originalPath + req.urlQuery;
+                    req._opPath =
+                        req.endsWithSlash && req._originalPath !== "/" && !router.get("strict routing")
+                            ? req._originalPath.slice(0, -1)
+                            : req._originalPath;
+                    req._lastUrl = req.url;
+                }
+                this.routes = router._routes;
+                this.skipCheck = false;
+                return this.dispatch(0);
+            }
+        }
         let routeIndex = startIndex;
         if (!this.skipCheck) {
             // written out rather than through a predicate handed to findIndexStartingFrom, which
@@ -129,6 +153,7 @@ class Walk {
                     req.endsWithSlash && req._originalPath !== "/" && !router.get("strict routing")
                         ? req._originalPath.slice(0, -1)
                         : req._originalPath;
+                req._lastUrl = req.url;
             }
             // an error out of a mount is attributed to the mount, so error handlers declared before
             // it do not catch it, as in ordinary dispatch
@@ -206,6 +231,7 @@ class Walk {
                     req.url = "/";
                     req.path = "/";
                 }
+                req._lastUrl = req.url;
             }
         }
         req.next = this.next;
@@ -253,6 +279,7 @@ class Walk {
                         req.url = "/";
                         req.path = "/";
                     }
+                    req._lastUrl = req.url;
                     if (
                         !strictRouting &&
                         req.endsWithSlash &&

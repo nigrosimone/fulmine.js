@@ -15,7 +15,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-const { patternToRegex, deprecated, NullObject } = require("./utils.js");
+const { deprecated } = require("./utils.js");
 const accepts = require("accepts");
 const typeis = require("type-is");
 const parseRange = require("range-parser");
@@ -180,6 +180,9 @@ module.exports = class Request extends Readable {
         this.path = req.getUrl();
         this.originalUrl = this.path + this.urlQuery;
         this.url = this.originalUrl;
+        // what the router last wrote to req.url. A middleware assigning something else is a
+        // rewrite, which express honours, and dispatch compares against this to notice it
+        this._lastUrl = this.originalUrl;
         // charCodeAt rather than indexing: s[i] builds a one character string to throw away
         this.endsWithSlash = this.path.charCodeAt(this.path.length - 1) === 0x2f;
         this._opPath = this.path;
@@ -271,20 +274,27 @@ module.exports = class Request extends Readable {
 
     /**
      * The part of the path the routers mounted so far have consumed, which is the empty string at
-     * the top level. Matched rather than joined, because a mount path can be a pattern.
+     * the top level. Matched rather than joined, because a mount path can be a pattern. The regex
+     * comes from the router's mountpath cache, since the same mount chain is walked by every
+     * request and compiling it per read was measurable.
      * @returns {string}
      */
     get baseUrl() {
-        const match = this._originalPath.match(patternToRegex(this._stack.join(""), true));
+        if (this._baseUrlOverride !== undefined) {
+            return this._baseUrlOverride;
+        }
+        const match = this._originalPath.match(this.app.getFullMountpath(this));
         return match ? match[0] : "";
     }
 
     /**
      * Only here because a getter without a setter makes the property read-only, and middleware in
-     * the wild does assign to it. Express keeps it writable too.
+     * the wild does assign to it. Express keeps it writable too. Kept apart from _originalPath,
+     * which routing matches against: assigning baseUrl must change what reads back, not what
+     * later routes see.
      */
     set baseUrl(x) {
-        this._originalPath = x;
+        this._baseUrlOverride = x;
     }
 
     /**
@@ -294,7 +304,8 @@ module.exports = class Request extends Readable {
      */
     get #authority() {
         const trust = this.app.get("trust proxy fn");
-        const isTrusted = !!(trust && trust(this.connection.remoteAddress, 0));
+        // parsedIp is what connection.remoteAddress carries, without building the socket stand-in
+        const isTrusted = !!(trust && trust(this.parsedIp, 0));
         const rawHeader = (isTrusted && this.headers["x-forwarded-host"]) || this.headers["host"];
         let host = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
 
@@ -399,13 +410,42 @@ module.exports = class Request extends Readable {
         if (!trust) {
             return proto;
         }
-        if (!trust(this.connection.remoteAddress, 0)) {
+        // parsedIp rather than connection.remoteAddress: same value, no socket stand-in built
+        if (!trust(this.parsedIp, 0)) {
             return proto;
         }
         const header = this.headers["x-forwarded-proto"] || proto;
         const index = header.indexOf(",");
 
         return index !== -1 ? header.slice(0, index).trim() : header.trim();
+    }
+
+    /**
+     * Takes over what a middleware assigned to req.url: the remaining routing matches the new
+     * path, and req.query reflects the new query string. The assigned url is relative to the
+     * mount the request is currently in, as it is in express, so the absolute path is rebuilt
+     * from the piece the mounts had consumed.
+     */
+    _absorbUrlRewrite() {
+        const newUrl = String(this.url);
+        const queryIndex = newUrl.indexOf("?");
+        const newPath = queryIndex === -1 ? newUrl : newUrl.slice(0, queryIndex);
+        // the prefix the mounts consumed: everything of the absolute path the relative one was not
+        const lastQueryIndex = this._lastUrl.indexOf("?");
+        const oldPath = lastQueryIndex === -1 ? this._lastUrl : this._lastUrl.slice(0, lastQueryIndex);
+        const prefix =
+            oldPath === "/" && !this._originalPath.endsWith("/")
+                ? this._originalPath
+                : this._originalPath.slice(0, this._originalPath.length - oldPath.length);
+        this._rawQuery = queryIndex === -1 ? "" : newUrl.slice(queryIndex + 1);
+        this.urlQuery = this._rawQuery === "" ? "" : "?" + this._rawQuery;
+        this.#cachedQuery = null;
+        this._originalPath = prefix + newPath;
+        this.path = newPath;
+        this.endsWithSlash = newPath.charCodeAt(newPath.length - 1) === 0x2f;
+        this._opPath =
+            this.endsWithSlash && newPath !== "/" && !this.app.get("strict routing") ? newPath.slice(0, -1) : newPath;
+        this._lastUrl = newUrl;
     }
 
     /**
@@ -515,19 +555,29 @@ module.exports = class Request extends Readable {
         return ip;
     }
 
+    /** @type {object|null} */
+    #cachedConnection = null;
+
     /**
-     * Enough of a node socket for the middleware that reaches for one. It is built on each read
-     * rather than kept, since almost nothing asks for it.
+     * Enough of a node socket for the middleware that reaches for one. Built on first read and
+     * kept, so req.socket keeps its identity across reads as node's does. remotePort hides behind
+     * its own getter because it is a native uWS call almost no caller makes.
      * @returns {{remoteAddress: string|undefined, remotePort: number, localPort: number|undefined, encrypted: boolean, end: (body?: any) => void}}
      */
     get connection() {
-        return {
+        if (this.#cachedConnection) {
+            return this.#cachedConnection;
+        }
+        const uwsRes = this._res;
+        return (this.#cachedConnection = {
             remoteAddress: this.parsedIp,
-            remotePort: this._res.getRemotePort(),
+            get remotePort() {
+                return uwsRes.getRemotePort();
+            },
             localPort: this.app.port,
             encrypted: this.app.ssl,
             end: (body) => this.res.end(body)
-        };
+        });
     }
 
     /**
@@ -611,8 +661,6 @@ module.exports = class Request extends Readable {
         }
         return this.headers[field];
     }
-
-    header = this.get;
 
     /**
      * Picks the best of the given types against the Accept header.
@@ -739,13 +787,15 @@ module.exports = class Request extends Readable {
             return this.#cachedHeaders;
         }
         // built into a local and published at the end, so a throw partway through cannot leave a
-        // half-filled object cached
-        const headers = { ...new NullObject() }; // seems to be faster
+        // half-filled object cached. A plain object because node's is one and inspect prints the
+        // difference; Object.hasOwn keeps a header named "constructor" or "toString" from finding
+        // Object.prototype's member and folding a first value into it.
+        const headers = {};
         const entries = this.#rawHeadersEntries;
         for (let index = 0, len = entries.length; index < len; index += 2) {
             const value = entries[index + 1];
             const key = entries[index].toLowerCase();
-            if (headers[key]) {
+            if (Object.hasOwn(headers, key)) {
                 if (discardedDuplicates.has(key)) {
                     continue;
                 }
@@ -779,12 +829,14 @@ module.exports = class Request extends Readable {
         if (this.#cachedDistinctHeaders) {
             return this.#cachedDistinctHeaders;
         }
-        const distinct = { ...new NullObject() };
+        // null prototype and undefined check for the same reason as `headers`: a header named
+        // after an Object.prototype member must not collide with it
+        const distinct = /** @type {Record<string, string[]>} */ (Object.create(null));
         const entries = this.#rawHeadersEntries;
         for (let index = 0, len = entries.length; index < len; index += 2) {
             const key = entries[index];
             const value = entries[index + 1];
-            if (!distinct[key]) {
+            if (distinct[key] === undefined) {
                 distinct[key] = [value];
             } else {
                 distinct[key].push(value);
@@ -805,3 +857,7 @@ module.exports = class Request extends Readable {
         return this.#rawHeadersEntries.slice();
     }
 };
+
+// req.header is req.get under Express's other name. On the prototype rather than an instance
+// field, which wrote one own property per request in the constructor.
+/** @type {any} */ (module.exports.prototype).header = module.exports.prototype.get;
