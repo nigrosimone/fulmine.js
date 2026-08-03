@@ -689,7 +689,10 @@ module.exports = class Router extends EventEmitter {
         }
 
         this.uwsApp[method](replacedPath, fn);
-        if (!this.get("strict routing") && route.path[route.path.length - 1] !== "/") {
+        // the route's own router decides, not the app running the registration: a router created
+        // with { strict: true } and mounted on an app without it does not answer /things/, and
+        // registering that path here is the only way it could
+        if (!(route.owner ?? this).get("strict routing") && route.path[route.path.length - 1] !== "/") {
             this.uwsApp[method](replacedPath + "/", fn);
             if (method === "get") {
                 this.uwsApp.head(replacedPath + "/", realFn);
