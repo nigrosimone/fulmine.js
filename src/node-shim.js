@@ -174,6 +174,10 @@ class NodeHttpResponse {
         this._offset = 0;
         this._onWritable = null;
         this._aborted = false;
+        // the current body handler: uWS keeps one and a second onData replaces it, so this does too
+        this._onData = null;
+        this._onDataPending = null;
+        this._onDataListening = false;
 
         res.on("drain", () => {
             const handler = this._onWritable;
@@ -310,22 +314,27 @@ class NodeHttpResponse {
 
     /**
      * The body, in the chunks node hands over, as the ArrayBuffer and last-chunk flag uWS delivers.
+     * A second call replaces the handler, as uWS does: the body parsers rely on that, and a chunk
+     * held back before they attached has to reach them rather than the handler it arrived under.
      * @param {(chunk: ArrayBuffer, isLast: boolean) => void} handler
      */
     onData(handler) {
-        const req = this._nodeReq;
-        let pending = null;
-        req.on("data", (chunk) => {
-            if (pending !== null) {
-                handler(pending, false);
+        this._onData = handler;
+        if (this._onDataListening) {
+            return this;
+        }
+        this._onDataListening = true;
+        this._nodeReq.on("data", (chunk) => {
+            if (this._onDataPending !== null) {
+                this._onData?.(this._onDataPending, false);
             }
-            pending = toArrayBuffer(chunk);
+            this._onDataPending = toArrayBuffer(chunk);
         });
-        req.on("end", () => {
+        this._nodeReq.on("end", () => {
             // uWS marks the last chunk rather than announcing the end separately, so the one in
             // hand is held back until there is nothing after it
-            handler(pending ?? new ArrayBuffer(0), true);
-            pending = null;
+            this._onData?.(this._onDataPending ?? new ArrayBuffer(0), true);
+            this._onDataPending = null;
         });
         return this;
     }
