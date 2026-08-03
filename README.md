@@ -441,12 +441,21 @@ npm run cover             # the comparison suite under nyc, then an HTML report
 
 npm run benchmark:compare -- --duration 20      # against Express, scenario by scenario
 npm run benchmark:ab -- --against main          # this working tree against another revision
+
+npm run test:express                            # Express's own test suite, run against this
+npm run test:express -- res.sendFile --verbose  # one area of it, with mocha's output
 ```
 
 The comparison suite is the load-bearing one. A test is a file that prints; the runner executes it
 twice, once with `express` and once with this, and fails on any difference. That is why adding a
 test means writing something that prints what you want compared, and why a test that prints from
 both the server and the client at once is a bug: the two orderings are a race.
+
+`npm run test:express` is the other kind of test: it clones Express at the version in
+`devDependencies`, points its entry at this source and runs its suite against it. It is a bug mine
+rather than a gate, and its exit status says nothing. Read the header of `tools/express-suite.js`
+before reading its numbers: some of what it reports is Express testing its own internals, which the
+clone still has, and some is internals used as public API.
 
 `benchmark/README.md` covers measuring, including why the A/B runs pipelined by default and why a
 null control matters.
