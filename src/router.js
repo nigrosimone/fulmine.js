@@ -276,13 +276,16 @@ module.exports = class Router extends EventEmitter {
         if (req.endsWithSlash && path.endsWith("/") && !this.get("strict routing")) {
             path = path.slice(0, -1);
         }
+        // the line above turns the root path into the empty string, which no pattern is written
+        // against. A regex route was tested against it and app.get("*path") answered every request
+        // but "/"
+        if (path === "") {
+            path = "/";
+        }
 
         if (typeof pattern === "string") {
             if (pattern === "/*") {
                 return true;
-            }
-            if (path === "") {
-                path = "/";
             }
             if (!this.get("case sensitive routing")) {
                 path = path.toLowerCase();
@@ -667,10 +670,14 @@ module.exports = class Router extends EventEmitter {
      * @param {string} path
      */
     _extractParams(pattern, path) {
-        if (path.endsWith("/")) {
-            path = path.slice(0, -1);
+        let match = pattern.exec(path);
+        if (!match && path.length > 1 && path.endsWith("/")) {
+            // a pattern compiled without a trailing slash still matches a path written with one,
+            // which is what non-strict routing means. Retried rather than stripped up front, so
+            // that a wildcard captures the path as it arrived and "/a/b/" keeps its last, empty
+            // segment the way Express reports it
+            match = pattern.exec(path.slice(0, -1));
         }
-        const match = pattern.exec(path);
         // Object.create(null) rather than the { __proto__: null } literal, which is the same object
         // for 9ns more. Null-prototyped either way, as Express 5 makes params.
         const obj = Object.create(null);
