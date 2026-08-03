@@ -161,26 +161,24 @@ function ensureSuite(dir, tag, refresh) {
 }
 
 /**
- * Points the clone's entry at src/index.js, keeping Express's own next to it so the control run and
- * anything else that opens this directory later finds it as it was.
+ * Points the clone's entry at src/index.js, after putting the entry back to what Express ships.
+ *
+ * Restored from git rather than from a copy kept alongside it. A copy has to be made at some point
+ * from whatever the entry held at the time, and if that was already a shim the copy is a shim
+ * forever after: the control run then measures this project twice and reports the two as identical,
+ * which is exactly what happened while this was being written. git always knows.
  */
 function useFulmine(dir) {
-    const entry = path.join(dir, "index.js");
-    const backup = `${entry}.express-original`;
-    const current = fs.readFileSync(entry, "utf8");
-    if (!current.includes(SHIM_MARKER)) {
-        fs.writeFileSync(backup, current);
-    }
+    useExpress(dir);
     const target = path.join(ROOT, "src", "index.js").split(path.sep).join("/");
-    fs.writeFileSync(entry, `// ${SHIM_MARKER}\nmodule.exports = require(${JSON.stringify(target)});\n`);
+    fs.writeFileSync(
+        path.join(dir, "index.js"),
+        `// ${SHIM_MARKER}\nmodule.exports = require(${JSON.stringify(target)});\n`
+    );
 }
 
 function useExpress(dir) {
-    const entry = path.join(dir, "index.js");
-    const backup = `${entry}.express-original`;
-    if (fs.existsSync(backup)) {
-        fs.copyFileSync(backup, entry);
-    }
+    run("git", ["checkout", "--", "index.js"], dir);
 }
 
 function runFile(dir, mocha, file, timeoutMs) {
