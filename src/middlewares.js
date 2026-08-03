@@ -267,18 +267,23 @@ function serveStatic(root, options) {
  */
 function createInflate(contentEncoding) {
     const encoding = (contentEncoding || "identity").toLowerCase();
+    let stream;
     switch (encoding) {
         case "identity":
             return;
         case "deflate":
-            return new zlib.Inflate();
+            stream = new zlib.Inflate();
+            break;
         case "gzip":
-            return new zlib.Gunzip();
+            stream = new zlib.Gunzip();
+            break;
         case "br":
-            return new zlib.BrotliDecompress();
+            stream = new zlib.BrotliDecompress();
+            break;
         default:
             return false;
     }
+    return stream;
 }
 
 /**
@@ -290,15 +295,30 @@ function createInflate(contentEncoding) {
  * @param {string} defaultType the type matched when the caller names none
  * @param {(...args: any[]) => any} beforeReturn turns the collected bytes into req.body. Called
  *   with the body, the request, the response, next and the options
+ * @param {(options: any) => void} [checkOptions] whatever this parser alone has to check
  * @returns {(options?: object) => Function} the middleware factory
  */
-function createBodyParser(defaultType, beforeReturn) {
+function createBodyParser(defaultType, beforeReturn, checkOptions) {
     return function (options) {
-        if (typeof options !== "object") {
-            options = new NullObject();
+        // a copy, because everything below writes the parsed values back: with the caller's own
+        // object, altering it after the parser was built would alter the parser
+        options = options && typeof options === "object" ? { ...options } : new NullObject();
+        // refused where it is written, not where it is used: an option nobody can honour is a
+        // mistake in the application, and body-parser throws for it at the same point
+        if (options.verify !== undefined && options.verify !== false && typeof options.verify !== "function") {
+            throw new TypeError("option verify must be function");
         }
-        if (typeof options.limit === "undefined") options.limit = bytes("100kb");
-        else options.limit = bytes(options.limit);
+        if (checkOptions) {
+            checkOptions(options);
+        }
+        // bytes() goes both ways: given a number it formats it, so bytes(1024) is the string "1KB"
+        // and every comparison against it is false. express.json({ limit: 5 * 1024 * 1024 }) had no
+        // limit at all. parse, and only what needs parsing
+        if (typeof options.limit === "undefined") {
+            options.limit = bytes.parse("100kb");
+        } else if (typeof options.limit !== "number") {
+            options.limit = bytes.parse(options.limit);
+        }
 
         if (typeof options.inflate === "undefined") options.inflate = true;
         if (typeof options.type === "undefined") options.type = defaultType;
@@ -340,7 +360,9 @@ function createBodyParser(defaultType, beforeReturn) {
             // so it must not be seeded with an empty object first.
 
             // skip reading body for no content type
-            if (!type) {
+            // a function decides for itself, and body-parser lets it see a request that carries no
+            // content-type at all. Only the string and array forms need one to match against
+            if (!type && typeof options.type !== "function") {
                 return next();
             }
 
@@ -406,6 +428,14 @@ function createBodyParser(defaultType, beforeReturn) {
             const abs = [];
             let inflate;
             let totalSize = 0;
+            const contentEncoding = (req.headers["content-encoding"] || "identity").toLowerCase();
+            if (!options.inflate && contentEncoding !== "identity") {
+                return next(
+                    bodyError("content encoding unsupported", 415, "encoding.unsupported", {
+                        encoding: contentEncoding
+                    })
+                );
+            }
             if (options.inflate) {
                 inflate = createInflate(req.headers["content-encoding"]);
                 if (inflate === false) {
@@ -456,7 +486,27 @@ function createBodyParser(defaultType, beforeReturn) {
                     buf = Buffer.from(buf);
                 }
                 if (inflate) {
-                    buf = inflate.process(buf);
+                    try {
+                        buf = inflate.process(buf);
+                    } catch (e) {
+                        // a body that does not decompress is the client's mistake, and zlib throwing
+                        // here used to escape into whatever called us.
+                        //
+                        // zlib reports it twice: process() throws, and the stream emits 'error' a
+                        // tick later. fast-zlib removes its own listeners on the way out, so that
+                        // second one lands on nothing, and an unhandled 'error' event ends the
+                        // process: a corrupt gzip body was enough to take the server down. The
+                        // listener goes on after the throw, since process() would have removed it
+                        /** @type {any} */ (inflate).instance?.on?.("error", () => {});
+                        finished = true;
+                        abs.length = 0;
+                        target = null;
+                        const err = /** @type {any} */ (e);
+                        err.status = 400;
+                        err.statusCode = 400;
+                        err.expose = true;
+                        return next(err);
+                    }
                 }
 
                 totalSize += buf.length;
@@ -493,6 +543,19 @@ function createBodyParser(defaultType, beforeReturn) {
                     return;
                 }
                 finished = true;
+                // fewer bytes than content-length promised: the request was cut short, and parsing
+                // what did arrive would answer as though it were the whole thing. Not when
+                // inflating, where content-length counts the compressed bytes and totalSize the
+                // ones that came out
+                if (!inflate && length !== undefined && !isNaN(length) && totalSize !== Number(length)) {
+                    return next(
+                        bodyError("request size did not match content length", 400, "request.size.invalid", {
+                            expected: Number(length),
+                            length: Number(length),
+                            received: totalSize
+                        })
+                    );
+                }
                 // target holds the whole body already; otherwise a single chunk is the body, and
                 // only a genuinely chunked body needs the concat
                 const buf = target
@@ -585,7 +648,7 @@ const raw = createBodyParser("application/octet-stream", function (req, res, nex
 });
 
 const text = createBodyParser("text/plain", function (req, res, next, options, buf) {
-    const contentType = req.headers["content-type"];
+    const contentType = req.headers["content-type"] ?? "";
     const charsetIndex = contentType.indexOf("charset=");
     let encoding = options.defaultCharset;
     if (charsetIndex !== -1) {
@@ -612,20 +675,63 @@ const text = createBodyParser("text/plain", function (req, res, next, options, b
     next();
 });
 
-const urlencoded = createBodyParser("application/x-www-form-urlencoded", function (req, res, next, options, buf) {
-    try {
-        // Express 5 defaults extended to false, so nested keys need opting in
-        const extended = typeof options.extended !== "undefined" ? options.extended : false;
-        if (extended) {
-            req.body = fastQueryParse(buf.toString(), options);
-        } else {
-            req.body = querystring.parse(buf.toString());
+// what qs is given for an extended body, which is not what it is given for a query string: these
+// are body-parser's numbers and they bound how much work one request can ask for
+const EXTENDED_QS_OPTIONS = { allowPrototypes: true, arrayLimit: 100, depth: 32, strictDepth: true };
+
+/**
+ * How many parameters a urlencoded body holds, or undefined once it holds more than the limit.
+ * Counted before parsing, so a body with a million keys is refused rather than parsed.
+ *
+ * @param {string} body
+ * @param {number} limit
+ * @returns {number|undefined}
+ */
+function parameterCount(body, limit) {
+    let count = 0;
+    let index = 0;
+    while ((index = body.indexOf("&", index)) !== -1) {
+        count++;
+        index++;
+        if (count === limit) {
+            return undefined;
         }
-    } catch (e) {
-        return next(e);
     }
-    next();
-});
+    return count;
+}
+
+const urlencoded = createBodyParser(
+    "application/x-www-form-urlencoded",
+    function (req, res, next, options, buf) {
+        try {
+            const body = buf.toString();
+            if (parameterCount(body, options.parameterLimit) === undefined) {
+                return next(bodyError("too many parameters", 413, "parameters.too.many"));
+            }
+            // Express 5 defaults extended to false, so nested keys need opting in
+            const extended = typeof options.extended !== "undefined" ? options.extended : false;
+            if (extended) {
+                req.body = fastQueryParse(body, {
+                    ...EXTENDED_QS_OPTIONS,
+                    parameterLimit: options.parameterLimit
+                });
+            } else {
+                req.body = querystring.parse(body);
+            }
+        } catch (e) {
+            return next(e);
+        }
+        next();
+    },
+    function (options) {
+        const limit = options.parameterLimit !== undefined ? options.parameterLimit : 1000;
+        if (isNaN(limit) || limit < 1) {
+            throw new TypeError("option parameterLimit must be a positive number");
+        }
+        // truncated the way body-parser truncates it, so parameterLimit 10.1 stops at ten
+        options.parameterLimit = isFinite(limit) ? limit | 0 : limit;
+    }
+);
 
 module.exports = {
     static: serveStatic,
