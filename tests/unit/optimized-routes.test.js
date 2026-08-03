@@ -223,3 +223,25 @@ test("a parameter route stays off it when an earlier route could answer some of 
     });
     assert.deepStrictEqual(paths, []);
 });
+
+test("overlapping param shapes and case-insensitive routers stay off the native router", async () => {
+    // µWS would answer /a/hello with the second registration under the wrong names
+    const paths = await nativePaths((app) => {
+        app.get("/a/:x", (req, res, next) => next());
+        app.use((req, res, next) => next());
+        app.get("/a/:y", (req, res) => res.send("ok"));
+    });
+    assert.ok(paths.includes("/a/:x"), "/a/:x stays native");
+    assert.ok(!paths.includes("/a/:y"), "/a/:y falls back to ordinary dispatch");
+
+    // a case-insensitive router cannot be served by µWS, which matches case-sensitively
+    const insensitive = await nativePaths((app) => {
+        const router = express.Router({ caseSensitive: false });
+        router.get("/foo", (req, res) => res.send("ok"));
+        app.use("/sub", router);
+    });
+    assert.deepStrictEqual(
+        insensitive.filter((p) => p.startsWith("/sub")),
+        []
+    );
+});

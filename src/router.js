@@ -36,8 +36,10 @@ const statuses = require("statuses");
 const { METHODS } = require("http");
 const { isNodeRequest, serveNodeRequest } = require("./node-shim.js");
 
+// every method the declarative compiler can emit: a patched one must disable compilation, or the
+// patch would be honoured everywhere but on compiled routes
 const resCodes = {},
-    resDecMethods = ["set", "setHeader", "header", "send", "end", "append", "status"];
+    resDecMethods = ["set", "setHeader", "header", "send", "end", "append", "status", "json", "sendStatus"];
 for (const method of resDecMethods) {
     resCodes[method] = Response.prototype[method].toString();
 }
@@ -142,12 +144,16 @@ class Walk {
         this.route = route;
         this.callbackIndex = 0;
 
-        // _preprocessRequest returns a promise only when there are param callbacks, so the common
-        // case stays synchronous. A microtask every 300 routes resets the stack, which a long chain
-        // would otherwise blow
+        // _preprocessRequest returns a promise only when param callbacks will really run, so the
+        // common case stays synchronous even in an app that uses app.param. A microtask every 300
+        // routes resets the stack, which a long chain would otherwise blow
         const continueRoute = router._preprocessRequest(req, this.res, route);
-        if (route.paramCallbacks.size !== 0 || req.routeCount % 300 === 0) {
-            Promise.resolve(continueRoute).then((resumed) => this.runRoute(resumed), this.reject);
+        if (continueRoute instanceof Promise || req.routeCount % 300 === 0) {
+            // .catch and not a rejection argument: a throw inside runRoute itself must reject
+            // the walk instead of becoming an unhandled rejection
+            Promise.resolve(continueRoute)
+                .then((resumed) => this.runRoute(resumed))
+                .catch(this.reject);
             return;
         }
         return this.runRoute(continueRoute);
@@ -169,7 +175,18 @@ class Walk {
                 // Application, but the compiled mount route has no callback to do it
                 useApp(req, route.mountApp);
             }
-            req._stack.push(route.regexMount ? escapePathLiteral(route.pattern.exec(req._opPath)[0]) : route.path);
+            if (route.regexMount) {
+                // exec the same fixed-up path _pathMatches tested: a parent mount that consumed
+                // everything leaves "", where the pattern was matched against "/"
+                let mountPath = req._opPath;
+                if (req.endsWithSlash && mountPath.endsWith("/") && !router.get("strict routing")) {
+                    mountPath = mountPath.slice(0, -1);
+                }
+                const matched = route.pattern.exec(mountPath === "" ? "/" : mountPath);
+                req._stack.push(matched ? escapePathLiteral(matched[0]) : "");
+            } else {
+                req._stack.push(route.path);
+            }
             // a use with no path consumes nothing, so everything below would work out the values
             // that are already there. Only skipped without a trailing slash, where the rules about
             // one cannot bite. An application is mostly pathless middleware, and this is per hop
@@ -276,7 +293,8 @@ class Walk {
             if (callback.constructor.name === "Application") {
                 useApp(req, callback);
             }
-            if (callback.settings.mergeParams) {
+            const pushedParams = callback.settings.mergeParams;
+            if (pushedParams) {
                 req._paramStack.push(req.params);
             }
             if (
@@ -286,17 +304,26 @@ class Walk {
             ) {
                 req._opPath += "/";
             }
-            callback._routeRequest(req, res, 0).then((routed) => {
-                if (req._error) {
-                    req._errorKey = route.routeKey;
-                }
-                if (routed) return this.resolve(true);
-                if (req._isOptions && req._matchedMethods.size) {
-                    // OPTIONS routing is different, it stops in the router if matched
-                    return this.resolve(false);
-                }
-                this.step(undefined);
-            });
+            callback
+                ._routeRequest(req, res, 0)
+                .then((routed) => {
+                    // the child's params are scoped to it, and must not leak into the routes after
+                    if (pushedParams) {
+                        req._paramStack.pop();
+                    }
+                    if (req._error) {
+                        req._errorKey = route.routeKey;
+                    }
+                    if (routed) return this.resolve(true);
+                    if (req._isOptions && req._matchedMethods.size) {
+                        // OPTIONS routing is different, it stops in the router if matched
+                        return this.resolve(false);
+                    }
+                    this.step(undefined);
+                })
+                // a rejection out of the nested walk, or a throw above, must reject this one
+                // instead of dying as an unhandled rejection
+                .catch(this.reject);
         } else {
             // handle errors and error handlers
             if (req._error || kind === CALLBACK_ERROR) {
@@ -576,7 +603,10 @@ module.exports = class Router extends EventEmitter {
             if (this._mountpathCache.size > 1024) {
                 this._mountpathCache.clear();
             }
-            fullMountpath = patternToRegex(fullStack, true);
+            // two mounts in the stack may reuse a name, which a named-group compile refuses.
+            // Nothing ever reads these groups, so they are renamed by position
+            const stackPattern = fullStack.includes(":") ? fullStack.replace(/:\w+/g, (m, at) => ":m" + at) : fullStack;
+            fullMountpath = patternToRegex(stackPattern, true);
             this._mountpathCache.set(fullStack, fullMountpath);
         }
         return fullMountpath;
@@ -722,9 +752,10 @@ module.exports = class Router extends EventEmitter {
                 }
             }
 
-            // check if the paths match
+            // check if the paths match. A route with parameters is excluded from the text test:
+            // its literal ":name" text would let an earlier regex in on requests it never matches
             if (
-                (r.pattern instanceof RegExp && r.pattern.test(route.path)) ||
+                (r.pattern instanceof RegExp && (!withParams || r.use) && r.pattern.test(route.path)) ||
                 (typeof r.pattern === "string" && (r.pattern === route.path || r.pattern === "/*"))
             ) {
                 if (r.callbacks.some((c) => c instanceof Router)) {
@@ -744,8 +775,21 @@ module.exports = class Router extends EventEmitter {
             if (!pathsCanOverlap(r.path, route.path, r.use)) {
                 continue;
             }
-            // unless µWS answers those paths with it too, and it is registered there to do so
-            if (r.use || !r.optimizedPath || !uwsPrefersEarlier(r.path, route.path)) {
+            if (r.use) {
+                return false;
+            }
+            // the same path lands on the same µWS registration, so the earlier route runs first
+            // from inside the chain, under its own parameter names
+            if (r.path === route.path) {
+                if (r.callbacks.some((c) => c instanceof Router)) {
+                    return false;
+                }
+                optimizedPath.push(r);
+                continue;
+            }
+            // otherwise the two overlap only where µWS itself hands the request to the earlier,
+            // more specific registration, so this chain never sees those paths
+            if (!r.optimizedPath || !uwsPrefersEarlier(r.path, route.path)) {
                 return false;
             }
         }
@@ -768,13 +812,15 @@ module.exports = class Router extends EventEmitter {
         const walk = (router, pathPrefix, chainPrefix) => {
             for (const route of router._routes) {
                 if (route.use) {
-                    // only sole-callback mounts
+                    // only sole-callback mounts, and only into routers that match with the same
+                    // case rules as µWS: the Walk fallback honours the child's setting, µWS cannot
                     if (
                         !route.complex &&
                         canBeOptimized(route.path) &&
                         route.path !== "/*" &&
                         route.callbacks.length === 1 &&
-                        route.callbacks[0] instanceof Router
+                        route.callbacks[0] instanceof Router &&
+                        route.callbacks[0].get("case sensitive routing")
                     ) {
                         let pathToMount = router._optimizeRoute(route, router._routes);
                         if (!pathToMount) {
@@ -826,15 +872,19 @@ module.exports = class Router extends EventEmitter {
                         }
                     }
                     if (pathPrefix) {
-                        this._registerUwsRoute(
-                            {
-                                ...route,
-                                path: pathPrefix + route.path,
-                                pattern: pathPrefix + route.path,
-                                optimizedRouter: true
-                            },
-                            [...chainPrefix, ...leafPath]
-                        );
+                        const registered = {
+                            ...route,
+                            path: pathPrefix + route.path,
+                            pattern: pathPrefix + route.path,
+                            optimizedRouter: true
+                        };
+                        this._registerUwsRoute(registered, [...chainPrefix, ...leafPath]);
+                        // the chain holds the original object, so the request-time guard has to
+                        // find the computed fields there, or a mounted param route extracts its
+                        // params twice. The names match: the prefix is static, so the copy's path
+                        // adds no parameter of its own
+                        route.optimizedParams = registered.optimizedParams;
+                        route.optimizedPath = registered.optimizedPath;
                     } else {
                         this._registerUwsRoute(route, leafPath);
                     }
@@ -859,11 +909,17 @@ module.exports = class Router extends EventEmitter {
         request.res = response;
         response.req = request;
         res.onAborted(() => {
+            // node's wording for a client abort, which is what body consumers match on
             /** @type {NodeJS.ErrnoException} */
-            const err = new Error("Connection closed");
+            const err = new Error("aborted");
             err.code = "ECONNRESET";
             response.aborted = true;
             response.finished = true;
+            // node's order on the request: 'aborted', then the stream dies, then 'close'. The
+            // error goes only to whoever listens for it, since a destroy(err) with no listener
+            // would take down the process
+            request.emit("aborted");
+            request.destroy(request.listenerCount("error") > 0 ? err : undefined);
             response.socket?.emit("error", err);
         });
 
@@ -923,28 +979,48 @@ module.exports = class Router extends EventEmitter {
         if (route.path.includes(":")) {
             route.optimizedParams = route.path.match(regExParam).map((p) => p.slice(1));
         }
-        let fn = async (res, req) => {
-            const { request, response } = this.handleRequest(res, req);
-            if (route.optimizedParams) {
-                request.optimizedParams = new NullObject();
-                for (let i = 0; i < route.optimizedParams.length; i++) {
-                    request.optimizedParams[route.optimizedParams[i]] = req.getParameter(i);
+        const makeHandler = (chain) => {
+            // both are registration-time constants: computing them in the handler was a closure
+            // and a scan of the chain on every native request.
+            // Falling back resumes after the mount, not after the router's leaf: the leaf can have
+            // a lower routeKey than the parent's middlewares, and an error handler declared before
+            // the mount must not catch what the router threw
+            const mount = chain.find((r) => r.keepMount);
+            const skipUntil = mount ?? chain[chain.length - 1];
+            return async (res, req) => {
+                const { request, response } = this.handleRequest(res, req);
+                if (route.optimizedParams) {
+                    request.optimizedParams = new NullObject();
+                    for (let i = 0; i < route.optimizedParams.length; i++) {
+                        request.optimizedParams[route.optimizedParams[i]] = req.getParameter(i);
+                    }
                 }
-            }
-            // falling back resumes after the mount, not after the router's leaf: the leaf can have a
-            // lower routeKey than the parent's middlewares, and an error handler declared before the
-            // mount must not catch what the router threw
-            const mount = optimizedPath.find((r) => r.keepMount);
-            const skipUntil = mount ?? (optimizedPath.length ? optimizedPath[optimizedPath.length - 1] : route);
-            const matchedRoute = await this._routeRequest(request, response, 0, optimizedPath, true, skipUntil);
-            if (!matchedRoute && !response.headersSent && !response.aborted) {
-                this._endUnmatched(request, response);
-            }
+                try {
+                    const matchedRoute = await this._routeRequest(request, response, 0, chain, true, skipUntil);
+                    if (!matchedRoute && !response.headersSent && !response.aborted) {
+                        this._endUnmatched(request, response);
+                    }
+                } catch (err) {
+                    // an internal throw answers 500 as express's final handler would, instead of
+                    // dying as an unhandled rejection
+                    if (response.aborted || response.finished) {
+                        console.error(err);
+                    } else {
+                        this._handleError(err, null, request, response);
+                    }
+                }
+            };
         };
+        // a HEAD route may sit in a GET route's chain so the head registration runs it, but a
+        // chain runs without re-matching the method, so the get registration must not see it
+        const getChain =
+            route.method === "GET" ? optimizedPath.filter((r) => r.all || r.method !== "HEAD") : optimizedPath;
+        let fn = makeHandler(getChain);
         route.optimizedPath = optimizedPath;
 
         let replacedPath = route.path;
         const realFn = fn;
+        const headFn = getChain.length === optimizedPath.length ? realFn : makeHandler(optimizedPath);
 
         // check if route is declarative
         if (
@@ -970,11 +1046,11 @@ module.exports = class Router extends EventEmitter {
         if (!(route.owner ?? this).get("strict routing") && route.path[route.path.length - 1] !== "/") {
             this.uwsApp[method](replacedPath + "/", fn);
             if (method === "get") {
-                this.uwsApp.head(replacedPath + "/", realFn);
+                this.uwsApp.head(replacedPath + "/", headFn);
             }
         }
         if (method === "get") {
-            this.uwsApp.head(replacedPath, realFn);
+            this.uwsApp.head(replacedPath, headFn);
         }
     }
 
@@ -1120,16 +1196,28 @@ module.exports = class Router extends EventEmitter {
                 return "route";
             }
             if (req._paramStack.length > 0) {
+                // express's mergeParams order: later mounts override earlier ones, and the
+                // route's own extraction wins over all of them
+                const own = req.params;
+                const merged = Object.create(null);
                 for (const params of req._paramStack) {
-                    req.params = Object.assign(Object.create(null), params, req.params);
+                    Object.assign(merged, params);
                 }
+                req.params = Object.assign(merged, own);
             }
         } else {
-            req.params = {};
+            // express 5 gives every matched route null-prototype params; only a pathless
+            // middleware layer keeps the plain object, as its router hands one to fast_slash
+            req.params = route.use && route.path === "" ? {} : Object.create(null);
             if (req._paramStack.length > 0) {
+                // express's mergeParams order: later mounts override earlier ones, and the
+                // route's own extraction wins over all of them
+                const own = req.params;
+                const merged = Object.create(null);
                 for (const params of req._paramStack) {
-                    req.params = Object.assign(Object.create(null), params, req.params);
+                    Object.assign(merged, params);
                 }
+                req.params = Object.assign(merged, own);
             }
         }
 
@@ -1301,7 +1389,9 @@ module.exports = class Router extends EventEmitter {
 
         for (const callback of callbacks) {
             if (callback instanceof Router) {
-                callback.mountpath = /** @type {string|string[]} */ (path);
+                // the recorded mountpath is what express shows: a pathless or root mount says "/",
+                // while the empty string stays internal to route building
+                callback.mountpath = /** @type {string|string[]} */ (path === "" ? "/" : path);
                 callback.parent = this;
                 callback.emit("mount", this);
             }
