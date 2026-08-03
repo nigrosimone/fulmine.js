@@ -150,5 +150,11 @@ jobs:
                   # a prerelease published without a tag still becomes latest, so 5.0.0-rc.1 goes
                   # under "rc" and `npm i fulmine.js` keeps handing out the last stable one
                   tag="$(node -p 'const pre = require("./package.json").version.split("-")[1]; pre ? pre.split(".")[0] : "latest"')"
-                  echo "Publishing under the $tag tag" >> "$GITHUB_STEP_SUMMARY"
-                  npm publish --provenance --tag "$tag"
+                  # sigstore only attests public repositories, and npm refuses the flag on a
+                  # private one (E422), so provenance rides along only once the repo is public
+                  provenance=""
+                  if [ "${{ github.event.repository.private }}" = "false" ]; then
+                    provenance="--provenance"
+                  fi
+                  echo "Publishing under the $tag tag $provenance" >> "$GITHUB_STEP_SUMMARY"
+                  npm publish $provenance --tag "$tag"
