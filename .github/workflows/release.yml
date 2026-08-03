@@ -80,10 +80,6 @@ jobs:
                     exit 1
                   fi
 
-            # Trusted publishing needs npm 11.5.1 or newer.
-            - name: Use an npm that can publish with OIDC
-              run: npm install -g npm@latest
-
             - run: npm ci
 
             # Nothing is tagged or published until all of this passes.
@@ -137,6 +133,12 @@ jobs:
                     echo "skip=false" >> "$GITHUB_OUTPUT"
                     echo "Publishing $name v$version" >> "$GITHUB_STEP_SUMMARY"
                   fi
+
+            # Trusted publishing needs npm 11.5.1 or newer. Upgraded only now: npm@latest refuses
+            # git dependencies by default, so it must not be the npm that runs `npm ci`
+            - name: Use an npm that can publish with OIDC
+              if: ${{ !inputs.dry_run && steps.onNpm.outputs.skip != 'true' }}
+              run: npm install -g npm@latest
 
             - name: Publish
               if: ${{ !inputs.dry_run && steps.onNpm.outputs.skip != 'true' }}
