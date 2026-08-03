@@ -135,4 +135,13 @@ jobs:
 
             - name: Publish
               if: ${{ !inputs.dry_run }}
-              run: npm publish --provenance
+              env:
+                  # only until the package exists on npm and trusted publishing can be set up on it.
+                  # With no secret, npm falls back to OIDC
+                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+              run: |
+                  # a prerelease published without a tag still becomes latest, so 5.0.0-rc.1 goes
+                  # under "rc" and `npm i fulmine.js` keeps handing out the last stable one
+                  tag="$(node -p 'const pre = require("./package.json").version.split("-")[1]; pre ? pre.split(".")[0] : "latest"')"
+                  echo "Publishing under the $tag tag" >> "$GITHUB_STEP_SUMMARY"
+                  npm publish --provenance --tag "$tag"
