@@ -121,20 +121,25 @@ jobs:
                   if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
                   npx release-it "${args[@]}"
 
-            # Whichever path got here, the manifest now names the version to publish.
-            - name: Check the version is not on npm
+            # Whichever path got here, the manifest now names the version to publish. Already there
+            # is not an error: a version published by hand still gets its tag pushed afterwards.
+            - name: Check whether the version is on npm already
+              id: onNpm
               if: ${{ !inputs.dry_run }}
               run: |
                   name="$(node -p 'require("./package.json").name')"
                   version="$(node -p 'require("./package.json").version')"
                   if npm view "$name@$version" version >/dev/null 2>&1; then
-                    echo "::error::$name@$version is already on npm"
-                    exit 1
+                    echo "::notice::$name@$version is on npm already, skipping the publish"
+                    echo "skip=true" >> "$GITHUB_OUTPUT"
+                    echo "$name v$version was already published" >> "$GITHUB_STEP_SUMMARY"
+                  else
+                    echo "skip=false" >> "$GITHUB_OUTPUT"
+                    echo "Publishing $name v$version" >> "$GITHUB_STEP_SUMMARY"
                   fi
-                  echo "Publishing $name v$version" >> "$GITHUB_STEP_SUMMARY"
 
             - name: Publish
-              if: ${{ !inputs.dry_run }}
+              if: ${{ !inputs.dry_run && steps.onNpm.outputs.skip != 'true' }}
               env:
                   # only until the package exists on npm and trusted publishing can be set up on it.
                   # With no secret, npm falls back to OIDC
