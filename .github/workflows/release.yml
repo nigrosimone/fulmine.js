@@ -158,3 +158,41 @@ jobs:
                   fi
                   echo "Publishing under the $tag tag $provenance" >> "$GITHUB_STEP_SUMMARY"
                   npm publish $provenance --tag "$tag"
+
+            # The same run that publishes also cuts the GitHub release, with this version's
+            # changelog section as the notes. Idempotent, so a re-run after a failed publish
+            # does not duplicate it.
+            - name: GitHub release
+              if: ${{ !inputs.dry_run }}
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  version="$(node -p 'require("./package.json").version')"
+                  tag="v$version"
+                  if gh release view "$tag" >/dev/null 2>&1; then
+                    echo "release $tag exists already" >> "$GITHUB_STEP_SUMMARY"
+                    exit 0
+                  fi
+                  node -e '
+                    const fs = require("fs");
+                    const version = require("./package.json").version;
+                    const lines = fs.readFileSync("CHANGELOG.md", "utf8").split("\n");
+                    // conventional-changelog writes versions as "# [x.y.z](url) (date)" or bare
+                    // "## x.y.z (date)"; the ### headings inside a section are not versions
+                    const isVersion = (l) => l.startsWith("# ") || l.startsWith("## ");
+                    const mine = (l) => l.includes("[" + version + "]") || l.includes(" " + version + " ");
+                    const start = lines.findIndex((l) => isVersion(l) && mine(l));
+                    let notes = "See CHANGELOG.md";
+                    if (start !== -1) {
+                      let end = lines.length;
+                      for (let i = start + 1; i < lines.length; i++) {
+                        if (isVersion(lines[i])) { end = i; break; }
+                      }
+                      notes = lines.slice(start, end).join("\n").trim();
+                    }
+                    fs.writeFileSync("release-notes.md", notes + "\n");
+                  '
+                  prerelease=""
+                  case "$version" in *-*) prerelease="--prerelease";; esac
+                  gh release create "$tag" --title "$tag" --notes-file release-notes.md $prerelease
+                  echo "GitHub release $tag created" >> "$GITHUB_STEP_SUMMARY"
