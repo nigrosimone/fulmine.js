@@ -1196,8 +1196,14 @@ module.exports = class Response extends Writable {
         }
 
         if (!this.headers["content-type"]) {
-            this.headers["content-type"] = `${js ? "text/javascript" : "application/json"}; charset=utf-8`;
-            if (js) this.headers["X-Content-Type-Options"] = "nosniff";
+            this.headers["x-content-type-options"] = "nosniff";
+            this.headers["content-type"] = "application/json; charset=utf-8";
+        }
+        if (js) {
+            // with a callback the body is script whatever type was asked for before, so this
+            // overrides rather than filling in, and the nosniff goes with it
+            this.headers["x-content-type-options"] = "nosniff";
+            this.headers["content-type"] = "text/javascript; charset=utf-8";
         }
 
         return this.send(body);
@@ -1209,8 +1215,6 @@ module.exports = class Response extends Writable {
      * @returns {this}
      */
     links(links) {
-        // this.headers['link'] = Object.entries(links).map(([rel, url]) => `<${url}>; rel="${rel}"`).join(', ');
-        // return this;
         let link = this.get("Link") || "";
         if (link) link += ", ";
         return this.set(
@@ -1218,7 +1222,13 @@ module.exports = class Response extends Writable {
             link +
                 Object.keys(links)
                     .map(function (rel) {
-                        return "<" + links[rel] + '>; rel="' + rel + '"';
+                        const target = links[rel];
+                        // an array is several links that share a rel, one entry each, and not one
+                        // entry holding a comma separated list inside its angle brackets
+                        if (Array.isArray(target)) {
+                            return target.map((one) => "<" + one + '>; rel="' + rel + '"').join(", ");
+                        }
+                        return "<" + target + '>; rel="' + rel + '"';
                     })
                     .join(", ")
         );
@@ -1316,12 +1326,11 @@ module.exports = class Response extends Writable {
      * Adds a field to Vary, without repeating one already there.
      * @param {string|string[]} field
      * @returns {this}
-     * @throws {Error} if no field is given, since a Vary with nothing in it is a mistake
+     * @throws {TypeError} if no field is given, since a Vary with nothing in it is a mistake
      */
     vary(field) {
-        if (!field || (Array.isArray(field) && !field.length)) {
-            throw new Error("field argument is required for res.vary()");
-        }
+        // the vary package decides: it throws when there is no field at all, and does nothing at
+        // all for an empty list, which is not the same thing and used to be refused here as well
         vary(/** @type {any} */ (this), field);
         return this;
     }
