@@ -133,6 +133,14 @@ function bodyError(message, status, type, extra) {
  * @returns {(req: any, res: any, next: (err?: any) => void) => any}
  */
 function serveStatic(root, options) {
+    // serve-static's own messages, thrown where the middleware is written rather than where a
+    // request arrives, since a root that is not a path can never serve anything
+    if (!root) {
+        throw new TypeError("root path required");
+    }
+    if (typeof root !== "string") {
+        throw new TypeError("root path must be a string");
+    }
     if (!options) options = new NullObject();
     if (typeof options.index === "undefined") options.index = "index.html";
     if (typeof options.redirect === "undefined") options.redirect = true;
@@ -147,6 +155,9 @@ function serveStatic(root, options) {
         }
         options.extensions = options.extensions.map((ext) => (ext.startsWith(".") ? ext.slice(1) : ext));
     }
+    if (options.setHeaders !== undefined && typeof options.setHeaders !== "function") {
+        throw new TypeError("option setHeaders must be function");
+    }
     options.root = root;
     // serve-static decides this for itself and never asks the app, so a static file keeps its
     // ETag under app.set("etag", false) and only { etag: false } here turns it off. res.sendFile
@@ -155,10 +166,22 @@ function serveStatic(root, options) {
     options._ownEtag = true;
 
     return (req, res, next) => {
+        next = AsyncResource.bind(next);
+
+        // a file is read, not written: anything but GET and HEAD belongs to whoever comes next, or
+        // is refused outright when this middleware is the last word
+        if (req.method !== "GET" && req.method !== "HEAD") {
+            if (options.fallthrough) {
+                return next();
+            }
+            res.statusCode = 405;
+            res.setHeader("Allow", "GET, HEAD");
+            res.setHeader("Content-Length", "0");
+            return res.end();
+        }
+
         const iq = req.url.indexOf("?");
         let url;
-
-        next = AsyncResource.bind(next);
 
         try {
             url = decodeURIComponent(iq !== -1 ? req.url.substring(0, iq) : req.url);
@@ -216,6 +239,10 @@ function serveStatic(root, options) {
                     // request for "//assets" answered "Location: //assets/", which a browser
                     // reads as a protocol-relative URL and follows to the host "assets". A
                     // redirect that leaves this server is not a redirect this server meant.
+                    // serve-static locks its redirect page down the way it locks an error page:
+                    // the body names the target, and the target came from the request
+                    res.setHeader("Content-Security-Policy", "default-src 'none'");
+                    res.setHeader("X-Content-Type-Options", "nosniff");
                     return res.redirect(301, collapseLeadingSlashes(req._originalPath + "/") + req.urlQuery, true);
                 } else {
                     if (!options.fallthrough) {

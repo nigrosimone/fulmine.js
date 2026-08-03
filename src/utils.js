@@ -921,7 +921,12 @@ const STAT_ERROR_STATUS = { ENAMETOOLONG: 404, ENOTDIR: 404, ENOENT: 404 };
  * @returns {any}
  */
 function httpError(status) {
-    const err = /** @type {any} */ (new Error(statuses.message[status]));
+    const message = statuses.message[status] ?? "Error";
+    const err = /** @type {any} */ (new Error(message));
+    // http-errors names these BadRequestError, ForbiddenError and so on, and the name is what the
+    // error page shows: an application looking at a 400 sees the same word Express shows it. Set
+    // before anything reads the stack, which V8 formats on first read
+    err.name = `${message.replace(/\W/g, "")}Error`;
     err.expose = status < 500;
     err.statusCode = status;
     err.status = status;
