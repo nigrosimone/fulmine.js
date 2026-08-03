@@ -20,7 +20,6 @@ const {
     getPatternMeta,
     decodeParam,
     needsConversionToRegex,
-    findIndexStartingFrom,
     canBeOptimized,
     canBeOptimizedWithParams,
     pathsCanOverlap,
@@ -42,6 +41,299 @@ for (const method of resDecMethods) {
 }
 
 let routeKey = 0;
+
+/**
+ * One walk of one router's routes, for one request.
+ *
+ * next() is made once here instead of once per hop. As a closure per hop it captured eleven
+ * bindings, one of them mutable, which is a context on the heap every time a middleware hands over.
+ * The hop's own state is three fields on this instead.
+ *
+ * A nested router gets its own walk, through its own _routeRequest, so req.next belongs to whoever
+ * is running the request at that moment.
+ */
+class Walk {
+    /**
+     * @param {any} router
+     * @param {any} req
+     * @param {any} res
+     * @param {any[]} routes
+     * @param {boolean} skipCheck take the route at the index without matching it, which is how an
+     *   already-decided chain is walked
+     * @param {any} skipUntil route to resume after when this chain runs out, or undefined
+     * @param {(value: any) => void} resolve
+     * @param {(err: any) => void} reject
+     */
+    constructor(router, req, res, routes, skipCheck, skipUntil, resolve, reject) {
+        this.router = router;
+        this.req = req;
+        this.res = res;
+        this.routes = routes;
+        this.skipCheck = skipCheck;
+        this.skipUntil = skipUntil;
+        this.resolve = resolve;
+        this.reject = reject;
+        this.routeIndex = 0;
+        this.route = null;
+        this.callbackIndex = 0;
+        // bound, not wrapped in an arrow: an arrow forwarding into step() is one more call on every
+        // hop, and it measured 495 microseconds per thousand requests of nothing else
+        this.next = this.step.bind(this);
+    }
+
+    /**
+     * Finds the next route that matches and runs it. next() comes back here for the route after, so
+     * a chain of N middlewares costs one promise instead of N nested ones.
+     *
+     * @param {number} startIndex where to resume the scan
+     */
+    dispatch(startIndex) {
+        const req = this.req;
+        const routes = this.routes;
+        const router = this.router;
+        let routeIndex = startIndex;
+        if (!this.skipCheck) {
+            // written out rather than through a predicate handed to findIndexStartingFrom, which
+            // was one closure per hop of every request not on a compiled chain
+            for (; routeIndex < routes.length; routeIndex++) {
+                const r = routes[routeIndex];
+                if (
+                    (r.all || r.method === req.method || req._isOptions || (r.gettable && req._isHead)) &&
+                    router._pathMatches(r, req)
+                ) {
+                    break;
+                }
+            }
+        }
+        const route = routes[routeIndex];
+        if (!route) {
+            if (!this.skipCheck) {
+                // on normal unoptimized routes, if theres no match then there is no route
+                return this.resolve(false);
+            }
+            // the chain ran out, so ordinary routing takes over from the top and skips what has
+            // already run
+            useApp(req, router);
+            // a chain that went into a mount never left it, since keepMount stops the pop, so the
+            // path is still relative to it. /alone/skip must not be offered to the app as /skip
+            if (req._stack.length > 0) {
+                req._stack.length = 0;
+                req._stackMounted = 0;
+                req.path = req._originalPath;
+                req.url = req._originalPath + req.urlQuery;
+                req._opPath =
+                    req.endsWithSlash && req._originalPath !== "/" && !router.get("strict routing")
+                        ? req._originalPath.slice(0, -1)
+                        : req._originalPath;
+            }
+            // an error out of a mount is attributed to the mount, so error handlers declared before
+            // it do not catch it, as in ordinary dispatch
+            if (req._error && this.skipUntil && this.skipUntil.keepMount && this.skipUntil.routeKey > req._errorKey) {
+                req._errorKey = this.skipUntil.routeKey;
+            }
+            this.routes = router._routes;
+            this.skipCheck = false;
+            return this.dispatch(0);
+        }
+
+        this.routeIndex = routeIndex;
+        this.route = route;
+        this.callbackIndex = 0;
+
+        // _preprocessRequest returns a promise only when there are param callbacks, so the common
+        // case stays synchronous. A microtask every 300 routes resets the stack, which a long chain
+        // would otherwise blow
+        const continueRoute = router._preprocessRequest(req, this.res, route);
+        if (route.paramCallbacks.size !== 0 || req.routeCount % 300 === 0) {
+            Promise.resolve(continueRoute).then((resumed) => this.runRoute(resumed), this.reject);
+            return;
+        }
+        return this.runRoute(continueRoute);
+    }
+
+    /**
+     * Enters the route the walk is on: a mount adjusts req.url, req.path and the mount stack on the
+     * way in, and then the route's callbacks run one after another through next().
+     *
+     * @param {any} continueRoute what _preprocessRequest decided: true to run, "route" to skip
+     */
+    runRoute(continueRoute) {
+        const req = this.req;
+        const route = this.route;
+        const router = this.router;
+        if (route.use) {
+            if (route.mountApp) {
+                // optimized chain: normal dispatch swaps req.app when it enters a mounted
+                // Application, but the compiled mount route has no callback to do it
+                useApp(req, route.mountApp);
+            }
+            req._stack.push(route.path);
+            // a use with no path consumes nothing, so everything below would work out the values
+            // that are already there. Only skipped without a trailing slash, where the rules about
+            // one cannot bite. An application is mostly pathless middleware, and this is per hop
+            if (route.path !== "" || req.endsWithSlash) {
+                if (route.path !== "") {
+                    req._stackMounted++;
+                }
+                const fullMountpath = router.getFullMountpath(req);
+                req._opPath =
+                    fullMountpath !== EMPTY_REGEX ? req._originalPath.replace(fullMountpath, "") : req._originalPath;
+                if (req.endsWithSlash && req._opPath[req._opPath.length - 1] !== "/") {
+                    req._opPath = router.get("strict routing") ? req._opPath + "/" : req._opPath.slice(0, -1);
+                }
+                req.url = req._opPath + req.urlQuery;
+                req.path = req._opPath;
+                if (req._opPath === "") {
+                    req.url = "/";
+                    req.path = "/";
+                }
+            }
+        }
+        req.next = this.next;
+        if (continueRoute === "route") {
+            this.step("route");
+        } else if (continueRoute) {
+            this.step(undefined);
+        } else {
+            this.resolve(true);
+        }
+    }
+
+    /**
+     * One hop, which is what next() does: with nothing, run the route's next callback; with "route",
+     * leave the route; with anything else, remember it as the error and carry on.
+     *
+     * @param {any} thingamabob
+     */
+    step(thingamabob) {
+        const req = this.req;
+        const res = this.res;
+        const route = this.route;
+        const router = this.router;
+        if (thingamabob) {
+            if (thingamabob === "route") {
+                if (route.use && !route.keepMount) {
+                    if (req._stack.pop() !== "") {
+                        req._stackMounted--;
+                    }
+
+                    const strictRouting = router.get("strict routing");
+                    const poppedMountpath = req._stack.length > 0 ? router.getFullMountpath(req) : EMPTY_REGEX;
+                    req._opPath =
+                        poppedMountpath !== EMPTY_REGEX
+                            ? req._originalPath.replace(poppedMountpath, "")
+                            : req._originalPath;
+                    if (strictRouting) {
+                        if (req.endsWithSlash && req._opPath[req._opPath.length - 1] !== "/") {
+                            req._opPath += "/";
+                        }
+                    }
+                    req.url = req._opPath + req.urlQuery;
+                    req.path = req._opPath;
+                    if (req._opPath === "") {
+                        req.url = "/";
+                        req.path = "/";
+                    }
+                    if (
+                        !strictRouting &&
+                        req.endsWithSlash &&
+                        req._originalPath !== "/" &&
+                        req._opPath[req._opPath.length - 1] === "/"
+                    ) {
+                        req._opPath = req._opPath.slice(0, -1);
+                    }
+                    if (req.app.parent && route.callbacks[0]?.constructor.name === "Application") {
+                        useApp(req, req.app.parent);
+                    }
+                }
+                req.routeCount++;
+                // dispatch is a plain call, so a synchronous throw would escape here instead of
+                // rejecting, as it used to when this recursed through the async _routeRequest
+                try {
+                    return this.dispatch(this.routeIndex + 1);
+                } catch (err) {
+                    return this.reject(err);
+                }
+            } else {
+                req._error = thingamabob;
+                req._errorKey = route.routeKey;
+            }
+        }
+        const kind = route.callbackKinds[this.callbackIndex];
+        const callback = route.callbacks[this.callbackIndex++];
+        if (!callback) {
+            return this.step("route");
+        }
+        // skipping routes we already went through via optimized path. Before the Router branch
+        // below and not after it: a mount whose chain was compiled has already run, and running it
+        // again would answer from inside the router a request that had just left it
+        if (!this.skipCheck && this.skipUntil && this.skipUntil.routeKey >= route.routeKey) {
+            return this.step(undefined);
+        }
+        if (kind === CALLBACK_ROUTER) {
+            if (callback.constructor.name === "Application") {
+                useApp(req, callback);
+            }
+            if (callback.settings.mergeParams) {
+                req._paramStack.push(req.params);
+            }
+            if (
+                callback.settings["strict routing"] &&
+                req.endsWithSlash &&
+                req._opPath[req._opPath.length - 1] !== "/"
+            ) {
+                req._opPath += "/";
+            }
+            callback._routeRequest(req, res, 0).then((routed) => {
+                if (req._error) {
+                    req._errorKey = route.routeKey;
+                }
+                if (routed) return this.resolve(true);
+                if (req._isOptions && req._matchedMethods.size) {
+                    // OPTIONS routing is different, it stops in the router if matched
+                    return this.resolve(false);
+                }
+                this.step(undefined);
+            });
+        } else {
+            // handle errors and error handlers
+            if (req._error || kind === CALLBACK_ERROR) {
+                if (req._error && kind === CALLBACK_ERROR && route.routeKey >= req._errorKey) {
+                    return router._handleError(req._error, callback, req, res);
+                } else {
+                    return this.step(undefined);
+                }
+            }
+
+            try {
+                // handling OPTIONS method
+                if (req._isOptions && !route.all && route.method !== "OPTIONS") {
+                    req._matchedMethods.add(route.method);
+                    if (route.gettable) {
+                        req._matchedMethods.add("HEAD");
+                    }
+                    return this.step(undefined);
+                }
+
+                const out = callback(req, res, this.next);
+                if (out instanceof Promise) {
+                    // Express 5 forwards a rejected handler promise to the error middleware on its
+                    // own, so there is nothing left for the "catch async errors" setting or for
+                    // express-async-errors to opt into
+                    out.catch((err) => {
+                        req._error = err;
+                        req._errorKey = route.routeKey;
+                        return this.step(undefined);
+                    });
+                }
+            } catch (err) {
+                req._error = err;
+                req._errorKey = route.routeKey;
+                return this.step(undefined);
+            }
+        }
+    }
+}
 
 // what a route's callback is, so that a hop reads a number instead of asking instanceof and length
 const CALLBACK_PLAIN = 0;
@@ -870,278 +1162,8 @@ module.exports = class Router extends EventEmitter {
      */
     _routeRequest(req, res, startIndex = 0, routes = this._routes, skipCheck = false, skipUntil) {
         return new Promise((resolve, reject) => {
-            this._dispatchRoute(req, res, startIndex, routes, skipCheck, skipUntil, resolve, reject);
+            new Walk(this, req, res, routes, skipCheck, skipUntil, resolve, reject).dispatch(startIndex);
         });
-    }
-
-    /**
-     * Finds the next route that matches and runs it, carrying the same resolve and reject the whole
-     * way. next() calls this again for the route after, so a chain of N middlewares costs one
-     * promise instead of N nested ones.
-     *
-     * @param {any} req
-     * @param {any} res
-     * @param {number} startIndex where to resume the scan
-     * @param {any[]} routes
-     * @param {boolean} skipCheck take the route at startIndex without matching it, which is how an
-     *   already-decided chain is walked
-     * @param {any} skipUntil route to resume after when this chain runs out, or undefined
-     * @param {(value: any) => void} resolve
-     * @param {(err: any) => void} reject
-     */
-    _dispatchRoute(req, res, startIndex, routes, skipCheck, skipUntil, resolve, reject) {
-        const routeIndex = skipCheck
-            ? startIndex
-            : findIndexStartingFrom(
-                  routes,
-                  (r) =>
-                      (r.all || r.method === req.method || req._isOptions || (r.gettable && req._isHead)) &&
-                      this._pathMatches(r, req),
-                  startIndex
-              );
-        const route = routes[routeIndex];
-        if (!route) {
-            if (!skipCheck) {
-                // on normal unoptimized routes, if theres no match then there is no route
-                return resolve(false);
-            }
-            // the chain ran out, so ordinary routing takes over from the top and skips what has
-            // already run
-            useApp(req, this);
-            // a chain that went into a mount never left it, since keepMount stops the pop, so the
-            // path is still relative to it. /alone/skip must not be offered to the app as /skip
-            if (req._stack.length > 0) {
-                req._stack.length = 0;
-                req._stackMounted = 0;
-                req.path = req._originalPath;
-                req.url = req._originalPath + req.urlQuery;
-                req._opPath =
-                    req.endsWithSlash && req._originalPath !== "/" && !this.get("strict routing")
-                        ? req._originalPath.slice(0, -1)
-                        : req._originalPath;
-            }
-            // an error out of a mount is attributed to the mount, so error handlers declared before
-            // it do not catch it, as in ordinary dispatch
-            if (req._error && skipUntil && skipUntil.keepMount && skipUntil.routeKey > req._errorKey) {
-                req._errorKey = skipUntil.routeKey;
-            }
-            return this._dispatchRoute(req, res, 0, this._routes, false, skipUntil, resolve, reject);
-        }
-
-        // _preprocessRequest returns a promise only when there are param callbacks, so the common
-        // case stays synchronous. A microtask every 300 routes resets the stack, which a long chain
-        // would otherwise blow
-        const continueRoute = this._preprocessRequest(req, res, route);
-        if (route.paramCallbacks.size !== 0 || req.routeCount % 300 === 0) {
-            Promise.resolve(continueRoute).then(
-                (resumed) =>
-                    this._runRoute(req, res, routeIndex, route, routes, skipCheck, skipUntil, resolve, reject, resumed),
-                reject
-            );
-            return;
-        }
-        return this._runRoute(
-            req,
-            res,
-            routeIndex,
-            route,
-            routes,
-            skipCheck,
-            skipUntil,
-            resolve,
-            reject,
-            continueRoute
-        );
-    }
-
-    /**
-     * Runs one route's callbacks, one after another through next(). A mount adjusts req.url,
-     * req.path and the mount stack on the way in, and puts them back if next("route") leaves it.
-     *
-     * @param {any} req
-     * @param {any} res
-     * @param {number} routeIndex
-     * @param {any} route
-     * @param {any[]} routes
-     * @param {boolean} skipCheck
-     * @param {any} skipUntil
-     * @param {(value: any) => void} resolve
-     * @param {(err: any) => void} reject
-     * @param {any} continueRoute
-     */
-    _runRoute(req, res, routeIndex, route, routes, skipCheck, skipUntil, resolve, reject, continueRoute) {
-        let callbackindex = 0;
-        if (route.use) {
-            if (route.mountApp) {
-                // optimized chain: normal dispatch swaps req.app when it enters a mounted Application,
-                // but the compiled mount route has no callback to do it, so swap it here
-                useApp(req, route.mountApp);
-            }
-            req._stack.push(route.path);
-            // a use with no path consumes nothing, so everything below would work out the values
-            // that are already there. Only skipped without a trailing slash, where the rules about
-            // one cannot bite. An application is mostly pathless middleware, and this is per hop
-            if (route.path !== "" || req.endsWithSlash) {
-                if (route.path !== "") {
-                    req._stackMounted++;
-                }
-                const fullMountpath = this.getFullMountpath(req);
-                req._opPath =
-                    fullMountpath !== EMPTY_REGEX ? req._originalPath.replace(fullMountpath, "") : req._originalPath;
-                if (req.endsWithSlash && req._opPath[req._opPath.length - 1] !== "/") {
-                    req._opPath = this.get("strict routing") ? req._opPath + "/" : req._opPath.slice(0, -1);
-                }
-                req.url = req._opPath + req.urlQuery;
-                req.path = req._opPath;
-                if (req._opPath === "") {
-                    req.url = "/";
-                    req.path = "/";
-                }
-            }
-        }
-        // plain (non-async) function: an async next() would allocate an unconsumed promise
-        // on every middleware/handler step of every request
-        const next = (thingamabob) => {
-            if (thingamabob) {
-                if (thingamabob === "route") {
-                    if (route.use && !route.keepMount) {
-                        if (req._stack.pop() !== "") {
-                            req._stackMounted--;
-                        }
-
-                        const strictRouting = this.get("strict routing");
-                        const poppedMountpath = req._stack.length > 0 ? this.getFullMountpath(req) : EMPTY_REGEX;
-                        req._opPath =
-                            poppedMountpath !== EMPTY_REGEX
-                                ? req._originalPath.replace(poppedMountpath, "")
-                                : req._originalPath;
-                        if (strictRouting) {
-                            if (req.endsWithSlash && req._opPath[req._opPath.length - 1] !== "/") {
-                                req._opPath += "/";
-                            }
-                        }
-                        req.url = req._opPath + req.urlQuery;
-                        req.path = req._opPath;
-                        if (req._opPath === "") {
-                            req.url = "/";
-                            req.path = "/";
-                        }
-                        if (
-                            !strictRouting &&
-                            req.endsWithSlash &&
-                            req._originalPath !== "/" &&
-                            req._opPath[req._opPath.length - 1] === "/"
-                        ) {
-                            req._opPath = req._opPath.slice(0, -1);
-                        }
-                        if (req.app.parent && route.callbacks[0]?.constructor.name === "Application") {
-                            useApp(req, req.app.parent);
-                        }
-                    }
-                    req.routeCount++;
-                    // _dispatchRoute is a plain function, so a synchronous throw would escape here instead
-                    // of rejecting, like it used to when this recursed through the async _routeRequest
-                    try {
-                        return this._dispatchRoute(
-                            req,
-                            res,
-                            routeIndex + 1,
-                            routes,
-                            skipCheck,
-                            skipUntil,
-                            resolve,
-                            reject
-                        );
-                    } catch (err) {
-                        return reject(err);
-                    }
-                } else {
-                    req._error = thingamabob;
-                    req._errorKey = route.routeKey;
-                }
-            }
-            const kind = route.callbackKinds[callbackindex];
-            const callback = route.callbacks[callbackindex++];
-            if (!callback) {
-                return next("route");
-            }
-            // skipping routes we already went through via optimized path. Before the Router branch
-            // below and not after it: a mount whose chain was compiled has already run, and running
-            // it again would answer from inside the router a request that had just left it
-            if (!skipCheck && skipUntil && skipUntil.routeKey >= route.routeKey) {
-                return next();
-            }
-            if (kind === CALLBACK_ROUTER) {
-                if (callback.constructor.name === "Application") {
-                    useApp(req, callback);
-                }
-                if (callback.settings.mergeParams) {
-                    req._paramStack.push(req.params);
-                }
-                if (
-                    callback.settings["strict routing"] &&
-                    req.endsWithSlash &&
-                    req._opPath[req._opPath.length - 1] !== "/"
-                ) {
-                    req._opPath += "/";
-                }
-                callback._routeRequest(req, res, 0).then((routed) => {
-                    if (req._error) {
-                        req._errorKey = route.routeKey;
-                    }
-                    if (routed) return resolve(true);
-                    if (req._isOptions && req._matchedMethods.size) {
-                        // OPTIONS routing is different, it stops in the router if matched
-                        return resolve(false);
-                    }
-                    next();
-                });
-            } else {
-                // handle errors and error handlers
-                if (req._error || kind === CALLBACK_ERROR) {
-                    if (req._error && kind === CALLBACK_ERROR && route.routeKey >= req._errorKey) {
-                        return this._handleError(req._error, callback, req, res);
-                    } else {
-                        return next();
-                    }
-                }
-
-                try {
-                    // handling OPTIONS method
-                    if (req._isOptions && !route.all && route.method !== "OPTIONS") {
-                        req._matchedMethods.add(route.method);
-                        if (route.gettable) {
-                            req._matchedMethods.add("HEAD");
-                        }
-                        return next();
-                    }
-
-                    const out = callback(req, res, next);
-                    if (out instanceof Promise) {
-                        // Express 5 forwards a rejected handler promise to the error middleware on
-                        // its own, so there is nothing left for the "catch async errors" setting or
-                        // for express-async-errors to opt into
-                        out.catch((err) => {
-                            req._error = err;
-                            req._errorKey = route.routeKey;
-                            return next();
-                        });
-                    }
-                } catch (err) {
-                    req._error = err;
-                    req._errorKey = route.routeKey;
-                    return next();
-                }
-            }
-        };
-        req.next = next;
-        if (continueRoute === "route") {
-            next("route");
-        } else if (continueRoute) {
-            next();
-        } else {
-            resolve(true);
-        }
     }
 
     /**
