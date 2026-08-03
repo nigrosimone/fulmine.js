@@ -341,10 +341,11 @@ class Walk {
  * request that reaches it. Express words both of these and applications match on the text.
  *
  * @param {any[]} handlers
+ * @param {string} [emptyMessage] app.use() says it its own way
  */
-function checkHandlers(handlers) {
+function checkHandlers(handlers, emptyMessage = "argument handler is required") {
     if (handlers.length === 0) {
-        throw new TypeError("argument handler is required");
+        throw new TypeError(emptyMessage);
     }
     for (const handler of handlers) {
         if (typeof handler !== "function") {
@@ -1216,7 +1217,10 @@ module.exports = class Router extends EventEmitter {
             path = "";
         }
         callbacks = callbacks.flat(Infinity);
-        checkHandlers(callbacks);
+        checkHandlers(
+            callbacks,
+            this.constructor.name === "Application" ? "app.use() requires a middleware function" : undefined
+        );
 
         for (const callback of callbacks) {
             if (callback instanceof Router) {
