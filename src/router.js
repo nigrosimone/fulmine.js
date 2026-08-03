@@ -946,7 +946,6 @@ module.exports = class Router extends EventEmitter {
      */
     _runRoute(req, res, routeIndex, route, routes, skipCheck, skipUntil, resolve, reject, continueRoute) {
         let callbackindex = 0;
-        const strictRouting = this.get("strict routing");
         if (route.use) {
             if (route.mountApp) {
                 // optimized chain: normal dispatch swaps req.app when it enters a mounted Application,
@@ -954,24 +953,25 @@ module.exports = class Router extends EventEmitter {
                 useApp(req, route.mountApp);
             }
             req._stack.push(route.path);
-            if (route.path !== "") {
-                req._stackMounted++;
-            }
-            const fullMountpath = this.getFullMountpath(req);
-            req._opPath =
-                fullMountpath !== EMPTY_REGEX ? req._originalPath.replace(fullMountpath, "") : req._originalPath;
-            if (req.endsWithSlash && req._opPath[req._opPath.length - 1] !== "/") {
-                if (strictRouting) {
-                    req._opPath += "/";
-                } else {
-                    req._opPath = req._opPath.slice(0, -1);
+            // a use with no path consumes nothing, so everything below would work out the values
+            // that are already there. Only skipped without a trailing slash, where the rules about
+            // one cannot bite. An application is mostly pathless middleware, and this is per hop
+            if (route.path !== "" || req.endsWithSlash) {
+                if (route.path !== "") {
+                    req._stackMounted++;
                 }
-            }
-            req.url = req._opPath + req.urlQuery;
-            req.path = req._opPath;
-            if (req._opPath === "") {
-                req.url = "/";
-                req.path = "/";
+                const fullMountpath = this.getFullMountpath(req);
+                req._opPath =
+                    fullMountpath !== EMPTY_REGEX ? req._originalPath.replace(fullMountpath, "") : req._originalPath;
+                if (req.endsWithSlash && req._opPath[req._opPath.length - 1] !== "/") {
+                    req._opPath = this.get("strict routing") ? req._opPath + "/" : req._opPath.slice(0, -1);
+                }
+                req.url = req._opPath + req.urlQuery;
+                req.path = req._opPath;
+                if (req._opPath === "") {
+                    req.url = "/";
+                    req.path = "/";
+                }
             }
         }
         // plain (non-async) function: an async next() would allocate an unconsumed promise
@@ -984,6 +984,7 @@ module.exports = class Router extends EventEmitter {
                             req._stackMounted--;
                         }
 
+                        const strictRouting = this.get("strict routing");
                         const poppedMountpath = req._stack.length > 0 ? this.getFullMountpath(req) : EMPTY_REGEX;
                         req._opPath =
                             poppedMountpath !== EMPTY_REGEX
