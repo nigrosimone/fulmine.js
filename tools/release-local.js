@@ -87,8 +87,21 @@ async function main() {
     console.log(`\n${pkg.name} ${pkg.version} -> ${version}, publishing under the "${distTag}" tag`);
     console.log(`remote ${remote}, branch ${BRANCH}${dryRun ? ", dry run" : ""}\n`);
 
-    if (capture("git", ["status", "--porcelain"]).out !== "") {
-        fail("the working tree is not clean");
+    // a modified tracked file means publishing something other than what CI tested. An untracked
+    // one only matters when npm would pack it, which is anything under the files field
+    const dirty = capture("git", ["status", "--porcelain"]).out.split("\n").filter(Boolean);
+    const changed = dirty.filter((line) => !line.startsWith("??"));
+    if (changed.length) {
+        fail(`the working tree is not clean:\n${changed.join("\n")}`);
+    }
+    const packed = new Set(pkg.files);
+    const untracked = dirty.map((line) => line.slice(3));
+    const wouldShip = untracked.filter((file) => packed.has(file.replace(/\/$/, "").split("/")[0]));
+    if (wouldShip.length) {
+        fail(`untracked files npm would publish:\n${wouldShip.join("\n")}`);
+    }
+    if (untracked.length) {
+        console.log(`untracked, and not published: ${untracked.join(", ")}`);
     }
 
     run("git", ["fetch", remote, "--quiet"]);
