@@ -1148,7 +1148,11 @@ module.exports = class Response extends Writable {
         } else if (object.default) {
             object.default(this.req, this, this.req.next);
         } else {
-            this.status(406).send(this.app._generateErrorPage("Not Acceptable", this.statusCode, false));
+            // an error and not an answer: express hands the error handler the types it could have
+            // sent, which is how an application says what it supports
+            const err = httpError(406);
+            err.types = keys.map((type) => normalizeType(type).value);
+            this.req.next(err);
         }
 
         return this;
