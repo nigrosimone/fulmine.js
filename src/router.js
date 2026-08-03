@@ -17,6 +17,7 @@ limitations under the License.
 
 const {
     patternToRegex,
+    escapePathLiteral,
     getPatternMeta,
     decodeParam,
     needsConversionToRegex,
@@ -167,7 +168,7 @@ class Walk {
                 // Application, but the compiled mount route has no callback to do it
                 useApp(req, route.mountApp);
             }
-            req._stack.push(route.path);
+            req._stack.push(route.regexMount ? escapePathLiteral(route.pattern.exec(req._opPath)[0]) : route.path);
             // a use with no path consumes nothing, so everything below would work out the values
             // that are already there. Only skipped without a trailing slash, where the rules about
             // one cannot bite. An application is mostly pathless middleware, and this is per hop
@@ -331,6 +332,23 @@ class Walk {
                 req._errorKey = route.routeKey;
                 return this.step(undefined);
             }
+        }
+    }
+}
+
+/**
+ * Refuses a handler that could never be called, where it was written rather than on the first
+ * request that reaches it. Express words both of these and applications match on the text.
+ *
+ * @param {any[]} handlers
+ */
+function checkHandlers(handlers) {
+    if (handlers.length === 0) {
+        throw new TypeError("argument handler is required");
+    }
+    for (const handler of handlers) {
+        if (typeof handler !== "function") {
+            throw new TypeError("argument handler must be a function");
         }
     }
 }
@@ -551,6 +569,11 @@ module.exports = class Router extends EventEmitter {
         const fullStack = req._stack.join("");
         let fullMountpath = this._mountpathCache.get(fullStack);
         if (!fullMountpath) {
+            // a RegExp mount keys this by what it matched, which is per request, so the cache would
+            // grow with the traffic. Registered paths are far fewer than this
+            if (this._mountpathCache.size > 1024) {
+                this._mountpathCache.clear();
+            }
             fullMountpath = patternToRegex(fullStack, true);
             this._mountpathCache.set(fullStack, fullMountpath);
         }
@@ -610,7 +633,8 @@ module.exports = class Router extends EventEmitter {
      */
     createRoute(method, path, parent = this, ...callbacks) {
         method = method.toUpperCase();
-        callbacks = callbacks.flat();
+        callbacks = callbacks.flat(Infinity);
+        checkHandlers(callbacks);
         const paths = Array.isArray(path) ? path : [path];
         const routes = [];
         for (let path of paths) {
@@ -635,6 +659,9 @@ module.exports = class Router extends EventEmitter {
                           ? CALLBACK_ERROR
                           : CALLBACK_PLAIN
                 ),
+                // a mount written as a RegExp matches a piece of path that is not known until a
+                // request comes in, so its stack entry cannot be the path itself
+                regexMount: method === "USE" && path instanceof RegExp,
                 routeKey: routeKey++,
                 // the router this was registered on. Ordinary dispatch is done by that router, so
                 // it could ask itself, but an optimized chain is walked by the app whatever it
@@ -1171,8 +1198,8 @@ module.exports = class Router extends EventEmitter {
      * everything under it, which is what separates it from all(). Mounting a Router sets its
      * mountpath and parent and emits 'mount' on it.
      *
-     * @param {string|string[]|Function|Router|Array<Function|Router>} [path] mount path, or the
-     *   first handler
+     * @param {string|RegExp|string[]|Function|Router|Array<Function|Router>} [path] mount path, or
+     *   the first handler
      * @param {...(Function|Router|Array<Function|Router>)} callbacks handlers, nested arrays allowed
      * @returns {this} the router, for chaining
      */
@@ -1180,15 +1207,16 @@ module.exports = class Router extends EventEmitter {
         if (
             typeof path === "function" ||
             path instanceof Router ||
-            (Array.isArray(path) && path.every((p) => typeof p === "function" || p instanceof Router))
+            (Array.isArray(path) && path.flat(Infinity).every((p) => typeof p === "function" || p instanceof Router))
         ) {
-            callbacks.unshift(path);
+            callbacks.unshift(/** @type {Function|Router|Array<Function|Router>} */ (path));
             path = "";
         }
         if (path === "/") {
             path = "";
         }
-        callbacks = callbacks.flat();
+        callbacks = callbacks.flat(Infinity);
+        checkHandlers(callbacks);
 
         for (const callback of callbacks) {
             if (callback instanceof Router) {

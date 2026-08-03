@@ -260,6 +260,17 @@ function patternToRegex(pattern, isPrefix = false) {
 }
 
 /**
+ * Escapes a literal so patternToRegex compiles it to itself. Used for the piece of path a RegExp
+ * mount matched, which is text and not a pattern, but goes through the same join as the others.
+ *
+ * @param {string} literal
+ * @returns {string}
+ */
+function escapePathLiteral(literal) {
+    return literal.replace(/[:*{}?+()[\]!.^$|\\]/g, "\\$&");
+}
+
+/**
  * Whether a path has anything in it that a string comparison cannot answer, which is a parameter,
  * a wildcard or an optional group. A regular expression is already compiled, so it needs nothing.
  *
@@ -962,6 +973,7 @@ NullObject.prototype = Object.create(null);
 module.exports = {
     removeDuplicateSlashes,
     patternToRegex,
+    escapePathLiteral,
     getPatternMeta,
     needsConversionToRegex,
     acceptParams,
