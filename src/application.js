@@ -283,23 +283,7 @@ class Application extends Router {
 
             const matchedRoute = await this._routeRequest(request, response);
             if (!matchedRoute && !response.headersSent && !response.aborted) {
-                if (request._error) {
-                    return this._handleError(request._error, null, request, response);
-                }
-                if (request._isOptions && request._matchedMethods.size > 0) {
-                    // sorted and ", "-joined, so the header reads the same whatever order the
-                    // routes were registered in. same shape as the router's own OPTIONS reply
-                    const allowedMethods = Array.from(request._matchedMethods).sort().join(", ");
-                    response.setHeader("Allow", allowedMethods);
-                    // the router package answers this one itself, with a plain-text body, the
-                    // nosniff header and end() rather than send(), so no ETag comes with it
-                    response.setHeader("Content-Type", "text/plain");
-                    response.setHeader("X-Content-Type-Options", "nosniff");
-                    response.end(allowedMethods);
-                    return;
-                }
-                response.status(404);
-                this._sendErrorPage(request, response, `Cannot ${request.method} ${request.path}`, false);
+                this._endUnmatched(request, response);
             }
         });
     }

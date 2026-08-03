@@ -19,6 +19,13 @@ app.get("/custom-header", (req, res) => {
     res.set("X-Custom", "value");
     res.send("with a header");
 });
+// two cookies, which is a header written twice rather than a header written once. uWS writes a line
+// per call and node's setHeader replaces, so the shim has to append or one of these disappears
+app.get("/cookies", (req, res) => {
+    res.cookie("first", "1");
+    res.append("Set-Cookie", "second=2");
+    res.send("two cookies");
+});
 app.use((req, res) => res.status(404).send("nothing here"));
 
 const server = http.createServer(app);
@@ -31,8 +38,11 @@ server.listen(0, async () => {
         ["POST", "/echo"],
         ["GET", "/teapot"],
         ["GET", "/custom-header"],
+        ["GET", "/cookies"],
         ["GET", "/file"],
         ["HEAD", "/hello"],
+        // the automatic OPTIONS reply, which a request served this way has to get as well
+        ["OPTIONS", "/hello"],
         ["GET", "/nowhere"]
     ];
 
@@ -49,6 +59,8 @@ server.listen(0, async () => {
             response.status,
             JSON.stringify(response.headers.get("content-type")),
             JSON.stringify(response.headers.get("x-custom")),
+            JSON.stringify(response.headers.getSetCookie()),
+            JSON.stringify(response.headers.get("allow")),
             // the body of the file is long and its bytes are asserted elsewhere
             JSON.stringify(route === "/file" ? body.length : body)
         );

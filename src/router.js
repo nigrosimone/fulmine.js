@@ -653,24 +653,7 @@ module.exports = class Router extends EventEmitter {
             const skipUntil = mount ?? (optimizedPath.length ? optimizedPath[optimizedPath.length - 1] : route);
             const matchedRoute = await this._routeRequest(request, response, 0, optimizedPath, true, skipUntil);
             if (!matchedRoute && !response.headersSent && !response.aborted) {
-                if (request._error) {
-                    return this._handleError(request._error, null, request, response);
-                }
-                if (request._isOptions && request._matchedMethods.size > 0) {
-                    // Express 5 sorts the methods and joins them with ", ", so the header reads the
-                    // same regardless of the order the routes happened to be registered in
-                    const allowedMethods = Array.from(request._matchedMethods).sort().join(", ");
-                    response.setHeader("Allow", allowedMethods);
-                    // the router package answers this one itself, with a plain-text body, the
-                    // nosniff header and end() rather than send(), so no ETag comes with it
-                    response.setHeader("Content-Type", "text/plain");
-                    response.setHeader("X-Content-Type-Options", "nosniff");
-                    response.end(allowedMethods);
-                    return;
-                }
-                response.status(404);
-                request.noEtag = true;
-                this._sendErrorPage(request, response, `Cannot ${request.method} ${request._originalPath}`, false);
+                this._endUnmatched(request, response);
             }
         };
         route.optimizedPath = optimizedPath;
@@ -1297,6 +1280,39 @@ module.exports = class Router extends EventEmitter {
         response.setHeader("X-Content-Type-Options", "nosniff");
         response.setHeader("Content-Security-Policy", "default-src 'none'");
         response.send(err);
+    }
+
+    /**
+     * How a request that nothing answered ends: with the error it is carrying, with the automatic
+     * OPTIONS reply, or with a 404.
+     *
+     * Three ways in reach this and they have to agree: the native chain, the catch-all handler the
+     * app registers, and the shim that serves a request from node's own server. The third had no
+     * OPTIONS reply at all until this was one method, which is what a request through supertest
+     * gets, so `app.options` answered 404 there and nowhere else.
+     *
+     * @param {any} request
+     * @param {any} response
+     */
+    _endUnmatched(request, response) {
+        if (request._error) {
+            return this._handleError(request._error, null, request, response);
+        }
+        if (request._isOptions && request._matchedMethods.size > 0) {
+            // Express 5 sorts the methods and joins them with ", ", so the header reads the same
+            // regardless of the order the routes happened to be registered in
+            const allowedMethods = Array.from(request._matchedMethods).sort().join(", ");
+            response.setHeader("Allow", allowedMethods);
+            // the router package answers this one itself, with a plain-text body, the nosniff
+            // header and end() rather than send(), so no ETag comes with it
+            response.setHeader("Content-Type", "text/plain");
+            response.setHeader("X-Content-Type-Options", "nosniff");
+            response.end(allowedMethods);
+            return;
+        }
+        response.status(404);
+        // the whole path, not what a mount left behind in req.path
+        this._sendErrorPage(request, response, `Cannot ${request.method} ${request._originalPath}`, false);
     }
 };
 

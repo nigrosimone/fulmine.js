@@ -210,12 +210,16 @@ class NodeHttpResponse {
     }
 
     /**
+     * uWS writes a header line per call and never replaces one, which is what the code above this
+     * is written against: two calls for Set-Cookie are two cookies. setHeader would have kept only
+     * the last, and did, until supertest started serving applications through node's own server.
+     *
      * @param {string} key
      * @param {string|number} value
      */
     writeHeader(key, value) {
         if (!this._nodeRes.headersSent) {
-            this._nodeRes.setHeader(key, String(value));
+            this._nodeRes.appendHeader(key, String(value));
         }
         return this;
     }
@@ -395,12 +399,7 @@ function serveNodeRequest(router, nodeReq, nodeRes, next) {
         if (next) {
             return next(request._error);
         }
-        if (request._error) {
-            return router._handleError(request._error, null, request, response);
-        }
-        response.status(404);
-        request.noEtag = true;
-        router._sendErrorPage(request, response, `Cannot ${request.method} ${request.path}`, false);
+        router._endUnmatched(request, response);
     });
 }
 
