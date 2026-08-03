@@ -140,10 +140,14 @@ module.exports = class Response extends Writable {
         this.chunkedTransfer = true;
         this.totalSize = 0;
         this.writingChunk = false;
-        this.headers = {
-            connection: "keep-alive",
-            "keep-alive": "timeout=10"
-        };
+        // timeout=10 is uWS's idle timeout. On the node shim the hosting server enforces its own
+        // keepAliveTimeout, so node is left to write the truthful Connection and Keep-Alive itself.
+        this.headers = res._nodeRes
+            ? {}
+            : {
+                  connection: "keep-alive",
+                  "keep-alive": "timeout=10"
+              };
         // the client asked for the connection to be closed, and uWS closes it, so saying otherwise
         // would be telling the client something the transport contradicts. A declarative response
         // cannot do this, being written once and not per request.
@@ -237,7 +241,9 @@ module.exports = class Response extends Writable {
         this._res.cork(() => {
             if (!this.headersSent) {
                 this.writeHead(this.statusCode);
-                const statusMessage = this.statusText ?? statuses.message[this.statusCode] ?? "";
+                // "unknown" and not the bare number: node writes that reason phrase for a code it
+                // has no message for, so the raw status lines match
+                const statusMessage = this.statusText ?? statuses.message[this.statusCode] ?? "unknown";
                 this._res.writeStatus(`${this.statusCode} ${statusMessage}`.trim());
                 this.writeHeaders(typeof chunk === "string");
             }
@@ -441,7 +447,8 @@ module.exports = class Response extends Writable {
                 // requests, and Express answers 304 from send() and from sendFile(), each of
                 // which strips the entity headers first. Deciding it here meant res.end("body")
                 // answered 304 and dropped the body that the caller had just written.
-                const statusMessage = this.statusText ?? statuses.message[this.statusCode] ?? "";
+                // "unknown" for a code without a message, as node's status line has it
+                const statusMessage = this.statusText ?? statuses.message[this.statusCode] ?? "unknown";
                 this._res.writeStatus(`${this.statusCode} ${statusMessage}`.trim());
                 this.writeHeaders(true);
             }
@@ -657,15 +664,29 @@ module.exports = class Response extends Writable {
             this.status(400);
             return done(httpError(400));
         }
-        if (UP_PATH_REGEXP.test(path)) {
-            this.status(403);
-            return done(httpError(403));
-        }
-        const parts = Path.normalize(path).split(Path.sep);
-        const fullpath = options.root ? Path.resolve(Path.join(options.root, path)) : path;
-        if (options.root && !fullpath.startsWith(Path.resolve(options.root))) {
-            this.status(403);
-            return done(httpError(403));
+        // send's two branches: with a root the path is normalized first, so an in-root ".." like
+        // /sub/../index.html collapses and is served, and only a path still escaping after
+        // normalization is refused. Without a root any ".." is refused on the raw path.
+        let parts, fullpath;
+        if (options.root) {
+            path = Path.normalize("." + Path.sep + path);
+            if (UP_PATH_REGEXP.test(path)) {
+                this.status(403);
+                return done(httpError(403));
+            }
+            parts = path.split(Path.sep);
+            fullpath = Path.resolve(Path.join(options.root, path));
+            if (!fullpath.startsWith(Path.resolve(options.root))) {
+                this.status(403);
+                return done(httpError(403));
+            }
+        } else {
+            if (UP_PATH_REGEXP.test(path)) {
+                this.status(403);
+                return done(httpError(403));
+            }
+            parts = Path.normalize(path).split(Path.sep);
+            fullpath = path;
         }
 
         // dotfile checks
@@ -677,8 +698,10 @@ module.exports = class Response extends Writable {
                     this.status(403);
                     return done(httpError(403));
                 case "ignore_files": {
+                    // the file segment alone: with a root the normalized parts no longer carry a
+                    // leading empty segment, so a bare dotfile can be the only part
                     const len = parts.length;
-                    if (len > 1 && parts[len - 1].startsWith(".")) {
+                    if (parts[len - 1].startsWith(".")) {
                         this.status(404);
                         return done(httpError(404));
                     }
@@ -807,7 +830,9 @@ module.exports = class Response extends Writable {
         }
 
         if (this.req.method === "HEAD") {
-            this.set("Content-Length", stat.size);
+            // len, not stat.size: a ranged HEAD answers with the length of the selected part,
+            // as send sets it before ending
+            this.set("Content-Length", len);
             return this.end();
         }
 
@@ -816,14 +841,26 @@ module.exports = class Response extends Writable {
             this.app
                 .readFileWithWorker(fullpath)
                 .then((data) => {
-                    if (this._res.finished) {
+                    if (this.finished || this.aborted) {
+                        // the client went away while the worker was reading. Express reports
+                        // ECONNABORTED to a callback and never to next(), so aborts stay out of
+                        // the error middleware.
+                        if (this.aborted && callback) {
+                            const err = /** @type {any} */ (new Error("Request aborted"));
+                            err.code = "ECONNABORTED";
+                            callback(err);
+                        }
                         return;
                     }
                     this.end(data);
                     if (callback) callback();
                 })
                 .catch((err) => {
-                    if (callback) callback(err);
+                    // the worker posts only the message, so recover the fs code from it and put
+                    // send's status back on: an ENOENT is the request's 404, not a bare 500
+                    const code = /\b(E[A-Z]+)\b/.exec(err.message);
+                    if (code && !err.code) err.code = code[1];
+                    done(asStatError(err));
                 });
         } else {
             // larger files or range requests are piped over response
@@ -836,6 +873,24 @@ module.exports = class Response extends Writable {
             }
             const file = fs.createReadStream(fullpath, opts);
             this.set("Content-Length", len);
+            // pipe() forwards nothing from the source, so a read error after the stat, the file
+            // gone or unreadable, must reach next()/the callback instead of crashing the process
+            file.on("error", (err) => {
+                file.destroy();
+                if (!this.headersSent) return done(asStatError(err));
+                this.destroy(err);
+                if (callback) callback(err);
+            });
+            // a client abort never reaches the source either: it surfaces as "close" on the
+            // response or its socket, and without this the fd stays open until the process exits
+            const socket = this.socket;
+            const cleanup = () => file.destroy();
+            this.once("close", cleanup);
+            socket?.once("close", cleanup);
+            file.once("close", () => {
+                this.removeListener("close", cleanup);
+                socket?.removeListener("close", cleanup);
+            });
             file.pipe(this);
         }
     }
@@ -902,7 +957,9 @@ module.exports = class Response extends Writable {
         } else {
             field = field.toLowerCase();
             if (Array.isArray(value)) {
-                this.headers[field] = value;
+                // each entry as text, as node serialises them: a raw number reaching uWS's
+                // writeHeader would throw mid-response
+                this.headers[field] = value.map(String);
                 return this;
             }
             this.headers[field] = String(value);
@@ -1008,25 +1065,18 @@ module.exports = class Response extends Writable {
      * @returns {this}
      */
     append(field, value) {
-        field = field.toLowerCase();
-        const old = this.headers[field];
-        if (old) {
-            const newVal = [];
-            if (Array.isArray(old)) {
-                newVal.push(...old);
-            } else {
-                newVal.push(old);
-            }
-            if (Array.isArray(value)) {
-                newVal.push(...value);
-            } else {
-                newVal.push(value);
-            }
-            this.headers[field] = newVal;
-        } else {
-            this.headers[field] = value;
+        // merged and then routed through set(), as Express does, so the values get the same
+        // String coercion and Content-Type handling as any other header
+        const prev = this.get(field);
+        let merged = value;
+        if (prev) {
+            merged = Array.isArray(prev)
+                ? prev.concat(value)
+                : Array.isArray(value)
+                  ? [prev].concat(value)
+                  : [prev, value];
         }
-        return this;
+        return this.set(field, merged);
     }
 
     /**
@@ -1312,6 +1362,9 @@ module.exports = class Response extends Writable {
                 }
             });
         }
+        // set before the HEAD check, as Express has it, so a HEAD answers with the length the
+        // GET body would have instead of 0
+        this.set("Content-Length", String(Buffer.byteLength(body ?? "")));
         if (this.req.method === "HEAD") {
             this.end();
         } else {
