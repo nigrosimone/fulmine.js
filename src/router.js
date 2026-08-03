@@ -75,6 +75,24 @@ const methods = [
     "search",
     "query"
 ];
+/**
+ * Hands the request, and the response with it, to the app that is about to handle it.
+ *
+ * Express does this by re-parenting both objects onto that app's own request and response
+ * prototypes, which carry `app` as a property, so a mounted sub-app's settings decide what its
+ * responses do: its "etag fn", its "json spaces", its "x-powered-by". Only the request was being
+ * swapped here, so a sub-app's settings reached its handlers and never its answers.
+ *
+ * @param {any} req
+ * @param {any} app
+ */
+function useApp(req, app) {
+    req.app = app;
+    if (req.res) {
+        req.res.app = app;
+    }
+}
+
 const supportedUwsMethods = new Set(["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD", "CONNECT", "TRACE"]);
 
 const regExParam = /:(\w+)/g;
@@ -250,7 +268,7 @@ module.exports = class Router extends EventEmitter {
         // settings of whatever handed the request over. A plain router is not an app and leaves it
         // alone, which is what Express's router.handle does too.
         if (this.constructor.name === "Application") {
-            req.app = this;
+            useApp(req, this);
         }
         const routed = await this._routeRequest(req, res, 0);
         if (!routed && next) {
@@ -963,7 +981,7 @@ module.exports = class Router extends EventEmitter {
                 return resolve(false);
             }
             // on optimized routes, there can be more routes, so we have to use unoptimized routing and skip until we find route we stopped at
-            req.app = this; // restore app in case the optimized path swapped it to a mounted sub-app
+            useApp(req, this); // restore app in case the optimized path swapped it to a mounted sub-app
             // and the mount itself, if the chain went into a mounted router and never came out. Its
             // mount entries are marked keepMount so that nothing pops them while the chain runs,
             // which leaves req.url, req.path and req.baseUrl relative to the mount. What resumes
@@ -1038,7 +1056,7 @@ module.exports = class Router extends EventEmitter {
             if (route.mountApp) {
                 // optimized chain: normal dispatch swaps req.app when it enters a mounted Application,
                 // but the compiled mount route has no callback to do it, so swap it here
-                req.app = route.mountApp;
+                useApp(req, route.mountApp);
             }
             req._stack.push(route.path);
             if (route.path !== "") {
@@ -1096,7 +1114,7 @@ module.exports = class Router extends EventEmitter {
                             req._opPath = req._opPath.slice(0, -1);
                         }
                         if (req.app.parent && route.callbacks[0]?.constructor.name === "Application") {
-                            req.app = req.app.parent;
+                            useApp(req, req.app.parent);
                         }
                     }
                     req.routeCount++;
@@ -1133,7 +1151,7 @@ module.exports = class Router extends EventEmitter {
             }
             if (callback instanceof Router) {
                 if (callback.constructor.name === "Application") {
-                    req.app = callback;
+                    useApp(req, callback);
                 }
                 if (callback.settings.mergeParams) {
                     req._paramStack.push(req.params);
