@@ -146,8 +146,18 @@ async function main() {
     // release-it bumps, writes the CHANGELOG, commits and tags. It never publishes: npm.publish is
     // false in .release-it.cjs. Nothing is pushed here, so a failed publish leaves nothing behind
     console.log("\nbumping and tagging\n");
-    // no upstream needed: the push below is explicit, and the local branch here is not named main
-    const releaseItArgs = ["release-it", version, "--ci", "--no-git.push", "--no-git.requireUpstream"];
+    // no upstream needed: the push below is explicit, and the local branch here is not named main.
+    // pushRepo names the remote release-it reads the repository URL from, which is what the links
+    // in the changelog are built out of: with the default it took them from origin, and in a working
+    // copy where origin is the repository this was forked from they all pointed at the wrong project
+    const releaseItArgs = [
+        "release-it",
+        version,
+        "--ci",
+        "--no-git.push",
+        "--no-git.requireUpstream",
+        `--git.pushRepo=${remote}`
+    ];
     if (dryRun) {
         releaseItArgs.push("--dry-run");
     }
