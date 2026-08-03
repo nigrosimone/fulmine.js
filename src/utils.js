@@ -342,12 +342,13 @@ function canBeOptimizedWithParams(pattern) {
  *
  * @param {string} a
  * @param {string} b
+ * @param {boolean} [aIsPrefix] a is a mount path, so only b's leading segments are compared
  * @returns {boolean}
  */
-function pathsCanOverlap(a, b) {
+function pathsCanOverlap(a, b, aIsPrefix = false) {
     const left = a.split("/");
     const right = b.split("/");
-    if (left.length !== right.length) {
+    if (aIsPrefix ? left.length > right.length : left.length !== right.length) {
         return false;
     }
     for (let i = 0; i < left.length; i++) {
@@ -359,6 +360,35 @@ function pathsCanOverlap(a, b) {
             continue;
         }
         return false;
+    }
+    return true;
+}
+
+/**
+ * Whether µWS would answer with `earlier` every path that both paths match, which is what makes its
+ * order agree with express's registration order.
+ *
+ * µWS ranks segment by segment and a literal beats a parameter, so the answer is yes only where the
+ * two part with the literal on the left. `/users/me` before `/users/:id` is safe, `/differ/:user/bob`
+ * before `/differ/foo/:user` is not: express answers the first, µWS the second.
+ *
+ * @param {string} earlier
+ * @param {string} later
+ * @returns {boolean}
+ */
+function uwsPrefersEarlier(earlier, later) {
+    const left = earlier.split("/");
+    const right = later.split("/");
+    if (left.length !== right.length) {
+        return false;
+    }
+    for (let i = 0; i < left.length; i++) {
+        if (left[i] === right[i]) {
+            continue;
+        }
+        if (left[i].charCodeAt(0) === 0x3a || right[i].charCodeAt(0) !== 0x3a) {
+            return false;
+        }
     }
     return true;
 }
@@ -1001,6 +1031,7 @@ module.exports = {
     canBeOptimized,
     canBeOptimizedWithParams,
     pathsCanOverlap,
+    uwsPrefersEarlier,
     escapeHtml,
     withDefaultCharset,
     withUtf8Charset,

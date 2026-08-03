@@ -198,11 +198,11 @@ module.exports = class Request extends Readable {
         // they are, and every place that reads it asks _isOptions first, so it is built only for
         // the requests that are one.
         //
-        // _gotParams remembers which app.param() callbacks have already run for this request, so it
-        // is only wanted by an application that uses app.param at all. The router builds it the
-        // first time it has something to put in it.
+        // _paramCalled remembers, per router, what each app.param() callback was called with and
+        // what it left behind, so it is only wanted by an application that uses app.param at all.
+        // The router builds it the first time it has something to put in it.
         this._matchedMethods = this._isOptions ? new Set() : null;
-        this._gotParams = null;
+        this._paramCalled = null;
         this._stack = [];
         // number of entries in _stack that aren't the empty path. while this is 0 the whole
         // stack joins to "", so getFullMountpath can skip the join entirely

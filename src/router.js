@@ -24,6 +24,7 @@ const {
     canBeOptimized,
     canBeOptimizedWithParams,
     pathsCanOverlap,
+    uwsPrefersEarlier,
     NullObject,
     EMPTY_REGEX
 } = require("./utils.js");
@@ -701,6 +702,9 @@ module.exports = class Router extends EventEmitter {
      */
     _optimizeRoute(route, routes) {
         const optimizedPath = [];
+        // a route with a parameter matches paths its own text does not, so what an earlier route
+        // could answer is compared shape against shape and not against that text
+        const withParams = typeof route.path === "string" && route.path.includes(":");
 
         for (let i = 0; i < routes.length; i++) {
             const r = routes[i];
@@ -727,6 +731,22 @@ module.exports = class Router extends EventEmitter {
                     return false; // cant optimize nested routers with matches
                 }
                 optimizedPath.push(r);
+                continue;
+            }
+            if (!withParams) {
+                continue;
+            }
+            // an earlier route that answers only some of the paths this one matches cannot go in
+            // the chain, which runs what is in it without matching again
+            if (typeof r.path !== "string" || !canBeOptimizedWithParams(r.path)) {
+                return false;
+            }
+            if (!pathsCanOverlap(r.path, route.path, r.use)) {
+                continue;
+            }
+            // unless µWS answers those paths with it too, and it is registered there to do so
+            if (r.use || !r.optimizedPath || !uwsPrefersEarlier(r.path, route.path)) {
+                return false;
             }
         }
         optimizedPath.push(route);
@@ -1117,43 +1137,100 @@ module.exports = class Router extends EventEmitter {
         // ends in a mounted router's route
         const paramCallbacks = route.paramCallbacks;
         if (paramCallbacks.size > 0) {
-            // known issue: an async executor swallows what it throws, so a param callback that
-            // throws synchronously is lost. Fixing it moves when the callbacks run
-            // eslint-disable-next-line no-async-promise-executor
-            return new Promise(async (resolve) => {
-                for (const param in req.params) {
-                    const pcs = paramCallbacks.get(param);
-                    // built here rather than for every request, since only an application using
-                    // app.param() ever reaches this line
-                    if (pcs && !req._gotParams?.has(param)) {
-                        (req._gotParams ??= new Set()).add(param);
-                        for (let i = 0, len = pcs.length; i < len; i++) {
-                            const fn = pcs[i];
-                            await /** @type {Promise<void>} */ (
-                                new Promise((resolveRoute) => {
-                                    const next = (thingamabob) => {
-                                        if (thingamabob) {
-                                            if (thingamabob === "route") {
-                                                return resolve("route");
-                                            } else {
-                                                req._error = thingamabob;
-                                                req._errorKey = route.routeKey;
-                                            }
-                                        }
-                                        return resolveRoute();
-                                    };
-                                    req.next = next;
-                                    fn(req, res, next, req.params[param], param);
-                                })
-                            );
-                        }
-                    }
-                }
-
-                resolve(true);
-            });
+            return this._runParamCallbacks(req, res, route, paramCallbacks);
         }
         return true;
+    }
+
+    /**
+     * Runs the app.param() callbacks for the parameters this route matched, and says whether the
+     * route may run.
+     *
+     * Express calls one once per value and not once per request: the same name matched with a
+     * different value calls it again, and a value it has already seen restores whatever that call
+     * left in req.params, its deferral or its error included, without running anything.
+     *
+     * @param {any} req
+     * @param {any} res
+     * @param {any} route
+     * @param {Map<string, Function[]>} paramCallbacks the owning router's, which is also the key of
+     *   its own cache: two routers that declare the same parameter each call their own
+     * @returns {Promise<true|"route">|true}
+     */
+    _runParamCallbacks(req, res, route, paramCallbacks) {
+        let names;
+        for (const name in req.params) {
+            if (paramCallbacks.has(name)) {
+                (names ??= []).push(name);
+            }
+        }
+        if (!names) {
+            return true;
+        }
+        const perRouter = (req._paramCalled ??= new Map());
+        let called = perRouter.get(paramCallbacks);
+        if (!called) {
+            perRouter.set(paramCallbacks, (called = new Map()));
+        }
+
+        return new Promise((resolve) => {
+            let index = 0;
+            let name = "";
+            let value;
+            let entry;
+            let fns = [];
+            let fnIndex = 0;
+
+            // one parameter after the other, err being what the last one's callbacks ended with
+            const nextParam = (err) => {
+                if (err) {
+                    if (err !== "route") {
+                        req._error = err;
+                        req._errorKey = route.routeKey;
+                    }
+                    // the route is skipped either way: an error carries on to the error handlers
+                    return resolve("route");
+                }
+                if (index >= names.length) {
+                    return resolve(true);
+                }
+                name = names[index++];
+                value = req.params[name];
+                entry = called.get(name);
+                if (entry && (entry.match === value || (entry.error && entry.error !== "route"))) {
+                    req.params[name] = entry.value;
+                    return nextParam(entry.error);
+                }
+                entry = { error: null, match: value, value };
+                called.set(name, entry);
+                fns = /** @type {Function[]} */ (paramCallbacks.get(name));
+                fnIndex = 0;
+                nextCallback(undefined);
+            };
+
+            // and one callback of the current parameter after the other
+            const nextCallback = (err) => {
+                const fn = fns[fnIndex++];
+                // read before the callback runs and again after it: one that rewrites
+                // req.params[name] hands that value to every later route
+                entry.value = req.params[name];
+                if (err) {
+                    entry.error = err;
+                    return nextParam(err);
+                }
+                if (!fn) {
+                    return nextParam(undefined);
+                }
+                req.next = nextCallback;
+                try {
+                    fn(req, res, nextCallback, value, name);
+                } catch (thrown) {
+                    nextCallback(thrown);
+                }
+            };
+
+            nextParam(undefined);
+        });
     }
 
     /**

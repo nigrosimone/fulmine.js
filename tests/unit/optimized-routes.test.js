@@ -203,3 +203,23 @@ test("a param callback does not send the route back to the slow path", async () 
     assert.ok(paths.includes("/users/:id"), `expected /users/:id among ${paths.join(", ")}`);
     assert.ok(paths.includes("/api/profile/:uid"), `expected /api/profile/:uid among ${paths.join(", ")}`);
 });
+
+test("a parameter route stays off it when an earlier route could answer some of its paths", async () => {
+    // µWS would pick /differ/foo/:user for /differ/foo/bob, express the route registered first
+    assert.deepStrictEqual(await optimizedFor(["/differ/:user/bob", "/differ/foo/:user"]), {
+        "/differ/:user/bob": true,
+        "/differ/foo/:user": false
+    });
+    // the other way round µWS agrees with express: the literal is the more specific of the two
+    assert.deepStrictEqual(await optimizedFor(["/users/me", "/users/:id"]), {
+        "/users/me": true,
+        "/users/:id": true
+    });
+    // and a mount that answers part of them keeps it off, since a mount is not on µWS's router
+    const paths = await nativePaths((app) => {
+        app.use("/shop/sale", (req, res, next) => next());
+        app.get("/shop/:id/items", (req, res) => res.send("ok"));
+        app.get("/shop/:id", (req, res) => res.send("ok"));
+    });
+    assert.deepStrictEqual(paths, []);
+});
