@@ -117,6 +117,11 @@ class Application extends Router {
         this.listening = false;
         // the host handed to listen(), which is all address() has to go on
         this._listenHost = undefined;
+        // the uWS listen socket, and the responses being served right now: close() stops the
+        // first and waits for the second, the way node's server.close() does
+        this._listenSocket = undefined;
+        this._pendingResponses = new Set();
+        this._draining = false;
         for (const key in defaultSettings) {
             if (typeof this.settings[key] === "undefined") {
                 if (typeof defaultSettings[key] === "function") {
@@ -169,7 +174,7 @@ class Application extends Router {
      * Reads or writes an application setting. One argument is the getter, and the check is on
      * `arguments.length`, so `set(key, undefined)` still writes. Some keys have a side effect:
      * `trust proxy`, `query parser` and `etag` compile the value into a function kept beside it,
-     * `views` becomes an absolute path, and `env` set to "production" turns the view cache on.
+     * and `views` becomes an absolute path.
      *
      * @param {string} key setting name
      * @param {*} [value] value to store; omit to read instead
@@ -194,12 +199,6 @@ class Application extends Router {
                 this.settings["query parser fn"] = value;
             } else {
                 this.settings["query parser fn"] = undefined;
-            }
-        } else if (key === "env") {
-            if (value === "production") {
-                this.settings["view cache"] = true;
-            } else {
-                this.settings["view cache"] = undefined;
             }
         } else if (key === "views") {
             // a list of directories is searched in order by View.lookup, each resolved here once
@@ -270,6 +269,25 @@ class Application extends Router {
     }
 
     /**
+     * Router's handleRequest plus the bookkeeping a graceful close() needs: every live response
+     * is held in a set until it finishes, so close() knows when the last one is done. Native
+     * routes and the catch-all both come through here, since both call it on the app.
+     *
+     * @param {any} res uWS response
+     * @param {any} req uWS request, readable only during this call
+     * @returns {{request: any, response: any}}
+     */
+    handleRequest(res, req) {
+        const handled = super.handleRequest(res, req);
+        const response = handled.response;
+        this._pendingResponses.add(response);
+        // an aborted response only flips its flags without emitting 'close', which is why
+        // close()'s drain also sweeps the set by those flags instead of trusting this alone
+        response.once("close", () => this._pendingResponses.delete(response));
+        return handled;
+    }
+
+    /**
      * Registers the catch-all uWS handler, which is what serves every request that no optimized
      * route took natively. It walks this app's own chain and, when nothing in it answered, decides
      * between an error, the automatic OPTIONS reply and a 404.
@@ -278,9 +296,19 @@ class Application extends Router {
         this.uwsApp.any("/*", async (res, req) => {
             const { request, response } = this.handleRequest(res, req);
 
-            const matchedRoute = await this._routeRequest(request, response);
-            if (!matchedRoute && !response.headersSent && !response.aborted) {
-                this._endUnmatched(request, response);
+            try {
+                const matchedRoute = await this._routeRequest(request, response);
+                if (!matchedRoute && !response.headersSent && !response.aborted) {
+                    this._endUnmatched(request, response);
+                }
+            } catch (err) {
+                // an internal throw answers 500 as express's final handler would, instead of
+                // dying as an unhandled rejection
+                if (response.aborted || response.finished) {
+                    console.error(err);
+                } else {
+                    this._handleError(err, null, request, response);
+                }
             }
         });
     }
@@ -312,6 +340,11 @@ class Application extends Router {
             callback = host;
             host = undefined;
         }
+        // bare listen() and listen(undefined, cb) bind an OS-assigned port, as node does; left
+        // undefined the port fell through to the unix-socket branch below
+        if (port == null) {
+            port = 0;
+        }
         // uWS runs this handler from inside its own listen(), so everything it hands back to the
         // caller is deferred a tick. Express binds synchronously too but reports through events,
         // and node emits both 'listening' and 'error' from a process.nextTick.
@@ -338,6 +371,8 @@ class Application extends Router {
             this.port = uWS.us_socket_local_port(socket);
             this.listening = true;
             this._listenHost = host;
+            // kept so close() can stop accepting without dropping what is in flight
+            this._listenSocket = socket;
             process.nextTick(() => {
                 // `this` is the app, which is what listen() returns here. Express binds it to the
                 // http.Server, which is what listen() returns there, so
@@ -513,7 +548,13 @@ class Application extends Router {
     }
 
     /**
-     * Stops listening and emits 'close'.
+     * Stops accepting connections, lets in-flight requests finish, then emits 'close'.
+     *
+     * Node's server.close(), which Express hands back from listen(), only closes the listen
+     * socket and waits for what is being served; uWS's close() forcefully terminates every
+     * connection, so calling it first aborted whatever a graceful shutdown was waiting for.
+     * It still runs, but only once the last pending response is done, to drop the idle
+     * keep-alive connections nothing else would close.
      *
      * The callback is the first 'close' listener, so it runs before any added afterwards. Closing
      * a server that was not listening still calls back, with an ERR_SERVER_NOT_RUNNING error, the
@@ -524,9 +565,6 @@ class Application extends Router {
      */
     close(callback) {
         const wasListening = this.listening;
-        if (this.listenCalled && wasListening) {
-            this.uwsApp.close();
-        }
         this.listening = false;
         // in Express the close callback is nothing more than the first 'close' listener, and a
         // server that was not running still gets called back, with an error
@@ -541,7 +579,41 @@ class Application extends Router {
                 callback(err);
             });
         }
-        process.nextTick(() => this.emit("close"));
+        if (!this.listenCalled || !wasListening) {
+            // a close while a drain is underway does not emit again: the pending drain's single
+            // 'close' serves both calls, which is what node does too
+            if (!this._draining) {
+                process.nextTick(() => this.emit("close"));
+            }
+            return this;
+        }
+        if (this._listenSocket) {
+            uWS.us_listen_socket_close(this._listenSocket);
+            this._listenSocket = undefined;
+        }
+        this._draining = true;
+        const finish = () => {
+            this._draining = false;
+            this.uwsApp.close();
+            this.emit("close");
+        };
+        if (this._pendingResponses.size === 0) {
+            process.nextTick(finish);
+            return this;
+        }
+        // a finished response emits 'close' and removes itself; an aborted one only flips its
+        // flags, so the drain sweeps by them. The timer also keeps the loop alive until done.
+        const sweep = setInterval(() => {
+            for (const response of this._pendingResponses) {
+                if (response.finished || response.aborted) {
+                    this._pendingResponses.delete(response);
+                }
+            }
+            if (this._pendingResponses.size === 0) {
+                clearInterval(sweep);
+                finish();
+            }
+        }, 10);
         return this;
     }
 }

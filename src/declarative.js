@@ -383,12 +383,14 @@ module.exports = function compileDeclarative(cb, app) {
                 if (call.arguments[0].type !== "Literal" || call.arguments[1].type !== "Literal") {
                     return false;
                 }
-                let [header, value] = [call.arguments[0].value, call.arguments[1].value];
+                // String() at capture: a numeric literal would reach uWS's writeHeader as itself,
+                // and uWS refuses anything that is not a string
+                let [header, value] = [call.arguments[0].value, String(call.arguments[1].value)];
                 const name = String(header).toLowerCase();
                 // res.set charsets a content-type and res.setHeader does not, since the second is
                 // node's and node does not know what a media type is
                 if (call.obj.propertyName !== "setHeader" && name === "content-type") {
-                    value = withDefaultCharset(String(value));
+                    value = withDefaultCharset(value);
                 }
                 const index = headers.findIndex((entry) => String(entry[0]).toLowerCase() === name);
                 if (index === -1) {
@@ -408,7 +410,7 @@ module.exports = function compileDeclarative(cb, app) {
                 if (call.arguments[0].type !== "Literal" || call.arguments[1].type !== "Literal") {
                     return false;
                 }
-                headers.push([call.arguments[0].value, call.arguments[1].value]);
+                headers.push([call.arguments[0].value, String(call.arguments[1].value)]);
             } else if (call.obj.propertyName === "sendStatus") {
                 if (call.arguments[0].type !== "Literal") {
                     return false;
@@ -551,6 +553,11 @@ module.exports = function compileDeclarative(cb, app) {
                          * @returns {boolean}
                          */
                         function check(node) {
+                            // only "+" concatenates; any other operator computes a value the
+                            // parts cannot represent, so the handler falls back
+                            if (node.operator !== "+") {
+                                return false;
+                            }
                             if (node.right.type === "Literal") {
                                 stuff.push({ type: "text", value: node.right.value });
                             } else if (node.right.type === "MemberExpression") {
@@ -602,11 +609,13 @@ module.exports = function compileDeclarative(cb, app) {
         let decRes = new uWSAny.DeclarativeResponse();
 
         if (statusCode !== 200) {
-            const statusMessage = statuses.message[statusCode] ?? "";
-            decRes = decRes.writeStatus(`${statusCode} ${statusMessage}`.trim());
-            if (!headers.some((header) => header[0].toLowerCase() === "content-type")) {
-                decRes = decRes.writeHeader("content-type", "text/plain; charset=utf-8");
-            }
+            const statusMessage = statuses.message[statusCode] ?? "unknown";
+            decRes = decRes.writeStatus(`${statusCode} ${statusMessage}`);
+        }
+        // only sendStatus types its body: it goes through res.type("txt") on the ordinary path,
+        // while status(n).end() sends no Content-Type at all, in Express and here alike
+        if (sendStatusUsed && !headers.some((header) => header[0].toLowerCase() === "content-type")) {
+            decRes = decRes.writeHeader("content-type", "text/plain; charset=utf-8");
         }
 
         // the same two the ordinary path seeds every response with. Without them a route answered
