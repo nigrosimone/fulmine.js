@@ -495,6 +495,13 @@ module.exports = class Response extends Writable {
         if (this.headersSent) {
             throw new Error("Can't write body: Response was already sent");
         }
+        // a typed array is bytes to send, not an object to serialise: res.send(new Uint8Array([104,
+        // 101, 121])) is "hey" and not {"0":104,"1":101,"2":121}. Uint8Array and not every view
+        // over an ArrayBuffer, because that is what node's own write accepts, and Express hands the
+        // view straight to it: a DataView reaches node there and comes out as an empty body
+        if (body instanceof Uint8Array && !Buffer.isBuffer(body)) {
+            body = Buffer.from(body.buffer, body.byteOffset, body.byteLength);
+        }
         const isBuffer = Buffer.isBuffer(body);
         // undefined means nothing was passed, and Express treats that differently from a value
         // that happens to be empty: no content-type and no ETag for send(), both for send(null)
@@ -545,7 +552,12 @@ module.exports = class Response extends Writable {
         // its truthiness instead meant send("") and send(null) came back without one.
         const etagFn = this.app.get("etag fn");
         if (etagFn && !this.headers["etag"] && !this.req.noEtag) {
-            this.headers["etag"] = etagFn(body);
+            const etag = etagFn(body);
+            // an application's own etag function is allowed to decline: returning nothing means no
+            // header, rather than a header saying "undefined"
+            if (etag) {
+                this.headers["etag"] = etag;
+            }
         }
         // after the ETag, never before: freshness compares If-None-Match against the one that is
         // about to be sent, so a generated ETag has to exist by now.

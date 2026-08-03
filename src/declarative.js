@@ -650,10 +650,12 @@ module.exports = function compileDeclarative(cb, app) {
             if (body.some((part) => part.type !== "text")) {
                 return false;
             } else {
-                decRes = decRes.writeHeader(
-                    "ETag",
-                    app.get("etag fn")(body.map((part) => part.value.toString()).join(""))
-                );
+                const etag = app.get("etag fn")(body.map((part) => part.value.toString()).join(""));
+                // an application's own etag function is allowed to decline, and a declarative
+                // response cannot answer with a header whose value is nothing
+                if (etag) {
+                    decRes = decRes.writeHeader("ETag", etag);
+                }
             }
         }
 
