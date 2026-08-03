@@ -113,9 +113,15 @@ async function main() {
 
     const whoami = capture("npm", ["whoami"]);
     if (!whoami.ok) {
-        fail("not logged in to npm. Run npm login first");
+        // a rehearsal is worth running without a login, since everything after this is what it is
+        // meant to exercise
+        if (!dryRun) {
+            fail("not logged in to npm. Run npm login first");
+        }
+        console.log("not logged in to npm, which the real run would refuse");
+    } else {
+        console.log(`npm user: ${whoami.out}`);
     }
-    console.log(`npm user: ${whoami.out}`);
 
     if (capture("npm", ["view", `${pkg.name}@${version}`, "version"]).ok) {
         fail(`${pkg.name}@${version} is on npm already`);
