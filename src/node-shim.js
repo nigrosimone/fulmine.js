@@ -14,19 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// A uWS-shaped request and response backed by node's own, so that an app can serve a request that
-// arrived through http.createServer instead of through uWS.
+// A uWS-shaped request and response backed by node's own, so an app can serve what arrived through
+// http.createServer. Nothing on this path is fast, and it is not meant to be: it is what lets
+// supertest and http.createServer(app) work, which is what an app has to be a function for.
 //
-// Why this exists. Everything here is built on uWS, and uWS is the point, so nothing on this path
-// is fast. What it buys is the code that hands an app to node rather than calling it:
-// http.createServer(app), and supertest, which reads `typeof app === "function"` and wraps whatever
-// it finds in a node server. Without it an app cannot be a function at all, because being one is
-// what makes supertest take that branch and hang.
-//
-// Request and Response ask uWS for eighteen things between them, and this answers all eighteen.
-// Where the two models disagree, node's is the one that gives: cork is a no-op because node has no
-// equivalent that means the same thing, and a status written here is remembered rather than sent,
-// since node writes the head itself when the first byte of body goes out.
+// Request and Response ask uWS for eighteen things and this answers all eighteen. Where the two
+// models disagree node's gives way: cork only runs its callback, and a status is remembered rather
+// than sent, since node writes the head with the first byte of body.
 
 const { IncomingMessage } = require("http");
 

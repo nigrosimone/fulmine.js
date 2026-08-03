@@ -68,16 +68,9 @@ function removeDuplicateSlashes(path) {
 const NAMED_GROUP = /\(\?<([^>]+)>/g;
 
 /**
- * What a compiled pattern knows about itself: which names it captures, in order, and which of those
- * are wildcards and have to be split into an array.
- *
- * Kept here rather than on the regex, and this is not tidiness. V8 has a fast path for regular
- * expressions that requires the object to be exactly a RegExp and nothing more, and a single own
- * property takes it off that path for good. Measured on the anchored prefix pattern of a mounted
- * router: `path.replace(re, "")` costs 37ns with a clean regex and 808ns with three properties
- * hung off it, and `re.test(path)` costs 22ns against 78. Those two run for every mount and every
- * route a request is compared against, so the annotations were charging more than everything they
- * were meant to save.
+ * What a compiled pattern captures: the names in order, and which of them are wildcards to split
+ * into an array. Here and not on the regex itself, because one own property takes a RegExp off V8's
+ * fast path: replace() went from 37ns to 808ns and test() from 22ns to 78ns.
  *
  * @typedef {{wildcardNames: string[], paramNames: string[], isWildcard: boolean[]}} PatternMeta
  */
@@ -105,12 +98,9 @@ function getPatternMeta(pattern) {
  *   - {...}           an optional group
  *   - \x              an escaped literal
  *
- * Refused rather than matched literally: a bare `*` with no name, unnamed parameters,
- * inline regex like :id(\\d+), and the `+`, `?`, `()` operators. They throw, because a
- * route that quietly stops matching is worse than one that fails at startup.
- *
- * Wildcard names and parameter names are recorded in a WeakMap beside the regex, not on it: see
- * PatternMeta for why a single own property on a RegExp is expensive.
+ * A bare `*`, an unnamed parameter, an inline regex like :id(\\d+) and the `+`, `?`, `()` operators
+ * throw: a route that quietly stops matching is worse than one that fails at startup. The names it
+ * captures go in a WeakMap beside the regex, see PatternMeta.
  */
 function patternToRegex(pattern, isPrefix = false) {
     if (pattern instanceof RegExp) {
@@ -258,16 +248,8 @@ function patternToRegex(pattern, isPrefix = false) {
     }
 
     const regex = /** @type {PathRegExp} */ (new RegExp(`^${regexPattern}${isPrefix ? "(?=$|/)" : "$"}`));
-    // The names this regex captures, in the order it captures them, and which of them are
-    // wildcards. Both are read back out of the pattern that was just built rather than collected on
-    // the way, so there is one list and it cannot disagree with the regex.
-    //
-    // They exist so that a match can be read by asking for each name in turn. Walking match.groups
-    // with for-in instead, and asking an array whether each name is a wildcard, cost 349ns against
-    // 176 for the same answer, and this runs for every request that matches a route with a
-    // parameter in it.
-    //
-    // In a WeakMap and not on the regex, for the reason written at PatternMeta.
+    // read back out of the finished pattern, so the list cannot disagree with the regex. Asking for
+    // each name in turn beats walking match.groups with for-in: 176ns against 349
     const paramNames = [...regexPattern.matchAll(NAMED_GROUP)].map((m) => m[1]);
     patternMeta.set(regex, {
         wildcardNames,
@@ -312,17 +294,11 @@ function canBeOptimized(pattern) {
 const WHOLE_SEGMENT_PARAM = /^:\w+$/;
 
 /**
- * Whether µWS's own router can match this path, parameters included, and match exactly the paths
- * Express would.
+ * Whether µWS's own router matches this path exactly as Express would, parameters included.
  *
- * µWS matches `:name` against one non-empty segment, anywhere in the path and any number of times,
- * which is what Express's `:name` does too. It has nothing for a wildcard the way Express 5 spells
- * one, since `{*splat}` is named, hands over an array of segments and also matches the mount point
- * itself, and nothing at all for an optional group.
- *
- * A parameter is only accepted when it is the whole segment. Express is happy to match
- * `/flights/:from-:to` within a segment and µWS is not, so a path like that goes the slow way
- * rather than quietly matching different requests.
+ * µWS matches `:name` against one non-empty segment, as Express does, and has nothing for a v5
+ * wildcard or an optional group. A parameter counts only when it is the whole segment: Express
+ * matches `/flights/:from-:to` inside a segment and µWS does not.
  *
  * @param {string|RegExp} pattern
  * @returns {boolean}
@@ -348,13 +324,10 @@ function canBeOptimizedWithParams(pattern) {
 /**
  * Whether two paths could both match the same request.
  *
- * Only ever asked about paths µWS could match itself, which are literal segments and whole-segment
- * parameters, so the answer is structural: the same number of segments, and no position where both
- * are literals that differ. `/orders/:id` and `/invoices/:id` cannot both match anything, nor can
- * `/orders/:id` and `/orders/:id/items`, while `/users/:id` and `/users/me` both match /users/me.
- *
- * Nothing else is asked, because whether two arbitrary patterns share a path is not a question with
- * a cheap answer, and the caller treats "do not know" as "yes".
+ * Only asked about paths µWS could match itself, so the answer is structural: the same number of
+ * segments, and no position where two different literals meet. `/orders/:id` and `/invoices/:id`
+ * cannot both match, `/users/:id` and `/users/me` can. Anything else is not asked, and the caller
+ * reads "do not know" as yes.
  *
  * @param {string} a
  * @param {string} b
@@ -632,15 +605,9 @@ function decode(path) {
 }
 
 /**
- * A route parameter as the application should see it, which means decoded.
- *
- * Express decodes every captured parameter, so `/users/caff%C3%A8` arrives as "caffè" and
- * `/files/a%2Fb` as "a/b", with the encoded slash staying inside the one segment it was written in.
- * This project handed over whatever was on the wire until 2026-08-02.
- *
- * A percent sequence that will not decode is the client's mistake, so it becomes a 400 rather than
- * an exception nobody catches or a broken string passed quietly through. Express words it the same
- * way, down to the message.
+ * A route parameter as the application should see it, which means decoded: `/users/caff%C3%A8`
+ * arrives as "caffè". A percent sequence that will not decode is the client's mistake and becomes a
+ * 400, with the message Express uses.
  *
  * @param {string} value
  * @returns {string}
@@ -776,11 +743,8 @@ const EMPTY_ENTITY_TAG = '"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"';
  * The ETag of a body: its length in hex, a dash, and the first 27 characters of the base64 sha1.
  * The same string the etag package produces, and tests/unit/utils.test.js holds it to that.
  *
- * crypto.hash and not crypto.createHash. The one-shot form does not allocate a hash object, and
- * this runs for every response the "etag" setting covers, which is every response by default. On a
- * 500 byte body it is twice as fast for a byte-identical answer, 1963 ns against 924; on 100 bytes
- * 1.44x; on 10 KB only 1.08x, because by then the hashing itself is the cost rather than the
- * object around it.
+ * crypto.hash and not crypto.createHash: the one-shot form allocates no hash object, and on a 500
+ * byte body it is twice as fast for the same answer, 924ns against 1963.
  *
  * @param {Buffer|string} entity
  * @param {boolean} weak
@@ -911,13 +875,9 @@ const CHARSET_PARAM = /;\s*charset\s*=\s*[^;]*/i;
 const UTF8_CHARSET = "; charset=utf-8";
 
 /**
- * The content-type a header field should carry once it has been set, which is the value given plus
- * the charset its media type implies. text/* gets one, and so does any type whose mime database
- * entry names one, which is how application/json and application/manifest+json get theirs.
- *
- * Kept, because res.set("content-type", ...) runs this for every response and an application sends
- * two or three distinct content-types. The regular expression, the split and the database lookup
- * were 159 ns to reach the same answer for the same string; the answer costs 7.
+ * The value plus the charset its media type implies: text/* gets one, and so does any type whose
+ * mime database entry names one. Memoized, since an application sends two or three content-types
+ * and working it out again costs 159ns against 7.
  *
  * @param {string} value
  * @returns {string}
@@ -932,20 +892,14 @@ const withDefaultCharset = memoizeByString((value) => {
 
 /**
  * The same content-type, saying utf-8. A string body is written as utf-8 whatever the header
- * claimed, so a header claiming otherwise is wrong on the wire and not merely different, and
- * Express replaces the parameter for that reason.
- *
- * Other parameters are kept where they were written rather than sorted, which is the one place
- * this differs from Express and is not significant to any client.
+ * claimed, so a header claiming otherwise is wrong on the wire, and Express replaces it too.
  *
  * @param {string} value
  * @returns {string}
  */
 function withUtf8Charset(value) {
-    // Almost every string body is sent with a content-type res.set already wrote in exactly this
-    // form, so the answer is the value itself and neither regular expression has to run. Without
-    // this, every send matched once and replaced once, and the pair showed up as 2% of the time
-    // spent serving a request.
+    // almost every string body already carries the header in this exact form, and the pair of
+    // regular expressions below was 2% of the time spent serving a request
     if (value.endsWith(UTF8_CHARSET)) {
         return value;
     }
@@ -957,16 +911,11 @@ function withUtf8Charset(value) {
 const STAT_ERROR_STATUS = { ENAMETOOLONG: 404, ENOTDIR: 404, ENOENT: 404 };
 
 /**
- * The error send and serve-static report a refusal with, for the file-serving code here to report
- * the same one.
+ * The error send and serve-static refuse with, so that the file serving here refuses the same way.
  *
- * They build these with http-errors, so they carry `status`, `statusCode` and `expose`, and the
- * error handler every Express application has, `res.status(err.status || 500)`, reads one of them.
- * Without a status a Forbidden, a Not Found, a Precondition Failed and a Range Not Satisfiable all
- * came out of that handler as 500: the client cannot tell its own bad request from a broken
- * server, and whatever counts 5xx counts it against the server.
- *
- * The message is the status's own name for the same reason, since http-errors takes it from there.
+ * They build these with http-errors, so they carry `status`, `statusCode` and `expose`, which is
+ * what `res.status(err.status || 500)` reads. Without a status a 403, a 404 and a 416 all came out
+ * of that handler as 500. The message is the status's own name, as http-errors writes it.
  *
  * @param {number} status
  * @returns {any}

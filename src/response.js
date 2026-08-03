@@ -330,12 +330,9 @@ module.exports = class Response extends Writable {
     }
 
     /**
-     * Writes every header set so far to uWS, which is the point of no return: after this the
-     * status line and the headers are on the wire and headersSent is true.
-     *
-     * Content-Length is not written as a header. uWS wants the length through tryEnd or
-     * endWithoutBody instead, so it is taken out here and kept on totalSize, and its presence is
-     * also what turns chunked framing off.
+     * Writes every header set so far to uWS, which is the point of no return. Content-Length is
+     * not one of them: uWS wants the length through tryEnd or endWithoutBody, so it is taken out
+     * here and kept on totalSize, where it also turns chunked framing off.
      *
      * @param {boolean} utf8 unused, kept because node's equivalent takes it and the two callers
      *   differ on what they know about the body
@@ -580,11 +577,9 @@ module.exports = class Response extends Writable {
     }
 
     /**
-     * Streams a file, setting Content-Type from the extension and answering conditional and
-     * range requests.
-     *
-     * The path must be absolute unless `options.root` is given. A function in the options
-     * position is taken as the callback.
+     * Streams a file, setting Content-Type from the extension and answering conditional and range
+     * requests. The path must be absolute unless `options.root` is given, and a function in the
+     * options position is the callback.
      *
      * Options: `root`, `maxAge`, `lastModified`, `headers`, `dotfiles` ("allow", "deny" or
      * "ignore"), `acceptRanges`, `cacheControl`, `immutable`, `etag` and `setHeaders`.
@@ -1353,13 +1348,9 @@ module.exports = class Response extends Writable {
     }
 
     /**
-     * Whether the response has been fully written, which is what Writable reports here.
-     *
-     * Writable declares this as a plain property, and the stream machinery that would maintain it
-     * is mostly bypassed here, so it is deliberately replaced by a getter over our own flag.
-     * TypeScript has no way to say "replacing a base property with an accessor is the intent", so
-     * the directive below suppresses it. It has to sit on its own line: inside this block it would
-     * read as a JSDoc tag and suppress nothing.
+     * Whether the response has been fully written. Writable declares this as a plain property and
+     * the machinery that would maintain it is bypassed here, so a getter over our own flag replaces
+     * it. The directive below has to sit outside this block, or it reads as a JSDoc tag.
      */
     // @ts-expect-error TS2611, the accessor replacing the base property is deliberate. Expect
     // rather than ignore, so it fails loudly if it ever stops applying.

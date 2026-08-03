@@ -44,12 +44,8 @@ for (const method of resDecMethods) {
 let routeKey = 0;
 
 /**
- * Hands the request, and the response with it, to the app that is about to handle it.
- *
- * Express does this by re-parenting both objects onto that app's own request and response
- * prototypes, which carry `app` as a property, so a mounted sub-app's settings decide what its
- * responses do: its "etag fn", its "json spaces", its "x-powered-by". Only the request was being
- * swapped here, so a sub-app's settings reached its handlers and never its answers.
+ * Hands the request and the response to the app about to handle them, so that a mounted sub-app's
+ * settings decide what its responses do. Express re-parents both objects for the same reason.
  *
  * @param {any} req
  * @param {any} app
@@ -72,44 +68,20 @@ const supportedUwsMethods = new Set(["GET", "POST", "PUT", "DELETE", "PATCH", "O
 
 const regExParam = /:(\w+)/g;
 
-// Why this file names its internals with an underscore instead of making them truly private.
-//
-// express.Router() does not hand back a Router. It hands back a function with the router's own
-// properties copied onto it and the router's prototype set behind it, so that the router can be
-// used as middleware by calling it. Object.assign copies properties, and a # field is not a
-// property: it is an internal slot keyed by the class, and the function is not an instance of that
-// class however its prototype is set. Convert _routes to #routes and every callable router throws
-// "Cannot read private member" the first time a method touches it.
-//
-// So: # is for a class whose instances are always real instances, which here means Request,
-// Response and Application. Everything on Router, and everything one class reads off another's
-// instance such as req._opPath, stays an underscore because it has to.
+// Internals here are _underscore and not #private: a callable router is a function with the
+// router's properties copied onto it, and a # field cannot be copied, so #routes would throw
+// "Cannot read private member" on the first call.
 
 // one intermediate prototype per class, built the first time a callable of that class is made
 const callablePrototypes = new WeakMap();
 
 /**
- * The prototype a callable router or app is given: the class's own, with the handful of things a
- * function is expected to have put back.
+ * The prototype for a callable router or app: the class prototype, with apply and call put back.
  *
- * Setting a function's prototype to a class prototype takes Function.prototype out of its chain,
- * and with it apply, call and bind. A function without apply is not something node will emit a
- * request to: `http.createServer(app)` failed with "handler.apply is not a function" on Node 24,
- * where Node 26 happened to call the listener another way and let it pass. Anything doing
- * `fn.call(...)` with a router had the same hole, and has had it for as long as express.Router()
- * has handed back a function.
- *
- * An intermediate object rather than copying the methods onto the function, so that the class
- * prototype stays in the chain: express.application is that prototype, and adding a method to it
- * has to reach apps that already exist.
- *
- * Two names are deliberately not taken from Function.prototype.
- *
- * constructor, because it is Function there, and code here asks `this.constructor.name`.
- *
- * bind, because BIND is an HTTP verb and app.bind is its route registrar. Express has the same
- * collision and resolves it the same way, by copying its own bind over the function's, so an
- * application that wanted Function.prototype.bind on a router has never had it in either.
+ * Setting a function's prototype to a class prototype drops Function.prototype from the chain, and
+ * node calls a request listener with handler.apply. An intermediate object, so express.application
+ * stays in the chain. constructor and bind are not restored: the code asks constructor.name, and
+ * BIND is an HTTP verb, so app.bind registers a route as it does in Express.
  *
  * @param {object} classPrototype
  * @returns {object}
@@ -195,24 +167,14 @@ module.exports = class Router extends EventEmitter {
     }
 
     /**
-     * This router as middleware: a function that routes the request and calls next() when nothing
-     * in it answered. What express.Router() hands back, since a router has to be callable to be
-     * usable as middleware.
-     *
-     * Not a Router. It is a function carrying the router's own properties with the router's
-     * prototype behind it, which is why nothing in this file may be a # field.
-     *
-     * The state is shared rather than copied: every property here is the same object the instance
-     * held, so the two are one router seen twice. Nothing keeps the instance afterwards.
-     *
-     * An app is deliberately not made callable this way, for the reason written next to the
-     * factory at the end of application.js.
+     * This router as middleware, which is what express.Router() hands back: a function carrying the
+     * router's own properties with the router's prototype behind it. The properties are the same
+     * objects, not copies, so the function and the instance are one router seen twice.
      *
      * @returns {any} the callable
      */
     _asCallable() {
-        // the prototype it is about to be given is the one carrying handle(), which nothing can
-        // see from here
+        // handle() comes from the prototype set below, which nothing can see from here
         const fn = /** @type {any} */ (
             function (req, res, next) {
                 return fn.handle(req, res, next);
@@ -224,11 +186,8 @@ module.exports = class Router extends EventEmitter {
     }
 
     /**
-     * Routes a request through this router, the way Express's app.handle and router.handle do.
-     *
-     * next is called when no route answered, so a router that matches nothing hands the request
-     * back to whatever is running it rather than ending it. Without one, an unmatched request is
-     * simply left alone.
+     * Routes a request through this router, as Express's app.handle and router.handle do. next() is
+     * called when nothing answered, so an unmatched request goes back to whoever is running this.
      *
      * @param {any} req
      * @param {any} res
@@ -236,10 +195,7 @@ module.exports = class Router extends EventEmitter {
      * @returns {Promise<void>}
      */
     async handle(req, res, next) {
-        // A request from node's own HTTP server rather than from uWS, which is what arrives when
-        // the app was handed to http.createServer or to anything that does that for you. It is
-        // served through a shim rather than refused, since refusing is what made the app unusable
-        // as a request listener at all.
+        // a request from node's own server, which is what http.createServer(app) delivers
         if (isNodeRequest(req)) {
             return serveNodeRequest(this, req, /** @type {any} */ (res), next);
         }
@@ -342,11 +298,9 @@ module.exports = class Router extends EventEmitter {
 
     /**
      * Registers a route, which every method helper and use() funnel into. Several paths at once
-     * become several routes sharing the callbacks, as Express allows.
-     *
-     * Paths are normalised here rather than at match time: a trailing slash is dropped unless
-     * strict routing is on, a bare "*" becomes "/{*splat}", and anything that cannot be compared as
-     * a plain string is compiled into a regular expression and marked complex.
+     * become several routes sharing the callbacks, as Express allows. Paths are normalised here and
+     * not at match time: no trailing slash unless strict routing, "*" becomes "/{*splat}", and
+     * anything not comparable as a string is compiled to a regular expression and marked complex.
      *
      * @param {string} method HTTP method, or USE for a mount
      * @param {any} path one path or several
@@ -399,13 +353,10 @@ module.exports = class Router extends EventEmitter {
         return parent;
     }
 
-    // if route is a simple string, its possible to pre-calculate its path
-    // and then create a native uWS route for it, which is much faster
     /**
-     * The chain a request would walk to reach this route, or false when that cannot be known ahead
-     * of time. Everything registered before the route that could also match it has to be in the
-     * chain, in order: the native router jumps straight to the route, and the middleware in front
-     * of it still has to run.
+     * The chain a request would walk to reach this route, or false when it cannot be known ahead of
+     * time. The native router jumps straight to the route, so everything registered before it that
+     * could also match has to be in the chain, in order.
      *
      * @param {any} route
      * @param {any[]} routes every route of this router, in registration order
@@ -488,20 +439,14 @@ module.exports = class Router extends EventEmitter {
                             }
                         ]);
                     }
-                    // canBeOptimizedWithParams and not canBeOptimized: a path whose parameters are
-                    // whole segments is one µWS matches itself, and "/users/:id" is the commonest
-                    // route shape there is. The chain below is what keeps the order right, since
-                    // µWS picks by specificity where Express picks by registration order: whichever
-                    // route µWS lands on, the chain computed for it runs everything that could have
-                    // matched first, in order.
+                    // µWS picks by specificity and Express by registration order, so the chain
+                    // computed for whichever route µWS lands on runs everything that could have
+                    // matched before it
                 } else if (
                     (canBeOptimized(route.path) ||
+                        // parameters that are whole segments are matched by µWS the same way
                         (canBeOptimizedWithParams(route.path) &&
-                            // inside a mounted router, only when nothing after it could match.
-                            // app.param() and router.param() used to be an exception here as well,
-                            // since the chain is walked by the app and the app would have consulted
-                            // its own callbacks; every route carries its router now, so the right
-                            // ones run and a router with param callbacks is optimized like any other
+                            // inside a mounted router, only when nothing after it could match
                             (!pathPrefix || !router._isFollowedByAnOverlap(route, router._routes)))) &&
                     supportedUwsMethods.has(route.method)
                 ) {
@@ -568,30 +513,12 @@ module.exports = class Router extends EventEmitter {
     }
 
     /**
-     * Registers one route on the native uWS router, along with the chain it has to walk first.
+     * Whether a route registered later in the same router could match a path this one matches.
      *
-     * A GET is registered for HEAD as well, and unless strict routing is on the path is registered
-     * with a trailing slash too. A handler simple enough to be read at registration time is
-     * compiled into a declarative response, but only for its own method: HEAD keeps the real
-     * handler, since a response written once cannot leave its body out.
-     *
-     * @param {any} route
-     * @param {any[]} optimizedPath the chain from _optimizeRoute
-     */
-    /**
-     * Whether something registered after this route, in the same router, could also match a path
-     * this route matches.
-     *
-     * It decides whether a route with a parameter inside a mounted router may go to µWS. When a
-     * native chain runs out and hands back to ordinary routing, it resumes after the mount in the
-     * parent rather than inside the router, so a sibling that would have matched next is lost. A
-     * parameter matches many paths, so it has many possible siblings, where a literal has almost
-     * none.
-     *
-     * Conservative where it has to be: a mount, or a pattern of a shape this cannot reason about,
-     * counts as an overlap without further questions. Two paths µWS could match itself are compared
-     * segment by segment instead, which is what makes a router of /orders/:id, /orders/:id/items and
-     * /invoices/:id routes native rather than only its last route.
+     * A route inside a mounted router may only go to µWS when the answer is no: a native chain that
+     * runs out resumes after the mount, not inside the router, so a later sibling would be lost. A
+     * mount or a pattern of an unknown shape counts as an overlap; two paths µWS could match itself
+     * are compared segment by segment.
      *
      * @param {any} route
      * @param {any[]} routes every route of the router this one belongs to
@@ -646,11 +573,9 @@ module.exports = class Router extends EventEmitter {
                     request.optimizedParams[route.optimizedParams[i]] = req.getParameter(i);
                 }
             }
-            // for a route optimized through a mounted router, falling back to normal routing must resume
-            // after the mount in the parent (like normal dispatch does), not after the router's leaf route.
-            // the leaf can have a lower routeKey than the parent's own middlewares (e.g. when the router is
-            // required from another module), which would otherwise let a pre-mount error handler catch an
-            // error thrown inside the router.
+            // falling back resumes after the mount, not after the router's leaf: the leaf can have a
+            // lower routeKey than the parent's middlewares, and an error handler declared before the
+            // mount must not catch what the router threw
             const mount = optimizedPath.find((r) => r.keepMount);
             const skipUntil = mount ?? (optimizedPath.length ? optimizedPath[optimizedPath.length - 1] : route);
             const matchedRoute = await this._routeRequest(request, response, 0, optimizedPath, true, skipUntil);
@@ -797,10 +722,8 @@ module.exports = class Router extends EventEmitter {
      */
     _preprocessRequest(req, res, route) {
         req.route = route;
-        // and req.optimizedParams, not the route flag alone: the flag says this route was registered
-        // natively, while the values are only there when this request actually came in through that
-        // registration. A request that reached the same route the slow way has none, and would
-        // otherwise be handed an empty params object.
+        // both, not the route flag alone: the flag says the route was registered natively, the
+        // values say this request came in that way
         if (route.optimizedParams && req.optimizedParams) {
             req.params = Object.create(null);
             try {
@@ -845,16 +768,12 @@ module.exports = class Router extends EventEmitter {
             }
         }
 
-        // the route's own router's callbacks, not those of whoever is running the chain: an
-        // optimized chain is walked by the app even when it ends in a mounted router's route, and
-        // that router's param callbacks are the ones Express would run there
+        // the route's own router's callbacks: an optimized chain is walked by the app even when it
+        // ends in a mounted router's route
         const paramCallbacks = route.paramCallbacks;
         if (paramCallbacks.size > 0) {
-            // known issue, not introduced here: an async executor swallows anything it throws,
-            // because the rejection has nowhere to go once the promise is already constructed.
-            // app.param() callbacks that throw synchronously are therefore lost. Fixing it means
-            // restructuring this into an async function that returns a promise, which changes
-            // when the param callbacks run relative to the route, so it needs its own change.
+            // known issue: an async executor swallows what it throws, so a param callback that
+            // throws synchronously is lost. Fixing it moves when the callbacks run
             // eslint-disable-next-line no-async-promise-executor
             return new Promise(async (resolve) => {
                 for (const param in req.params) {
@@ -930,13 +849,10 @@ module.exports = class Router extends EventEmitter {
         });
     }
 
-    // walks this router's chain for a single request. moving on to the next route is a plain call that
-    // carries the same resolve, so a chain of N middlewares costs one promise instead of N nested ones
-    // that each have to be adopted back up the chain
     /**
      * Finds the next route that matches and runs it, carrying the same resolve and reject the whole
-     * way rather than nesting a promise per hop. next() calls this again for the route after, so a
-     * chain of N middlewares costs one promise instead of N that each have to be adopted back up.
+     * way. next() calls this again for the route after, so a chain of N middlewares costs one
+     * promise instead of N nested ones.
      *
      * @param {any} req
      * @param {any} res
@@ -964,14 +880,11 @@ module.exports = class Router extends EventEmitter {
                 // on normal unoptimized routes, if theres no match then there is no route
                 return resolve(false);
             }
-            // on optimized routes, there can be more routes, so we have to use unoptimized routing and skip until we find route we stopped at
-            useApp(req, this); // restore app in case the optimized path swapped it to a mounted sub-app
-            // and the mount itself, if the chain went into a mounted router and never came out. Its
-            // mount entries are marked keepMount so that nothing pops them while the chain runs,
-            // which leaves req.url, req.path and req.baseUrl relative to the mount. What resumes
-            // here is the app's own routing, where the path is the whole path again: a request for
-            // /alone/skip that fell out of the router mounted at /alone must not be offered to the
-            // app's routes as /skip.
+            // the chain ran out, so ordinary routing takes over from the top and skips what has
+            // already run
+            useApp(req, this);
+            // a chain that went into a mount never left it, since keepMount stops the pop, so the
+            // path is still relative to it. /alone/skip must not be offered to the app as /skip
             if (req._stack.length > 0) {
                 req._stack.length = 0;
                 req._stackMounted = 0;
@@ -982,19 +895,17 @@ module.exports = class Router extends EventEmitter {
                         ? req._originalPath.slice(0, -1)
                         : req._originalPath;
             }
-            // an error that propagated out of a mounted router's optimized chain is attributed to the mount
-            // (like normal dispatch does when a sub-router returns an error), so parent error handlers declared
-            // before the mount don't catch it - the router's leaf can have a lower routeKey than those handlers
+            // an error out of a mount is attributed to the mount, so error handlers declared before
+            // it do not catch it, as in ordinary dispatch
             if (req._error && skipUntil && skipUntil.keepMount && skipUntil.routeKey > req._errorKey) {
                 req._errorKey = skipUntil.routeKey;
             }
             return this._dispatchRoute(req, res, 0, this._routes, false, skipUntil, resolve, reject);
         }
 
-        // _preprocessRequest only returns a promise when there are param callbacks, so the common case
-        // stays fully synchronous. going through a microtask also resets max call stack size, which a long
-        // chain of routes would otherwise blow, so force one every 300 routes
-        // routeCount starts at 1 so the first route of a request (fresh stack) takes the sync path
+        // _preprocessRequest returns a promise only when there are param callbacks, so the common
+        // case stays synchronous. A microtask every 300 routes resets the stack, which a long chain
+        // would otherwise blow
         const continueRoute = this._preprocessRequest(req, res, route);
         if (route.paramCallbacks.size !== 0 || req.routeCount % 300 === 0) {
             Promise.resolve(continueRoute).then(
@@ -1207,12 +1118,9 @@ module.exports = class Router extends EventEmitter {
     }
 
     /**
-     * Mounts middleware, or a whole router, at a path.
-     *
-     * The path is optional: `use(fn)` and `use([fn, fn])` mount at the root. A mounted route
-     * matches the path and everything under it, which is what separates it from `all()`.
-     *
-     * Mounting a Router sets its mountpath and parent and emits 'mount' on it.
+     * Mounts middleware, or a whole router, at a path. The path is optional, and a mount matches
+     * everything under it, which is what separates it from all(). Mounting a Router sets its
+     * mountpath and parent and emits 'mount' on it.
      *
      * @param {string|string[]|Function|Router|Array<Function|Router>} [path] mount path, or the
      *   first handler
@@ -1285,13 +1193,9 @@ module.exports = class Router extends EventEmitter {
     }
 
     /**
-     * How a request that nothing answered ends: with the error it is carrying, with the automatic
-     * OPTIONS reply, or with a 404.
-     *
-     * Three ways in reach this and they have to agree: the native chain, the catch-all handler the
-     * app registers, and the shim that serves a request from node's own server. The third had no
-     * OPTIONS reply at all until this was one method, which is what a request through supertest
-     * gets, so `app.options` answered 404 there and nowhere else.
+     * How a request that nothing answered ends: with the error it carries, with the automatic
+     * OPTIONS reply, or with a 404. The native chain, the app's catch-all handler and the node shim
+     * all end here, so that they end a request the same way.
      *
      * @param {any} request
      * @param {any} response
@@ -1318,16 +1222,9 @@ module.exports = class Router extends EventEmitter {
     }
 };
 
-// The verb methods, on the prototype rather than built per instance in the constructor.
-//
-// They have to be on the prototype for a callable router to be one router. As own arrows they
-// closed over the instance they were built on, so the copy _asCallable() makes answered with that
-// instance: express.Router().post("/a", h) handed back the object the callable was copied from,
-// and a chain carried on against something nobody else was holding. Sharing the same _routes array
-// hid it, but only until something replaced an array instead of pushing to one.
-//
-// It costs nothing to prefer, either. The list is long and there was one closure per name for
-// every router and every app in the process; now there is one per name for the process.
+// The verb methods go on the prototype, not on each instance. As own arrows they closed over the
+// instance they were built on, so express.Router().post(...) answered with the object the callable
+// was copied from. One closure per name for the process instead of one per router, too.
 for (const method of methods) {
     module.exports.prototype[method] = function (path, ...callbacks) {
         return this.createRoute(method, path, this, ...callbacks);

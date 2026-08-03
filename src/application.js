@@ -166,14 +166,10 @@ class Application extends Router {
     }
 
     /**
-     * Reads or writes an application setting.
-     *
-     * Called with one argument it is the getter, the same as `app.get(key)`. The check is on
-     * `arguments.length`, so an explicit `set(key, undefined)` still writes.
-     *
-     * Some keys have a side effect: `trust proxy`, `query parser` and `etag` compile the value
-     * into a function kept alongside it, `views` is resolved to an absolute path, and setting
-     * `env` to "production" turns the view cache on.
+     * Reads or writes an application setting. One argument is the getter, and the check is on
+     * `arguments.length`, so `set(key, undefined)` still writes. Some keys have a side effect:
+     * `trust proxy`, `query parser` and `etag` compile the value into a function kept beside it,
+     * `views` becomes an absolute path, and `env` set to "production" turns the view cache on.
      *
      * @param {string} key setting name
      * @param {*} [value] value to store; omit to read instead
@@ -291,14 +287,11 @@ class Application extends Router {
     /**
      * Binds the server and starts accepting requests.
      *
-     * Unlike Express this returns the app itself rather than an `http.Server`, because there is
-     * no node HTTP server underneath. The app carries the parts of that interface that make
-     * sense here: `address()`, `close()`, `listening`, and the 'listening' and 'close' events.
-     * Anything needing a real `http.Server`, socket.io being the usual case, should reach for
-     * `app.uwsApp` instead.
-     *
-     * The callback runs on the next tick, as Express runs it, and receives an error if the bind
-     * failed. Passing a path instead of a port listens on a unix socket.
+     * Returns the app and not an `http.Server`, since there is no node server underneath. The app
+     * carries `address()`, `close()`, `listening` and the 'listening' and 'close' events; anything
+     * needing a real server, socket.io being the usual case, wants `app.uwsApp`. The callback runs
+     * on the next tick with the bind error, if there was one. A path instead of a port is a unix
+     * socket.
      *
      * @param {number|string} [port] port, or a unix socket path; 0 picks a free port
      * @param {string} [host] interface to bind; every interface when omitted

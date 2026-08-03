@@ -104,15 +104,9 @@ function strictSyntaxMessage(text, char) {
 }
 
 /**
- * The error a body parser hands to next(), shaped the way body-parser shapes it.
- *
- * This matters more than it looks. The error handler almost every Express application has is
- * `res.status(err.status || 500)`, so an error without a status answers 500 to a request that was
- * simply too large or badly formed. The client cannot tell a bad request from a broken server, and
- * whatever counts 5xx counts it against the server.
- *
- * `type` is part of the contract too: body-parser sets it to entity.too.large, entity.parse.failed
- * and so on, and applications branch on it.
+ * The error a body parser hands to next(), shaped as body-parser shapes it: with a status, since
+ * `res.status(err.status || 500)` would otherwise answer 500 to a request that was merely too
+ * large, and with `type`, which applications branch on.
  *
  * @param {string} message
  * @param {number} status

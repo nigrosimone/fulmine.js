@@ -32,19 +32,12 @@ try {
     // older uWS builds do not expose _cfg; there is nothing to fall back to
 }
 
-// The factory doubles as a namespace, the way Express does it: Router, static and the body
-// parsers all hang off the same function that creates an app.
+// The factory doubles as a namespace, as in Express: Router, static and the body parsers hang off
+// the function that creates an app.
 //
-// Assigned onto module.exports directly, and not through a local alias, because that is what
-// decides whether `import { Router } from "fulmine.js"` works at all. Node works out which named
-// exports a CommonJS module can offer an ESM importer by reading this file as text with
-// cjs-module-lexer, which recognises `module.exports.name =` and cannot see through an alias.
-// Nothing is executed to find out, so the runtime value is beside the point.
-//
-// Which is also why the block of `exports.x = ...` this file used to end with was not the dead
-// code it looked like. It was dead for require(), since assigning module.exports detaches
-// `exports` from it, and it was doing the entire job for import. Removing it took the named
-// imports with it, and nothing failed: the tests are all CommonJS.
+// Written as `module.exports.name = ...` and never through an alias: cjs-module-lexer reads this
+// file as text to decide which named exports an ESM importer gets, and it cannot see through one.
+// Nothing here is executed to find that out.
 /**
  * @type {typeof Application & {
  *   Router: Function,

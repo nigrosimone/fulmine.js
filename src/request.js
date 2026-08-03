@@ -140,18 +140,16 @@ module.exports = class Request extends Readable {
     noEtag;
 
     /**
-     * Built for every request, before any route has been looked at, which is why so little happens
-     * here: the headers are copied out because uWS only lends them for the length of this call, and
-     * everything derived from them is left until something asks. The body is only subscribed to for
-     * the methods that carry one.
+     * Built for every request, which is why so little happens here. The headers are copied out
+     * because uWS only lends them for this call, everything derived from them waits until something
+     * asks, and the body is subscribed to only for the methods that carry one.
      *
      * @param {any} req the uWS request, readable only during this call
      * @param {any} res the uWS response
      * @param {any} app the application or router this request arrived at
      */
     constructor(req, res, app) {
-        // the same object every time. Readable reads these and does not keep or write to them, and
-        // a fresh literal here was one more allocation for every request that ever arrives.
+        // the same object every time: Readable reads these options and never writes to them
         super(READABLE_OPTIONS);
         this._res = res;
         this._req = req;
@@ -411,23 +409,10 @@ module.exports = class Request extends Readable {
     }
 
     /**
-     * The parsed query string, on a null-prototype object so a query cannot reach
-     * Object.prototype keys. Parsed once and cached.
+     * The query string parsed by whichever parser the "query parser" setting names, cached for the
+     * life of the request. A null-prototype object, so a key like "__proto__" cannot reach
+     * Object.prototype. No setter, so assigning to req.query throws as it does on Express.
      *
-     * There is deliberately no setter, so assigning to req.query throws in strict mode, exactly
-     * as it does on Express.
-     *
-     * @returns {object}
-     */
-    // a getter with no setter at all, so assigning to req.query throws in strict mode. Middleware
-    // that rewrites the query, express-mongo-sanitize being the common one, fails here exactly as
-    // it fails on Express, which is the point of not adding a setter.
-    // The parser's result is returned as-is: spreading it would drop the null prototype that keeps
-    // a query string away from Object.prototype keys.
-    /**
-     * The query string parsed by whichever parser the "query parser" setting names, cached for
-     * the life of the request. A null-prototype object, so a key like "__proto__" from the query
-     * string cannot reach Object.prototype.
      * @returns {Record<string, any>}
      */
     get query() {
@@ -435,13 +420,9 @@ module.exports = class Request extends Readable {
             return this.#cachedQuery;
         }
         const qp = this.app.get("query parser fn");
-        // Normalised onto a plain null-prototype object: fast-querystring returns instances of an
-        // internal class called Empty, which node inspects as "Empty <[Object: null prototype] {}>"
-        // where Express shows "[Object: null prototype]". Object.setPrototypeOf on the result would
-        // save the copy but prints "[Empty: null prototype]", so the copy stays.
-        //
-        // Object.create(null) as the target rather than the { __proto__: null } literal: the same
-        // object for half the cost, 318ns against 640 for a two parameter query.
+        // copied onto a plain null-prototype object, or node inspects fast-querystring's result as
+        // "Empty <[Object: null prototype] {}>" where Express shows "[Object: null prototype]".
+        // Object.create(null) and not { __proto__: null }: 318ns against 640
         const parsed = qp ? Object.assign(Object.create(null), qp(this._rawQuery)) : Object.create(null);
         this.#cachedQuery = parsed;
         return parsed;
@@ -491,12 +472,10 @@ module.exports = class Request extends Readable {
     }
 
     /**
-     * The peer address as text, read from uWS and cached.
-     *
-     * Reading it is expensive and the address is gone once the response has finished, so it is
-     * read up front only for the first hundred requests, or for every request once an application
-     * has been seen asking for it too late. An app that does ask too late gets 127.0.0.1 once,
-     * then the real address from the next request on.
+     * The peer address as text, read from uWS and cached. Reading it is expensive and it is gone
+     * once the response has finished, so it is read up front for the first hundred requests, and
+     * for every request once an application has been seen asking too late. That app gets 127.0.0.1
+     * once and the real address from the next request on.
      *
      * @returns {string|undefined} undefined over a unix socket, which has no address
      */
