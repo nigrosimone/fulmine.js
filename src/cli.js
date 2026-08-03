@@ -15,7 +15,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// npx fulmine.js migrate [dir]
+// npx fulmine migrate [dir]
 //
 // Rewrites the module specifier and nothing else. An Express 5 app is a Fulmine app already, so
 // there is no code to translate: what there is instead is a short list of things that behave
@@ -32,7 +32,7 @@ const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", "coverage", 
 const EXTENSIONS = new Set([".js", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".tsx"]);
 const TYPESCRIPT_EXTENSIONS = new Set([".ts", ".mts", ".cts", ".tsx"]);
 
-// Printed after a migration, and by `npx fulmine.js differences` on its own. Each one is something
+// Printed after a migration, and by `npx fulmine differences` on its own. Each one is something
 // a working Express 5 app can depend on and that Fulmine answers differently.
 const DIFFERENCES = [
     [
