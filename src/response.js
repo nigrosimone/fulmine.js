@@ -381,18 +381,25 @@ module.exports = class Response extends Writable {
 
     /**
      * Sets the status code.
-     * @param {number|string} code an integer from 100 to 999
+     * @param {number} code an integer from 100 to 999
      * @returns {this} the response, for chaining
-     * @throws {RangeError} if the code is outside that range or is not an integer
+     * @throws {TypeError} if the code is not an integer, "200" included
+     * @throws {RangeError} if it is an integer outside the range
      */
     status(code) {
-        // Express 5 rejects anything that is not a plausible status code, instead of writing
-        // NaN or a nonsense number into the response line
-        const statusCode = parseInt(String(code), 10);
-        if (!Number.isInteger(statusCode) || statusCode < 100 || statusCode > 999) {
-            throw new RangeError(`Invalid status code: ${code}`);
+        // Express 5 rejects anything that is not a plausible status code, instead of writing NaN or
+        // a nonsense number into the response line, and it tells the two ways of being wrong apart:
+        // the wrong type is a TypeError and the wrong number is a RangeError. Both messages are
+        // Express's own, since they are what reaches whoever catches them
+        if (!Number.isInteger(code)) {
+            throw new TypeError(`Invalid status code: ${JSON.stringify(code)}. Status code must be an integer.`);
         }
-        this.statusCode = statusCode;
+        if (code < 100 || code > 999) {
+            throw new RangeError(
+                `Invalid status code: ${JSON.stringify(code)}. Status code must be greater than 99 and less than 1000.`
+            );
+        }
+        this.statusCode = code;
         return this;
     }
 
@@ -925,16 +932,24 @@ module.exports = class Response extends Writable {
     set(field, value) {
         if (typeof field === "object") {
             for (const header in field) {
-                this.setHeader(header, field[header]);
+                // through set() and not straight to setHeader, so that a whole object of headers
+                // gets the same coercion and the same Content-Type handling as one set at a time
+                this.set(header, field[header]);
             }
         } else {
             field = field.toLowerCase();
-            if (field === "content-type" && typeof value === "string") {
+            // a header is text on the wire whatever it was here, and Express coerces at this point,
+            // so res.get answers what was sent rather than the number or object it was given
+            let out = Array.isArray(value) ? value.map(String) : String(value);
+            if (field === "content-type") {
+                if (Array.isArray(out)) {
+                    throw new TypeError("Content-Type cannot be set to an Array");
+                }
                 // every type the mime database gives a charset, not a list of three. The list was
                 // missing application/manifest+json among others, which Express does charset.
-                value = withDefaultCharset(value);
+                out = withDefaultCharset(out);
             }
-            this.setHeader(field, value);
+            this.setHeader(field, out);
         }
         return this;
     }
@@ -1048,6 +1063,11 @@ module.exports = class Response extends Writable {
      */
     cookie(name, value, options) {
         const opt = { ...(options ?? {}) }; // create a new ref because we change original object (https://github.com/dimdenGD/ultimate-express/issues/68)
+        if (opt.signed && !this.req.secret) {
+            // the message has to read like this: it is the one Express throws, and it names the
+            // thing that is actually missing rather than the library that noticed
+            throw new Error('cookieParser("secret") required for signed cookies');
+        }
         let val = typeof value === "object" ? "j:" + JSON.stringify(value) : String(value);
         if (opt.maxAge != null) {
             const maxAge = opt.maxAge - 0;
@@ -1055,6 +1075,10 @@ module.exports = class Response extends Writable {
                 opt.expires = new Date(Date.now() + maxAge);
                 opt.maxAge = Math.floor(maxAge / 1000);
             }
+        } else {
+            // Express carries a null maxAge through to a cookie package that ignores it. Ours
+            // refuses it, so it is dropped here instead: no Max-Age is what both end up sending
+            delete opt.maxAge;
         }
         if (opt.signed) {
             val = "s:" + sign(val, this.req.secret);
@@ -1228,7 +1252,7 @@ module.exports = class Response extends Writable {
             status = 302;
         }
         this.location(/** @type {string} */ (url));
-        this.status(status);
+        this.status(/** @type {number} */ (status));
 
         // a string, because location() has just set it to one. get() has to allow the array form for
         // the headers that can repeat, and escapeHtml quite reasonably only takes a string
