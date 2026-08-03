@@ -1,8 +1,7 @@
 # Benchmark suite
 
 Compares `express` against `fulmine` scenario by scenario. The load generator is
-[autocannon](https://github.com/mcollina/autocannon), which is an ordinary dependency, so the suite
-runs anywhere Node does. It used to be `wrk`, which meant Linux only and an apt package in CI.
+[autocannon](https://github.com/mcollina/autocannon).
 
 ```bash
 npm run benchmark:compare -- --duration 20 --output benchmark_summary.md
