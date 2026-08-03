@@ -202,7 +202,8 @@ class Application extends Router {
                 this.settings["view cache"] = undefined;
             }
         } else if (key === "views") {
-            this.settings[key] = path.resolve(value);
+            // a list of directories is searched in order by View.lookup, each resolved here once
+            this.settings[key] = Array.isArray(value) ? value.map((dir) => path.resolve(dir)) : path.resolve(value);
             return this;
         } else if (key === "etag") {
             if (typeof value === "function") {
@@ -451,19 +452,20 @@ class Application extends Router {
         // render exists to hand the result somewhere, so there is always a callback by this point:
         // either the third argument or the second one, shuffled above
         const done = /** @type {(err: Error|null, html?: string) => void} */ (callback);
-        if (!options) {
-            options = new NullObject();
-        } else {
-            options = Object.assign({}, options);
-        }
+        // express's order, least specific first: app.locals, then res.locals riding in as _locals,
+        // and what was passed to this call wins over both
+        const opts = options || new NullObject();
+        options = new NullObject();
         for (const key in this.locals) {
             options[key] = this.locals[key];
         }
-
-        if (options._locals) {
-            for (const key in options._locals) {
-                options[key] = options._locals[key];
+        if (opts._locals) {
+            for (const key in opts._locals) {
+                options[key] = opts._locals[key];
             }
+        }
+        for (const key in opts) {
+            options[key] = opts[key];
         }
 
         if (options.cache == null) {
