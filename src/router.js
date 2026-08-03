@@ -43,6 +43,11 @@ for (const method of resDecMethods) {
 
 let routeKey = 0;
 
+// what a route's callback is, so that a hop reads a number instead of asking instanceof and length
+const CALLBACK_PLAIN = 0;
+const CALLBACK_ERROR = 1;
+const CALLBACK_ROUTER = 2;
+
 /**
  * Hands the request and the response to the app about to handle them, so that a mounted sub-app's
  * settings decide what its responses do. Express re-parents both objects for the same reason.
@@ -329,6 +334,15 @@ module.exports = class Router extends EventEmitter {
                 pattern:
                     method === "USE" || needsConversionToRegex(path) ? patternToRegex(path, method === "USE") : path,
                 callbacks,
+                // instanceof walks a prototype chain and length is a property load, and both used
+                // to run for every callback of every hop
+                callbackKinds: callbacks.map((callback) =>
+                    callback instanceof Router
+                        ? CALLBACK_ROUTER
+                        : callback.length === 4
+                          ? CALLBACK_ERROR
+                          : CALLBACK_PLAIN
+                ),
                 routeKey: routeKey++,
                 // the router this was registered on. Ordinary dispatch is done by that router, so
                 // it could ask itself, but an optimized chain is walked by the app whatever it
@@ -433,6 +447,7 @@ module.exports = class Router extends EventEmitter {
                             {
                                 ...route,
                                 callbacks: [],
+                                callbackKinds: [],
                                 keepMount: true,
                                 // mounted sub-apps become req.app during their dispatch, like express
                                 mountApp:
@@ -1045,6 +1060,7 @@ module.exports = class Router extends EventEmitter {
                     req._errorKey = route.routeKey;
                 }
             }
+            const kind = route.callbackKinds[callbackindex];
             const callback = route.callbacks[callbackindex++];
             if (!callback) {
                 return next("route");
@@ -1055,7 +1071,7 @@ module.exports = class Router extends EventEmitter {
             if (!skipCheck && skipUntil && skipUntil.routeKey >= route.routeKey) {
                 return next();
             }
-            if (callback instanceof Router) {
+            if (kind === CALLBACK_ROUTER) {
                 if (callback.constructor.name === "Application") {
                     useApp(req, callback);
                 }
@@ -1082,8 +1098,8 @@ module.exports = class Router extends EventEmitter {
                 });
             } else {
                 // handle errors and error handlers
-                if (req._error || callback.length === 4) {
-                    if (req._error && callback.length === 4 && route.routeKey >= req._errorKey) {
+                if (req._error || kind === CALLBACK_ERROR) {
+                    if (req._error && kind === CALLBACK_ERROR && route.routeKey >= req._errorKey) {
                         return this._handleError(req._error, callback, req, res);
                     } else {
                         return next();
