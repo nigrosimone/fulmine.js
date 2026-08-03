@@ -1,5 +1,32 @@
 # Changelog
 
+## [5.0.0](https://github.com/nigrosimone/fulmine.js/compare/v5.0.0-rc.1...v5.0.0) (2026-08-03)
+
+### Features
+
+* assigning req.url in middleware re-routes the rest of the stack ([b8f1f16](https://github.com/nigrosimone/fulmine.js/commit/b8f1f162a84846136c8233ace7b0d040a27aa24c))
+
+### Bug Fixes
+
+* a views list is searched in order, and render() locals win ([2faa25e](https://github.com/nigrosimone/fulmine.js/commit/2faa25e674021e40eba2dd5d3f19491467c4ebc7))
+* app.param callbacks run once per value, as express does ([2aa369f](https://github.com/nigrosimone/fulmine.js/commit/2aa369fea29ec59d7b74dca30e1a067987e0c37f))
+* app.use refuses a handler that is not a function ([291fe9b](https://github.com/nigrosimone/fulmine.js/commit/291fe9b28055fa2cef4e456a3dc15b2b8c4535a8))
+* close() drains in-flight requests, and the app edges the review found ([8b7e2f8](https://github.com/nigrosimone/fulmine.js/commit/8b7e2f8d7d28b6447d641fbef5d8dbd3f9bb7abb))
+* express.static checks its arguments and answers the methods it serves ([f942633](https://github.com/nigrosimone/fulmine.js/commit/f942633a4ed0b0867f2b8c7bfd5aff4561fc09bb))
+* res.format with no match raises the 406 for the error handler ([adf715a](https://github.com/nigrosimone/fulmine.js/commit/adf715a72dfa44cd5dcefe9a094776d80333edd7))
+* sendFile survives read errors and aborts, and five response edges ([b52d9b4](https://github.com/nigrosimone/fulmine.js/commit/b52d9b442798c9929310f0b2f5c43c14dc59e8e3))
+* the body parsers enforce what they were told to enforce ([24357b2](https://github.com/nigrosimone/fulmine.js/commit/24357b29414d0ed7ad4b1ba34004733b9a7483da))
+* the body parsers follow body-parser on what the review found ([2a242d8](https://github.com/nigrosimone/fulmine.js/commit/2a242d8e400066fdcf8c427006306eaf8370b744))
+* the default error handler answers with the status the error carries ([520560d](https://github.com/nigrosimone/fulmine.js/commit/520560d5ec0c739cc0f2290ffcecc4696454846a))
+* the dispatch survives its own throws, and five routing bugs ([da3bb65](https://github.com/nigrosimone/fulmine.js/commit/da3bb65c6e4887d60ef395dcc2a0c83f348561a3))
+* the node shim holds the body chunk for whoever reads next ([98d5bbc](https://github.com/nigrosimone/fulmine.js/commit/98d5bbcee833a404e73ddeb4e29eda7406b4bd16))
+
+### Performance Improvements
+
+* a route knows what its callbacks are before the first request ([1e47428](https://github.com/nigrosimone/fulmine.js/commit/1e47428cd973a32a232c93c52c564853af1bffcb))
+* next() is made once per router entry, not once per hop ([6970014](https://github.com/nigrosimone/fulmine.js/commit/69700148260d00edf0e3a7d647b6eb32e2a96a99))
+* the rare branches move out of the hot dispatch functions ([228c1b6](https://github.com/nigrosimone/fulmine.js/commit/228c1b6ea2444f330da65765fcc662acbdf5f760))
+
 ## 5.0.0-rc.1 (2026-08-03)
 
 ### Features
