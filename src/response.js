@@ -284,8 +284,8 @@ module.exports = class Response extends Writable {
             }
 
             if (!Buffer.isBuffer(chunk) && !(chunk instanceof ArrayBuffer)) {
+                // the Buffer view is enough, uWS reads its offset and length itself
                 chunk = Buffer.from(chunk);
-                chunk = chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength);
             }
 
             if (this.chunkedTransfer) {
@@ -522,9 +522,8 @@ module.exports = class Response extends Writable {
         } else if (!data && contentLength) {
             this._res.endWithoutBody(contentLength.toString());
         } else {
-            if (data instanceof Buffer) {
-                data = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
-            }
+            // a Buffer goes to uWS as the view it is: copying it into a fresh ArrayBuffer was
+            // an allocation per body, and uWS reads the view's own offset and length
             if (this.req.method === "HEAD") {
                 const length = Buffer.byteLength(data ?? "");
                 this._res.endWithoutBody(length.toString());

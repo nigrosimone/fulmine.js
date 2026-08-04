@@ -172,7 +172,9 @@ module.exports = class Request extends Readable {
         ) {
             r._connectionClose = true;
         } else if (
-            (headerKey.length === 14 && headerKey === "content-length") ||
+            // content-length: 0 declares that there is nothing, which is the same as declaring
+            // nothing: the stream ends empty either way, without the onData subscription
+            (headerKey.length === 14 && headerKey === "content-length" && value !== "0") ||
             (headerKey.length === 17 && headerKey === "transfer-encoding")
         ) {
             // noticed here so the body decision in the constructor does not build the headers object
@@ -262,21 +264,12 @@ module.exports = class Request extends Readable {
             this.rawIp = this._res.getRemoteAddress();
         }
 
-        const additionalMethods = this.app.get("body methods");
-        // skip reading body for non-POST requests
-        // this makes it +10k req/sec faster
-        if (
-            this.method === "POST" ||
-            this.method === "PUT" ||
-            this.method === "PATCH" ||
-            this.method === "QUERY" ||
-            (additionalMethods && additionalMethods.includes(this.method)) ||
-            // any request that declares a body carries one, whatever the verb: a GET with
-            // content-length left unread would end this stream empty and poison the keep-alive
-            // connection with its unconsumed bytes. uWS itself discards GET bodies, so this is
-            // the node shim's path
-            /** @type {any} */ (this)._declaresBody
-        ) {
+        // A body exists on the wire only when the request declares one, content-length or
+        // transfer-encoding, whatever the verb, and that evidence was spotted during the header
+        // copy. The verb list and the "body methods" settings read this branch used to pay per
+        // request said nothing the headers had not already said; the setting still gates the
+        // body parsers, which is where it matters
+        if (/** @type {any} */ (this)._declaresBody) {
             this._subscribeBody();
         } else {
             this.receivedData = true;
