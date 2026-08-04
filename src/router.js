@@ -78,6 +78,9 @@ class Walk {
         this.skipUntil = skipUntil;
         this.resolve = resolve;
         this.reject = reject;
+        // read only by the native pair below, which has no promise to settle once for it; the
+        // promise path leaves it false. Initialized here to keep every walk the same shape
+        this.settled = false;
         this.routeIndex = 0;
         this.route = null;
         this.callbackIndex = 0;
@@ -161,7 +164,9 @@ class Walk {
             // the walk instead of becoming an unhandled rejection
             Promise.resolve(continueRoute)
                 .then((resumed) => this.runRoute(resumed))
-                .catch(this.reject);
+                // wrapped so the native pair keeps the walk as receiver; a promise's reject
+                // would not have cared
+                .catch((err) => this.reject(err));
             return;
         }
         return this.runRoute(continueRoute);
@@ -409,8 +414,9 @@ class Walk {
                     this.step(undefined);
                 })
                 // a rejection out of the nested walk, or a throw above, must reject this one
-                // instead of dying as an unhandled rejection
-                .catch(this.reject);
+                // instead of dying as an unhandled rejection; wrapped for the native pair's
+                // receiver
+                .catch((err) => this.reject(err));
         } else {
             // errors and error handlers live out of line: this is the cold path, and its size
             // was pushing step past the inlining threshold
@@ -447,6 +453,61 @@ class Walk {
             }
         }
     }
+}
+
+/**
+ * The native handler's resolve, invoked as this.resolve(matched) with the walk as receiver. The
+ * promise pair _routeRequest allocates exists for callers that await; the uWS handler never did,
+ * and on the common path, where the handler answers and next() is never called, that promise
+ * never even settled: an async frame and two promises of floating garbage per request.
+ *
+ * The 404 epilogue stays on a microtask, exactly where the await used to resume: a middleware
+ * that writes after calling next() must still win the headersSent check, as it does in express.
+ * @this {Walk}
+ */
+function nativeDone(matched) {
+    if (this.settled) {
+        return;
+    }
+    this.settled = true;
+    if (!matched) {
+        queueMicrotask(() => {
+            const response = this.res;
+            if (response.headersSent || response.aborted) {
+                return;
+            }
+            try {
+                this.router._endUnmatched(this.req, response);
+            } catch (err) {
+                if (response.aborted || response.finished) {
+                    console.error(err);
+                } else {
+                    this.router._handleError(err, null, this.req, response);
+                }
+            }
+        });
+    }
+}
+
+/**
+ * The native handler's reject: answers 500 as express's final handler would, instead of dying as
+ * an unhandled rejection. Deferred like the resolve, since every rejection used to reach the
+ * handler's catch through an await.
+ * @this {Walk}
+ */
+function nativeFail(err) {
+    if (this.settled) {
+        return;
+    }
+    this.settled = true;
+    queueMicrotask(() => {
+        const response = this.res;
+        if (response.aborted || response.finished) {
+            console.error(err);
+        } else {
+            this.router._handleError(err, null, this.req, response);
+        }
+    });
 }
 
 /**
@@ -1300,35 +1361,32 @@ module.exports = class Router extends EventEmitter {
             route.optimizedParams = route.path.match(regExParam).map((p) => p.slice(1));
         }
         const makeHandler = (chain) => {
-            // both are registration-time constants: computing them in the handler was a closure
-            // and a scan of the chain on every native request.
+            // all three are registration-time constants: computing them in the handler was a
+            // closure and a scan of the chain on every native request.
             // Falling back resumes after the mount, not after the router's leaf: the leaf can have
             // a lower routeKey than the parent's middlewares, and an error handler declared before
             // the mount must not catch what the router threw
             const mount = chain.find((r) => r.keepMount);
             const skipUntil = mount ?? chain[chain.length - 1];
-            return async (res, req) => {
+            const optimizedParams = route.optimizedParams;
+            // not async, and no _routeRequest: its promise pair exists for callers that await,
+            // and this one never did. nativeDone and nativeFail defer their epilogues to a
+            // microtask, which is where the await used to resume, so the visible order holds
+            return (res, req) => {
                 const request = this.handleRequest(res, req);
                 const response = request.res;
-                if (route.optimizedParams) {
+                if (optimizedParams) {
                     request.optimizedParams = new NullObject();
-                    for (let i = 0; i < route.optimizedParams.length; i++) {
-                        request.optimizedParams[route.optimizedParams[i]] = req.getParameter(i);
+                    for (let i = 0; i < optimizedParams.length; i++) {
+                        request.optimizedParams[optimizedParams[i]] = req.getParameter(i);
                     }
                 }
+                const walk = new Walk(this, request, response, chain, true, skipUntil, nativeDone, nativeFail);
                 try {
-                    const matchedRoute = await this._routeRequest(request, response, 0, chain, true, skipUntil);
-                    if (!matchedRoute && !response.headersSent && !response.aborted) {
-                        this._endUnmatched(request, response);
-                    }
+                    walk.dispatch(0);
                 } catch (err) {
-                    // an internal throw answers 500 as express's final handler would, instead of
-                    // dying as an unhandled rejection
-                    if (response.aborted || response.finished) {
-                        console.error(err);
-                    } else {
-                        this._handleError(err, null, request, response);
-                    }
+                    // what a throw inside a promise executor did: reject, once
+                    nativeFail.call(walk, err);
                 }
             };
         };
