@@ -187,6 +187,9 @@ class Application extends Router {
         // first and waits for the second, the way node's server.close() does
         this._listenSocket = undefined;
         this._pendingResponses = new Set();
+        // on the per-app prototype layer, not per response: the set is the same for every
+        // response this app serves, and the per-request write was pure repetition
+        /** @type {any} */ (this.response)._pendingIn = this._pendingResponses;
         this._draining = false;
         // read here, at construction, the way express does; an empty NODE_ENV means development,
         // which the ?? in the shared default would miss
@@ -362,18 +365,16 @@ class Application extends Router {
      *
      * @param {any} res uWS response
      * @param {any} req uWS request, readable only during this call
-     * @returns {{request: any, response: any}}
+     * @returns {any} the request, with the response reachable as request.res
      */
     handleRequest(res, req) {
-        const handled = super.handleRequest(res, req);
-        const response = handled.response;
-        this._pendingResponses.add(response);
+        const request = super.handleRequest(res, req);
         // removal rides the close listener the Response constructor already has, since a second
         // once() per request measured a tenth of a microsecond on the hot path.
         // An aborted response only flips its flags without emitting 'close', which is why
         // close()'s drain also sweeps the set by those flags instead of trusting this alone
-        response._pendingIn = this._pendingResponses;
-        return handled;
+        this._pendingResponses.add(request.res);
+        return request;
     }
 
     /**
@@ -383,7 +384,8 @@ class Application extends Router {
      */
     _createRequestHandler() {
         this.uwsApp.any("/*", async (res, req) => {
-            const { request, response } = this.handleRequest(res, req);
+            const request = this.handleRequest(res, req);
+            const response = request.res;
 
             try {
                 const matchedRoute = await this._routeRequest(request, response);

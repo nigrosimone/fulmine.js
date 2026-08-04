@@ -103,6 +103,22 @@ class Socket extends EventEmitter {
     }
 }
 
+// One status line per code, built on first use: the default path, with no custom reason phrase,
+// paid a template string and a trim per request for a line that never changes. Bounded to real
+// HTTP codes so a wild writeHead value cannot grow the array or flip it into dictionary mode.
+const STATUS_LINES = [];
+/**
+ * @param {number} code
+ * @param {string|undefined} text an explicit reason phrase, which bypasses the cache
+ * @returns {string} the uWS status line, e.g. "200 OK"
+ */
+function statusLine(code, text) {
+    if (text === undefined && Number.isInteger(code) && code >= 100 && code <= 999) {
+        return STATUS_LINES[code] ?? (STATUS_LINES[code] = code + " " + (statuses.message[code] ?? "unknown"));
+    }
+    return `${code} ${text ?? statuses.message[code] ?? "unknown"}`.trim();
+}
+
 module.exports = class Response extends Writable {
     /** @type {Socket|null} */
     #socket = null;
@@ -116,9 +132,6 @@ module.exports = class Response extends Writable {
     #outHeaders = null;
 
     req;
-
-    /** @type {Set<any>|undefined} the app's live-response set, see Application#handleRequest */
-    _pendingIn;
 
     /**
      * Built for every request, right after the Request it belongs to. The headers start with the
@@ -162,21 +175,33 @@ module.exports = class Response extends Writable {
         }
 
         this.body = undefined;
-        this.on("error", (err) => {
-            if (this.finished) {
-                return;
-            }
-            this._res.cork(() => {
-                this._res.close();
-                this.finished = true;
-                this.#socket?.emit("close");
-            });
+        // shared methods, not arrows: two closures and a once() wrapper here were four
+        // allocations per request. EventEmitter calls listeners with this = the emitter.
+        this.on("error", this._onAbortError);
+        this.on("close", this._onCloseCleanup);
+    }
+
+    /** @param {Error} err */
+    _onAbortError(err) {
+        if (this.finished) {
+            return;
+        }
+        this._res.cork(() => {
+            this._res.close();
+            this.finished = true;
+            this.#socket?.emit("close");
         });
-        this.once("close", () => {
-            this.#ended = true;
-            // the application's graceful close() waits on this set, see its handleRequest
-            this._pendingIn?.delete(this);
-        });
+    }
+
+    /**
+     * on(), not once(), so this must stay idempotent: end() emits 'close' by hand and a later
+     * destroy() makes Writable emit it again.
+     */
+    _onCloseCleanup() {
+        this.#ended = true;
+        // the application's graceful close() waits on this set, which lives on the per-app
+        // response prototype layer, see the Application constructor
+        /** @type {any} */ (this)._pendingIn?.delete(this);
     }
 
     /**
@@ -248,8 +273,7 @@ module.exports = class Response extends Writable {
                 this.writeHead(this.statusCode);
                 // "unknown" and not the bare number: node writes that reason phrase for a code it
                 // has no message for, so the raw status lines match
-                const statusMessage = this.statusText ?? statuses.message[this.statusCode] ?? "unknown";
-                this._res.writeStatus(`${this.statusCode} ${statusMessage}`.trim());
+                this._res.writeStatus(statusLine(this.statusCode, this.statusText));
                 this.writeHeaders(typeof chunk === "string");
             }
 
@@ -353,13 +377,18 @@ module.exports = class Response extends Writable {
         // the connection is closing. That happens both when the client asked and when something
         // else set the header on the way out, which is what a proxy passing an upstream response
         // through does.
-        const connection = this.headers["connection"];
-        const closing = typeof connection === "string" && connection.toLowerCase() === "close";
-        for (const header in this.headers) {
+        const headers = this.headers;
+        const res = this._res;
+        const connection = headers["connection"];
+        // length before lowercasing: no string of another length can lowercase to "close", and
+        // the value here is nearly always the 10-char "keep-alive", which paid a scan per response
+        const closing =
+            typeof connection === "string" && connection.length === 5 && connection.toLowerCase() === "close";
+        for (const header in headers) {
             if (closing && header === "keep-alive") {
                 continue;
             }
-            const value = this.headers[header];
+            const value = headers[header];
             if (header === "content-length") {
                 // if content-length is set, disable chunked transfer encoding, since size is known
                 this.chunkedTransfer = false;
@@ -368,10 +397,10 @@ module.exports = class Response extends Writable {
             }
             if (Array.isArray(value)) {
                 for (const val of value) {
-                    this._res.writeHeader(header, val);
+                    res.writeHeader(header, val);
                 }
             } else {
-                this._res.writeHeader(header, value);
+                res.writeHeader(header, value);
             }
         }
         this.headersSent = true;
@@ -453,8 +482,7 @@ module.exports = class Response extends Writable {
                 // which strips the entity headers first. Deciding it here meant res.end("body")
                 // answered 304 and dropped the body that the caller had just written.
                 // "unknown" for a code without a message, as node's status line has it
-                const statusMessage = this.statusText ?? statuses.message[this.statusCode] ?? "unknown";
-                this._res.writeStatus(`${this.statusCode} ${statusMessage}`.trim());
+                this._res.writeStatus(statusLine(this.statusCode, this.statusText));
                 this.writeHeaders(true);
             }
             const contentLength = this.headers["content-length"];

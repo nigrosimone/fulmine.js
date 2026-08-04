@@ -123,6 +123,11 @@ let key = 0;
 // 128 KB of body buffered before uWS is asked to pause
 const READABLE_OPTIONS = { highWaterMark: 128 * 1024 };
 
+// Whose headers the shared collector below is filling. uWS's forEach is synchronous and runs no
+// user code, so the handoff cannot interleave; module-level so the callback exists once instead
+// of once per request.
+let currentRequest = null;
+
 module.exports = class Request extends Readable {
     /** @type {Record<string, any>|null} */
     #cachedQuery = null;
@@ -147,6 +152,30 @@ module.exports = class Request extends Readable {
 
     res;
 
+    // one function for every request, fed through currentRequest: an arrow in the constructor
+    // captured `this`, which cost a context and a function allocation per request
+    static #collectHeader = (headerKey, value) => {
+        const r = currentRequest;
+        r.#rawHeadersEntries.push(headerKey, value);
+        // spotted in the loop that is running anyway: a client asking for the connection to be
+        // closed must not be answered that it is being kept alive. The response is built right
+        // after this and reads the flag.
+        if (
+            headerKey.length === 10 &&
+            headerKey === "connection" &&
+            value.length === 5 &&
+            value.toLowerCase() === "close"
+        ) {
+            r._connectionClose = true;
+        } else if (
+            (headerKey.length === 14 && headerKey === "content-length") ||
+            (headerKey.length === 17 && headerKey === "transfer-encoding")
+        ) {
+            // noticed here so the body decision in the constructor does not build the headers object
+            r._declaresBody = true;
+        }
+    };
+
     optimizedParams;
 
     _error;
@@ -168,21 +197,9 @@ module.exports = class Request extends Readable {
         this._res = res;
         this._req = req;
         this.readable = true;
-        this._req.forEach((key, value) => {
-            this.#rawHeadersEntries.push(key, value);
-            // spotted in the loop that is running anyway: a client asking for the connection to be
-            // closed must not be answered that it is being kept alive. The response is built right
-            // after this and reads the flag.
-            if (key.length === 10 && key === "connection" && value.length === 5 && value.toLowerCase() === "close") {
-                this._connectionClose = true;
-            } else if (
-                (key.length === 14 && key === "content-length") ||
-                (key.length === 17 && key === "transfer-encoding")
-            ) {
-                // noticed here so the body decision below does not build the headers object
-                this._declaresBody = true;
-            }
-        });
+        currentRequest = this;
+        this._req.forEach(Request.#collectHeader);
+        currentRequest = null;
         this.routeCount = 1;
         this.key = key++;
         if (key > 100000) {
@@ -226,11 +243,13 @@ module.exports = class Request extends Readable {
         // The router builds it the first time it has something to put in it.
         this._matchedMethods = this._isOptions ? new Set() : null;
         this._paramCalled = null;
-        this._stack = [];
+        // null for the same reason as the two above: a request that never enters a mount never
+        // needs either array, and the push sites materialize them
+        this._stack = null;
         // number of entries in _stack that aren't the empty path. while this is 0 the whole
         // stack joins to "", so getFullMountpath can skip the join entirely
         this._stackMounted = 0;
-        this._paramStack = [];
+        this._paramStack = null;
         this.receivedData = false;
         // reading ip is very slow in UWS, so its better to not do it unless truly needed
         if (this.app.needsIpAfterResponse || this.key < 100) {
@@ -252,30 +271,39 @@ module.exports = class Request extends Readable {
             // content-length left unread would end this stream empty and poison the keep-alive
             // connection with its unconsumed bytes. uWS itself discards GET bodies, so this is
             // the node shim's path
-            this._declaresBody
+            /** @type {any} */ (this)._declaresBody
         ) {
-            this._res.onData((ab, isLast) => {
-                this.receivedData = true;
-                if (this.#responseEnded) {
-                    return;
-                }
-                // ab.slice(0) copies the ArrayBuffer; uWS neuters `ab` after this callback,
-                // so a Buffer.from(ab) view would corrupt data left in the Readable queue.
-                const chunk = Buffer.from(ab.slice(0));
-                const accepted = this.push(chunk);
-                // push() may synchronously end the response via a flowing-mode listener.
-                if (!accepted && !isLast && !this.#responseEnded) {
-                    this._res.pause();
-                    this.#paused = true;
-                }
-                if (isLast) {
-                    this.push(null);
-                }
-            });
+            this._subscribeBody();
         } else {
             this.receivedData = true;
             this.push(null);
         }
+    }
+
+    /**
+     * Subscribes to the uWS body stream. Out of the constructor so a bodyless request allocates
+     * no closure at all there; must still run during the constructor call, since uWS only feeds a
+     * handler registered before the route handler returns.
+     */
+    _subscribeBody() {
+        this._res.onData((ab, isLast) => {
+            this.receivedData = true;
+            if (this.#responseEnded) {
+                return;
+            }
+            // ab.slice(0) copies the ArrayBuffer; uWS neuters `ab` after this callback,
+            // so a Buffer.from(ab) view would corrupt data left in the Readable queue.
+            const chunk = Buffer.from(ab.slice(0));
+            const accepted = this.push(chunk);
+            // push() may synchronously end the response via a flowing-mode listener.
+            if (!accepted && !isLast && !this.#responseEnded) {
+                this._res.pause();
+                this.#paused = true;
+            }
+            if (isLast) {
+                this.push(null);
+            }
+        });
     }
 
     /**

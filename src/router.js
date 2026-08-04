@@ -127,7 +127,7 @@ class Walk {
             useApp(req, router);
             // a chain that went into a mount never left it, since keepMount stops the pop, so the
             // path is still relative to it. /alone/skip must not be offered to the app as /skip
-            if (req._stack.length > 0) {
+            if (req._stack !== null && req._stack.length > 0) {
                 req._stack.length = 0;
                 req._stackMounted = 0;
                 req.path = req._originalPath;
@@ -183,7 +183,7 @@ class Walk {
             return false;
         }
         this.skipUntil = startIndex > 0 ? this.routes[startIndex - 1] : undefined;
-        if (req._stack.length > 0) {
+        if (req._stack !== null && req._stack.length > 0) {
             req._stack.length = 0;
             req._stackMounted = 0;
             req.path = req._originalPath;
@@ -216,7 +216,7 @@ class Walk {
                 // Application, but the compiled mount route has no callback to do it
                 useApp(req, route.mountApp);
             }
-            req._stack.push(route.regexMount ? regexMountEntry(router, route, req) : route.path);
+            (req._stack ??= []).push(route.regexMount ? regexMountEntry(router, route, req) : route.path);
             // a use with no path consumes nothing, so everything below would work out the values
             // that are already there. Only skipped without a trailing slash, where the rules about
             // one cannot bite. An application is mostly pathless middleware, and this is per hop
@@ -368,7 +368,7 @@ class Walk {
             }
             const pushedParams = callback.settings.mergeParams;
             if (pushedParams) {
-                req._paramStack.push(req.params);
+                (req._paramStack ??= []).push(req.params);
             }
             // express restores req.params when a router hands back, so what runs after the mount
             // sees the params it had before it
@@ -570,9 +570,11 @@ function adoptPlainRequest(req, router) {
     req._isOptions = req.method === "OPTIONS";
     req._isHead = req.method === "HEAD";
     req.params = req.params ?? Object.create(null);
-    req._stack = [];
+    // null, not fresh arrays: the push sites materialize them on the first mount, and most
+    // requests never see one, same as the Request constructor
+    req._stack = null;
     req._stackMounted = 0;
-    req._paramStack = [];
+    req._paramStack = null;
     req._matchedMethods = req._isOptions ? new Set() : null;
     req.routeCount = 1;
     // read when a mount is left, and there is no application here to read it from
@@ -585,6 +587,31 @@ function adoptPlainRequest(req, router) {
  *
  * @param {any[]} handlers
  * @param {string} [emptyMessage] app.use() says it its own way
+ */
+/**
+ * The uWS onAborted handler, bound to the response: a closure here captured two locals and cost
+ * a context plus a function per request, for a path that only ever runs on a client abort.
+ * @this {any} the response, with the request linked as this.req
+ */
+function onNativeAborted() {
+    const response = this;
+    const request = response.req;
+    // node's wording for a client abort, which is what body consumers match on
+    /** @type {NodeJS.ErrnoException} */
+    const err = new Error("aborted");
+    err.code = "ECONNRESET";
+    response.aborted = true;
+    response.finished = true;
+    // node's order on the request: 'aborted', then the stream dies, then 'close'. The
+    // error goes only to whoever listens for it, since a destroy(err) with no listener
+    // would take down the process
+    request.emit("aborted");
+    request.destroy(request.listenerCount("error") > 0 ? err : undefined);
+    response.socket?.emit("error", err);
+}
+
+/**
+ *
  */
 function checkHandlers(handlers, emptyMessage = "argument handler is required") {
     if (handlers.length === 0) {
@@ -837,8 +864,9 @@ module.exports = class Router extends EventEmitter {
     getFullMountpath(req) {
         // path-less app.use() pushes "", so a stack of only those joins to "" no matter how deep it is.
         // patternToRegex("", true) is EMPTY_REGEX, so this returns exactly what the join path would,
-        // without walking the whole stack on every hop
-        if (!req._stack.length || req._stackMounted === 0) {
+        // without walking the whole stack on every hop. _stackMounted first: it is 0 whenever
+        // _stack is still null, and req.baseUrl asks from unmounted requests too
+        if (req._stackMounted === 0 || req._stack.length === 0) {
             return EMPTY_REGEX;
         }
         const fullStack = req._stack.join("");
@@ -1201,33 +1229,21 @@ module.exports = class Router extends EventEmitter {
 
     /**
      * Wraps a uWS request and response in ours and links them, which is the first thing every
-     * request does whichever path serves it.
+     * request does whichever path serves it. The response rides back as request.res: returning
+     * a `{ request, response }` pair was one throwaway object per request.
      *
      * @param {any} res uWS response
      * @param {any} req uWS request, readable only during this call
-     * @returns {{request: any, response: any}}
+     * @returns {any} the request, with the response reachable as request.res
      */
     handleRequest(res, req) {
         const request = new this._request(req, res, this);
         const response = new this._response(res, request, this);
         request.res = response;
         response.req = request;
-        res.onAborted(() => {
-            // node's wording for a client abort, which is what body consumers match on
-            /** @type {NodeJS.ErrnoException} */
-            const err = new Error("aborted");
-            err.code = "ECONNRESET";
-            response.aborted = true;
-            response.finished = true;
-            // node's order on the request: 'aborted', then the stream dies, then 'close'. The
-            // error goes only to whoever listens for it, since a destroy(err) with no listener
-            // would take down the process
-            request.emit("aborted");
-            request.destroy(request.listenerCount("error") > 0 ? err : undefined);
-            response.socket?.emit("error", err);
-        });
+        res.onAborted(onNativeAborted.bind(response));
 
-        return { request, response };
+        return request;
     }
 
     /**
@@ -1292,7 +1308,8 @@ module.exports = class Router extends EventEmitter {
             const mount = chain.find((r) => r.keepMount);
             const skipUntil = mount ?? chain[chain.length - 1];
             return async (res, req) => {
-                const { request, response } = this.handleRequest(res, req);
+                const request = this.handleRequest(res, req);
+                const response = request.res;
                 if (route.optimizedParams) {
                     request.optimizedParams = new NullObject();
                     for (let i = 0; i < route.optimizedParams.length; i++) {
@@ -1500,7 +1517,7 @@ module.exports = class Router extends EventEmitter {
             }
         } else if (route.complex) {
             let path = req._originalPath;
-            if (req._stack.length > 0) {
+            if (req._stack !== null && req._stack.length > 0) {
                 const fullMountpath = this.getFullMountpath(req);
                 if (fullMountpath !== EMPTY_REGEX) {
                     path = path.replace(fullMountpath, "");
@@ -1516,14 +1533,14 @@ module.exports = class Router extends EventEmitter {
                 req._errorKey = route.routeKey;
                 return "route";
             }
-            if (req._paramStack.length > 0) {
+            if (req._paramStack !== null && req._paramStack.length > 0) {
                 req.params = mergeParams(req.params, req._paramStack);
             }
         } else {
             // express 5 gives every matched route null-prototype params; only a pathless
             // middleware layer keeps the plain object, as its router hands one to fast_slash
             req.params = route.use && route.path === "" ? {} : Object.create(null);
-            if (req._paramStack.length > 0) {
+            if (req._paramStack !== null && req._paramStack.length > 0) {
                 req.params = mergeParams(req.params, req._paramStack);
             }
         }

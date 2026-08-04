@@ -393,7 +393,8 @@ function isNodeRequest(req) {
 function serveNodeRequest(router, nodeReq, nodeRes, next) {
     const shimRes = new NodeHttpResponse(nodeReq, nodeRes);
     const shimReq = new NodeHttpRequest(nodeReq);
-    const { request, response } = router.handleRequest(shimRes, shimReq);
+    const request = router.handleRequest(shimRes, shimReq);
+    const response = request.res;
 
     return router._routeRequest(request, response).then((matched) => {
         if (matched || response.headersSent || response.aborted) {
