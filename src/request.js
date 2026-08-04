@@ -149,6 +149,9 @@ module.exports = class Request extends Readable {
 
     #paused = false;
 
+    // a bodyless request whose empty end has not been delivered yet, see the constructor
+    #emptyBody = false;
+
     body;
 
     res;
@@ -277,7 +280,10 @@ module.exports = class Request extends Readable {
             this._subscribeBody();
         } else {
             this.receivedData = true;
-            this.push(null);
+            // not pushed here: ending a Readable costs a scheduled tick and its bookkeeping,
+            // and on a bodyless request nobody may ever look. The null goes out from _read(),
+            // which is where every consumer arrives
+            this.#emptyBody = true;
         }
     }
 
@@ -320,6 +326,13 @@ module.exports = class Request extends Readable {
      * lift the backpressure that a full queue put on it.
      */
     _read() {
+        // first, so a bodyless stream still ends for a consumer that arrives after the
+        // response finished, which express allows
+        if (this.#emptyBody) {
+            this.#emptyBody = false;
+            this.push(null);
+            return;
+        }
         if (this.#paused && !this.#responseEnded) {
             this.#paused = false;
             this._res.resume();
