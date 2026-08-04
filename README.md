@@ -460,6 +460,26 @@ twice, once with `express` and once with this, and fails on any difference. That
 test means writing something that prints what you want compared, and why a test that prints from
 both the server and the client at once is a bug: the two orderings are a race.
 
+### Writing a comparison test
+
+A test file is an ordinary script. The first line is its description, the second may carry a marker,
+and the rest sets up an app, makes requests and prints. `tests/helpers.js` has what to print with:
+
+|                         |                                                                                                                                                                                                                                                             |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fetchTest(url, init)`  | `fetch`, plus a line with the status and the headers worth comparing. Returns the response untouched, so the test goes on to read the body as it would have. Lines come out in call order, never in arrival order.                                          |
+| `sequential([() => …])` | Runs requests one at a time. `Promise.all` starts them together and the two servers then answer in whatever order they scheduled, which is a difference the runner would report as a failure.                                                               |
+| `// INSPECT`            | On the second line. The runner then mounts `inspectRequest` in front of every app the file makes, and each request prints its `method`, `url`, `originalUrl`, `baseUrl`, `path`, `protocol`, `secure`, `hostname`, `host`, `xhr`, `subdomains` and `query`. |
+| `// OFF: reason`        | Skips the file.                                                                                                                                                                                                                                             |
+
+`// INSPECT` is not free everywhere, which is why it is asked for rather than always on. It is a
+middleware, so a route behind it stops being compiled into a declarative response and is served by
+the ordinary path instead: a file whose routes do compile would quietly stop covering the compiled
+one. And Express builds its router at the first `use()`, freezing `strict routing` and
+`case sensitive routing` as they are at that moment, so a file that sets either one afterwards must
+not ask for it. Everywhere else it is worth having: it is what caught a pathless mount dropping the
+middleware in front of it.
+
 `npm run test:express` is the other kind of test: it clones Express at the version in
 `devDependencies`, points its entry at this source and runs its suite against it. It is a bug mine
 rather than a gate, and its exit status says nothing. Read the header of `tools/express-suite.js`
