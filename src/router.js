@@ -815,10 +815,6 @@ module.exports = class Router extends EventEmitter {
             this.settings["strict routing"] = settings.strict;
             delete this.settings.strict;
         }
-
-        if (typeof this.settings["case sensitive routing"] === "undefined") {
-            this.settings["case sensitive routing"] = true;
-        }
     }
 
     /**
@@ -944,7 +940,7 @@ module.exports = class Router extends EventEmitter {
             const stackPattern = fullStack.includes(":")
                 ? fullStack.replace(/(\\?):(\w+)/g, (whole, escaped, name, at) => (escaped ? whole : ":m" + at))
                 : fullStack;
-            fullMountpath = patternToRegex(stackPattern, true);
+            fullMountpath = patternToRegex(stackPattern, true, Boolean(this.get("case sensitive routing")));
             this._mountpathCache.set(fullStack, fullMountpath);
         }
         return fullMountpath;
@@ -1041,7 +1037,11 @@ module.exports = class Router extends EventEmitter {
                 method: method === "USE" ? "ALL" : method,
                 path,
                 pattern:
-                    method === "USE" || needsConversionToRegex(path) ? patternToRegex(path, method === "USE") : path,
+                    method === "USE" || needsConversionToRegex(path)
+                        ? // Boolean, not the raw value: an unset setting reads undefined, which a
+                          // default parameter would silently turn back into case-sensitive
+                          patternToRegex(path, method === "USE", Boolean(this.get("case sensitive routing")))
+                        : path,
                 callbacks,
                 // instanceof walks a prototype chain and length is a property load, and both used
                 // to run for every callback of every hop
@@ -1100,6 +1100,12 @@ module.exports = class Router extends EventEmitter {
         // a route with a parameter matches paths its own text does not, so what an earlier route
         // could answer is compared shape against shape and not against that text
         const withParams = typeof route.path === "string" && route.path.includes(":");
+        // under insensitive routing two paths that differ only in case answer the same requests,
+        // so the text comparisons below run on the folded form. µWS itself still matches bytes:
+        // a request in the registered case takes the chain, any other case takes the fallback,
+        // and both answer as express would as long as the chain agrees with registration order
+        const caseSensitive = Boolean(this.get("case sensitive routing"));
+        const routePathFolded = caseSensitive || typeof route.path !== "string" ? route.path : route.path.toLowerCase();
 
         for (let i = 0; i < routes.length; i++) {
             const r = routes[i];
@@ -1145,7 +1151,10 @@ module.exports = class Router extends EventEmitter {
             // its literal ":name" text would let an earlier regex in on requests it never matches
             if (
                 (r.pattern instanceof RegExp && (!withParams || r.use) && r.pattern.test(route.path)) ||
-                (typeof r.pattern === "string" && (r.pattern === route.path || r.pattern === "/*"))
+                (typeof r.pattern === "string" &&
+                    (r.pattern === route.path ||
+                        (!caseSensitive && r.pattern.toLowerCase() === routePathFolded) ||
+                        r.pattern === "/*"))
             ) {
                 if (r.callbacks.some((c) => c instanceof Router)) {
                     return false; // cant optimize nested routers with matches
@@ -1161,15 +1170,17 @@ module.exports = class Router extends EventEmitter {
             if (typeof r.path !== "string" || !canBeOptimizedWithParams(r.path)) {
                 return false;
             }
-            if (!pathsCanOverlap(r.path, route.path, r.use)) {
+            const rPathFolded = caseSensitive ? r.path : r.path.toLowerCase();
+            if (!pathsCanOverlap(rPathFolded, routePathFolded, r.use)) {
                 continue;
             }
             if (r.use) {
                 return false;
             }
             // the same path lands on the same µWS registration, so the earlier route runs first
-            // from inside the chain, under its own parameter names
-            if (r.path === route.path) {
+            // from inside the chain, under its own parameter names; a case variant of it lands on
+            // its own registration, whose chain was computed the same way, or on the fallback
+            if (rPathFolded === routePathFolded) {
                 if (r.callbacks.some((c) => c instanceof Router)) {
                     return false;
                 }
@@ -1177,8 +1188,14 @@ module.exports = class Router extends EventEmitter {
                 continue;
             }
             // otherwise the two overlap only where µWS itself hands the request to the earlier,
-            // more specific registration, so this chain never sees those paths
-            if (!r.optimizedPath || !uwsPrefersEarlier(r.path, route.path)) {
+            // more specific registration, so this chain never sees those paths. That argument is
+            // about bytes, so under insensitive routing it only holds when no literal hides
+            // behind a case difference
+            if (
+                !r.optimizedPath ||
+                !uwsPrefersEarlier(r.path, route.path) ||
+                (!caseSensitive && (r.path !== rPathFolded || route.path !== routePathFolded))
+            ) {
                 return false;
             }
         }
@@ -1193,7 +1210,7 @@ module.exports = class Router extends EventEmitter {
      * needs every route to have been registered first.
      */
     _compileOptimizedRoutes() {
-        if (!this.uwsApp || !this.get("case sensitive routing")) {
+        if (!this.uwsApp) {
             return;
         }
 
@@ -1201,15 +1218,16 @@ module.exports = class Router extends EventEmitter {
         const walk = (router, pathPrefix, chainPrefix) => {
             for (const route of router._routes) {
                 if (route.use) {
-                    // only sole-callback mounts, and only into routers that match with the same
-                    // case rules as µWS: the Walk fallback honours the child's setting, µWS cannot
+                    // only sole-callback mounts. Case rules do not gate the walk: each level's
+                    // _optimizeRoute guards its own routes under its own setting, and a request
+                    // in any other case than the registered one takes the fallback, which
+                    // honours the child's setting on its own
                     if (
                         !route.complex &&
                         canBeOptimized(route.path) &&
                         route.path !== "/*" &&
                         route.callbacks.length === 1 &&
-                        route.callbacks[0] instanceof Router &&
-                        route.callbacks[0].get("case sensitive routing")
+                        route.callbacks[0] instanceof Router
                     ) {
                         let pathToMount = router._optimizeRoute(route, router._routes);
                         if (!pathToMount) {
@@ -1320,6 +1338,9 @@ module.exports = class Router extends EventEmitter {
      * @returns {boolean}
      */
     _isFollowedByAnOverlap(route, routes) {
+        // folded under insensitive routing, where a case variant answers the same requests
+        const caseSensitive = Boolean(this.get("case sensitive routing"));
+        const routePath = caseSensitive ? route.path : route.path.toLowerCase();
         for (let i = routes.length - 1; i >= 0; i--) {
             const later = routes[i];
             if (later.routeKey <= route.routeKey) {
@@ -1333,7 +1354,7 @@ module.exports = class Router extends EventEmitter {
                 return true;
             }
             if (typeof later.path === "string" && canBeOptimizedWithParams(later.path)) {
-                if (pathsCanOverlap(route.path, later.path)) {
+                if (pathsCanOverlap(routePath, caseSensitive ? later.path : later.path.toLowerCase())) {
                     return true;
                 }
                 continue;

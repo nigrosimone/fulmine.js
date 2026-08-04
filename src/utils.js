@@ -102,8 +102,10 @@ function getPatternMeta(pattern) {
  * throw: a route that quietly stops matching is worse than one that fails at startup. The names it
  * captures go in a WeakMap beside the regex, see PatternMeta.
  */
-function patternToRegex(pattern, isPrefix = false) {
+function patternToRegex(pattern, isPrefix = false, caseSensitive = true) {
     if (pattern instanceof RegExp) {
+        // the application's own RegExp matches as written, whatever the routing setting says,
+        // which is what express does with one
         return pattern;
     }
     if (isPrefix && pattern === "") {
@@ -247,7 +249,9 @@ function patternToRegex(pattern, isPrefix = false) {
         i++;
     }
 
-    const regex = /** @type {PathRegExp} */ (new RegExp(`^${regexPattern}${isPrefix ? "(?=$|/)" : "$"}`));
+    const regex = /** @type {PathRegExp} */ (
+        new RegExp(`^${regexPattern}${isPrefix ? "(?=$|/)" : "$"}`, caseSensitive ? "" : "i")
+    );
     // read back out of the finished pattern, so the list cannot disagree with the regex. Asking for
     // each name in turn beats walking match.groups with for-in: 176ns against 349
     const paramNames = [...regexPattern.matchAll(NAMED_GROUP)].map((m) => m[1]);
@@ -569,7 +573,9 @@ const defaultSettings = {
     // asking which framework is running, and every hardening guide says to remove it. Set it back
     // to true if something depends on it.
     "x-powered-by": false,
-    "case sensitive routing": true,
+    // "case sensitive routing" is deliberately absent: unset means insensitive, as in Express 5.
+    // The native µWS router matches bytes, so the compiler in _compileOptimizedRoutes only hands
+    // it routes whose earlier siblings it can prove agree under either case rule.
     "declarative responses": true
 };
 

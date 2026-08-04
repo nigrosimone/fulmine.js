@@ -51,9 +51,9 @@ const DIFFERENCES = [
         'A body sent with GET or DELETE is not read unless you add the method: app.set("body methods", [...]).'
     ],
     [
-        "case sensitive routing is on by default",
-        '/Users and /users are two different routes unless you set app.set("case sensitive routing", false).\n' +
-            "It is on because it is what makes a route eligible for the native router."
+        "case sensitive routing matches Express: insensitive by default",
+        "/Users and /users are the same route, as in Express 5. A request in the registered case is still\n" +
+            'answered by the native router; set app.set("case sensitive routing", true) to make case matter.'
     ],
     [
         "x-powered-by is off by default",

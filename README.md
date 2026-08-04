@@ -31,13 +31,13 @@ See [Migrating](#migrating) for what it handles and what it deliberately does no
 
 There are several fast HTTP servers for Node built on [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js). What is scarce is one you can actually drop into an existing Express application without rewriting it.
 
-Compatibility here is not a claim, it is a test suite. Every test runs against real Express first and then against Fulmine, and the outputs have to match byte for byte. That is what makes `helmet`, `cors`, `passport`, `morgan`, `multer`, `express-session` and the rest of the ecosystem work rather than "mostly work".
+Compatibility here is not a claim, it is a test suite. Every test runs against real Express first and then against Fulmine, and the outputs have to match byte for byte. That is what makes `helmet`, `cors`, `passport`, `morgan`, `multer`, `express-session` and the rest of the ecosystem work rather than "mostly work". Express 5's own test suite runs against Fulmine too, and passes whole: 1130 passing, 0 failing at the pinned Express version.
 
 ## Performance
 
 Fulmine is faster than Express where the framework itself is doing the work, and the same speed where it is not. Both halves of that sentence matter, so here is the honest version.
 
-**Where it is clearly faster.** Routing and dispatch, request shapes with params and query strings, connection handling. Plain routing lands between 1.9x and 3.2x: hello-world 1.9x to 2.2x, an API endpoint with params and a query 2.6x to 3.2x, nested routers 2x to 2.5x, a urlencoded body 2.6x to 3.2x, 5000 concurrent connections 2.4x to 2.7x. Route tables are where the native router shows: a thousand routes 5.4x to 8.1x, with a parameter in every one of them 5.8x to 8.7x, a parameterised route in a mounted router 3.8x to 5.9x. Those routes go to µWS's own router instead of being scanned, so the gap grows with the table instead of shrinking. The one routing scenario still even is a chain of 100 middlewares, 0.95x to 1x, where the cost is calling application code a hundred times rather than routing.
+**Where it is clearly faster.** Routing and dispatch, request shapes with params and query strings, connection handling. Plain routing lands between 1.9x and 3.9x: hello-world 1.9x to 2.7x, an API endpoint with params and a query 3x to 3.8x, five route shapes served by one process 2.7x to 3.9x, nested routers 2.2x to 2.8x, a urlencoded body 3.2x to 3.8x, a thousand concurrent connections 2.7x to 3x. Route tables are where the native router shows: a thousand routes 9.8x to 12.7x, with a parameter in every one of them 9.9x to 14.3x, a parameterised route in a mounted router 7.4x to 8.8x. Those routes go to µWS's own router instead of being scanned, so the gap grows with the table instead of shrinking. Even the chain of 100 middlewares, for a long time the one routing row that stayed even because its cost is calling application code a hundred times, sits at 1.35x to 1.55x after the per-request allocation work of August 2026.
 
 **Where it is a wash.** Any request whose cost is dominated by work both servers hand to the same library. A 512 KiB JSON body is `JSON.parse`, a gzipped response is zlib, a hashed upload is OpenSSL, a 5 MiB stream is memory bandwidth. On those the ratio is capped by arithmetic somewhere around 1.0x to 1.2x, and no amount of work on either server moves it. The benchmark labels those rows rather than quietly publishing them as if the two were equivalent.
 
@@ -84,7 +84,6 @@ command whose name ends in `.js` on Windows, where it exits without a word.
 ## Differences from Express
 
 - `app.listen()` returns the app, not an `http.Server`. There is no node server underneath, so `server.close()`, `server.address()` and anything that attaches itself to a real `http.Server` need a look. `app.close()`, `app.address()` and `app.listening` are there and do what you would expect.
-- `case sensitive routing` is enabled by default.
 - `x-powered-by` is disabled by default. Express sends `X-Powered-By: Express` unless you turn it off; Fulmine does not send it unless you turn it on with `app.set("x-powered-by", true)`. The header only tells anyone asking which framework is running.
 - request body is only read for POST, PUT, PATCH and QUERY requests by default. You can add additional methods by setting `body methods` to array with uppercased methods.
 - For HTTPS, instead of doing this:
@@ -134,8 +133,7 @@ app.listen(3000, () => {
 
 1. Fulmine tries to optimize routing as much as possible, but it's only possible if:
 
-- `case sensitive routing` is enabled (it is by default, unlike in normal Express).
-- the path is a plain string, or its parameters are whole segments: `/users/:id` and `/a/:b/c/:d` qualify, `/flights/:from-:to` does not, and neither does a `*splat` or a `{}` group.
+- the path is a plain string, or its parameters are whole segments: `/users/:id` and `/a/:b/c/:d` qualify, `/flights/:from-:to` does not, and neither does a `*splat` or a `{}` group. Routing is case-insensitive by default, as in Express; a request in the registered case is still served natively, any other case takes the ordinary path, and a route whose overlap with an earlier one leans on a cased literal goes the ordinary way for every request.
 - inside a mounted router, nothing registered after the route in that router could match the same path. `/orders/:id`, `/orders/:id/items` and `/invoices/:id` are all optimized together, since no request reaches two of them. `/users/:id` followed by `/users/me` is not: Express answers `/users/me` with the first of the two and the native router would answer it with the second, so both go the ordinary way.
 
 Optimized routes can be up to 10 times faster than normal routes, as they're using native uWS router and have pre-calculated path.

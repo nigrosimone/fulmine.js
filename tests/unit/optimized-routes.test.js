@@ -120,11 +120,27 @@ test("a pattern µWS cannot match itself is not", async () => {
     }
 });
 
-test("case insensitive routing turns the native router off altogether", async () => {
-    // µWS matches literals case sensitively and offers no way to ask for anything else, so an
-    // application that wants /Users to answer /users cannot use it for any route.
+test("case insensitive routing keeps the native router for the registered case", async () => {
+    // µWS matches bytes, so the native registration answers requests in the registered case and
+    // any other case falls through to the catch-all, whose dispatch folds. Both answer what
+    // express answers, so insensitive routing, the default since it is express's, costs nothing.
     const optimized = await optimizedFor(["/health"], (app) => app.set("case sensitive routing", false));
-    assert.strictEqual(optimized["/health"], false);
+    assert.strictEqual(optimized["/health"], true);
+});
+
+test("but refuses a specificity argument that leans on a cased literal", async () => {
+    // µWS prefers /differ/FOO/:x for /differ/FOO/9, which agrees with express for that request,
+    // but /differ/foo/9 matches the FOO route under insensitive folding while µWS's bytes say it
+    // does not, so the later route's chain cannot claim those paths were handed to the earlier one
+    assert.deepStrictEqual(await optimizedFor(["/differ/FOO/:x", "/differ/:user/:x"]), {
+        "/differ/FOO/:x": true,
+        "/differ/:user/:x": false
+    });
+    // written in one case throughout, the same pair compiles: bytes and folding agree
+    assert.deepStrictEqual(await optimizedFor(["/differ/foo/:x", "/differ/:user/:x"]), {
+        "/differ/foo/:x": true,
+        "/differ/:user/:x": true
+    });
 });
 
 test("a :param route is on the native router", async () => {
@@ -224,7 +240,7 @@ test("a parameter route stays off it when an earlier route could answer some of 
     assert.deepStrictEqual(paths, []);
 });
 
-test("overlapping param shapes and case-insensitive routers stay off the native router", async () => {
+test("overlapping param shapes stay off the native router, insensitive mounts do not", async () => {
     // µWS would answer /a/hello with the second registration under the wrong names
     const paths = await nativePaths((app) => {
         app.get("/a/:x", (req, res, next) => next());
@@ -234,7 +250,8 @@ test("overlapping param shapes and case-insensitive routers stay off the native 
     assert.ok(paths.includes("/a/:x"), "/a/:x stays native");
     assert.ok(!paths.includes("/a/:y"), "/a/:y falls back to ordinary dispatch");
 
-    // a case-insensitive router cannot be served by µWS, which matches case-sensitively
+    // a case-insensitive router, which is what express.Router() builds, is walked like any
+    // other: its own _optimizeRoute guards its routes under its own setting
     const insensitive = await nativePaths((app) => {
         const router = express.Router({ caseSensitive: false });
         router.get("/foo", (req, res) => res.send("ok"));
@@ -242,6 +259,6 @@ test("overlapping param shapes and case-insensitive routers stay off the native 
     });
     assert.deepStrictEqual(
         insensitive.filter((p) => p.startsWith("/sub")),
-        []
+        ["/sub/foo"]
     );
 });
