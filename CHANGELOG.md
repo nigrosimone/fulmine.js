@@ -1,5 +1,23 @@
 # Changelog
 
+## [5.1.0](https://github.com/nigrosimone/fulmine.js/compare/v5.0.0...v5.1.0) (2026-08-04)
+
+### Features
+
+* case-insensitive routing by default, as in Express 5 ([8c95b9d](https://github.com/nigrosimone/fulmine.js/commit/8c95b9d8512196e2b27d4d90136d4aa16ec1e534))
+* express.Route, and a router drives a plain request object ([851b0c3](https://github.com/nigrosimone/fulmine.js/commit/851b0c3e8dc155272fee15b56ff2cd26dc7615d5))
+
+### Bug Fixes
+
+* a pathless mount keeps the chain in front of it ([b3cf706](https://github.com/nigrosimone/fulmine.js/commit/b3cf706bc9d8101c9ba54a570468bf23f425f8c4))
+* a RegExp route matches and captures the way express matches it ([6a2702e](https://github.com/nigrosimone/fulmine.js/commit/6a2702e7142ab7879d3e61107127c80b35fdaded))
+* the express suite's own failures go to zero ([76416d0](https://github.com/nigrosimone/fulmine.js/commit/76416d0bcf9d9cf579cdd6296846f3be627cf7f4))
+
+### Performance Improvements
+
+* a request allocates a dozen fewer objects on its way through ([a3a0b42](https://github.com/nigrosimone/fulmine.js/commit/a3a0b42bc7154fef6325f1d7dd63c4e7fc7d9bc8))
+* the native handler walks without a promise nobody awaited ([6aa4fe7](https://github.com/nigrosimone/fulmine.js/commit/6aa4fe7930bf4bc29a10e84364c1a1e8c86a9b9d))
+
 ## [5.0.0](https://github.com/nigrosimone/fulmine.js/compare/v5.0.0-rc.1...v5.0.0) (2026-08-03)
 
 ### Features
