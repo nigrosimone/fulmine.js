@@ -81,33 +81,42 @@ for (const testCategory of testCategories) {
                         return resolve();
                     }
 
-                    let timeout;
-                    const timeoutFunc = (module) => {
-                        // Written straight to the file descriptor, before anything else.
-                        //
-                        // Throwing alone loses the message: the exit below happens on the next
-                        // turn, which is sooner than the reporter gets round to printing why the
-                        // test failed. A CI run on 2026-08-02 died here and the log said only that
-                        // 60 seconds had passed, which leaves the one thing worth knowing out of
-                        // it: whether the arm that hung was Express or this project. console.error
-                        // is not enough either, since on a pipe it can be asynchronous and the
-                        // process is already leaving.
-                        fs.writeSync(2, `\n${module} timed out after ${TEST_TIMEOUT}ms running ${testPath}\n`);
-                        setTimeout(() => process.exit(1));
-                        throw `${module} timed out`;
-                    };
-
-                    const execTest = async (testPath) => {
-                        const nodeArgs = NODE_ARGS + (marker === "INSPECT" ? INSPECT_ARG : "");
-                        return (await exec(`node ${nodeArgs}"${testPath}"`, { maxBuffer: 1024 * 1024 * 100 })).stdout;
+                    // exec kills the child at the limit, so a hung arm rejects here instead of
+                    // hanging the run. One retry, because a shared CI runner can stall for a
+                    // minute for reasons that are nobody's code (res-send-file-large, node 24,
+                    // 2026-08-04); the second timeout is a real hang and fails with the arm's name.
+                    const execTest = async (module) => {
+                        const command = `node ${NODE_ARGS}${marker === "INSPECT" ? INSPECT_ARG : ""}"${testPath}"`;
+                        const options = { maxBuffer: 1024 * 1024 * 100, timeout: TEST_TIMEOUT, killSignal: "SIGKILL" };
+                        for (let attempt = 1; ; attempt++) {
+                            try {
+                                return (await exec(command, options)).stdout;
+                            } catch (error) {
+                                // maxBuffer also kills the child, and retrying an output that big
+                                // would only mislabel it as a hang
+                                const timedOut = error.killed && !String(error.message).includes("maxBuffer");
+                                if (!timedOut) {
+                                    throw error;
+                                }
+                                if (attempt > 1) {
+                                    throw new Error(
+                                        `${module} timed out twice at ${TEST_TIMEOUT}ms running ${testPath}`,
+                                        {
+                                            cause: error
+                                        }
+                                    );
+                                }
+                                console.error(
+                                    `${module} timed out after ${TEST_TIMEOUT}ms running ${testPath}, retrying once`
+                                );
+                            }
+                        }
                     };
 
                     try {
                         // Express 5 is the reference. The package named "express" is v5, so the
                         // test file runs as written.
-                        timeout = setTimeout(() => timeoutFunc("express"), TEST_TIMEOUT);
-                        const expressOutput = await execTest(testPath);
-                        clearTimeout(timeout);
+                        const expressOutput = await execTest("express");
 
                         // Run the same file against fulmine
                         const newCode = testCode.replace(
@@ -118,13 +127,10 @@ for (const testCategory of testCategories) {
                             throw new Error("Test code does not contain require express");
                         }
                         fs.writeFileSync(testPath, newCode);
-                        timeout = setTimeout(() => timeoutFunc("fulmine"), TEST_TIMEOUT);
-                        const fulmineOutput = await execTest(testPath);
-                        clearTimeout(timeout);
+                        const fulmineOutput = await execTest("fulmine");
 
                         assert.strictEqual(fulmineOutput, expressOutput);
                     } finally {
-                        clearTimeout(timeout);
                         fs.writeFileSync(testPath, testCode);
                         resolve();
                     }
