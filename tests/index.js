@@ -13,7 +13,12 @@ const assert = require("node:assert");
 const TEST_TIMEOUT = 60000;
 
 // see tests/win-exit-delay.cjs: without it every test crashes on exit under Node 24+ on Windows
-const NODE_ARGS = process.platform === "win32" ? `--require "${path.join(__dirname, "win-exit-delay.cjs")}" ` : "";
+let NODE_ARGS = process.platform === "win32" ? `--require "${path.join(__dirname, "win-exit-delay.cjs")}" ` : "";
+// INSPECT_REQUEST=1 adds the request-side values to every file's output, see inspect-preload.cjs.
+// A separate run because it costs the compiled path, which the default run is there to cover
+if (process.env.INSPECT_REQUEST === "1") {
+    NODE_ARGS += `--require "${path.join(__dirname, "inspect-preload.cjs")}" `;
+}
 
 const testPath = path.join(__dirname, "tests");
 

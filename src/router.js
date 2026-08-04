@@ -1077,6 +1077,10 @@ module.exports = class Router extends EventEmitter {
                             continue;
                         }
                     }
+                    // the prefix goes in whether or not the mount had a path: a pathless mount
+                    // adds nothing to the path and everything to the chain, the middlewares in
+                    // front of it and the mount entry that says where to resume
+                    const chain = chainPrefix.length > 0 ? [...chainPrefix, ...leafPath] : leafPath;
                     if (pathPrefix) {
                         const registered = {
                             ...route,
@@ -1084,7 +1088,7 @@ module.exports = class Router extends EventEmitter {
                             pattern: pathPrefix + route.path,
                             optimizedRouter: true
                         };
-                        this._registerUwsRoute(registered, [...chainPrefix, ...leafPath]);
+                        this._registerUwsRoute(registered, chain);
                         // the chain holds the original object, so the request-time guard has to
                         // find the computed fields there, or a mounted param route extracts its
                         // params twice. The names match: the prefix is static, so the copy's path
@@ -1092,7 +1096,7 @@ module.exports = class Router extends EventEmitter {
                         route.optimizedParams = registered.optimizedParams;
                         route.optimizedPath = registered.optimizedPath;
                     } else {
-                        this._registerUwsRoute(route, leafPath);
+                        this._registerUwsRoute(route, chain);
                     }
                 }
             }
