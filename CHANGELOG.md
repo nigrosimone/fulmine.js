@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.1.3](https://github.com/nigrosimone/fulmine.js/compare/v5.1.2...v5.1.3) (2026-08-04)
+
+### Performance Improvements
+
+* sendFile answers unchanged small files from a stat-validated cache, and the pending set becomes an intrusive list ([72c0708](https://github.com/nigrosimone/fulmine.js/commit/72c07081b2ce023d1ff4ca8cadaeaf0c8f0e8b82))
+
 ## [5.1.2](https://github.com/nigrosimone/fulmine.js/compare/v5.1.1...v5.1.2) (2026-08-04)
 
 ### Performance Improvements
