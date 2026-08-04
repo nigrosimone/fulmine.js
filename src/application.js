@@ -77,6 +77,13 @@ class FSWorker {
     }
 }
 
+// the worker path's own bound: a file bigger than this streams instead, so the cache never
+// holds an entry the read path would not have produced whole
+const FILE_CACHE_MAX_ENTRY = 768 * 1024;
+// oldest-first once the budget is spent. A static directory that beats this is being served by
+// something other than an application server anyway
+const FILE_CACHE_BUDGET = 64 * 1024 * 1024;
+
 class Application extends Router {
     /**
      * @param {object} [settings] the options express() takes. uwsOptions goes to uWS and decides
@@ -187,10 +194,17 @@ class Application extends Router {
         // the uWS listen socket, and the responses being served right now: close() stops the
         // first and waits for the second, the way node's server.close() does
         this._listenSocket = undefined;
-        this._pendingResponses = new Set();
-        // on the per-app prototype layer, not per response: the set is the same for every
-        // response this app serves, and the per-request write was pure repetition
-        /** @type {any} */ (this.response)._pendingIn = this._pendingResponses;
+        // readSmallFile's cache and its in-flight reads, see the method
+        this._fileCache = new Map();
+        this._fileCacheBytes = 0;
+        this._fileReadsInFlight = new Map();
+        // the responses being served right now, an intrusive list: linking is three pointer
+        // stores where a Set paid identity hashing and table upkeep per request. A holder object
+        // rather than a bare field, because the callable app copies own scalars by value and two
+        // copies of a head would disagree; an object rides by reference, the way the Set did
+        this._pending = /** @type {{ head: any }} */ ({ head: null });
+        // on the per-app prototype layer, not per response, same as the Set was
+        /** @type {any} */ (this.response)._pendingIn = this._pending;
         this._draining = false;
         // read here, at construction, the way express does; an empty NODE_ENV means development,
         // which the ?? in the shared default would miss
@@ -248,6 +262,56 @@ class Application extends Router {
             worker.busy = true;
             worker.worker.postMessage({ key, type: "readFile", path });
         });
+    }
+
+    /**
+     * A small file through the worker pool, with two things on top: concurrent asks for the same
+     * path share one read, and the bytes of an unchanged file come from a bounded cache,
+     * validated against the stat the caller already paid for, so a touched file is re-read.
+     * A hit completes on a macrotask, which is when a worker's answer would have arrived; code
+     * that passed the suites against worker timing keeps passing against this.
+     * `app.set("file cache", false)` turns the cache off; the shared read stays.
+     *
+     * @param {string} fullpath
+     * @param {import("fs").Stats} stat
+     * @returns {Promise<Buffer>}
+     */
+    readSmallFile(fullpath, stat) {
+        const caching = this.get("file cache");
+        if (caching) {
+            const cached = this._fileCache.get(fullpath);
+            if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+                return new Promise((resolve) => setImmediate(resolve, cached.data));
+            }
+        }
+        let pending = this._fileReadsInFlight.get(fullpath);
+        if (pending) {
+            return pending;
+        }
+        pending = this.readFileWithWorker(fullpath).then((data) => {
+            if (caching && stat.size <= FILE_CACHE_MAX_ENTRY) {
+                const existing = this._fileCache.get(fullpath);
+                if (existing) {
+                    this._fileCacheBytes -= existing.size;
+                    this._fileCache.delete(fullpath);
+                }
+                this._fileCache.set(fullpath, { mtimeMs: stat.mtimeMs, size: stat.size, data });
+                this._fileCacheBytes += stat.size;
+                for (const [key, entry] of this._fileCache) {
+                    if (this._fileCacheBytes <= FILE_CACHE_BUDGET) {
+                        break;
+                    }
+                    this._fileCache.delete(key);
+                    this._fileCacheBytes -= entry.size;
+                }
+            }
+            return data;
+        });
+        this._fileReadsInFlight.set(fullpath, pending);
+        // never cached past settlement: a rejection clears the slot the same way
+        const clear = () => this._fileReadsInFlight.delete(fullpath);
+        pending.then(clear, clear);
+        return pending;
     }
 
     /**
@@ -374,8 +438,16 @@ class Application extends Router {
         // removal rides the close listener the Response constructor already has, since a second
         // once() per request measured a tenth of a microsecond on the hot path.
         // An aborted response only flips its flags without emitting 'close', which is why
-        // close()'s drain also sweeps the set by those flags instead of trusting this alone
-        this._pendingResponses.add(request.res);
+        // close()'s drain also sweeps the list by those flags instead of trusting this alone
+        const response = request.res;
+        const pending = this._pending;
+        response._pendingLinked = true;
+        response._pendingPrev = null;
+        response._pendingNext = pending.head;
+        if (pending.head !== null) {
+            pending.head._pendingPrev = response;
+        }
+        pending.head = response;
         return request;
     }
 
@@ -695,19 +767,23 @@ class Application extends Router {
             this.uwsApp.close();
             this.emit("close");
         };
-        if (this._pendingResponses.size === 0) {
+        if (this._pending.head === null) {
             process.nextTick(finish);
             return this;
         }
-        // a finished response emits 'close' and removes itself; an aborted one only flips its
+        // a finished response emits 'close' and unlinks itself; an aborted one only flips its
         // flags, so the drain sweeps by them. The timer also keeps the loop alive until done.
         const sweep = setInterval(() => {
-            for (const response of this._pendingResponses) {
+            let response = this._pending.head;
+            while (response !== null) {
+                // taken before the unlink, which nulls the pointers
+                const next = response._pendingNext;
                 if (response.finished || response.aborted) {
-                    this._pendingResponses.delete(response);
+                    response._unlinkPending();
                 }
+                response = next;
             }
-            if (this._pendingResponses.size === 0) {
+            if (this._pending.head === null) {
                 clearInterval(sweep);
                 finish();
             }

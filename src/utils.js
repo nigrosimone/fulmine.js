@@ -573,6 +573,9 @@ const defaultSettings = {
     // asking which framework is running, and every hardening guide says to remove it. Set it back
     // to true if something depends on it.
     "x-powered-by": false,
+    // fulmine's own: unchanged small files served by sendFile come from a bounded cache
+    // validated per request against the file's stat, see Application#readSmallFile
+    "file cache": true,
     // "case sensitive routing" is deliberately absent: unset means insensitive, as in Express 5.
     // The native µWS router matches bytes, so the compiler in _compileOptimizedRoutes only hands
     // it routes whose earlier siblings it can prove agree under either case rule.

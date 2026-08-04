@@ -202,9 +202,32 @@ module.exports = class Response extends Writable {
      */
     _onCloseCleanup() {
         this.#ended = true;
-        // the application's graceful close() waits on this set, which lives on the per-app
-        // response prototype layer, see the Application constructor
-        /** @type {any} */ (this)._pendingIn?.delete(this);
+        this._unlinkPending();
+    }
+
+    /**
+     * Takes this response out of its app's pending list, which the graceful close() drains. The
+     * list head lives in a holder on the per-app response prototype layer, see the Application
+     * constructor; the linked flag makes a second call, from the drain or a late 'close', a no-op.
+     */
+    _unlinkPending() {
+        if (this._pendingLinked !== true) {
+            return;
+        }
+        this._pendingLinked = false;
+        const pending = /** @type {any} */ (this)._pendingIn;
+        const prev = this._pendingPrev;
+        const next = this._pendingNext;
+        if (prev) {
+            prev._pendingNext = next;
+        } else if (pending && pending.head === this) {
+            pending.head = next;
+        }
+        if (next) {
+            next._pendingPrev = prev;
+        }
+        this._pendingPrev = null;
+        this._pendingNext = null;
     }
 
     /**
@@ -911,7 +934,7 @@ module.exports = class Response extends Writable {
         // serve smaller files using workers
         if (this.app.workers.length && stat.size < 768 * 1024 && !partial) {
             this.app
-                .readFileWithWorker(fullpath)
+                .readSmallFile(fullpath, stat)
                 .then((data) => {
                     if (this.finished || this.aborted) {
                         // the client went away while the worker was reading. Express reports
