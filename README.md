@@ -39,8 +39,6 @@ Fulmine is faster than Express where the framework itself is doing the work, and
 
 **Where it is clearly faster.** Routing and dispatch, request shapes with params and query strings, connection handling. Plain routing lands between 1.9x and 4.3x: hello-world 1.9x to 2.2x, an API endpoint with params and a query 3.2x to 4.3x, five route shapes served by one process 2.5x to 3.3x, nested routers 2.1x to 3.1x, a urlencoded body 3.4x to 4.1x, a thousand concurrent connections 2.7x to 3.2x. Route tables are where the native router shows: a thousand routes 9.7x to 12.9x, with a parameter in every one of them 10.4x to 14x, a parameterised route in a mounted router 7.1x to 8.3x. Those routes go to µWS's own router instead of being scanned, so the gap grows with the table instead of shrinking. Even the chain of 100 middlewares, for a long time the one routing row that stayed even because its cost is calling application code a hundred times, sits at 1.5x to 1.7x after the per-request work of August 2026.
 
-The same code sits on the public [HttpArena](https://www.http-arena.com/) leaderboard, run and saved by the arena's own 64-core rig: 5.89 million pipelined requests per second, 1.12 million on baseline, 1.04 million on the json profile, ahead of every JavaScript entry on the board.
-
 **Where it is a wash.** Any request whose cost is dominated by work both servers hand to the same library. A 512 KiB JSON body is `JSON.parse`, a gzipped response is zlib, a hashed upload is OpenSSL, a 5 MiB stream is memory bandwidth. On those the ratio is capped by arithmetic somewhere around 1.0x to 1.2x, and no amount of work on either server moves it. The benchmark labels those rows rather than quietly publishing them as if the two were equivalent.
 
 Two things worth knowing before comparing numbers with anyone:
@@ -52,6 +50,15 @@ There is no table here on purpose. CI runs the whole benchmark on every push and
 and posts the result where it belongs: as a comment on the commit or the pull request, and as a
 `benchmark-summary` artifact on the run, see [`benchmark/README.md`](./benchmark/README.md)
 to run it yourself.
+
+## Public benchmarks
+
+Numbers produced by a project about itself deserve suspicion, so Fulmine also stands in public arenas, run by their own rigs under their own rules:
+
+- **[HttpArena](https://www.http-arena.com/#sort=rps:-1&q=Js)** (the link lands filtered on the JavaScript entries): the saved run measures 5.89 million pipelined requests per second, 1.12 million on baseline and 1.04 million on the json profile, ahead of every JavaScript entry on the board.
+- **[web-frameworks](https://github.com/the-benchmarker/web-frameworks)**: entry merged, numbers arrive with their next published round.
+
+More to come as their maintainers take the entries in.
 
 ## Attribution
 
