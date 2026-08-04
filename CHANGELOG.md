@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.1.1](https://github.com/nigrosimone/fulmine.js/compare/v5.1.0...v5.1.1) (2026-08-04)
+
+### Performance Improvements
+
+* no cork inside uWS's own cork, no status line uWS writes itself ([fe23fee](https://github.com/nigrosimone/fulmine.js/commit/fe23fee2ea5f13fbf248fff01c80dab5cd7db167))
+
 ## [5.1.0](https://github.com/nigrosimone/fulmine.js/compare/v5.0.0...v5.1.0) (2026-08-04)
 
 ### Features
