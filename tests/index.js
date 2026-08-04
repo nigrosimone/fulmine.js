@@ -13,12 +13,9 @@ const assert = require("node:assert");
 const TEST_TIMEOUT = 60000;
 
 // see tests/win-exit-delay.cjs: without it every test crashes on exit under Node 24+ on Windows
-let NODE_ARGS = process.platform === "win32" ? `--require "${path.join(__dirname, "win-exit-delay.cjs")}" ` : "";
-// INSPECT_REQUEST=1 adds the request-side values to every file's output, see inspect-preload.cjs.
-// A separate run because it costs the compiled path, which the default run is there to cover
-if (process.env.INSPECT_REQUEST === "1") {
-    NODE_ARGS += `--require "${path.join(__dirname, "inspect-preload.cjs")}" `;
-}
+const NODE_ARGS = process.platform === "win32" ? `--require "${path.join(__dirname, "win-exit-delay.cjs")}" ` : "";
+// what a file asking for it gets, see tests/inspect-preload.cjs
+const INSPECT_ARG = `--require "${path.join(__dirname, "inspect-preload.cjs")}" `;
 
 const testPath = path.join(__dirname, "tests");
 
@@ -72,7 +69,7 @@ for (const testCategory of testCategories) {
 
             const secondLine = (testCode.split("\n")[1] || "").trim();
             let marker = null;
-            const markerMatch = secondLine.match(/^\/\/\s*(OFF)(?::\s*(.*))?$/);
+            const markerMatch = secondLine.match(/^\/\/\s*(OFF|INSPECT)(?::\s*(.*))?$/);
             if (markerMatch) {
                 marker = markerMatch[1];
             }
@@ -101,7 +98,8 @@ for (const testCategory of testCategories) {
                     };
 
                     const execTest = async (testPath) => {
-                        return (await exec(`node ${NODE_ARGS}"${testPath}"`, { maxBuffer: 1024 * 1024 * 100 })).stdout;
+                        const nodeArgs = NODE_ARGS + (marker === "INSPECT" ? INSPECT_ARG : "");
+                        return (await exec(`node ${nodeArgs}"${testPath}"`, { maxBuffer: 1024 * 1024 * 100 })).stdout;
                     };
 
                     try {

@@ -102,8 +102,10 @@ async function fetchTest(input, init) {
 /**
  * Middleware that prints the request-side values, so they are compared too.
  *
- * Mount it first with `app.use(inspectRequest)`, but not everywhere: unlike fetchTest, which sits
- * outside the app and costs nothing, this changes which code path a route takes.
+ * A file asks for it with `// INSPECT` on its second line, and tests/inspect-preload.cjs mounts it
+ * in front of every app that file makes. Ask for it where the request values are the point, not
+ * everywhere: unlike fetchTest, which sits outside the app and costs nothing, this changes which
+ * code path a route takes.
  *
  * Two separate things were measured, and only one of them is free. Native route compilation is
  * unaffected: the same app registers the same number of routes on the uWS router with and without

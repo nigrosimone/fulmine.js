@@ -1,11 +1,10 @@
 // must agree on the request values and the response headers, not just the body
+// INSPECT
 
 const express = require("express");
-const { fetchTest, inspectRequest } = require("../../helpers.js");
+const { fetchTest } = require("../../helpers.js");
 
 const app = express();
-
-app.use(inspectRequest);
 
 app.get("/plain", (req, res) => res.send("hello"));
 app.get("/json", (req, res) => res.json({ a: 1, b: [2, 3] }));

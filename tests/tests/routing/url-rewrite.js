@@ -1,4 +1,5 @@
 // assigning req.url in middleware re-routes the rest of the stack, path and query alike
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");
