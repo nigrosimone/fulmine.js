@@ -68,3 +68,32 @@ jobs:
             # a time, so each flag lands with the count back at zero rather than accumulating
             - name: Type check the source
               run: npm run typecheck
+
+    # Express's own suite, run against this project. A gate since the count reached 1130/0:
+    # any failing test, any file without a result, or a moved express tag is red. Linux only:
+    # the Windows exit hang the tool works around does not exist here
+    express-suite:
+        runs-on: ubuntu-latest
+        timeout-minutes: 15
+        steps:
+            - name: Checkout Source Tree
+              uses: actions/checkout@v3
+
+            - name: Cache Node.js dependencies
+              uses: actions/cache@v3
+              with:
+                  path: ~/.npm
+                  key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+                  restore-keys: |
+                      ${{ runner.os }}-node-
+
+            - name: Setup Node.js environment
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "24"
+
+            - name: Install dependencies
+              run: npm install --include=dev
+
+            - name: Run Express's test suite against fulmine
+              run: npm run test:express -- --ci

@@ -7,6 +7,7 @@
 //   node tools/express-suite.js --express         the same run against Express itself, as a control
 //   node tools/express-suite.js --verbose         print mocha's output for the files that failed
 //   node tools/express-suite.js --json out.json   the table as data
+//   node tools/express-suite.js --ci              red on any failure, see below
 //
 // It clones expressjs/express at the tag matching the installed `express` devDependency, swaps its
 // index.js for one that requires src/index.js from here, and runs mocha one file at a time. The
@@ -22,19 +23,17 @@
 // error arriving as a bare Error, so a 403 was answered as a 500. None of those were reachable from
 // the suite in tests/, because a test only finds what someone thought to write.
 //
-// It is not a gate, for three reasons that are not going away.
+// With --ci it is also a gate, since 2026-08-04, the day the count reached 1130 passing and
+// 0 failing: any failing test or file without a result is red, and the clone's commit has to
+// match PINNED below, so a moved tag cannot quietly change what "Express says" means. Zero is
+// what makes the gate possible: a pass count above zero would need a list of expected failures,
+// which rots the moment either project moves.
 //
-// The clone keeps Express's own lib/ in place and only index.js is swapped, so a test that imports
-// from there is exercising Express's code rather than ours. test/utils.js is entirely that and
-// passes whatever we do; four other files borrow lib/utils only for its list of HTTP methods. Rows
-// that import from lib/ are marked `lib` so the number is read for what it is.
-//
-// Some of what it reports is Express's internals used as public API. `express.Route` is a class we
-// do not have and `router.handle` is a method we do not have, so those files fail almost completely
-// and say very little about whether an application would work.
-//
-// And a pass count would need a list of expected failures, which rots the moment either project
-// moves. So this prints a table and exits 0 unless it could not set itself up.
+// Two caveats keep their marks. The clone keeps Express's own lib/ in place and only index.js is
+// swapped, so a test that imports from there is exercising Express's code as much as ours:
+// test/utils.js is entirely that, four other files borrow lib/utils for its list of HTTP methods,
+// and those rows are marked `lib`. And without --ci the exit status still says nothing, because a
+// local run is for reading, not for vetoing.
 //
 // On Windows every one of these processes hangs at exit rather than in a test, which is a libuv bug
 // in Node 24 and later and not ours: mocha has printed its results long before. So the run watches
@@ -47,6 +46,12 @@ const { spawn, spawnSync } = require("child_process");
 
 const ROOT = path.join(__dirname, "..");
 const REPO = "https://github.com/expressjs/express.git";
+// The commit each supported tag is expected to resolve to, so a moved tag cannot silently change
+// what is being tested. Bump this together with the express devDependency; the failure message
+// prints the value to put here. EXPRESS_SUITE_SHA overrides it, which is how the red path is tested.
+const PINNED = {
+    "v5.2.1": "dbac741a49a5a64336b70c06e85c2e2706e36336"
+};
 const DEFAULT_DIR = path.join(ROOT, "node_modules", "express-suite-clone");
 const SHIM_MARKER = "written by tools/express-suite.js";
 // Express's own `npm test` adds --check-leaks and includes test/acceptance. Neither is wanted here:
@@ -100,6 +105,38 @@ function run(command, commandArgs, cwd) {
     }
     if (result.status !== 0) {
         throw new Error(`${command} ${commandArgs.join(" ")} exited with ${result.status}`);
+    }
+}
+
+function capture(command, commandArgs, cwd) {
+    const result = spawnSync(command, commandArgs, { cwd, encoding: "utf8" });
+    if (result.error) {
+        throw result.error;
+    }
+    if (result.status !== 0) {
+        throw new Error(`${command} ${commandArgs.join(" ")} exited with ${result.status}`);
+    }
+    return result.stdout.trim();
+}
+
+/**
+ * Refuses to test against a commit the pin does not name. Advisory without --ci: a local run may
+ * legitimately point at a tag nobody pinned yet, and the warning carries the value to pin.
+ */
+function verifyPin(dir, tag, ci) {
+    const head = capture("git", ["rev-parse", "HEAD"], dir);
+    const expected = process.env.EXPRESS_SUITE_SHA || PINNED[tag];
+    let problem = null;
+    if (!expected) {
+        problem = `no pinned commit for ${tag}: add "${tag}": "${head}" to PINNED`;
+    } else if (head !== expected) {
+        problem = `the clone at ${tag} is ${head} and the pin says ${expected}: the tag moved or the pin is stale`;
+    }
+    if (problem && ci) {
+        throw new Error(problem);
+    }
+    if (problem) {
+        console.log(`warning: ${problem}`);
     }
 }
 
@@ -232,6 +269,7 @@ async function main() {
     const timeoutMs = args.timeout && args.timeout !== true ? Number(args.timeout) : TIMEOUT_MS;
     const tag = wantedTag(args.tag);
     const mocha = ensureSuite(dir, tag, !!args.refresh);
+    verifyPin(dir, tag, !!args.ci);
 
     if (args.express) {
         useExpress(dir);
@@ -311,6 +349,14 @@ async function main() {
 
     // Express's, so that the next thing to open this directory finds what it expects
     useExpress(dir);
+
+    if (args.ci) {
+        const noResult = rows.filter((row) => !row.finished).length;
+        if (sum("failing") > 0 || noResult > 0) {
+            throw new Error(`gate: ${sum("failing")} failing, ${noResult} files without a result`);
+        }
+        console.log("\ngate: green");
+    }
 }
 
 main().catch((err) => {
