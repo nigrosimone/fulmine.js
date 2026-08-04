@@ -1,7 +1,8 @@
 // must support "env" setting for environment configuration
+// INSPECT
 
 const express = require("express");
-const { fetchTest } = require("../../helpers.js");
+const { fetchTest, sequential } = require("../../helpers.js");
 
 const app = express();
 const app2 = express();
@@ -40,10 +41,10 @@ app.listen(13333, async () => {
             console.log(app3.get("env"));
 
             // Test env value accessible via request
-            const outputs = await Promise.all([
-                fetchTest("http://localhost:13333/env").then((res) => res.text()),
-                fetchTest("http://localhost:13334/env").then((res) => res.text()),
-                fetchTest("http://localhost:13335/env").then((res) => res.text())
+            const outputs = await sequential([
+                () => fetchTest("http://localhost:13333/env").then((res) => res.text()),
+                () => fetchTest("http://localhost:13334/env").then((res) => res.text()),
+                () => fetchTest("http://localhost:13335/env").then((res) => res.text())
             ]);
 
             console.log(outputs);

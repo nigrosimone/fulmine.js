@@ -1,7 +1,8 @@
 // must handle async errors natively without express-async-errors
+// INSPECT
 
 const express = require("express");
-const { fetchTest } = require("../../helpers.js");
+const { fetchTest, sequential } = require("../../helpers.js");
 
 const app = express();
 app.set("env", "production");
@@ -21,9 +22,9 @@ app.use((err, req, res, next) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const responses = await Promise.all([
-        fetchTest("http://localhost:13333/test").then((res) => res.text()),
-        fetchTest("http://localhost:13333/test2").then((res) => res.text())
+    const responses = await sequential([
+        () => fetchTest("http://localhost:13333/test").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/test2").then((res) => res.text())
     ]);
 
     console.log(responses);

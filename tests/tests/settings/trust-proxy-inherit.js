@@ -1,4 +1,5 @@
 // test that a mounted sub-app inherits the parent's "trust proxy" unless it set its own
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

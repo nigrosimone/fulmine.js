@@ -1,4 +1,5 @@
 // a body that will not decompress is answered, and the server is still there afterwards
+// INSPECT
 
 const express = require("express");
 const zlib = require("zlib");

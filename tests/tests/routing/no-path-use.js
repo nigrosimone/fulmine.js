@@ -1,4 +1,5 @@
 // must support use without path
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

@@ -1,4 +1,5 @@
 // test that a rejected promise out of a handler registered through app.route() reaches the error
+// INSPECT
 // handlers, with its value, without one, and out of an error handler too
 
 const express = require("express");

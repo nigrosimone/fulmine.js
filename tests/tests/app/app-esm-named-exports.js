@@ -1,4 +1,5 @@
 // must offer an ESM importer the same named exports as Express
+// INSPECT
 
 const express = require("express");
 const path = require("path");

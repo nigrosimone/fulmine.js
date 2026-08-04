@@ -1,7 +1,8 @@
 // must support res.writeHead()
+// INSPECT
 
 const express = require("express");
-const { fetchTest } = require("../../helpers.js");
+const { fetchTest, sequential } = require("../../helpers.js");
 
 const app = express();
 
@@ -24,10 +25,10 @@ app.get("/test-3", (req, res) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const response = await Promise.all([
-        fetchTest("http://localhost:13333/test-1"),
-        fetchTest("http://localhost:13333/test-2"),
-        fetchTest("http://localhost:13333/test-3")
+    const response = await sequential([
+        () => fetchTest("http://localhost:13333/test-1"),
+        () => fetchTest("http://localhost:13333/test-2"),
+        () => fetchTest("http://localhost:13333/test-3")
     ]);
 
     for (const res of response) {

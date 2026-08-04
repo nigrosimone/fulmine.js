@@ -1,4 +1,5 @@
 // must fail the same way express does on express-mongo-sanitize
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

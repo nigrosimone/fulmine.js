@@ -1,7 +1,7 @@
 // must support app.delete() and reject the removed app.del()
 
 const express = require("express");
-const { fetchTest } = require("../../helpers.js");
+const { fetchTest, sequential } = require("../../helpers.js");
 
 const app = express();
 
@@ -23,9 +23,9 @@ console.log("app.del threw:", delThrew);
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const outputs = await Promise.all([
-        fetchTest("http://localhost:13333/delete", { method: "DELETE" }).then((res) => res.text()),
-        fetchTest("http://localhost:13333/del", { method: "DELETE" }).then((res) => res.status)
+    const outputs = await sequential([
+        () => fetchTest("http://localhost:13333/delete", { method: "DELETE" }).then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/del", { method: "DELETE" }).then((res) => res.status)
     ]);
 
     console.log(outputs);

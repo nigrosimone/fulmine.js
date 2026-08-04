@@ -1,4 +1,5 @@
 // a RegExp route puts its capture groups in req.params: named ones by name, the rest by position
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

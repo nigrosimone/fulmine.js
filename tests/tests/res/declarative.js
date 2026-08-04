@@ -1,7 +1,7 @@
 // must support declarative response
 
 const express = require("express");
-const { fetchTest } = require("../../helpers.js");
+const { fetchTest, sequential } = require("../../helpers.js");
 
 const app = express();
 const app2 = express();
@@ -94,29 +94,27 @@ app.listen(13333, async () => {
         console.log("Server is running on port 13333");
         console.log("Server is running on port 13334");
 
-        const responses = await Promise.all([
-            fetchTest("http://localhost:13333/test").then((res) => [res.text(), res.headers.get("etag")]),
-            fetchTest("http://localhost:13333/test2?name=test&name2=test2").then((res) => res.text()),
-            fetchTest("http://localhost:13333/test3/123").then((res) => res.text()),
-            fetchTest("http://localhost:13333/test4?name=test").then((res) => res.text()),
-            fetchTest("http://localhost:13333/test5/123?name=test").then((res) => res.text()),
-            fetchTest("http://localhost:13333/test6?name=test&name2=test2&name3=test3").then((res) => res.text()),
-            fetchTest("http://localhost:13333/test7").then((res) => res.status),
-            fetchTest("http://localhost:13333/test8").then((res) => res.headers.get("x-test")),
-
-            fetchTest("http://localhost:13334/test9/123?name=test").then((res) => res.text()),
-            fetchTest("http://localhost:13334/test10/123?name=test").then((res) => res.text()),
-            fetchTest("http://localhost:13334/test11?name=test").then((res) => res.text()),
-            fetchTest("http://localhost:13334/test12/123?name=test").then((res) => res.text()),
-
-            fetchTest("http://localhost:13334/test").then((res) => res.text()),
-            fetchTest("http://localhost:13334/test2?name=test&name2=test2").then((res) => res.text()),
-            fetchTest("http://localhost:13334/test3/123").then((res) => res.text()),
-            fetchTest("http://localhost:13334/test4?name=test").then((res) => res.text()),
-            fetchTest("http://localhost:13334/test5/123?name=test").then((res) => res.text()),
-            fetchTest("http://localhost:13334/test6?name=test&name2=test2&name3=test3").then((res) => res.text()),
-            fetchTest("http://localhost:13334/test7").then((res) => res.status),
-            fetchTest("http://localhost:13334/test8").then((res) => res.headers.get("x-test"))
+        const responses = await sequential([
+            () => fetchTest("http://localhost:13333/test").then((res) => [res.text(), res.headers.get("etag")]),
+            () => fetchTest("http://localhost:13333/test2?name=test&name2=test2").then((res) => res.text()),
+            () => fetchTest("http://localhost:13333/test3/123").then((res) => res.text()),
+            () => fetchTest("http://localhost:13333/test4?name=test").then((res) => res.text()),
+            () => fetchTest("http://localhost:13333/test5/123?name=test").then((res) => res.text()),
+            () => fetchTest("http://localhost:13333/test6?name=test&name2=test2&name3=test3").then((res) => res.text()),
+            () => fetchTest("http://localhost:13333/test7").then((res) => res.status),
+            () => fetchTest("http://localhost:13333/test8").then((res) => res.headers.get("x-test")),
+            () => fetchTest("http://localhost:13334/test9/123?name=test").then((res) => res.text()),
+            () => fetchTest("http://localhost:13334/test10/123?name=test").then((res) => res.text()),
+            () => fetchTest("http://localhost:13334/test11?name=test").then((res) => res.text()),
+            () => fetchTest("http://localhost:13334/test12/123?name=test").then((res) => res.text()),
+            () => fetchTest("http://localhost:13334/test").then((res) => res.text()),
+            () => fetchTest("http://localhost:13334/test2?name=test&name2=test2").then((res) => res.text()),
+            () => fetchTest("http://localhost:13334/test3/123").then((res) => res.text()),
+            () => fetchTest("http://localhost:13334/test4?name=test").then((res) => res.text()),
+            () => fetchTest("http://localhost:13334/test5/123?name=test").then((res) => res.text()),
+            () => fetchTest("http://localhost:13334/test6?name=test&name2=test2&name3=test3").then((res) => res.text()),
+            () => fetchTest("http://localhost:13334/test7").then((res) => res.status),
+            () => fetchTest("http://localhost:13334/test8").then((res) => res.headers.get("x-test"))
         ]);
 
         console.log(responses);

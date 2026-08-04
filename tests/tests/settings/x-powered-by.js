@@ -1,7 +1,7 @@
 // must support "x-powered-by"
 
 const express = require("express");
-const { fetchTest } = require("../../helpers.js");
+const { fetchTest, sequential } = require("../../helpers.js");
 
 const app = express();
 const app2 = express();
@@ -18,9 +18,9 @@ app2.get("/abc", (req, res) => {
 
 app.listen(13333, async () => {
     app2.listen(13334, async () => {
-        const outputs = await Promise.all([
-            fetchTest("http://localhost:13333/abc").then((res) => res.headers.get("x-powered-by")),
-            fetchTest("http://localhost:13334/abc").then((res) => res.headers.get("x-powered-by"))
+        const outputs = await sequential([
+            () => fetchTest("http://localhost:13333/abc").then((res) => res.headers.get("x-powered-by")),
+            () => fetchTest("http://localhost:13334/abc").then((res) => res.headers.get("x-powered-by"))
         ]);
 
         console.log(

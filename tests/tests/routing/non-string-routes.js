@@ -1,7 +1,7 @@
 // must support array and regex routes
 
 const express = require("express");
-const { fetchTest } = require("../../helpers.js");
+const { fetchTest, sequential } = require("../../helpers.js");
 
 const app = express();
 
@@ -16,11 +16,11 @@ app.get(/^\/c|\/d$/, (req, res) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const outputs = await Promise.all([
-        fetchTest("http://localhost:13333/a").then((res) => res.text()),
-        fetchTest("http://localhost:13333/b").then((res) => res.text()),
-        fetchTest("http://localhost:13333/c").then((res) => res.text()),
-        fetchTest("http://localhost:13333/d").then((res) => res.text())
+    const outputs = await sequential([
+        () => fetchTest("http://localhost:13333/a").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/b").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/c").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/d").then((res) => res.text())
     ]);
 
     console.log(outputs.join(" "));

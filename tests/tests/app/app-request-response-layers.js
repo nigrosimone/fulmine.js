@@ -1,4 +1,5 @@
 // test that app.request/app.response are per-app layers: extending one app does not touch
+// INSPECT
 // another, a mounted sub-app inherits the parent's extensions and can override them
 
 const express = require("express");

@@ -1,4 +1,5 @@
 // test that app.locals is a null-prototype object still carrying settings
+// INSPECT
 
 const express = require("express");
 

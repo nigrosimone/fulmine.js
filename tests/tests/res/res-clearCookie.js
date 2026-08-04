@@ -1,4 +1,5 @@
 // res.clearCookie must ignore maxAge and expires options
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

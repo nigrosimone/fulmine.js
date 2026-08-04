@@ -1,4 +1,5 @@
 // must not say a connection is being kept alive when it is closing
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

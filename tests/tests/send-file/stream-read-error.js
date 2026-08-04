@@ -1,4 +1,5 @@
 // a file that disappears between the stat and the read reaches the error handler, not the process
+// INSPECT
 
 const express = require("express");
 const fs = require("fs");

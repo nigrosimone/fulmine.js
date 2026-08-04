@@ -1,7 +1,8 @@
 // must support nested routers
+// INSPECT
 
 const express = require("express");
-const { fetchTest } = require("../../helpers.js");
+const { fetchTest, sequential } = require("../../helpers.js");
 
 const app = express();
 app.set("etag", false);
@@ -37,16 +38,16 @@ app.use((req, res, next) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const outputs = await Promise.all([
-        fetchTest("http://localhost:13333/test").then((res) => res.text()),
-        fetchTest("http://localhost:13333/gdgdf").then((res) => res.text()),
-        fetchTest("http://localhost:13333/ccc").then((res) => res.text()),
-        fetchTest("http://localhost:13333/abccc").then((res) => res.text()),
-        fetchTest("http://localhost:13333/abccc/ddd").then((res) => res.text()),
-        fetchTest("http://localhost:13333/abccc/ccc").then((res) => res.text()),
-        fetchTest("http://localhost:13333/abccc/ddd/ddd").then((res) => res.text()),
-        fetchTest("http://localhost:13333/abccc/nested/ddd").then((res) => res.text()),
-        fetchTest("http://localhost:13333/abccc/nested").then((res) => res.text())
+    const outputs = await sequential([
+        () => fetchTest("http://localhost:13333/test").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/gdgdf").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/ccc").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/abccc").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/abccc/ddd").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/abccc/ccc").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/abccc/ddd/ddd").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/abccc/nested/ddd").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/abccc/nested").then((res) => res.text())
     ]);
 
     console.log(outputs.join(" "));

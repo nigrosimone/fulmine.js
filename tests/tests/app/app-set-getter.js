@@ -1,4 +1,5 @@
 // must treat app.set(key) with one argument as a getter
+// INSPECT
 
 const express = require("express");
 

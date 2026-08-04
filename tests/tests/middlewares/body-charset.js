@@ -1,4 +1,5 @@
 // must honour the charset parameter the way body-parser does: json takes utf-* only, urlencoded
+// INSPECT
 // takes utf-8 and iso-8859-1, text takes anything iconv can decode, and the rest are 415
 
 const express = require("express");

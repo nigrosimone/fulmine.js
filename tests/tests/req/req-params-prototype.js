@@ -1,4 +1,5 @@
 // the shape of req.params: null prototype on matched routes, plain on a pathless middleware
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

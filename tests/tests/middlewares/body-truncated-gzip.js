@@ -1,4 +1,5 @@
 // a gzip body cut short must answer 400, not parse whatever bytes came out
+// INSPECT
 
 const express = require("express");
 const zlib = require("zlib");

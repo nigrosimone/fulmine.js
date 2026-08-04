@@ -1,4 +1,5 @@
 // must support server.address()
+// INSPECT
 
 const express = require("express");
 

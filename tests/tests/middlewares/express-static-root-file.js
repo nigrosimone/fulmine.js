@@ -1,4 +1,5 @@
 // express.static() with a file as root serves it plain and 404s the trailing slash
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

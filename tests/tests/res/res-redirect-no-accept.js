@@ -1,4 +1,5 @@
 // a redirect to a client accepting neither text nor html carries no Content-Type and no body
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

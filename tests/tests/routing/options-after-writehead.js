@@ -1,4 +1,5 @@
 // test that a head written before the automatic OPTIONS reply sends the error to the error
+// INSPECT
 // handlers instead of answering with the methods
 
 const express = require("express");

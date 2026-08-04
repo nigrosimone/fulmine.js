@@ -1,4 +1,5 @@
 // a HEAD of a redirect must carry the Content-Length the GET body would have
+// INSPECT
 
 const express = require("express");
 const net = require("net");

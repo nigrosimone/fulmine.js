@@ -1,4 +1,5 @@
 // must support app.path()
+// INSPECT
 
 const express = require("express");
 

@@ -1,7 +1,7 @@
 // must support "etag"
 
 const express = require("express");
-const { fetchTest } = require("../../helpers.js");
+const { fetchTest, sequential } = require("../../helpers.js");
 
 const app = express();
 const app2 = express();
@@ -25,10 +25,10 @@ app3.get("/abc", (req, res) => {
 app.listen(13333, async () => {
     app2.listen(13334, async () => {
         app3.listen(13335, async () => {
-            const outputs = await Promise.all([
-                fetchTest("http://localhost:13333/abc"),
-                fetchTest("http://localhost:13334/abc"),
-                fetchTest("http://localhost:13335/abc")
+            const outputs = await sequential([
+                () => fetchTest("http://localhost:13333/abc"),
+                () => fetchTest("http://localhost:13334/abc"),
+                () => fetchTest("http://localhost:13335/abc")
             ]);
             console.log(outputs.map((res) => res.headers.get("etag")));
             process.exit(0);

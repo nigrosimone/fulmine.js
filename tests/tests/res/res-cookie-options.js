@@ -1,4 +1,5 @@
 // res.cookie() with no secret to sign with, and with a maxAge that is not a number
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

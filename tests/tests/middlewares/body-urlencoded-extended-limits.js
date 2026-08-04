@@ -1,4 +1,5 @@
 // must bound the extended parse the way body-parser bounds it: a depth overflow is a 400 with
+// INSPECT
 // body-parser's wording, the depth option is honoured and validated, and the array ceiling rises
 // to the parameter count so a long form array stays an array
 

@@ -1,4 +1,5 @@
 // a mergeParams router's params are scoped to it: the sibling route after the mount must not
+// INSPECT
 // inherit what the child pushed
 
 const express = require("express");

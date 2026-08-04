@@ -1,4 +1,5 @@
 // must support listen with no callback
+// INSPECT
 
 const express = require("express");
 

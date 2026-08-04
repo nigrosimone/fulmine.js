@@ -1,4 +1,5 @@
 // what app.use() accepts and what it refuses, at registration and not at the first request
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

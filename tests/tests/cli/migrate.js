@@ -1,4 +1,5 @@
 // must rewrite the import and only the import
+// INSPECT
 
 // The harness runs every test twice and compares the output, so it insists on this line even
 // though what is being checked here is the CLI and not the server. A wrong answer throws rather

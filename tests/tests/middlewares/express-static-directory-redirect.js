@@ -1,4 +1,5 @@
 // must redirect a directory to itself, and to nowhere else
+// INSPECT
 
 const express = require("express");
 const net = require("net");

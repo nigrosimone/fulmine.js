@@ -1,4 +1,5 @@
 // must leave the caller's options object alone: two express.static mounts sharing one options
+// INSPECT
 // object each keep their own root, as serve-static's copy of the options guarantees
 
 const express = require("express");

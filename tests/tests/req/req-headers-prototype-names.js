@@ -1,4 +1,5 @@
 // req.headers keeps a null prototype: a header named after an Object.prototype member is an
+// INSPECT
 // ordinary header, and a duplicate whose first value is empty still folds the way node folds it
 
 const net = require("net");

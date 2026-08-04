@@ -1,7 +1,7 @@
 // must support app.route()
 
 const express = require("express");
-const { fetchTest } = require("../../helpers.js");
+const { fetchTest, sequential } = require("../../helpers.js");
 
 const app = express();
 
@@ -20,10 +20,10 @@ app.route("/test")
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const outputs = await Promise.all([
-        fetchTest("http://localhost:13333/asdf").then((res) => res.text()),
-        fetchTest("http://localhost:13333/test").then((res) => res.text()),
-        fetchTest("http://localhost:13333/test", { method: "POST" }).then((res) => res.text())
+    const outputs = await sequential([
+        () => fetchTest("http://localhost:13333/asdf").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/test").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/test", { method: "POST" }).then((res) => res.text())
     ]);
 
     console.log(outputs.join(" "));

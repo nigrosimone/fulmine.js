@@ -1,4 +1,5 @@
 // test that an empty NODE_ENV still reads as development, as express defaults it
+// INSPECT
 
 process.env.NODE_ENV = "";
 

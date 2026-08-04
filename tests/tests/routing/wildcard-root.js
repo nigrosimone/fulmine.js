@@ -1,4 +1,5 @@
 // a wildcard route with no prefix answers the root as well, and captures it the same way
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

@@ -1,4 +1,5 @@
 // "views" as a list of directories, searched in order, and the precedence of render locals
+// INSPECT
 
 const path = require("path");
 const express = require("express");

@@ -1,4 +1,5 @@
 // Test res.cookie() with all options (maxAge, expires, httpOnly, secure, sameSite, domain, path, signed)
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

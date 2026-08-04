@@ -1,4 +1,5 @@
 // a sendFile error reaches the callback with the response untouched, so the callback still
+// INSPECT
 // answers 200; without a callback a directory falls through as a plain next()
 
 const express = require("express");

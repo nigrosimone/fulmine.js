@@ -1,7 +1,8 @@
 // must support named wildcard /*splat path matching
+// INSPECT
 
 const express = require("express");
-const { fetchTest } = require("../../helpers.js");
+const { fetchTest, sequential } = require("../../helpers.js");
 
 const app = express();
 
@@ -16,10 +17,10 @@ app.get("/*catchall", (req, res) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const responses = await Promise.all([
-        fetchTest("http://localhost:13333/files/docs/readme.md").then((res) => res.text()),
-        fetchTest("http://localhost:13333/files/image.png").then((res) => res.text()),
-        fetchTest("http://localhost:13333/other/page").then((res) => res.text())
+    const responses = await sequential([
+        () => fetchTest("http://localhost:13333/files/docs/readme.md").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/files/image.png").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/other/page").then((res) => res.text())
     ]);
 
     console.log(responses);

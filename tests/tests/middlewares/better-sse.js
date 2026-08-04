@@ -1,4 +1,5 @@
 // must support server-sent events
+// INSPECT
 
 const express = require("express");
 const { createSession, NodeHttp1Connection } = require("better-sse");

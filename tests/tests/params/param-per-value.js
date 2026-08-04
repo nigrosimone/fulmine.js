@@ -1,4 +1,5 @@
 // app.param() runs once per value and not once per request, and a value already seen brings back
+// INSPECT
 // what its callback left behind
 
 const express = require("express");

@@ -1,4 +1,5 @@
 // must support http-proxy-middleware
+// INSPECT
 process.env.DEBUG = "http-proxy-middleware";
 
 const express = require("express");

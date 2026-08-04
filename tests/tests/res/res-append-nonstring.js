@@ -1,4 +1,5 @@
 // res.append() and res.setHeader() turn non-string values into text before they reach the wire
+// INSPECT
 
 const net = require("net");
 const express = require("express");

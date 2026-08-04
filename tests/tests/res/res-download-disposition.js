@@ -1,4 +1,5 @@
 // download's Content-Disposition: from the alternate filename, never overridable through the
+// INSPECT
 // headers option, and absent entirely when the transfer fails before it starts
 
 const express = require("express");

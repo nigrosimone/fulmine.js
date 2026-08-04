@@ -1,7 +1,7 @@
 // must support router options
 
 const express = require("express");
-const { fetchTest } = require("../../helpers.js");
+const { fetchTest, sequential } = require("../../helpers.js");
 
 const app = express();
 app.set("case sensitive routing", false);
@@ -36,28 +36,25 @@ app.use((req, res, next) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const responses = await Promise.all([
-        fetchTest("http://localhost:13333/TEST").then((res) => res.text()),
-        fetchTest("http://localhost:13333/TEST/TEST").then((res) => res.text()),
-        fetchTest("http://localhost:13333/test/test").then((res) => res.text()),
-        fetchTest("http://localhost:13333/test/TEST/").then((res) => res.text()),
-        fetchTest("http://localhost:13333/Test/Test").then((res) => res.text()),
-        fetchTest("http://localhost:13333/test/TeST").then((res) => res.text()),
-        fetchTest("http://localhost:13333/Test/test/").then((res) => res.text()),
-
-        fetchTest("http://localhost:13333/asdf").then((res) => res.text()),
-        fetchTest("http://localhost:13333/asdf/").then((res) => res.text()),
-        fetchTest("http://localhost:13333/def").then((res) => res.text()),
-        fetchTest("http://localhost:13333/def/").then((res) => res.text()),
-
-        fetchTest("http://localhost:13333/ASDF").then((res) => res.text()),
-        fetchTest("http://localhost:13333/ASDF/").then((res) => res.text()),
-        fetchTest("http://localhost:13333/def/").then((res) => res.text()),
-
-        fetchTest("http://localhost:13333/TEST/asdf").then((res) => res.text()),
-        fetchTest("http://localhost:13333/TEST/asdf/").then((res) => res.text()),
-        fetchTest("http://localhost:13333/TEST/asdf/asdf").then((res) => res.text()),
-        fetchTest("http://localhost:13333/TEST/asdf/asdf/").then((res) => res.text())
+    const responses = await sequential([
+        () => fetchTest("http://localhost:13333/TEST").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/TEST/TEST").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/test/test").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/test/TEST/").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/Test/Test").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/test/TeST").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/Test/test/").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/asdf").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/asdf/").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/def").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/def/").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/ASDF").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/ASDF/").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/def/").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/TEST/asdf").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/TEST/asdf/").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/TEST/asdf/asdf").then((res) => res.text()),
+        () => fetchTest("http://localhost:13333/TEST/asdf/asdf/").then((res) => res.text())
     ]);
 
     console.log(responses.join(" "));

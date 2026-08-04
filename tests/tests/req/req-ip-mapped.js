@@ -1,4 +1,5 @@
 // must report an IPv4 peer of a dual stack listener in mapped form, as node does
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

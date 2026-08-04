@@ -1,4 +1,5 @@
 // must support simple "use"
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

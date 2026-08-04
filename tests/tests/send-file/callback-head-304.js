@@ -1,4 +1,5 @@
 // must invoke the sendFile callback without error on HEAD and on 304
+// INSPECT
 
 const http = require("http");
 const express = require("express");

@@ -1,7 +1,7 @@
 // must answer a conditional request the way its path can answer it
 
 const express = require("express");
-const { fetchTest } = require("../../helpers.js");
+const { fetchTest, sequential } = require("../../helpers.js");
 
 const app = express();
 
@@ -30,9 +30,9 @@ app.listen(13333, async () => {
 
     // plain fetch for the compiled route, since fetchTest prints the status and that is exactly
     // what differs here. The ordinary route is compared header by header as everywhere else.
-    const [compiled, ordinary] = await Promise.all([
-        fetch("http://localhost:13333/compiled", matching),
-        fetchTest("http://localhost:13333/ordinary", matching)
+    const [compiled, ordinary] = await sequential([
+        () => fetch("http://localhost:13333/compiled", matching),
+        () => fetchTest("http://localhost:13333/ordinary", matching)
     ]);
 
     const compiledBody = await compiled.text();

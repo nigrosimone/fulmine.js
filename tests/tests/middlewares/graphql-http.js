@@ -1,4 +1,5 @@
 // must support graphql-http
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

@@ -100,6 +100,24 @@ async function fetchTest(input, init) {
 }
 
 /**
+ * Runs the requests one after another and collects what they answered.
+ *
+ * Promise.all would start them together, and the two servers would then serve them in whatever
+ * order they happened to schedule, which the request inspector prints and the comparison reads as
+ * a difference. Nothing in this suite is measuring concurrency.
+ *
+ * @param {Array<() => Promise<any>>} requests each one starts when its turn comes
+ * @returns {Promise<any[]>}
+ */
+async function sequential(requests) {
+    const answers = [];
+    for (const request of requests) {
+        answers.push(await request());
+    }
+    return answers;
+}
+
+/**
  * Middleware that prints the request-side values, so they are compared too.
  *
  * A file asks for it with `// INSPECT` on its second line, and tests/inspect-preload.cjs mounts it
@@ -129,7 +147,8 @@ function inspectRequest(req, res, next) {
         `protocol=${req.protocol}`,
         `secure=${req.secure}`,
         `hostname=${req.hostname}`,
-        `host=${req.host}`,
+        // the port is masked: a test on listen(0) gets a different one every run
+        `host=${String(req.host).replace(/:[0-9]+$/, ":port")}`,
         `xhr=${req.xhr}`,
         `subdomains=${JSON.stringify(req.subdomains)}`,
         `query=${JSON.stringify(req.query)}`
@@ -138,4 +157,4 @@ function inspectRequest(req, res, next) {
     next();
 }
 
-module.exports = { fetchTest, inspectRequest, COMPARED_HEADERS, PRESENCE_ONLY_HEADERS };
+module.exports = { fetchTest, sequential, inspectRequest, COMPARED_HEADERS, PRESENCE_ONLY_HEADERS };

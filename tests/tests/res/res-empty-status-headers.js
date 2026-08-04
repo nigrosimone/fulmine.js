@@ -1,7 +1,8 @@
 // must strip the entity headers from a response that carries no body
+// INSPECT
 
 const express = require("express");
-const { fetchTest } = require("../../helpers.js");
+const { fetchTest, sequential } = require("../../helpers.js");
 
 const app = express();
 
@@ -36,14 +37,14 @@ app.listen(13333, async () => {
     // request carries a conditional header, and that alone makes req.fresh false. Setting the
     // header explicitly replaces it, so the conditional request can actually be fresh.
     const matching = { headers: { "if-none-match": '"abc"', "cache-control": "max-age=604800" } };
-    const responses = await Promise.all([
-        fetchTest("http://localhost:13333/204"),
-        fetchTest("http://localhost:13333/205"),
-        fetchTest("http://localhost:13333/304"),
-        fetchTest("http://localhost:13333/204-end"),
-        fetchTest("http://localhost:13333/205-end"),
-        fetchTest("http://localhost:13333/fresh", matching),
-        fetchTest("http://localhost:13333/fresh-end", matching)
+    const responses = await sequential([
+        () => fetchTest("http://localhost:13333/204"),
+        () => fetchTest("http://localhost:13333/205"),
+        () => fetchTest("http://localhost:13333/304"),
+        () => fetchTest("http://localhost:13333/204-end"),
+        () => fetchTest("http://localhost:13333/205-end"),
+        () => fetchTest("http://localhost:13333/fresh", matching),
+        () => fetchTest("http://localhost:13333/fresh-end", matching)
     ]);
 
     for (const response of responses) {

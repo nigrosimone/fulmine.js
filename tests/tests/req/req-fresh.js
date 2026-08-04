@@ -1,7 +1,8 @@
 // must support req.fresh and req.stale
+// INSPECT
 
 const express = require("express");
-const { fetchTest } = require("../../helpers.js");
+const { fetchTest, sequential } = require("../../helpers.js");
 
 const app = express();
 
@@ -42,35 +43,24 @@ app.get("/test2", (req, res) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const responses = await Promise.all([
-        fetchTest("http://localhost:13333/test", {
-            headers: {
-                "cache-control": "max-age=604800"
-            }
-        }),
-        fetchTest("http://localhost:13333/test", {
-            headers: {
-                "cache-control": "max-age=604800",
-                "if-none-match": '"123"'
-            }
-        }),
-        fetchTest("http://localhost:13333/test", {
-            headers: {
-                "cache-control": "max-age=604800",
-                "if-none-match": '"1234"'
-            }
-        }),
-        fetchTest("http://localhost:13333/test2", {
-            headers: {
-                "cache-control": "max-age=604800"
-            }
-        }),
-        fetchTest("http://localhost:13333/test2", {
-            headers: {
-                "cache-control": "max-age=604800",
-                "if-modified-since": new Date(date.getTime() - 1000).toISOString()
-            }
-        })
+    const responses = await sequential([
+        () => fetchTest("http://localhost:13333/test", { headers: { "cache-control": "max-age=604800" } }),
+        () =>
+            fetchTest("http://localhost:13333/test", {
+                headers: { "cache-control": "max-age=604800", "if-none-match": '"123"' }
+            }),
+        () =>
+            fetchTest("http://localhost:13333/test", {
+                headers: { "cache-control": "max-age=604800", "if-none-match": '"1234"' }
+            }),
+        () => fetchTest("http://localhost:13333/test2", { headers: { "cache-control": "max-age=604800" } }),
+        () =>
+            fetchTest("http://localhost:13333/test2", {
+                headers: {
+                    "cache-control": "max-age=604800",
+                    "if-modified-since": new Date(date.getTime() - 1000).toISOString()
+                }
+            })
     ]);
 
     const texts = await Promise.all(responses.map((res) => res.text()));

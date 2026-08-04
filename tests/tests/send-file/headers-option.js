@@ -1,4 +1,5 @@
 // must write the headers option exactly as it was given
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

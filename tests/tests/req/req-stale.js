@@ -1,4 +1,5 @@
 // Test req.stale property - must be the boolean inverse of req.fresh
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

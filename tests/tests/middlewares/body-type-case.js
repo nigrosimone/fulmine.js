@@ -1,4 +1,5 @@
 // must match the content-type case-insensitively and past legal whitespace, as type-is does:
+// INSPECT
 // media types are case-insensitive per RFC 2045, and OWS may precede the ";"
 
 const express = require("express");

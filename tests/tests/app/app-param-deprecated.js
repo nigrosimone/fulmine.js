@@ -1,4 +1,5 @@
 // must reject app.param(fn) and keep app.param(name, fn) working
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

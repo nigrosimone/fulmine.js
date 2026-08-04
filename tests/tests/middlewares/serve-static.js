@@ -1,7 +1,7 @@
 // must support serve static
 
 const express = require("express");
-const { fetchTest } = require("../../helpers.js");
+const { fetchTest, sequential } = require("../../helpers.js");
 const serveStatic = require("serve-static");
 
 const app = express();
@@ -28,11 +28,11 @@ app.use((req, res, next) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    const responses = await Promise.all([
-        fetchTest("http://localhost:13333/abc"),
-        fetchTest("http://localhost:13333/static/workers"),
-        fetchTest("http://localhost:13333/static/index.js"),
-        fetchTest("http://localhost:13333/static/../package.json")
+    const responses = await sequential([
+        () => fetchTest("http://localhost:13333/abc"),
+        () => fetchTest("http://localhost:13333/static/workers"),
+        () => fetchTest("http://localhost:13333/static/index.js"),
+        () => fetchTest("http://localhost:13333/static/../package.json")
     ]);
 
     const texts = await Promise.all(responses.map((r) => r.text()));

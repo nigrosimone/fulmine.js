@@ -1,4 +1,5 @@
 // test the wording thrown for bad "etag" and "query parser" values, and that a true
+// INSPECT
 // "query parser" parses like "simple"
 
 const express = require("express");

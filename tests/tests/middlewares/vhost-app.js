@@ -1,4 +1,5 @@
 // must support vhost with a whole app behind it
+// INSPECT
 
 const express = require("express");
 const vhost = require("vhost");

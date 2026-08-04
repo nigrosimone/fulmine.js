@@ -1,7 +1,8 @@
 // must support cookie parser
+// INSPECT
 
 const express = require("express");
-const { fetchTest } = require("../../helpers.js");
+const { fetchTest, sequential } = require("../../helpers.js");
 const cookieParser = require("cookie-parser");
 
 const app = express();
@@ -16,12 +17,11 @@ app.get("/abc", (req, res) => {
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
-    await Promise.all([
-        fetchTest("http://localhost:13333/abc", {
-            headers: {
-                Cookie: `abc=123; def=456; ghi=j${encodeURIComponent(":" + JSON.stringify({ n: 789 }))};`
-            }
-        }).then((res) => res.text())
+    await sequential([
+        () =>
+            fetchTest("http://localhost:13333/abc", {
+                headers: { Cookie: `abc=123; def=456; ghi=j${encodeURIComponent(":" + JSON.stringify({ n: 789 }))};` }
+            }).then((res) => res.text())
     ]);
 
     process.exit(0);

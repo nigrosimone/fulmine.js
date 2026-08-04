@@ -1,4 +1,5 @@
 // a HEAD with a Range must answer 206 with the Content-Length of the selected part
+// INSPECT
 
 const express = require("express");
 const path = require("path");

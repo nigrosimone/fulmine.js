@@ -1,4 +1,5 @@
 // test app.locals as object for application-level local variables
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");
