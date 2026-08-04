@@ -674,6 +674,30 @@ function onNativeAborted() {
 /**
  *
  */
+/**
+ * The per-request constants of a fully literal native registration. µWS matched the URL byte for
+ * byte against this exact pattern and dispatches by method, so the request constructor can take
+ * these as given instead of asking uWS and recomputing them on every request.
+ *
+ * @param {string} path the registered pattern, which is what getUrl() would have answered
+ * @param {string} method uppercase, fixed by which uWS verb the registration used
+ * @param {boolean} strict the owner's strict routing, frozen here like the twin registration is
+ */
+function nativePreset(path, method, strict) {
+    const endsWithSlash = path.charCodeAt(path.length - 1) === 0x2f;
+    return {
+        path,
+        method,
+        endsWithSlash,
+        opPath: endsWithSlash && path !== "/" && !strict ? path.slice(0, -1) : path,
+        isOptions: method === "OPTIONS",
+        isHead: method === "HEAD"
+    };
+}
+
+/**
+ *
+ */
 function checkHandlers(handlers, emptyMessage = "argument handler is required") {
     if (handlers.length === 0) {
         throw new TypeError(emptyMessage);
@@ -1313,10 +1337,11 @@ module.exports = class Router extends EventEmitter {
      *
      * @param {any} res uWS response
      * @param {any} req uWS request, readable only during this call
+     * @param {any} [preset] a literal registration's constants, see nativePreset
      * @returns {any} the request, with the response reachable as request.res
      */
-    handleRequest(res, req) {
-        const request = new this._request(req, res, this);
+    handleRequest(res, req, preset) {
+        const request = new this._request(req, res, this, preset);
         const response = new this._response(res, request, this);
         request.res = response;
         response.req = request;
@@ -1381,7 +1406,7 @@ module.exports = class Router extends EventEmitter {
         if (route.path.includes(":")) {
             route.optimizedParams = route.path.match(regExParam).map((p) => p.slice(1));
         }
-        const makeHandler = (chain) => {
+        const makeHandler = (chain, preset) => {
             // all three are registration-time constants: computing them in the handler was a
             // closure and a scan of the chain on every native request.
             // Falling back resumes after the mount, not after the router's leaf: the leaf can have
@@ -1394,7 +1419,7 @@ module.exports = class Router extends EventEmitter {
             // and this one never did. nativeDone and nativeFail defer their epilogues to a
             // microtask, which is where the await used to resume, so the visible order holds
             return (res, req) => {
-                const request = this.handleRequest(res, req);
+                const request = this.handleRequest(res, req, preset);
                 const response = request.res;
                 if (optimizedParams) {
                     request.optimizedParams = new NullObject();
@@ -1419,12 +1444,22 @@ module.exports = class Router extends EventEmitter {
         // chain runs without re-matching the method, so the get registration must not see it
         const getChain =
             route.method === "GET" ? optimizedPath.filter((r) => r.all || r.method !== "HEAD") : optimizedPath;
-        let fn = makeHandler(getChain);
         route.optimizedPath = optimizedPath;
 
+        // A fully literal registration knows path and method here, so each registration site
+        // hands the request constructor its own constants. An "any" registration serves every
+        // verb and a parameterised one matches paths it cannot spell, so both stay dynamic
+        const canPreset = !route.optimizedParams && method !== "any";
+        // the route's own router decides, not the app running the registration: a router created
+        // with { strict: true } and mounted on an app without it does not answer /things/, and
+        // registering that path here is the only way it could
+        const strictHere = Boolean((route.owner ?? this).get("strict routing"));
+
+        let fn = makeHandler(getChain, canPreset ? nativePreset(route.path, route.method, strictHere) : undefined);
+        const jsFn = fn;
+
         let replacedPath = route.path;
-        const realFn = fn;
-        const headFn = getChain.length === optimizedPath.length ? realFn : makeHandler(optimizedPath);
+        const headChain = getChain.length === optimizedPath.length ? getChain : optimizedPath;
 
         // the response prototype the route will really run under: its own app's, which sees a
         // method patched there or inherited from a parent app, falling back to the registering app
@@ -1447,17 +1482,29 @@ module.exports = class Router extends EventEmitter {
         }
 
         this.uwsApp[method](replacedPath, fn);
-        // the route's own router decides, not the app running the registration: a router created
-        // with { strict: true } and mounted on an app without it does not answer /things/, and
-        // registering that path here is the only way it could
-        if (!(route.owner ?? this).get("strict routing") && route.path[route.path.length - 1] !== "/") {
-            this.uwsApp[method](replacedPath + "/", fn);
+        if (!strictHere && route.path[route.path.length - 1] !== "/") {
+            // a declarative response answers the twin as itself; a preset handler cannot be
+            // shared, since the twin's path is its own constant
+            const slashFn =
+                fn !== jsFn
+                    ? fn
+                    : canPreset
+                      ? makeHandler(getChain, nativePreset(route.path + "/", route.method, strictHere))
+                      : fn;
+            this.uwsApp[method](replacedPath + "/", slashFn);
             if (method === "get") {
-                this.uwsApp.head(replacedPath + "/", headFn);
+                this.uwsApp.head(
+                    replacedPath + "/",
+                    makeHandler(headChain, canPreset ? nativePreset(route.path + "/", "HEAD", strictHere) : undefined)
+                );
             }
         }
         if (method === "get") {
-            this.uwsApp.head(replacedPath, headFn);
+            // its own handler always: the shared one would carry the GET registration's method
+            this.uwsApp.head(
+                replacedPath,
+                makeHandler(headChain, canPreset ? nativePreset(route.path, "HEAD", strictHere) : undefined)
+            );
         }
     }
 

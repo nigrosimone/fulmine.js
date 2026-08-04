@@ -196,8 +196,11 @@ module.exports = class Request extends Readable {
      * @param {any} req the uWS request, readable only during this call
      * @param {any} res the uWS response
      * @param {any} app the application or router this request arrived at
+     * @param {any} [preset] a literal native registration's constants: µWS matched the URL byte
+     *   for byte against that exact pattern and dispatched by method, so path, method and what
+     *   derives from them are known without asking
      */
-    constructor(req, res, app) {
+    constructor(req, res, app, preset) {
         // the same object every time: Readable reads these options and never writes to them
         super(READABLE_OPTIONS);
         this._res = res;
@@ -217,25 +220,39 @@ module.exports = class Request extends Readable {
         // back off for every request that reads req.query.
         this._rawQuery = req.getQuery() ?? "";
         this.urlQuery = this._rawQuery === "" ? "" : "?" + this._rawQuery;
-        // getUrl() is the path already, so the query is joined on and then not split off again.
-        // Building originalUrl and picking the path back out of it with indexOf and substring was
-        // a search and a second string for something uWS had just handed over.
-        this.path = req.getUrl();
-        this.originalUrl = this.path + this.urlQuery;
-        this.url = this.originalUrl;
-        // what the router last wrote to req.url. A middleware assigning something else is a
-        // rewrite, which express honours, and dispatch compares against this to notice it
-        this._lastUrl = this.originalUrl;
-        // charCodeAt rather than indexing: s[i] builds a one character string to throw away
-        this.endsWithSlash = this.path.charCodeAt(this.path.length - 1) === 0x2f;
-        this._opPath = this.path;
-        this._originalPath = this.path;
-        if (this.endsWithSlash && this.path !== "/" && !this.app.get("strict routing")) {
-            this._opPath = this._opPath.slice(0, -1);
+        if (preset) {
+            // the registration's constants: two native crossings and their strings not asked for
+            this.path = preset.path;
+            this.originalUrl = preset.path + this.urlQuery;
+            this.url = this.originalUrl;
+            this._lastUrl = this.originalUrl;
+            this.endsWithSlash = preset.endsWithSlash;
+            this._opPath = preset.opPath;
+            this._originalPath = preset.path;
+            this.method = preset.method;
+            this._isOptions = preset.isOptions;
+            this._isHead = preset.isHead;
+        } else {
+            // getUrl() is the path already, so the query is joined on and then not split off
+            // again. Building originalUrl and picking the path back out of it with indexOf and
+            // substring was a search and a second string for something uWS had just handed over.
+            this.path = req.getUrl();
+            this.originalUrl = this.path + this.urlQuery;
+            this.url = this.originalUrl;
+            // what the router last wrote to req.url. A middleware assigning something else is a
+            // rewrite, which express honours, and dispatch compares against this to notice it
+            this._lastUrl = this.originalUrl;
+            // charCodeAt rather than indexing: s[i] builds a one character string to throw away
+            this.endsWithSlash = this.path.charCodeAt(this.path.length - 1) === 0x2f;
+            this._opPath = this.path;
+            this._originalPath = this.path;
+            if (this.endsWithSlash && this.path !== "/" && !this.app.get("strict routing")) {
+                this._opPath = this._opPath.slice(0, -1);
+            }
+            this.method = req.getCaseSensitiveMethod().toUpperCase();
+            this._isOptions = this.method === "OPTIONS";
+            this._isHead = this.method === "HEAD";
         }
-        this.method = req.getCaseSensitiveMethod().toUpperCase();
-        this._isOptions = this.method === "OPTIONS";
-        this._isHead = this.method === "HEAD";
         this.params = {};
 
         // Two Sets per request, for two things almost no request needs.
