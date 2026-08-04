@@ -25,6 +25,7 @@ const {
     canBeOptimizedWithParams,
     pathsCanOverlap,
     uwsPrefersEarlier,
+    regexpGroupKeys,
     NullObject,
     EMPTY_REGEX
 } = require("./utils.js");
@@ -286,7 +287,7 @@ class Walk {
         const route = this.route;
         const router = this.router;
         if (thingamabob) {
-            if (thingamabob === "route") {
+            if (thingamabob === "route" || thingamabob === "router") {
                 if (route.use && !route.keepMount) {
                     // a rewrite done inside this middleware is taken now: the pop below recomputes
                     // req.url from the original path and would silently revert it
@@ -327,6 +328,16 @@ class Walk {
                         useApp(req, req.app.parent);
                     }
                 }
+                if (thingamabob === "router") {
+                    if (this.skipCheck) {
+                        // on a compiled chain, leaving the router is what running out of chain
+                        // already means: ordinary routing takes over after the mount
+                        return this.dispatch(this.routes.length);
+                    }
+                    // out of this router entirely, so whoever mounted it carries on after the
+                    // mount. The app's own walk has nobody after it, and answers 404
+                    return this.resolve(false);
+                }
                 req.routeCount++;
                 // dispatch is a plain call, so a synchronous throw would escape here instead of
                 // rejecting, as it used to when this recursed through the async _routeRequest
@@ -359,6 +370,9 @@ class Walk {
             if (pushedParams) {
                 req._paramStack.push(req.params);
             }
+            // express restores req.params when a router hands back, so what runs after the mount
+            // sees the params it had before it
+            const parentParams = req.params;
             if (
                 callback.settings["strict routing"] &&
                 req.endsWithSlash &&
@@ -373,6 +387,7 @@ class Walk {
                     if (pushedParams) {
                         req._paramStack.pop();
                     }
+                    req.params = parentParams;
                     if (req._error) {
                         req._errorKey = route.routeKey;
                     }
@@ -451,6 +466,40 @@ function regexMountEntry(router, route, req) {
     }
     const matched = route.pattern.exec(mountPath === "" ? "/" : mountPath);
     return matched ? escapePathLiteral(matched[0]) : "";
+}
+
+/**
+ * The route's own params merged with those of the mounts it sits under, in express's order: an
+ * outer mount first, the route's own last. Numbered captures do not overwrite each other, they
+ * shift, so a RegExp mount capturing one group leaves the route's own group numbered from one.
+ *
+ * @param {Record<string, any>} own what this route's own pattern captured
+ * @param {Record<string, any>[]} stack the mounts, outermost first
+ * @returns {Record<string, any>}
+ */
+function mergeParams(own, stack) {
+    const merged = Object.create(null);
+    for (const params of stack) {
+        Object.assign(merged, params);
+    }
+    // both sides numbering from zero means the outer ones keep their places and these move up
+    if (own[0] !== undefined && merged[0] !== undefined) {
+        let count = 0;
+        while (merged[count] !== undefined) {
+            count++;
+        }
+        let last = 0;
+        while (own[last] !== undefined) {
+            last++;
+        }
+        for (last--; last >= 0; last--) {
+            own[last + count] = own[last];
+            if (last < count) {
+                delete own[last];
+            }
+        }
+    }
+    return Object.assign(merged, own);
 }
 
 /**
@@ -647,9 +696,15 @@ module.exports = class Router extends EventEmitter {
         if (this.constructor.name === "Application") {
             useApp(req, this);
         }
+        // express restores req.params when a router hands back, so the caller that ran this one
+        // sees the params it had before
+        const callerParams = req.params;
         const routed = await this._routeRequest(req, res, 0);
-        if (!routed && next) {
-            next();
+        if (!routed) {
+            req.params = callerParams;
+            if (next) {
+                next();
+            }
         }
     }
 
@@ -701,8 +756,11 @@ module.exports = class Router extends EventEmitter {
                 this._mountpathCache.clear();
             }
             // two mounts in the stack may reuse a name, which a named-group compile refuses.
-            // Nothing ever reads these groups, so they are renamed by position
-            const stackPattern = fullStack.includes(":") ? fullStack.replace(/:\w+/g, (m, at) => ":m" + at) : fullStack;
+            // Nothing ever reads these groups, so they are renamed by position. An escaped colon
+            // is a literal one, out of a RegExp mount's matched text, and is left alone
+            const stackPattern = fullStack.includes(":")
+                ? fullStack.replace(/(\\?):(\w+)/g, (whole, escaped, name, at) => (escaped ? whole : ":m" + at))
+                : fullStack;
             fullMountpath = patternToRegex(stackPattern, true);
             this._mountpathCache.set(fullStack, fullMountpath);
         }
@@ -722,7 +780,13 @@ module.exports = class Router extends EventEmitter {
         let path = req._opPath;
         let pattern = route.pattern;
 
-        if (req.endsWithSlash && path.endsWith("/") && !this.get("strict routing")) {
+        if (route.userRegexp) {
+            // a RegExp the application wrote is matched against the path as it arrived: express
+            // relaxes a trailing slash only for the paths it compiled itself
+            if (req.endsWithSlash && !path.endsWith("/")) {
+                path += "/";
+            }
+        } else if (req.endsWithSlash && path.endsWith("/") && !this.get("strict routing")) {
             path = path.slice(0, -1);
         }
         // the line above turns the root path into the empty string, which no pattern is written
@@ -744,6 +808,16 @@ module.exports = class Router extends EventEmitter {
         }
         if (pattern === EMPTY_REGEX) {
             return true;
+        }
+        if (route.regexMount) {
+            // a mount consumes what it matched, so the match has to start the path and break on a
+            // separator: express refuses /api/ as a mount of /test/api/1234 for that reason
+            const matched = pattern.exec(path);
+            if (!matched || path.slice(0, matched[0].length) !== matched[0]) {
+                return false;
+            }
+            const after = path[matched[0].length];
+            return after === undefined || after === "/";
         }
         return pattern.test(path);
     }
@@ -767,7 +841,14 @@ module.exports = class Router extends EventEmitter {
         const paths = Array.isArray(path) ? path : [path];
         const routes = [];
         for (let path of paths) {
-            if (!this.get("strict routing") && typeof path === "string" && path.endsWith("/") && path !== "/") {
+            // a mount always drops it, strict routing or not: strictness is about the end of a
+            // path, and a mount has none. Express registers its use layers with strict off
+            if (
+                (method === "USE" || !this.get("strict routing")) &&
+                typeof path === "string" &&
+                path.endsWith("/") &&
+                path !== "/"
+            ) {
                 path = path.slice(0, -1);
             }
             if (path === "*") {
@@ -791,6 +872,8 @@ module.exports = class Router extends EventEmitter {
                 // a mount written as a RegExp matches a piece of path that is not known until a
                 // request comes in, so its stack entry cannot be the path itself
                 regexMount: method === "USE" && path instanceof RegExp,
+                // written by the application, so express matches it as it stands
+                userRegexp: path instanceof RegExp,
                 routeKey: routeKey++,
                 // the router this was registered on. Ordinary dispatch is done by that router, so
                 // it could ask itself, but an optimized chain is walked by the app whatever it
@@ -805,9 +888,11 @@ module.exports = class Router extends EventEmitter {
                 gettable: method === "GET" || method === "HEAD"
             };
             if (
-                typeof route.path === "string" &&
-                (route.path.includes(":") || route.path.includes("*") || route.path.includes("{")) &&
-                route.pattern instanceof RegExp
+                route.pattern instanceof RegExp &&
+                // a RegExp the application wrote: its capture groups are params too
+                (path instanceof RegExp ||
+                    (typeof route.path === "string" &&
+                        (route.path.includes(":") || route.path.includes("*") || route.path.includes("{"))))
             ) {
                 route.complex = true;
             }
@@ -847,6 +932,30 @@ module.exports = class Router extends EventEmitter {
                 if (!(r.method === "HEAD" && route.method === "GET")) {
                     continue;
                 }
+            }
+
+            // a RegExp mount runs only where its match starts the path and breaks on a separator,
+            // which is decidable here against a literal path and not against one with a parameter
+            if (r.regexMount) {
+                const matched = typeof route.path === "string" ? r.pattern.exec(route.path) : null;
+                const runsAlways =
+                    matched !== null &&
+                    !matched[0].includes(":") &&
+                    route.path.slice(0, matched[0].length) === matched[0] &&
+                    (route.path.length === matched[0].length || route.path[matched[0].length] === "/");
+                if (runsAlways) {
+                    if (r.callbacks.some((c) => c instanceof Router)) {
+                        return false;
+                    }
+                    optimizedPath.push(r);
+                    continue;
+                }
+                // it may still answer some of the paths this route matches, and the chain has no
+                // way to say "only sometimes"
+                if (matched !== null || withParams) {
+                    return false;
+                }
+                continue;
             }
 
             // check if the paths match. A route with parameters is excluded from the text test:
@@ -1215,23 +1324,30 @@ module.exports = class Router extends EventEmitter {
         // Object.create(null) rather than the { __proto__: null } literal, which is the same object
         // for 9ns more. Null-prototyped either way, as Express 5 makes params.
         const obj = Object.create(null);
-        if (!match?.groups) {
+        if (!match) {
+            return obj;
+        }
+
+        const meta = getPatternMeta(pattern);
+        if (meta === undefined) {
+            // a RegExp the application supplied itself, which was never compiled here: every
+            // capture group lands in params, named ones under their name and the rest under their
+            // position, which is what express does with one
+            const keys = regexpGroupKeys(pattern);
+            for (let i = 1; i < match.length; i++) {
+                const value = match[i];
+                if (value === undefined) {
+                    continue;
+                }
+                obj[keys[i - 1]] = decodeParam(value);
+            }
+            return obj;
+        }
+        if (!match.groups) {
             return obj;
         }
 
         const groups = match.groups;
-        const meta = getPatternMeta(pattern);
-        if (meta === undefined) {
-            // a RegExp the application supplied itself, which was never compiled here
-            for (const name in groups) {
-                const value = groups[name];
-                if (value === undefined) {
-                    continue;
-                }
-                obj[name] = decodeParam(value);
-            }
-            return obj;
-        }
 
         // asking for each name in turn rather than walking the groups object, which is a
         // null-prototype dictionary and slow to enumerate, and reading the wildcard answer that was
@@ -1296,28 +1412,14 @@ module.exports = class Router extends EventEmitter {
                 return "route";
             }
             if (req._paramStack.length > 0) {
-                // express's mergeParams order: later mounts override earlier ones, and the
-                // route's own extraction wins over all of them
-                const own = req.params;
-                const merged = Object.create(null);
-                for (const params of req._paramStack) {
-                    Object.assign(merged, params);
-                }
-                req.params = Object.assign(merged, own);
+                req.params = mergeParams(req.params, req._paramStack);
             }
         } else {
             // express 5 gives every matched route null-prototype params; only a pathless
             // middleware layer keeps the plain object, as its router hands one to fast_slash
             req.params = route.use && route.path === "" ? {} : Object.create(null);
             if (req._paramStack.length > 0) {
-                // express's mergeParams order: later mounts override earlier ones, and the
-                // route's own extraction wins over all of them
-                const own = req.params;
-                const merged = Object.create(null);
-                for (const params of req._paramStack) {
-                    Object.assign(merged, params);
-                }
-                req.params = Object.assign(merged, own);
+                req.params = mergeParams(req.params, req._paramStack);
             }
         }
 

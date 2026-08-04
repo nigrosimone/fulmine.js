@@ -364,6 +364,37 @@ function pathsCanOverlap(a, b, aIsPrefix = false) {
     return true;
 }
 
+// a capture group opening: "(" not followed by "?", or "(?<name>". The same expression express
+// scans a user-supplied RegExp with, so the keys come out in the same order
+const MATCHING_GROUP_REGEXP = /\((?:\?<(.*?)>)?(?!\?)/g;
+
+/** @type {WeakMap<RegExp, (string|number)[]>} */
+const groupKeysCache = new WeakMap();
+
+/**
+ * What each capture group of a user-supplied RegExp is called in req.params: its own name when it
+ * has one, otherwise its position among the unnamed groups, counting from zero. Worked out once
+ * per pattern, since the source never changes.
+ *
+ * @param {RegExp} pattern
+ * @returns {(string|number)[]} one entry per capture group, in source order
+ */
+function regexpGroupKeys(pattern) {
+    let keys = groupKeysCache.get(pattern);
+    if (keys) {
+        return keys;
+    }
+    keys = [];
+    let unnamed = 0;
+    let match;
+    MATCHING_GROUP_REGEXP.lastIndex = 0;
+    while ((match = MATCHING_GROUP_REGEXP.exec(pattern.source)) !== null) {
+        keys.push(match[1] || unnamed++);
+    }
+    groupKeysCache.set(pattern, keys);
+    return keys;
+}
+
 /**
  * Whether µWS would answer with `earlier` every path that both paths match, which is what makes its
  * order agree with express's registration order.
@@ -1032,6 +1063,7 @@ module.exports = {
     canBeOptimizedWithParams,
     pathsCanOverlap,
     uwsPrefersEarlier,
+    regexpGroupKeys,
     escapeHtml,
     withDefaultCharset,
     withUtf8Charset,
