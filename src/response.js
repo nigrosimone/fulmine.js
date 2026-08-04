@@ -175,6 +175,9 @@ module.exports = class Response extends Writable {
         }
 
         this.body = undefined;
+        // false while the uWS route handler is still in its synchronous window, where uWS holds
+        // the socket corked itself; the two uWS entry points flip it once that window closes
+        this._corkNeeded = false;
         // shared methods, not arrows: two closures and a once() wrapper here were four
         // allocations per request. EventEmitter calls listeners with this = the emitter.
         this.on("error", this._onAbortError);
@@ -272,8 +275,11 @@ module.exports = class Response extends Writable {
             if (!this.headersSent) {
                 this.writeHead(this.statusCode);
                 // "unknown" and not the bare number: node writes that reason phrase for a code it
-                // has no message for, so the raw status lines match
-                this._res.writeStatus(statusLine(this.statusCode, this.statusText));
+                // has no message for, so the raw status lines match. The default 200 with no
+                // phrase is uWS's own head, byte for byte, so it is not written at all
+                if (this.statusCode !== 200 || this.statusText !== undefined) {
+                    this._res.writeStatus(statusLine(this.statusCode, this.statusText));
+                }
                 this.writeHeaders(typeof chunk === "string");
             }
 
@@ -475,47 +481,67 @@ module.exports = class Response extends Writable {
             return this;
         }
         this.writeHead(this.statusCode);
-        this._res.cork(() => {
-            if (!this.headersSent) {
-                // freshness is not decided here. node's end() knows nothing about conditional
-                // requests, and Express answers 304 from send() and from sendFile(), each of
-                // which strips the entity headers first. Deciding it here meant res.end("body")
-                // answered 304 and dropped the body that the caller had just written.
-                // "unknown" for a code without a message, as node's status line has it
-                this._res.writeStatus(statusLine(this.statusCode, this.statusText));
-                this.writeHeaders(true);
-            }
-            const contentLength = this.headers["content-length"];
-            if (STATUSES_WITHOUT_BODY.has(this.statusCode) || this.statusCode < 200) {
-                // no body and no length describing one, whatever the caller passed. node decides
-                // this the same way, from the status alone, so res.status(304).end("x") sends the
-                // status and nothing else on either.
-                this._res.endWithoutBody();
-            } else if (!data && contentLength) {
-                this._res.endWithoutBody(contentLength.toString());
-            } else {
-                if (data instanceof Buffer) {
-                    data = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
-                }
-                if (this.req.method === "HEAD") {
-                    const length = Buffer.byteLength(data ?? "");
-                    this._res.endWithoutBody(length.toString());
-                } else {
-                    this._res.end(data);
-                }
-            }
-
-            this.finished = true;
-            this.#socket?.emit("close");
-            this.emit("finish");
-            this.emit("close");
-            cb &&
-                queueMicrotask(() => {
-                    this.#ended = true;
-                    cb();
-                });
-        });
+        // uWS holds the socket corked for the synchronous window of its route handler, and
+        // cork inside cork is a passthrough: the wrapper and its closure are only paid once the
+        // answer has outlived that window, which is what _corkNeeded records
+        if (this._corkNeeded) {
+            this._res.cork(() => this._finish(data, cb));
+        } else {
+            this._finish(data, cb);
+        }
         return this;
+    }
+
+    /**
+     * The corked tail of end(): status, headers, body and the finish events. Split out so a
+     * synchronous answer calls it straight, already inside uWS's own cork.
+     *
+     * @param {any} data
+     * @param {any} cb
+     */
+    _finish(data, cb) {
+        if (!this.headersSent) {
+            // freshness is not decided here. node's end() knows nothing about conditional
+            // requests, and Express answers 304 from send() and from sendFile(), each of
+            // which strips the entity headers first. Deciding it here meant res.end("body")
+            // answered 304 and dropped the body that the caller had just written.
+            // "unknown" for a code without a message, as node's status line has it.
+            // The default 200 with no phrase is not written at all: uWS emits the identical
+            // "HTTP/1.1 200 OK" head on its own, and the crossing costs more than it says
+            if (this.statusCode !== 200 || this.statusText !== undefined) {
+                this._res.writeStatus(statusLine(this.statusCode, this.statusText));
+            }
+            this.writeHeaders(true);
+        }
+        const contentLength = this.headers["content-length"];
+        if (STATUSES_WITHOUT_BODY.has(this.statusCode) || this.statusCode < 200) {
+            // no body and no length describing one, whatever the caller passed. node decides
+            // this the same way, from the status alone, so res.status(304).end("x") sends the
+            // status and nothing else on either.
+            this._res.endWithoutBody();
+        } else if (!data && contentLength) {
+            this._res.endWithoutBody(contentLength.toString());
+        } else {
+            if (data instanceof Buffer) {
+                data = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+            }
+            if (this.req.method === "HEAD") {
+                const length = Buffer.byteLength(data ?? "");
+                this._res.endWithoutBody(length.toString());
+            } else {
+                this._res.end(data);
+            }
+        }
+
+        this.finished = true;
+        this.#socket?.emit("close");
+        this.emit("finish");
+        this.emit("close");
+        cb &&
+            queueMicrotask(() => {
+                this.#ended = true;
+                cb();
+            });
     }
 
     /**

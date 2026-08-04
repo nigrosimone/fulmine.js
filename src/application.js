@@ -388,7 +388,11 @@ class Application extends Router {
             const response = request.res;
 
             try {
-                const matchedRoute = await this._routeRequest(request, response);
+                const routed = this._routeRequest(request, response);
+                // dispatch has run its synchronous stretch inside _routeRequest by now, still
+                // under the cork uWS holds for this callback; the await below leaves it
+                response._corkNeeded = true;
+                const matchedRoute = await routed;
                 if (!matchedRoute && !response.headersSent && !response.aborted) {
                     this._endUnmatched(request, response);
                 }

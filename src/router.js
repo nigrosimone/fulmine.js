@@ -1408,6 +1408,10 @@ module.exports = class Router extends EventEmitter {
                 } catch (err) {
                     // what a throw inside a promise executor did: reject, once
                     nativeFail.call(walk, err);
+                } finally {
+                    // whatever runs after this line is outside the cork uWS held for this
+                    // callback, so later writes have to open their own
+                    response._corkNeeded = true;
                 }
             };
         };

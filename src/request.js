@@ -140,7 +140,8 @@ module.exports = class Request extends Readable {
 
     // Flat, name then value: an array of pairs meant one array allocated per header on every
     // request, and a request carries eight or ten of them. Everything that reads this walks it two
-    // at a time.
+    // at a time. The names are lowercase by contract: uWS lowers them on the wire and the node
+    // shim lowers them in its forEach, so readers compare without lowering again.
     #rawHeadersEntries = [];
 
     /** @type {string|undefined|null} */
@@ -665,10 +666,10 @@ module.exports = class Request extends Readable {
                 const entries = this.#rawHeadersEntries;
                 for (let i = 0, len = entries.length; i < len; i += 2) {
                     const key = entries[i];
-                    // 'if-none-match'.length === 13, 'if-modified-since'.length === 17
+                    // 'if-none-match'.length === 13, 'if-modified-since'.length === 17; the
+                    // entries carry lowercase names by contract, so this compares them as they are
                     if (key.length === 13 || key.length === 17) {
-                        const lower = key.toLowerCase();
-                        if (lower === "if-none-match" || lower === "if-modified-since") {
+                        if (key === "if-none-match" || key === "if-modified-since") {
                             hasConditional = true;
                             break;
                         }
@@ -852,7 +853,8 @@ module.exports = class Request extends Readable {
         const entries = this.#rawHeadersEntries;
         for (let index = 0, len = entries.length; index < len; index += 2) {
             const value = entries[index + 1];
-            const key = entries[index].toLowerCase();
+            // lowercase by the entries' contract, see the field declaration
+            const key = entries[index];
             if (Object.hasOwn(headers, key)) {
                 if (discardedDuplicates.has(key)) {
                     continue;
