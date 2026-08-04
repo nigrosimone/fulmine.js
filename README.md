@@ -238,7 +238,7 @@ In general, basically all features and options are supported. Use the [Express 5
 - 🚧 express.request (this is not a constructor but a prototype for replacing methods)
 - 🚧 express.response (this is not a constructor but a prototype for replacing methods)
 - 🚧 express.application (likewise: a method added here is on every app)
-- ❌ express.Route. `app.route("/path").get(...).post(...)` works and is what almost everyone means by this; what is missing is the class itself, for constructing a route and wiring it up by hand.
+- ✅ express.Route. Both `app.route("/path").get(...).post(...)` and the class itself, for building a route by hand and dispatching to it.
 
 ### Application
 

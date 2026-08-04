@@ -1,5 +1,4 @@
 // must offer an ESM importer the same named exports as Express
-// INSPECT
 
 const express = require("express");
 const path = require("path");
@@ -22,7 +21,18 @@ const isFulmine = !!express().uwsApp;
 const specifier = isFulmine ? pathToFileURL(path.join(__dirname, "../../../src/index.js")).href : "express";
 
 // what both packages offer, and what the README says they offer
-const EXPECTED = ["Router", "application", "json", "raw", "request", "response", "static", "text", "urlencoded"];
+const EXPECTED = [
+    "Route",
+    "Router",
+    "application",
+    "json",
+    "raw",
+    "request",
+    "response",
+    "static",
+    "text",
+    "urlencoded"
+];
 
 (async () => {
     const namespace = await import(specifier);
@@ -37,12 +47,10 @@ const EXPECTED = ["Router", "application", "json", "raw", "request", "response",
     console.log("Router from the namespace builds a router:", typeof router.use === "function");
     console.log("json from the namespace builds a middleware:", typeof namespace.json() === "function");
 
-    // express.Route is the one Express has and this does not, listed as missing in the README. Asked
-    // of each package rather than compared, so that closing the gap makes this fail and say so.
-    console.log(
-        "Route exported as this package exports it:",
-        isFulmine ? !("Route" in namespace) : "Route" in namespace
-    );
+    // built by hand rather than through a router, which is the reason the class is exported at all
+    const byHand = new namespace.Route("/thing");
+    byHand.get((req, res, next) => next());
+    console.log("Route builds a route by hand:", byHand.path, byHand.stack.length);
 
     // require destructuring is the CommonJS half of the same question
     const { Router: RouterFromRequire, json: jsonFromRequire } = require(

@@ -233,7 +233,7 @@ class Walk {
                 req.url = req._opPath + req.urlQuery;
                 req.path = req._opPath;
                 if (req._opPath === "") {
-                    req.url = "/";
+                    req.url = "/" + req.urlQuery;
                     req.path = "/";
                 }
                 req._lastUrl = req.url;
@@ -312,7 +312,7 @@ class Walk {
                     req.url = req._opPath + req.urlQuery;
                     req.path = req._opPath;
                     if (req._opPath === "") {
-                        req.url = "/";
+                        req.url = "/" + req.urlQuery;
                         req.path = "/";
                     }
                     req._lastUrl = req.url;
@@ -500,6 +500,83 @@ function mergeParams(own, stack) {
         }
     }
     return Object.assign(merged, own);
+}
+
+/**
+ * The scheme and authority of an absolute request target, or "" for the ordinary kind.
+ *
+ * A request line may carry the whole URI, and express matches on the path while leaving req.url as
+ * it arrived. Same rule it uses: a "://" before any "?" means everything up to the slash after it
+ * is not path.
+ *
+ * @param {string} url
+ * @returns {string}
+ */
+function protohostOf(url) {
+    if (url.length === 0 || url.charCodeAt(0) === 0x2f) {
+        return "";
+    }
+    const searchIndex = url.indexOf("?");
+    const pathLength = searchIndex === -1 ? url.length : searchIndex;
+    const fqdnIndex = url.slice(0, pathLength).indexOf("://");
+    if (fqdnIndex === -1) {
+        return "";
+    }
+    const slash = url.indexOf("/", fqdnIndex + 3);
+    return slash === -1 ? url : url.slice(0, slash);
+}
+
+/**
+ * Fills in what dispatch reads on a request that did not come from µWS.
+ *
+ * express's router can be driven with a plain object, `router.handle({ url, method }, res, next)`,
+ * and its own tests do exactly that; so does anything mounting a router on a server of its own.
+ * Only ever called for such a request: one of ours arrives with these fields already set.
+ *
+ * req.url becomes an accessor, so the router goes on writing plain paths to it while a reader sees
+ * the absolute URI it arrived as. That keeps the protohost out of the dispatch itself.
+ *
+ * @param {any} req
+ * @param {any} router
+ */
+function adoptPlainRequest(req, router) {
+    const arrived = typeof req.url === "string" ? req.url : "";
+    const protohost = protohostOf(arrived);
+    let raw = arrived.slice(protohost.length);
+    if (protohost !== "") {
+        Object.defineProperty(req, "url", {
+            configurable: true,
+            enumerable: true,
+            get() {
+                return protohost + raw;
+            },
+            set(value) {
+                const written = String(value);
+                raw = written.startsWith(protohost) ? written.slice(protohost.length) : written;
+            }
+        });
+    }
+
+    const queryIndex = raw.indexOf("?");
+    const path = queryIndex === -1 ? raw : raw.slice(0, queryIndex);
+    req.urlQuery = queryIndex === -1 ? "" : raw.slice(queryIndex);
+    req._rawQuery = req.urlQuery.slice(1);
+    req.path = path;
+    req.originalUrl = req.originalUrl ?? arrived;
+    req._originalPath = path;
+    req.endsWithSlash = path.charCodeAt(path.length - 1) === 0x2f;
+    req._opPath = req.endsWithSlash && path !== "/" && !router.get("strict routing") ? path.slice(0, -1) : path;
+    req._lastUrl = req.url;
+    req._isOptions = req.method === "OPTIONS";
+    req._isHead = req.method === "HEAD";
+    req.params = req.params ?? Object.create(null);
+    req._stack = [];
+    req._stackMounted = 0;
+    req._paramStack = [];
+    req._matchedMethods = req._isOptions ? new Set() : null;
+    req.routeCount = 1;
+    // read when a mount is left, and there is no application here to read it from
+    req.app = req.app ?? router;
 }
 
 /**
@@ -693,6 +770,16 @@ module.exports = class Router extends EventEmitter {
         // req.app.get("view engine") inside a sub-app reads the sub-app's settings and not the
         // settings of whatever handed the request over. A plain router is not an app and leaves it
         // alone, which is what Express's router.handle does too.
+        // a plain object, which is how express's router can be driven and how its own tests drive
+        // it. One of ours arrives with these set, so this costs a property read
+        if (req._opPath === undefined) {
+            if (typeof req.url !== "string" || req.url === "") {
+                // express reads the path with parseurl, which answers nothing for these, and it
+                // hands the request straight back rather than running its pathless middleware
+                return next ? next() : undefined;
+            }
+            adoptPlainRequest(req, this);
+        }
         if (this.constructor.name === "Application") {
             useApp(req, this);
         }
@@ -703,6 +790,13 @@ module.exports = class Router extends EventEmitter {
         if (!routed) {
             req.params = callerParams;
             if (next) {
+                // an error nobody handled belongs to the caller, as it does in express
+                const err = req._error;
+                if (err !== undefined) {
+                    delete req._error;
+                    delete req._errorKey;
+                    return next(err);
+                }
                 next();
             }
         }
@@ -1279,11 +1373,18 @@ module.exports = class Router extends EventEmitter {
      */
     _handleError(err, handler, request, response) {
         if (handler) {
-            return handler(err, request, response, (pass) => {
+            const next = (pass) => {
                 delete request._error;
                 delete request._errorKey;
                 return request.next(pass);
-            });
+            };
+            try {
+                return handler(err, request, response, next);
+            } catch (thrown) {
+                // what an error handler throws is the error the next one gets
+                request._error = thrown;
+                return request.next(thrown);
+            }
         }
         console.error(err);
         if (response.statusCode === 200) {
@@ -1544,6 +1645,12 @@ module.exports = class Router extends EventEmitter {
         // and it is what reaches anyone catching it
         if (typeof name !== "string" && !Array.isArray(name)) {
             throw new TypeError("argument name must be a string");
+        }
+        if (fn === undefined) {
+            throw new TypeError("argument fn is required");
+        }
+        if (typeof fn !== "function") {
+            throw new TypeError("argument fn must be a function");
         }
         const names = Array.isArray(name) ? name : [name];
         for (const key of names) {

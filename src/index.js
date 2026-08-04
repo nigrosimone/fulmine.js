@@ -21,6 +21,7 @@ const uWS = require("uWebSockets.js");
 const uWSAny = /** @type {any} */ (uWS);
 const Application = require("./application.js");
 const Router = require("./router.js");
+const Route = require("./route.js");
 const middlewares = require("./middlewares.js");
 const Request = require("./request.js");
 const Response = require("./response.js");
@@ -41,6 +42,7 @@ try {
 /**
  * @type {typeof Application & {
  *   Router: Function,
+ *   Route: typeof Route,
  *   request: object,
  *   response: object,
  *   application: object,
@@ -58,6 +60,9 @@ module.exports = /** @type {any} */ (Application);
 module.exports.Router = function (options) {
     return new Router(options)._asCallable();
 };
+
+// express exports it, and code that builds a route by hand rather than through a router uses it
+module.exports.Route = Route;
 
 module.exports.request = Request.prototype;
 module.exports.response = Response.prototype;
