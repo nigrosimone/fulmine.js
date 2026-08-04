@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.1.2](https://github.com/nigrosimone/fulmine.js/compare/v5.1.1...v5.1.2) (2026-08-04)
+
+### Performance Improvements
+
+* a bodyless request ends its stream only when someone reads it ([5fee6c3](https://github.com/nigrosimone/fulmine.js/commit/5fee6c3e8fb08511a3509cde11aa09b0424b6569))
+* a literal native route hands the request its path and method as constants ([d839128](https://github.com/nigrosimone/fulmine.js/commit/d83912888d3aa7cfe8e0d87c36c98a0115e9b1af))
+* bodies subscribe on header evidence, Buffers reach uWS uncopied ([29fc7f4](https://github.com/nigrosimone/fulmine.js/commit/29fc7f4f594b0ae38bdb9b370358c79016f30d60))
+
 ## [5.1.1](https://github.com/nigrosimone/fulmine.js/compare/v5.1.0...v5.1.1) (2026-08-04)
 
 ### Performance Improvements
