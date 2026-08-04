@@ -48,8 +48,7 @@ Two things worth knowing before comparing numbers with anyone:
 
 There is no table here on purpose. CI runs the whole benchmark on every push and every pull request
 and posts the result where it belongs: as a comment on the commit or the pull request, and as a
-`benchmark-summary` artifact on the run. A table pasted in here would be a snapshot of one machine
-on one day, and would start rotting immediately. See [`benchmark/README.md`](./benchmark/README.md)
+`benchmark-summary` artifact on the run, see [`benchmark/README.md`](./benchmark/README.md)
 to run it yourself.
 
 ## Attribution
