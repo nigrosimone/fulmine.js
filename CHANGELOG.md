@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.1.4](https://github.com/nigrosimone/fulmine.js/compare/v5.1.3...v5.1.4) (2026-08-05)
+
+### Performance Improvements
+
+* the query parser answers on a bare null prototype and uWS only hears about aborts that can still happen ([6420232](https://github.com/nigrosimone/fulmine.js/commit/64202320468cca2b1979747b7a2a73295295c71f))
+
 ## [5.1.3](https://github.com/nigrosimone/fulmine.js/compare/v5.1.2...v5.1.3) (2026-08-04)
 
 ### Performance Improvements
