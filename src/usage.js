@@ -13,6 +13,13 @@ const kGetSafe = Symbol("fulmine.getSafe");
 // the parameter, so anything that can reach another object could reach headers through it.
 const REQ_OK = new Set(["query", "params", "body", "method", "path", "url", "baseUrl", "originalUrl", "route"]);
 
+// Reading any of these needs the query string fetched: req.url and req.originalUrl carry it
+const REQ_QUERY = new Set(["query", "url", "originalUrl"]);
+
+// Writing any of these re-enters routing: dispatch treats a changed req.url as a rewrite and
+// walks routes nobody analyzed, so an assignment is as disqualifying as an unknown call
+const REQ_NO_WRITE = new Set(["url", "originalUrl", "path", "baseUrl", "method"]);
+
 // What a handler may do with `res`: writing the response. Anything that negotiates against
 // request headers (format, redirect, sendFile, jsonp) is deliberately absent.
 const RES_OK = new Set([
@@ -38,25 +45,26 @@ const RES_OK = new Set([
     "cork"
 ]);
 
-// what the analysis can say about one callback
-const NO = 0; // could read headers, or could not be read at all
-const SAFE = 1; // never reads a header, never touches next
-const SAFE_NEXT = 2; // never reads a header, calls next: fine mid-chain, and at the end of
-// the chain only when no later route could catch the fall-through
+// what the analysis can say about one callback, as independent facts
+const UNKNOWN = 1; // a shape the walk cannot vouch for: could do anything
+const NEXT_PLAIN = 2; // calls next() bare: advances the chain, may fall off its end
+const NEXT_ERROR = 4; // calls next(err): lands in the framework's own error answer
+const QUERY = 8; // reads req.query, req.url or req.originalUrl
 
 const verdicts = new WeakMap();
 
 /**
- * What one callback provably does. The default is NO: any shape this walk does not understand
- * and any alias of req, res or next keeps the header copy. That inversion is what makes
- * source analysis sound to act on.
+ * What one callback provably does, as a mask of the facts above. The default is UNKNOWN: any
+ * shape this walk does not understand and any alias of req, res or next could do anything.
+ * That inversion is what makes source analysis sound to act on.
  *
  * @param {Function} fn
- * @returns {number} NO, SAFE or SAFE_NEXT
+ * @returns {number}
  */
-function callbackSkipsHeaders(fn) {
+function callbackUsage(fn) {
     if (fn[kGetSafe]) {
-        return SAFE_NEXT;
+        // the body parsers: they advance the chain and read nothing a skip would miss
+        return NEXT_PLAIN;
     }
     let verdict = verdicts.get(fn);
     if (verdict === undefined) {
@@ -77,11 +85,11 @@ function analyze(fn) {
         tree = acorn.parse(code, { ecmaVersion: "latest" });
     } catch {
         // class methods and native functions do not parse alone, and unread code is unknown code
-        return NO;
+        return UNKNOWN;
     }
     let root = /** @type {any} */ (tree.body[0]);
     if (!root) {
-        return NO;
+        return UNKNOWN;
     }
     if (root.type === "ExpressionStatement") {
         root = root.expression;
@@ -91,14 +99,14 @@ function analyze(fn) {
         root.type !== "ArrowFunctionExpression" &&
         root.type !== "FunctionExpression"
     ) {
-        return NO;
+        return UNKNOWN;
     }
 
     const params = /** @type {any[]} */ (root.params);
     // rest or destructured parameters alias the objects somewhere the walk cannot follow
     for (const p of params) {
         if (p.type !== "Identifier") {
-            return NO;
+            return UNKNOWN;
         }
     }
     const reqName = params[0] ? params[0].name : null;
@@ -108,15 +116,38 @@ function analyze(fn) {
     // Every appearance of the three names in the whole body is judged, nested functions
     // included: an inner binding that shadows one of them only makes this stricter, never
     // looser, so scope tracking is not needed for soundness.
-    let ok = true;
-    let usesNext = false;
+    let mask = 0;
     walk(root.body, null, (node, parent) => {
-        if (!ok || node.type !== "Identifier") {
+        if (mask & UNKNOWN) {
+            return;
+        }
+        if (node.type === "MemberExpression" && !node.computed && node.object.type === "Identifier") {
+            const owner = node.object.name;
+            if (owner !== reqName) {
+                return;
+            }
+            const member = node.property.name;
+            if (REQ_QUERY.has(member)) {
+                mask |= QUERY;
+            }
+            // an assignment, an update or a delete on the routing members re-enters dispatch
+            if (
+                REQ_NO_WRITE.has(member) &&
+                parent &&
+                ((parent.type === "AssignmentExpression" && parent.left === node) ||
+                    (parent.type === "UpdateExpression" && parent.argument === node) ||
+                    (parent.type === "UnaryExpression" && parent.operator === "delete" && parent.argument === node))
+            ) {
+                mask |= UNKNOWN;
+            }
+            return;
+        }
+        if (node.type !== "Identifier") {
             return;
         }
         const name = node.name;
         if (name === "eval" || name === "arguments") {
-            ok = false;
+            mask |= UNKNOWN;
             return;
         }
         if (name !== reqName && name !== resName && name !== nextName) {
@@ -140,17 +171,17 @@ function analyze(fn) {
         }
         if (name === nextName) {
             // calling next is how a chain advances, and past its end or with an error the
-            // request lands in the framework's own final handler, which the constructor's
+            // request lands in the framework's own final answer, which the constructor's
             // accept pre-read covers. Anything but a direct call aliases the continuation,
             // and an argument that could be the string "route" would leave the chain for
             // routes nobody analyzed, so only shapes that cannot be a string pass.
             if (!parent || parent.type !== "CallExpression" || parent.callee !== node) {
-                ok = false;
+                mask |= UNKNOWN;
                 return;
             }
-            usesNext = true;
             const args = parent.arguments;
             if (args.length === 0) {
+                mask |= NEXT_PLAIN;
                 return;
             }
             const arg = args[0];
@@ -160,20 +191,22 @@ function analyze(fn) {
                     arg.type !== "ObjectExpression" &&
                     !(arg.type === "Literal" && typeof arg.value !== "string"))
             ) {
-                ok = false;
+                mask |= UNKNOWN;
+                return;
             }
+            mask |= NEXT_ERROR;
             return;
         }
         if (!parent || parent.type !== "MemberExpression" || parent.object !== node || parent.computed) {
-            ok = false;
+            mask |= UNKNOWN;
             return;
         }
         const member = parent.property.name;
         if (name === reqName ? !REQ_OK.has(member) : !RES_OK.has(member)) {
-            ok = false;
+            mask |= UNKNOWN;
         }
     });
-    return ok ? (usesNext ? SAFE_NEXT : SAFE) : NO;
+    return mask;
 }
 
 /**
@@ -207,41 +240,47 @@ function walk(node, parent, visit) {
 }
 
 /**
- * Whether a native literal route's whole chain provably never reads a request header, so the
- * request constructor may skip copying them and read the few framing headers directly.
+ * What a native route's whole chain provably never does, so the request constructor may leave
+ * that work undone: skipHeaders spares the header copy, skipQuery the query fetch.
  *
- * A callback that calls next passes anywhere but in the terminal route, where next would fall
- * out of the chain: there it only passes when the caller established that no later route
- * could catch the fall-through.
+ * A callback that calls next() bare passes anywhere but in the terminal route, where it would
+ * fall out of the chain: there it only passes when the caller established that no later route
+ * could catch the fall-through. The framework's own 404 answers with the path alone, so the
+ * fall-through itself needs neither headers nor query.
  *
  * @param {any[]} chain the routes the native handler runs, in order, this route last
  * @param {boolean} allowTerminalNext whether a fall-through past the chain lands only in the
- *   framework's own final handler
- * @returns {boolean}
+ *   framework's own final answer
+ * @returns {{skipHeaders: boolean, skipQuery: boolean}}
  */
-function chainSkipsHeaders(chain, allowTerminalNext) {
+function chainUsage(chain, allowTerminalNext) {
+    const none = { skipHeaders: false, skipQuery: false };
+    let query = false;
     for (let i = 0; i < chain.length; i++) {
         const entry = chain[i];
         const callbacks = entry.callbacks;
         if (!Array.isArray(callbacks)) {
-            return false;
+            return none;
         }
         const terminal = i === chain.length - 1;
         for (const cb of callbacks) {
             if (typeof cb !== "function") {
-                return false;
+                return none;
             }
-            const verdict = callbackSkipsHeaders(cb);
-            if (verdict === NO || (verdict === SAFE_NEXT && terminal && !allowTerminalNext)) {
-                return false;
+            const mask = callbackUsage(cb);
+            if (mask & UNKNOWN || (mask & NEXT_PLAIN && terminal && !allowTerminalNext)) {
+                return none;
+            }
+            if (mask & QUERY) {
+                query = true;
             }
         }
         // a param callback runs code this walk never saw
         if (entry.paramCallbacks && entry.paramCallbacks.size > 0) {
-            return false;
+            return none;
         }
     }
-    return true;
+    return { skipHeaders: true, skipQuery: !query };
 }
 
-module.exports = { chainSkipsHeaders, callbackSkipsHeaders, kGetSafe };
+module.exports = { chainUsage, callbackUsage, kGetSafe, UNKNOWN, NEXT_PLAIN, NEXT_ERROR, QUERY };

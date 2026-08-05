@@ -36,7 +36,7 @@ const compileDeclarative = require("./declarative.js");
 const statuses = require("statuses");
 const { METHODS } = require("http");
 const { isNodeRequest, serveNodeRequest } = require("./node-shim.js");
-const { chainSkipsHeaders } = require("./usage.js");
+const { chainUsage } = require("./usage.js");
 
 // every method the declarative compiler can emit: a patched one must disable compilation, or the
 // patch would be honoured everywhere but on compiled routes
@@ -693,9 +693,10 @@ function nativePreset(path, method, strict) {
         opPath: endsWithSlash && path !== "/" && !strict ? path.slice(0, -1) : path,
         isOptions: method === "OPTIONS",
         isHead: method === "HEAD",
-        // set at registration when the whole chain provably never reads a header; mutable,
-        // because a middleware added after listen has to be able to take it back
-        skipHeaders: false
+        // set at registration when the whole chain provably never reads a header, or never
+        // reads the query; mutable, because a middleware added after listen takes them back
+        skipHeaders: false,
+        skipQuery: false
     };
 }
 
@@ -1148,6 +1149,7 @@ module.exports = class Router extends EventEmitter {
         if (this._skipPresets?.size) {
             for (const preset of this._skipPresets) {
                 preset.skipHeaders = false;
+                preset.skipQuery = false;
             }
             this._skipPresets.clear();
         }
@@ -1469,8 +1471,8 @@ module.exports = class Router extends EventEmitter {
             // listen can take it back: a literal registration's preset doubles as it, and a
             // parameterised one, which has no preset, gets a holder of its own
             let skipHolder = preset;
-            if (skipHolder === undefined && skips) {
-                skipHolder = { skipHeaders: true };
+            if (skipHolder === undefined && (skips.skipHeaders || skips.skipQuery)) {
+                skipHolder = { skipHeaders: skips.skipHeaders, skipQuery: skips.skipQuery };
                 (this._skipPresets ??= new Set()).add(skipHolder);
             }
             // all three are registration-time constants: computing them in the handler was a
@@ -1532,8 +1534,9 @@ module.exports = class Router extends EventEmitter {
         // headers), no error middleware may exist anywhere (a throw hands the request to code
         // the analysis never saw), and every callback in the chain has to pass the source
         // analysis in usage.js, whose default answer is no.
-        let getSkips = false;
-        let headSkips = false;
+        const NO_SKIPS = { skipHeaders: false, skipQuery: false };
+        let getSkips = NO_SKIPS;
+        let headSkips = NO_SKIPS;
         if (route.method === "GET" && this.get("etag") === false) {
             let hasErr = this._hasErrMwCache;
             if (hasErr === undefined) {
@@ -1544,15 +1547,16 @@ module.exports = class Router extends EventEmitter {
                 // route may be able to catch the same path
                 const owner = route.owner ?? this;
                 const noLaterMatch = !owner._isFollowedByAnOverlap.call(owner, route, owner._routes);
-                getSkips = chainSkipsHeaders(getChain, noLaterMatch);
-                headSkips = headChain === getChain ? getSkips : chainSkipsHeaders(headChain, noLaterMatch);
+                getSkips = chainUsage(getChain, noLaterMatch);
+                headSkips = headChain === getChain ? getSkips : chainUsage(headChain, noLaterMatch);
             }
         }
         // remembered so a middleware or setting arriving after listen can take the skips back
         const makePreset = (path, method, skips) => {
             const preset = nativePreset(path, method, strictHere);
-            if (skips) {
-                preset.skipHeaders = true;
+            if (skips.skipHeaders || skips.skipQuery) {
+                preset.skipHeaders = skips.skipHeaders;
+                preset.skipQuery = skips.skipQuery;
                 (this._skipPresets ??= new Set()).add(preset);
             }
             return preset;

@@ -365,6 +365,7 @@ class Application extends Router {
             if (value !== false && this._skipPresets?.size) {
                 for (const preset of this._skipPresets) {
                     preset.skipHeaders = false;
+                    preset.skipQuery = false;
                 }
                 this._skipPresets.clear();
             }

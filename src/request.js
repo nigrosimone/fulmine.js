@@ -263,9 +263,16 @@ module.exports = class Request extends Readable {
         this.app = app;
         // both forms are kept, because both are asked for: the query with its "?" goes into
         // req.url, and req.query parses the raw one. Keeping only the first meant slicing the "?"
-        // back off for every request that reads req.query.
-        this._rawQuery = req.getQuery() ?? "";
-        this.urlQuery = this._rawQuery === "" ? "" : "?" + this._rawQuery;
+        // back off for every request that reads req.query. When the chain provably reads
+        // neither, the native call is not made at all: the framework's own answers, the 404
+        // included, are written from the path alone
+        if (skipHolder !== undefined && skipHolder.skipQuery) {
+            this._rawQuery = "";
+            this.urlQuery = "";
+        } else {
+            this._rawQuery = req.getQuery() ?? "";
+            this.urlQuery = this._rawQuery === "" ? "" : "?" + this._rawQuery;
+        }
         if (preset) {
             // the registration's constants: two native crossings and their strings not asked for
             this.path = preset.path;
