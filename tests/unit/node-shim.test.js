@@ -222,6 +222,7 @@ test("a file past the cache cutoff streams through the shim's sized write path",
 
 test("the socket the shim shows carries the client's port and address", async () => {
     const app = express();
+    /** @type {any} */
     let seen;
     app.get("/sock", (req, res) => {
         seen = { port: req.socket.remotePort, address: req.socket.remoteAddress };

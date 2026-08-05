@@ -189,7 +189,9 @@ test("acceptParams pulls out the value, the quality and the rest", () => {
 
 // normalizeType is the only export that reaches acceptParams, so it is exercised through that
 function acceptParamsShape(type) {
-    const parsed = normalizeType(type);
+    // any, because quality is only present when the type string carried a q parameter and the
+    // declared return type does not know it
+    const parsed = /** @type {any} */ (normalizeType(type));
     return { value: parsed.value, quality: parsed.quality ?? 1, params: parsed.params };
 }
 
@@ -369,7 +371,9 @@ test("entityTag answers exactly what the etag package answers", () => {
 
 test("statTag answers exactly what the etag package answers for a file", () => {
     const reference = require("etag");
-    const stat = new Stats();
+    // not new Stats(): the constructor is private in @types/node, and instanceof only needs
+    // the prototype
+    const stat = /** @type {any} */ (Object.create(Stats.prototype));
     stat.size = 84508;
     stat.mtime = new Date("2026-08-02T10:00:00.000Z");
 

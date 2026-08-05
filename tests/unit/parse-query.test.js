@@ -44,7 +44,7 @@ test("the vendored parser agrees with fast-querystring on every branching shape"
 
 test("a non-string input answers an empty bare object", () => {
     for (const input of [undefined, null, 42, {}, ["a=1"]]) {
-        const result = parseQuery(input);
+        const result = parseQuery(/** @type {any} */ (input));
         assert.equal(Object.keys(result).length, 0);
         assert.equal(Object.getPrototypeOf(result), null);
     }

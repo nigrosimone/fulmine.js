@@ -103,7 +103,9 @@ test("each dotfiles policy answers a dotfile its own way", async () => {
 });
 
 test("setHeader refuses a sent response and a name that is not a string", async () => {
+    /** @type {any} */
     let sentError;
+    /** @type {any} */
     let typeError;
     const { url, close } = await serve((app) => {
         app.get("/late", (req, res) => {

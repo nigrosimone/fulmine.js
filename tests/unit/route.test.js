@@ -80,7 +80,7 @@ test("a long synchronous chain inside one route completes past the relief valve"
 });
 
 test("the exported Route class refuses a handler that is not a function, naming what it got", () => {
-    const route = new express.Route("/bad");
+    const route = /** @type {any} */ (new express.Route("/bad"));
     assert.throws(
         () => route.get("not a function"),
         /Route\.get\(\) requires a callback function but got a \[object String\]/
@@ -89,7 +89,7 @@ test("the exported Route class refuses a handler that is not a function, naming 
 });
 
 test("the exported Route class dispatches, answers verbs and walks its escape words", async () => {
-    const route = new express.Route("/direct");
+    const route = /** @type {any} */ (new express.Route("/direct"));
     const order = [];
     route.get(
         (req, res, next) => {
@@ -117,7 +117,7 @@ test("the exported Route class dispatches, answers verbs and walks its escape wo
 
     // next("route") ends this route's stack right there
     order.length = 0;
-    const skipping = new express.Route("/skip");
+    const skipping = /** @type {any} */ (new express.Route("/skip"));
     skipping.get(
         (req, res, next) => {
             order.push("ran");
@@ -133,12 +133,12 @@ test("the exported Route class dispatches, answers verbs and walks its escape wo
     assert.equal(endedOn, undefined);
 
     // next("router") ends it too, and the word travels out to whoever ran the route
-    const leaving = new express.Route("/leave");
+    const leaving = /** @type {any} */ (new express.Route("/leave"));
     leaving.get((req, res, next) => next("router"));
     const word = await new Promise((resolve) => leaving.dispatch({ method: "GET" }, {}, resolve));
     assert.equal(word, "router");
 
     // an empty route is done immediately
-    const empty = new express.Route("/empty");
+    const empty = /** @type {any} */ (new express.Route("/empty"));
     await new Promise((resolve) => empty.dispatch({ method: "GET" }, {}, resolve));
 });

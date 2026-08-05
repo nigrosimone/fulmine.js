@@ -11,9 +11,12 @@ const EXIT_DELAY_MS = 100;
 
 const realExit = process.exit.bind(process);
 
-process.exit = (code) => {
-    if (code !== undefined) {
-        process.exitCode = code;
+// the cast, because process.exit is typed as never-returning and this replacement returns
+process.exit = /** @type {any} */ (
+    (code) => {
+        if (code !== undefined) {
+            process.exitCode = code;
+        }
+        setTimeout(() => realExit(process.exitCode), EXIT_DELAY_MS);
     }
-    setTimeout(() => realExit(process.exitCode), EXIT_DELAY_MS);
-};
+);
