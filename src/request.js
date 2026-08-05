@@ -200,14 +200,16 @@ module.exports = class Request extends Readable {
      * @param {any} [preset] a literal native registration's constants: µWS matched the URL byte
      *   for byte against that exact pattern and dispatched by method, so path, method and what
      *   derives from them are known without asking
+     * @param {any} [skipHolder] where a granted header skip lives: the preset itself for a
+     *   literal registration, a holder of its own for a parameterised one
      */
-    constructor(req, res, app, preset) {
+    constructor(req, res, app, preset, skipHolder) {
         // the same object every time: Readable reads these options and never writes to them
         super(READABLE_OPTIONS);
         this._res = res;
         this._req = req;
         this.readable = true;
-        if (preset !== undefined && preset.skipHeaders) {
+        if (skipHolder !== undefined && skipHolder.skipHeaders) {
             // The chain behind this registration provably never reads a header, so instead of
             // copying them all out of uWS the constructor asks for the four that steer the
             // framework itself: body framing, keep-alive, and accept for the error page a

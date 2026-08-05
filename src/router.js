@@ -1383,10 +1383,12 @@ module.exports = class Router extends EventEmitter {
      * @param {any} res uWS response
      * @param {any} req uWS request, readable only during this call
      * @param {any} [preset] a literal registration's constants, see nativePreset
+     * @param {any} [skipHolder] the object a granted header skip lives on: the preset itself
+     *   for a literal registration, a holder of its own for a parameterised one
      * @returns {any} the request, with the response reachable as request.res
      */
-    handleRequest(res, req, preset) {
-        const request = new this._request(req, res, this, preset);
+    handleRequest(res, req, preset, skipHolder) {
+        const request = new this._request(req, res, this, preset, skipHolder);
         const response = new this._response(res, request, this);
         request.res = response;
         response.req = request;
@@ -1462,7 +1464,15 @@ module.exports = class Router extends EventEmitter {
         if (route.path.includes(":")) {
             route.optimizedParams = route.path.match(regExParam).map((p) => p.slice(1));
         }
-        const makeHandler = (chain, preset) => {
+        const makeHandler = (chain, preset, skips) => {
+            // the mutable object a granted skip lives on, so a middleware arriving after
+            // listen can take it back: a literal registration's preset doubles as it, and a
+            // parameterised one, which has no preset, gets a holder of its own
+            let skipHolder = preset;
+            if (skipHolder === undefined && skips) {
+                skipHolder = { skipHeaders: true };
+                (this._skipPresets ??= new Set()).add(skipHolder);
+            }
             // all three are registration-time constants: computing them in the handler was a
             // closure and a scan of the chain on every native request.
             // Falling back resumes after the mount, not after the router's leaf: the leaf can have
@@ -1475,7 +1485,7 @@ module.exports = class Router extends EventEmitter {
             // and this one never did. nativeDone and nativeFail defer their epilogues to a
             // microtask, which is where the await used to resume, so the visible order holds
             return (res, req) => {
-                const request = this.handleRequest(res, req, preset);
+                const request = this.handleRequest(res, req, preset, skipHolder);
                 const response = request.res;
                 if (optimizedParams) {
                     request.optimizedParams = new NullObject();
@@ -1524,7 +1534,7 @@ module.exports = class Router extends EventEmitter {
         // analysis in usage.js, whose default answer is no.
         let getSkips = false;
         let headSkips = false;
-        if (canPreset && route.method === "GET" && this.get("etag") === false) {
+        if (route.method === "GET" && this.get("etag") === false) {
             let hasErr = this._hasErrMwCache;
             if (hasErr === undefined) {
                 hasErr = this._hasErrMwCache = hasErrorMiddleware(this);
@@ -1548,7 +1558,11 @@ module.exports = class Router extends EventEmitter {
             return preset;
         };
 
-        let fn = makeHandler(getChain, canPreset ? makePreset(route.path, route.method, getSkips) : undefined);
+        let fn = makeHandler(
+            getChain,
+            canPreset ? makePreset(route.path, route.method, getSkips) : undefined,
+            getSkips
+        );
         const jsFn = fn;
 
         let replacedPath = route.path;
@@ -1581,13 +1595,17 @@ module.exports = class Router extends EventEmitter {
                 fn !== jsFn
                     ? fn
                     : canPreset
-                      ? makeHandler(getChain, makePreset(route.path + "/", route.method, getSkips))
+                      ? makeHandler(getChain, makePreset(route.path + "/", route.method, getSkips), getSkips)
                       : fn;
             this.uwsApp[method](replacedPath + "/", slashFn);
             if (method === "get") {
                 this.uwsApp.head(
                     replacedPath + "/",
-                    makeHandler(headChain, canPreset ? makePreset(route.path + "/", "HEAD", headSkips) : undefined)
+                    makeHandler(
+                        headChain,
+                        canPreset ? makePreset(route.path + "/", "HEAD", headSkips) : undefined,
+                        headSkips
+                    )
                 );
             }
         }
@@ -1595,7 +1613,7 @@ module.exports = class Router extends EventEmitter {
             // its own handler always: the shared one would carry the GET registration's method
             this.uwsApp.head(
                 replacedPath,
-                makeHandler(headChain, canPreset ? makePreset(route.path, "HEAD", headSkips) : undefined)
+                makeHandler(headChain, canPreset ? makePreset(route.path, "HEAD", headSkips) : undefined, headSkips)
             );
         }
     }

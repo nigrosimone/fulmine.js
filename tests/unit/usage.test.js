@@ -137,4 +137,13 @@ test("the app grants skips only with etag off and takes them back on late regist
     late.app.set("etag", true);
     assert.equal(late.app._skipPresets.size, 0);
     late.close();
+
+    // a parameterised native route has no preset, so the skip rides a holder of its own:
+    // one for the shared GET handler and one per HEAD twin
+    const params = await granted((app) => {
+        app.set("etag", false);
+        app.get("/u/:id", (req, res) => res.json({ id: req.params.id }));
+    });
+    assert.equal(params.granted, 3);
+    params.close();
 });

@@ -128,9 +128,10 @@ class Application extends Router {
              * @param {any} res
              * @param {any} app
              * @param {any} [preset]
+             * @param {any} [skipHolder]
              */
-            constructor(req, res, app, preset) {
-                super(req, res, app, preset);
+            constructor(req, res, app, preset, skipHolder) {
+                super(req, res, app, preset, skipHolder);
             }
         };
         this._response = class extends Response {
@@ -439,10 +440,12 @@ class Application extends Router {
      * @param {any} res uWS response
      * @param {any} req uWS request, readable only during this call
      * @param {any} [preset] a literal registration's constants, see nativePreset in the router
+     * @param {any} [skipHolder] where a granted header skip lives, forwarded whole: dropping
+     *   it here silently turned every skip off, since the native closures call this override
      * @returns {any} the request, with the response reachable as request.res
      */
-    handleRequest(res, req, preset) {
-        const request = super.handleRequest(res, req, preset);
+    handleRequest(res, req, preset, skipHolder) {
+        const request = super.handleRequest(res, req, preset, skipHolder);
         // removal rides the close listener the Response constructor already has, since a second
         // once() per request measured a tenth of a microsecond on the hot path.
         // An aborted response only flips its flags without emitting 'close', which is why
