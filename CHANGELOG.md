@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.1.7](https://github.com/nigrosimone/fulmine.js/compare/v5.1.6...v5.1.7) (2026-08-05)
+
+### Performance Improvements
+
+* a route whose chain provably reads no header skips the header copy ([e117ac2](https://github.com/nigrosimone/fulmine.js/commit/e117ac2d103021a0b9188c2df7431ca36c6c3373))
+* the header skip reaches parameterised native routes on a holder of its own ([9360ec5](https://github.com/nigrosimone/fulmine.js/commit/9360ec546f190f73f15a7215a7506fd4b27f272c))
+
 ## [5.1.6](https://github.com/nigrosimone/fulmine.js/compare/v5.1.4...v5.1.6) (2026-08-05)
 
 ### Bug Fixes
