@@ -462,6 +462,8 @@ function createInflate(contentEncoding) {
  * @param {string} [charsetPolicy] which charsets this parser accepts, as body-parser draws the
  *   lines: "utf" (json, utf-* only), "urlencoded" (utf-8 and iso-8859-1), "any" (anything iconv
  *   knows), or undefined for a parser that never decodes (raw)
+ * @param {boolean} [keepsBuffer] whether the collected buffer itself escapes to the application,
+ *   which rules out handing it a view over uWS memory
  * @returns {(options?: object) => Function} the middleware factory
  */
 function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy, keepsBuffer) {
