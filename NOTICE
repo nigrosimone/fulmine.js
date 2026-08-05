@@ -12,6 +12,10 @@ itself and can be inspected with `git log` and `git shortlog -sn`.
 Fulmine is not affiliated with, endorsed by, or maintained by the authors of
 Ultimate Express.
 
+This product includes code derived from fast-querystring
+(https://github.com/anonrig/fast-querystring), Copyright (c) Yagiz Nizipli,
+licensed under the MIT License, vendored in src/parse-query.js.
+
 As required by section 4(b) of the Apache License, the following are the
 significant changes made to the original work:
 
@@ -19,10 +23,27 @@ significant changes made to the original work:
   - Public API documented, and type checked from those annotations.
   - Router dispatch reworked so a chain of N middlewares allocates one promise
     instead of N, and the mount stack is no longer walked on every hop.
-  - Request bodies are collected into a single buffer instead of being copied
-    once per chunk and again on concatenation.
+  - Request bodies are collected in native code by uWebSockets.js when the
+    length is known, with the size limit enforced before any byte reaches
+    JavaScript, instead of being copied once per chunk and again on
+    concatenation; the body parsers read the few headers they need from the
+    raw header entries and bind the caller's async context only when a read
+    actually goes asynchronous.
   - Empty request bodies now produce the same value each Express body parser
     produces, rather than being skipped.
+  - Routes whose path is a literal are registered as native uWebSockets.js
+    routes, with their path and method handed to the request as
+    registration-time constants.
+  - sendFile answers small unchanged files from a stat-validated cache, and
+    concurrent reads of the same file are coalesced.
+  - The query string parser is vendored from fast-querystring and answers on a
+    bare null prototype, matching how Express displays parsed queries.
+  - Express 5's own test suite runs against Fulmine as a CI gate, from a
+    pinned checkout of Express.
+  - The app is callable as a request listener, so http.createServer(app),
+    supertest and anything else that invokes an app directly keeps working
+    through a node:http shim.
+  - Releases are built and published to npm from CI.
   - Benchmark harness reworked: wrk replaced by autocannon so the suite runs
     anywhere Node does, NODE_ENV is set, load errors and response validation are
     no longer discarded, rows bounded by shared work are labelled, and scenarios
