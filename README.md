@@ -227,7 +227,7 @@ which runs the same file against Express and against Fulmine and compares the ou
 
 ## HTTP/3
 
-There is an `http3: true` option, inherited from Ultimate Express, that asks µWebSockets.js for its experimental HTTP/3 app. **Do not use it with the currently pinned µWS build**: the underlying `H3App` crashes on construction there, before a single request is served, verified on both Linux (segfault) and Windows (hang). The option is kept so existing code does not break at parse time, but it cannot work until µWS ships working QUIC support in its prebuilt binaries, and this section will say so when it does.
+There is an `http3: true` option, inherited from Ultimate Express, that asks µWebSockets.js for its experimental HTTP/3 app. **It is guarded off with the currently pinned µWS build**: asking for it throws a clear error, because the underlying `H3App` segfaults during construction on Linux, verified with µWS alone before a single request is served. On Windows the listener does come up, but nothing answers over QUIC that we could verify, and shipping an option that works on no deployable platform helps nobody. A skipped canary test probes `H3App` on every CI run and will turn red the day µWS ships working QUIC in its prebuilt binaries, which is when the guard goes and this section changes.
 
 ```js
 // what it would look like, once µWS's H3 support actually works

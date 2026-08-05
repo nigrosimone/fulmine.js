@@ -15,10 +15,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// H3App, DeclarativeResponse and _cfg all exist at runtime but are missing from the
-// declaration file the package ships, so the module is read through a loose alias
 const uWS = require("uWebSockets.js");
-const uWSAny = /** @type {any} */ (uWS);
 const Router = require("./router.js");
 const {
     removeDuplicateSlashes,
@@ -102,10 +99,14 @@ class Application extends Router {
         if (settings.uwsApp) {
             this.uwsApp = settings.uwsApp;
         } else if (settings.http3) {
-            if (!settings.uwsOptions.key_file_name || !settings.uwsOptions.cert_file_name) {
-                throw new Error("uwsOptions.key_file_name and uwsOptions.cert_file_name are required for HTTP/3");
-            }
-            this.uwsApp = uWSAny.H3App(settings.uwsOptions);
+            // uWS.H3App exists in the pinned build but its QUIC stack does not: the constructor
+            // segfaults on Linux and hangs forever on Windows before serving a single request,
+            // verified 2026-08-05 with uWS alone. A clear throw beats a native crash; this
+            // branch goes back to H3App once uNetworking ships working QUIC in the prebuilts.
+            throw new Error(
+                "http3 is not usable with the pinned uWebSockets.js build: its H3App crashes " +
+                    "during construction. Track uNetworking/uWebSockets.js for working QUIC support."
+            );
         } else if (settings.uwsOptions.key_file_name && settings.uwsOptions.cert_file_name) {
             this.uwsApp = uWS.SSLApp(settings.uwsOptions);
         } else {
