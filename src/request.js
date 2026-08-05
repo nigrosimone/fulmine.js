@@ -22,6 +22,7 @@ const parseRange = require("range-parser");
 const proxyaddr = require("proxy-addr");
 const { isIP } = require("node:net");
 const fresh = require("fresh");
+const parseQuery = require("./parse-query.js");
 const { Readable } = require("stream");
 
 // accepts, type-is, proxy-addr and fresh all declare a node IncomingMessage and read nothing off
@@ -540,10 +541,14 @@ module.exports = class Request extends Readable {
             return this.#cachedQuery;
         }
         const qp = this.app.get("query parser fn");
-        // copied onto a plain null-prototype object, or node inspects fast-querystring's result as
-        // "Empty <[Object: null prototype] {}>" where Express shows "[Object: null prototype]".
-        // Object.create(null) and not { __proto__: null }: 318ns against 640
-        const parsed = qp ? Object.assign(Object.create(null), qp(this._rawQuery)) : Object.create(null);
+        // the vendored default already answers on a bare null prototype, so it goes out as is;
+        // any other parser is copied onto one, which is what kept fast-querystring's result from
+        // inspecting as "Empty <[Object: null prototype] {}>" where Express shows the bare form
+        const parsed = qp
+            ? qp === parseQuery
+                ? parseQuery(this._rawQuery)
+                : Object.assign(Object.create(null), qp(this._rawQuery))
+            : Object.create(null);
         this.#cachedQuery = parsed;
         return parsed;
     }

@@ -28,7 +28,7 @@ const {
     fastQueryParse,
     NullObject
 } = require("./utils.js");
-const querystring = require("fast-querystring");
+const parseQuery = require("./parse-query.js");
 const Request = require("./request.js");
 const Response = require("./response.js");
 const ViewClass = require("./view.js");
@@ -345,7 +345,7 @@ class Application extends Router {
             if (value === "extended") {
                 this.settings["query parser fn"] = fastQueryParse;
             } else if (value === "simple" || value === true) {
-                this.settings["query parser fn"] = querystring.parse;
+                this.settings["query parser fn"] = parseQuery;
             } else if (typeof value === "function") {
                 this.settings["query parser fn"] = value;
             } else if (value === false) {
@@ -460,6 +460,9 @@ class Application extends Router {
         this.uwsApp.any("/*", async (res, req) => {
             const request = this.handleRequest(res, req);
             const response = request.res;
+            // armed up front here: this handler awaits, so the response outlives the callback
+            // on every path through it
+            this._armAbort(res, response);
 
             try {
                 const routed = this._routeRequest(request, response);

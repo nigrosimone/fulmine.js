@@ -21,7 +21,7 @@ const bytes = require("bytes");
 const zlib = require("fast-zlib");
 const typeis = require("type-is");
 const qs = require("qs");
-const querystring = require("fast-querystring");
+const parseQuery = require("./parse-query.js");
 const { AsyncResource } = require("async_hooks");
 const { fastQueryParse, NullObject, asStatError, httpError, memoizeByString } = require("./utils.js");
 
@@ -954,7 +954,8 @@ const urlencoded = createBodyParser(
                     })
                 );
             } else {
-                req.body = querystring.parse(body);
+                // the vendored parser, so an urlencoded body inspects like req.query does
+                req.body = parseQuery(body);
             }
         } catch (e) {
             // qs reports a depth overflow as a RangeError with its own wording; body-parser

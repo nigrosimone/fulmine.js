@@ -19,7 +19,7 @@ const mime = require("mime-types");
 const path = require("path");
 const proxyaddr = require("proxy-addr");
 const qs = require("qs");
-const querystring = require("fast-querystring");
+const parseQuery = require("./parse-query.js");
 const crypto = require("crypto");
 const statuses = require("statuses");
 const { Stats } = require("fs");
@@ -46,7 +46,8 @@ function fastQueryParse(query, options) {
     }
     if (len <= 128) {
         if (!query.includes("[") && !query.includes("%5B") && !query.includes(".") && !query.includes("%2E")) {
-            return Object.assign(Object.create(null), querystring.parse(query));
+            // already on a bare null prototype, no copy needed, see parse-query.js
+            return parseQuery(query);
         }
     }
     return Object.assign(Object.create(null), qs.parse(query, options));
@@ -564,7 +565,7 @@ const defaultSettings = {
     etag: "weak",
     "etag fn": () => createETagGenerator({ weak: true }),
     "query parser": "simple",
-    "query parser fn": () => querystring.parse,
+    "query parser fn": () => parseQuery,
     "subdomain offset": 2,
     "trust proxy": false,
     views: () => path.join(process.cwd(), "views"),

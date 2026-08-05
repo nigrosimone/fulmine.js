@@ -395,6 +395,8 @@ function serveNodeRequest(router, nodeReq, nodeRes, next) {
     const shimReq = new NodeHttpRequest(nodeReq);
     const request = router.handleRequest(shimRes, shimReq);
     const response = request.res;
+    // the shim's onAborted rides node's own close event, needed on every request here
+    router._armAbort(shimRes, response);
 
     return router._routeRequest(request, response).then((matched) => {
         if (matched || response.headersSent || response.aborted) {

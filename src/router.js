@@ -1345,9 +1345,20 @@ module.exports = class Router extends EventEmitter {
         const response = new this._response(res, request, this);
         request.res = response;
         response.req = request;
-        res.onAborted(onNativeAborted.bind(response));
 
         return request;
+    }
+
+    /**
+     * Tells uWS whom to call on a client abort. Out of handleRequest, because uWS only needs it
+     * for a response that outlives its handler callback: the native handler arms it in its
+     * finally when the answer is still pending, which on a synchronous route it never is.
+     *
+     * @param {any} res uWS response
+     * @param {any} response
+     */
+    _armAbort(res, response) {
+        res.onAborted(onNativeAborted.bind(response));
     }
 
     /**
@@ -1437,6 +1448,11 @@ module.exports = class Router extends EventEmitter {
                     // whatever runs after this line is outside the cork uWS held for this
                     // callback, so later writes have to open their own
                     response._corkNeeded = true;
+                    // an abort can only arrive after this callback returns, so a response that
+                    // already finished inside it never needs uWS told at all
+                    if (!response.finished) {
+                        this._armAbort(res, response);
+                    }
                 }
             };
         };
