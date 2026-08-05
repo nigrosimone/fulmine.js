@@ -90,6 +90,31 @@ npx fulmine differences         # print the list below and change nothing
 The command is installed under both `fulmine` and `fulmine.js`. Use `fulmine`: `npx` cannot run a
 command whose name ends in `.js` on Windows, where it exits without a word.
 
+## Docker
+
+Two things about µWebSockets.js make a Dockerfile that works for Express fail here, and both have easy answers:
+
+- **No Alpine.** µWebSockets.js ships prebuilt binaries linked against glibc. Alpine images use musl, so the binary does not load. Use a Debian-based image such as `node:22-slim` instead of `node:22-alpine`.
+- **`git` must be there when `npm install` runs.** µWebSockets.js is not on npm; it is installed straight from GitHub (`github:uNetworking/uWebSockets.js`), and npm uses git to fetch it. Full images like `node:22` have git; `-slim` ones do not.
+
+The clean way to satisfy both is a multi-stage build: install with the full image, run with the slim one.
+
+```dockerfile
+FROM node:22 AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+FROM node:22-slim
+WORKDIR /app
+COPY --from=build /app/node_modules ./node_modules
+COPY . .
+EXPOSE 3000
+CMD ["node", "server.js"]
+```
+
+A single-stage `node:22-slim` image works too if you `apt-get install -y git` before `npm ci`. Prebuilt binaries exist for x64 and arm64 on Linux, macOS and Windows, so nothing is compiled at install time either way.
+
 ## Differences from Express
 
 - `app.listen()` returns the app, not an `http.Server`. There is no node server underneath, so `server.close()`, `server.address()` and anything that attaches itself to a real `http.Server` need a look. `app.close()`, `app.address()` and `app.listening` are there and do what you would expect.
