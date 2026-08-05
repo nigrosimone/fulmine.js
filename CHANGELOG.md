@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.1.8](https://github.com/nigrosimone/fulmine.js/compare/v5.1.7...v5.1.8) (2026-08-05)
+
+### Bug Fixes
+
+* writing req.url disqualifies a skip chain, and a chain reading no query skips the fetch ([3069647](https://github.com/nigrosimone/fulmine.js/commit/3069647c01babf0332d775afe8f0237208a853c9))
+
 ## [5.1.7](https://github.com/nigrosimone/fulmine.js/compare/v5.1.6...v5.1.7) (2026-08-05)
 
 ### Performance Improvements
