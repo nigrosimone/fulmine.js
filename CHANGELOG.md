@@ -1,5 +1,16 @@
 # Changelog
 
+## [5.1.6](https://github.com/nigrosimone/fulmine.js/compare/v5.1.4...v5.1.6) (2026-08-05)
+
+### Bug Fixes
+
+* keepsBuffer is optional, tsc read it as required after an optional ([9931828](https://github.com/nigrosimone/fulmine.js/commit/9931828624674e57781f1efdd65bde0defe06d37))
+
+### Performance Improvements
+
+* body parsers read headers raw, bind late, and collect the body natively ([63641f1](https://github.com/nigrosimone/fulmine.js/commit/63641f1e6802911eeaca0c087e84f4a0c72a8eeb))
+* express.static binds only sendFile's completion, the synchronous exits stay unbound ([462bd87](https://github.com/nigrosimone/fulmine.js/commit/462bd875bfb7b594ff772fcb4e7206772a06b0dc))
+
 ## [5.1.5](https://github.com/nigrosimone/ultimate-express/compare/v5.1.4...v5.1.5) (2026-08-05)
 
 ### Bug Fixes
