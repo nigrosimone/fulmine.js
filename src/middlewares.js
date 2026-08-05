@@ -22,6 +22,7 @@ const zlib = require("fast-zlib");
 const typeis = require("type-is");
 const qs = require("qs");
 const parseQuery = require("./parse-query.js");
+const { kGetSafe } = require("./usage.js");
 const { AsyncResource } = require("async_hooks");
 const { fastQueryParse, NullObject, asStatError, httpError, memoizeByString } = require("./utils.js");
 
@@ -526,7 +527,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
 
         let additionalMethods;
 
-        return (req, res, next) => {
+        const parserMiddleware = (req, res, next) => {
             // Not bound yet: every return in this prologue is synchronous, so the caller's async
             // context is still intact and an AsyncResource here would be 1.4 microseconds of
             // nothing. The bind happens below, only once a real read is about to go async.
@@ -875,6 +876,14 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 req.on("end", onEnd);
             }
         };
+        // A GET without a declared body leaves this middleware through the synchronous
+        // no-body exit before anything type- or charset-shaped is read, and a GET that does
+        // declare one takes the full header copy in the constructor, so the header-skip
+        // analysis may trust it. A type function sees the request itself, so it may not.
+        if (typeof options.type !== "function") {
+            parserMiddleware[kGetSafe] = true;
+        }
+        return parserMiddleware;
     };
 }
 

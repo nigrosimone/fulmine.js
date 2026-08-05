@@ -207,9 +207,52 @@ module.exports = class Request extends Readable {
         this._res = res;
         this._req = req;
         this.readable = true;
-        currentRequest = this;
-        this._req.forEach(Request.#collectHeader);
-        currentRequest = null;
+        if (preset !== undefined && preset.skipHeaders) {
+            // The chain behind this registration provably never reads a header, so instead of
+            // copying them all out of uWS the constructor asks for the four that steer the
+            // framework itself: body framing, keep-alive, and accept for the error page a
+            // throw could still need. A GET that does declare a body is the rare case, and
+            // the parsers and the stream want the whole picture, so it takes the full copy.
+            const length = req.getHeader("content-length");
+            const transferEncoding = req.getHeader("transfer-encoding");
+            if ((length !== "" && length !== "0") || transferEncoding !== "") {
+                currentRequest = this;
+                this._req.forEach(Request.#collectHeader);
+                currentRequest = null;
+            } else {
+                const entries = this.#rawHeadersEntries;
+                const connection = req.getHeader("connection");
+                if (connection !== "") {
+                    entries.push("connection", connection);
+                    if (connection.length === 5 && connection.toLowerCase() === "close") {
+                        this._connectionClose = true;
+                    }
+                }
+                const accept = req.getHeader("accept");
+                if (accept !== "") {
+                    entries.push("accept", accept);
+                }
+                // send consults freshness whatever the etag setting: if-none-match can be "*"
+                // and a handler may set a validator by hand, so the conditional trio has to be
+                // really absent rather than merely uncopied
+                const ifNoneMatch = req.getHeader("if-none-match");
+                if (ifNoneMatch !== "") {
+                    entries.push("if-none-match", ifNoneMatch);
+                }
+                const ifModifiedSince = req.getHeader("if-modified-since");
+                if (ifModifiedSince !== "") {
+                    entries.push("if-modified-since", ifModifiedSince);
+                }
+                const cacheControl = req.getHeader("cache-control");
+                if (cacheControl !== "") {
+                    entries.push("cache-control", cacheControl);
+                }
+            }
+        } else {
+            currentRequest = this;
+            this._req.forEach(Request.#collectHeader);
+            currentRequest = null;
+        }
         this.routeCount = 1;
         this.key = key++;
         if (key > 100000) {

@@ -36,6 +36,7 @@ const compileDeclarative = require("./declarative.js");
 const statuses = require("statuses");
 const { METHODS } = require("http");
 const { isNodeRequest, serveNodeRequest } = require("./node-shim.js");
+const { chainSkipsHeaders } = require("./usage.js");
 
 // every method the declarative compiler can emit: a patched one must disable compilation, or the
 // patch would be honoured everywhere but on compiled routes
@@ -691,8 +692,36 @@ function nativePreset(path, method, strict) {
         endsWithSlash,
         opPath: endsWithSlash && path !== "/" && !strict ? path.slice(0, -1) : path,
         isOptions: method === "OPTIONS",
-        isHead: method === "HEAD"
+        isHead: method === "HEAD",
+        // set at registration when the whole chain provably never reads a header; mutable,
+        // because a middleware added after listen has to be able to take it back
+        skipHeaders: false
     };
+}
+
+/**
+ * Whether any error middleware exists anywhere under this router, mounted routers and sub-apps
+ * included. The header-skip analysis needs the answer to be no: a throw inside an analyzed
+ * handler would hand the request to code nobody analyzed.
+ *
+ * @param {any} router
+ * @returns {boolean}
+ */
+function hasErrorMiddleware(router) {
+    for (const route of router._routes) {
+        for (const callback of route.callbacks) {
+            // a mounted router or a callable sub-app carries routes of its own; the callable
+            // app is also a function, so the routes are looked for first
+            if (callback && callback._routes) {
+                if (hasErrorMiddleware(callback)) {
+                    return true;
+                }
+            } else if (typeof callback === "function" && callback.length >= 4) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 /**
@@ -822,6 +851,12 @@ module.exports = class Router extends EventEmitter {
         this._paramCallbacks = new Map();
         this._mountpathCache = new Map();
         this._routes = [];
+        // the native presets allowed to skip the header copy, so a late middleware or an etag
+        // arriving after listen can take the permission back; null until one is granted
+        /** @type {Set<any>|null} */
+        this._skipPresets = null;
+        /** @type {boolean|undefined} */
+        this._hasErrMwCache = undefined;
         // an array when mounted on several paths at once, as Express allows
         /** @type {string|string[]} */
         this.mountpath = "/";
@@ -1106,6 +1141,16 @@ module.exports = class Router extends EventEmitter {
             routes.push(route);
         }
         this._routes.push(...routes);
+
+        // anything registered after listen invalidates what the header-skip analysis proved:
+        // it could catch a throw or read what a chain never did, so every skip is taken back
+        this._hasErrMwCache = undefined;
+        if (this._skipPresets?.size) {
+            for (const preset of this._skipPresets) {
+                preset.skipHeaders = false;
+            }
+            this._skipPresets.clear();
+        }
 
         return parent;
     }
@@ -1461,6 +1506,7 @@ module.exports = class Router extends EventEmitter {
         const getChain =
             route.method === "GET" ? optimizedPath.filter((r) => r.all || r.method !== "HEAD") : optimizedPath;
         route.optimizedPath = optimizedPath;
+        const headChain = getChain.length === optimizedPath.length ? getChain : optimizedPath;
 
         // A fully literal registration knows path and method here, so each registration site
         // hands the request constructor its own constants. An "any" registration serves every
@@ -1471,11 +1517,41 @@ module.exports = class Router extends EventEmitter {
         // registering that path here is the only way it could
         const strictHere = Boolean((route.owner ?? this).get("strict routing"));
 
-        let fn = makeHandler(getChain, canPreset ? nativePreset(route.path, route.method, strictHere) : undefined);
+        // Whether requests served by this registration may skip the header copy: GET and its
+        // HEAD twins only, the app must not compute etags (send would consult freshness
+        // headers), no error middleware may exist anywhere (a throw hands the request to code
+        // the analysis never saw), and every callback in the chain has to pass the source
+        // analysis in usage.js, whose default answer is no.
+        let getSkips = false;
+        let headSkips = false;
+        if (canPreset && route.method === "GET" && this.get("etag") === false) {
+            let hasErr = this._hasErrMwCache;
+            if (hasErr === undefined) {
+                hasErr = this._hasErrMwCache = hasErrorMiddleware(this);
+            }
+            if (!hasErr) {
+                // a terminal next() may only fall into the framework's own 404, so no later
+                // route may be able to catch the same path
+                const owner = route.owner ?? this;
+                const noLaterMatch = !owner._isFollowedByAnOverlap.call(owner, route, owner._routes);
+                getSkips = chainSkipsHeaders(getChain, noLaterMatch);
+                headSkips = headChain === getChain ? getSkips : chainSkipsHeaders(headChain, noLaterMatch);
+            }
+        }
+        // remembered so a middleware or setting arriving after listen can take the skips back
+        const makePreset = (path, method, skips) => {
+            const preset = nativePreset(path, method, strictHere);
+            if (skips) {
+                preset.skipHeaders = true;
+                (this._skipPresets ??= new Set()).add(preset);
+            }
+            return preset;
+        };
+
+        let fn = makeHandler(getChain, canPreset ? makePreset(route.path, route.method, getSkips) : undefined);
         const jsFn = fn;
 
         let replacedPath = route.path;
-        const headChain = getChain.length === optimizedPath.length ? getChain : optimizedPath;
 
         // the response prototype the route will really run under: its own app's, which sees a
         // method patched there or inherited from a parent app, falling back to the registering app
@@ -1505,13 +1581,13 @@ module.exports = class Router extends EventEmitter {
                 fn !== jsFn
                     ? fn
                     : canPreset
-                      ? makeHandler(getChain, nativePreset(route.path + "/", route.method, strictHere))
+                      ? makeHandler(getChain, makePreset(route.path + "/", route.method, getSkips))
                       : fn;
             this.uwsApp[method](replacedPath + "/", slashFn);
             if (method === "get") {
                 this.uwsApp.head(
                     replacedPath + "/",
-                    makeHandler(headChain, canPreset ? nativePreset(route.path + "/", "HEAD", strictHere) : undefined)
+                    makeHandler(headChain, canPreset ? makePreset(route.path + "/", "HEAD", headSkips) : undefined)
                 );
             }
         }
@@ -1519,7 +1595,7 @@ module.exports = class Router extends EventEmitter {
             // its own handler always: the shared one would carry the GET registration's method
             this.uwsApp.head(
                 replacedPath,
-                makeHandler(headChain, canPreset ? nativePreset(route.path, "HEAD", strictHere) : undefined)
+                makeHandler(headChain, canPreset ? makePreset(route.path, "HEAD", headSkips) : undefined)
             );
         }
     }

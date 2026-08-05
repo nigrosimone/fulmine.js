@@ -359,6 +359,14 @@ class Application extends Router {
             this.settings[key] = Array.isArray(value) ? value.map((dir) => path.resolve(dir)) : path.resolve(value);
             return this;
         } else if (key === "etag") {
+            // an etag arriving after listen would make send consult freshness headers the
+            // header-skip routes never copied, so those skips are taken back
+            if (value !== false && this._skipPresets?.size) {
+                for (const preset of this._skipPresets) {
+                    preset.skipHeaders = false;
+                }
+                this._skipPresets.clear();
+            }
             if (typeof value === "function") {
                 this.settings["etag fn"] = value;
             } else {
