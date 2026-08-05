@@ -125,6 +125,54 @@ test("what a single callback is allowed to do", () => {
     assert.ok(callbackUsage(express.json({ type: (req) => true })) & UNKNOWN);
 });
 
+test("the analyzer survives any source a function can carry, and never throws at registration", () => {
+    // a lying toString that throws: reading it is the first thing the analyzer does
+    const throwing = (req, res) => res.send("hi");
+    throwing.toString = () => {
+        throw new Error("no source for you");
+    };
+    assert.ok(callbackUsage(throwing) & UNKNOWN);
+
+    // a toString answering something that is not even a string
+    const numeric = (req, res) => res.send("hi");
+    numeric.toString = () => /** @type {any} */ (42);
+    assert.ok(callbackUsage(numeric) & UNKNOWN);
+
+    // a Proxy over a function: Function.prototype.toString refuses it
+    const proxied = new Proxy((req, res) => res.send("hi"), {});
+    assert.doesNotThrow(() => callbackUsage(proxied));
+
+    // a bound function's source is [native code]
+    const bound = function (req, res) {
+        res.send("hi");
+    }.bind(null);
+    assert.ok(callbackUsage(bound) & UNKNOWN);
+
+    // a default parameter is an aliasing shape the walk refuses rather than misreads
+    assert.ok(callbackUsage((req, res, next = () => {}) => next()) & UNKNOWN);
+
+    // a generator does not parse as a bare expression, and unknown is the right answer
+    assert.doesNotThrow(() => callbackUsage(function* (req, res) {}));
+
+    // the dangerous names inside strings and comments are data, not uses
+    assert.equal(
+        callbackUsage((req, res) => {
+            // req.headers written in a comment is not a read
+            res.send("the string req.headers['x'] is not a read either");
+        }),
+        0
+    );
+
+    // a large generated body neither crashes nor times the walk out
+    const lines = [];
+    for (let i = 0; i < 2000; i++) {
+        lines.push(`const v${i} = ${i};`);
+    }
+
+    const big = new Function("req", "res", lines.join("\n") + "\nres.send(String(v1999));");
+    assert.doesNotThrow(() => callbackUsage(big));
+});
+
 test("a chain is judged whole, and the terminal next needs a clear path behind it", () => {
     const safe = { callbacks: [(req, res) => res.send("x")], paramCallbacks: new Map() };
     const mid = { callbacks: [(req, res, next) => next()], paramCallbacks: new Map() };

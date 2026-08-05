@@ -76,7 +76,13 @@ function callbackUsage(fn) {
 
 /** @param {Function} fn @returns {number} */
 function analyze(fn) {
-    let code = fn.toString();
+    // toString is application-controlled and may throw or answer anything: unreadable is unknown
+    let code;
+    try {
+        code = String(fn.toString());
+    } catch {
+        return UNKNOWN;
+    }
     if (code.startsWith("function") || code.startsWith("async function")) {
         code = code.replace(/function *\(/, "function __cb(");
     }
