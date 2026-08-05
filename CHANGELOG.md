@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.1.9](https://github.com/nigrosimone/fulmine.js/compare/v5.1.8...v5.1.9) (2026-08-05)
+
+### Bug Fixes
+
+* a handler that never sends no longer compiles into an empty 200 ([aa900df](https://github.com/nigrosimone/fulmine.js/commit/aa900dfc554bff1916a8b94c8c64dddf97e50549))
+* asking for http3 throws the clear error a broken uWS build deserves, with a canary for the day it works ([b7f9859](https://github.com/nigrosimone/fulmine.js/commit/b7f985959de8e2e6bc96210b45d3bb7049a1ea73))
+
 ## [5.1.8](https://github.com/nigrosimone/fulmine.js/compare/v5.1.7...v5.1.8) (2026-08-05)
 
 ### Bug Fixes
