@@ -55,7 +55,7 @@ to run it yourself.
 
 Numbers produced by a project about itself deserve suspicion, so Fulmine also stands in public arenas, run by their own rigs under their own rules:
 
-- **[HttpArena](https://www.http-arena.com/#sort=rps:-1&q=Js)** (the link lands filtered on the JavaScript entries): the saved run measures 5.89 million pipelined requests per second, 1.12 million on baseline and 1.04 million on the json profile, ahead of every JavaScript entry on the board.
+- **[HttpArena](https://www.http-arena.com/#sort=rps:-1&q=Js)** (the link lands filtered on the JavaScript entries): first among the JavaScript entries and second overall across every language on the board. The saved run measures 7.64 million pipelined requests per second, 1.12 million on the json profile, 457 thousand on compressed json and 222 thousand on the Postgres profile.
 - **[web-frameworks](https://github.com/the-benchmarker/web-frameworks)**: entry merged, numbers arrive with their next published round.
 
 More to come as their maintainers take the entries in.
