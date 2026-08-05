@@ -226,9 +226,10 @@ which runs the same file against Express and against Fulmine and compares the ou
 
 ## HTTP/3
 
-HTTP/3 is supported. To use:
+There is an `http3: true` option, inherited from Ultimate Express, that asks µWebSockets.js for its experimental HTTP/3 app. **Do not use it with the currently pinned µWS build**: the underlying `H3App` crashes on construction there, before a single request is served, verified on both Linux (segfault) and Windows (hang). The option is kept so existing code does not break at parse time, but it cannot work until µWS ships working QUIC support in its prebuilt binaries, and this section will say so when it does.
 
 ```js
+// what it would look like, once µWS's H3 support actually works
 const app = express({
     http3: true,
     uwsOptions: {
