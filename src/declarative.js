@@ -606,6 +606,13 @@ module.exports = function compileDeclarative(cb, app) {
             }
         }
 
+        // a handler that never sends is not a response: Express leaves the request waiting, so
+        // compiling the empty shape would answer a bare 200 where the ordinary path answers
+        // nothing at all. It has to fall back instead.
+        if (!sendUsed && !sendStatusUsed) {
+            return false;
+        }
+
         let decRes = new uWSAny.DeclarativeResponse();
 
         if (statusCode !== 200) {
