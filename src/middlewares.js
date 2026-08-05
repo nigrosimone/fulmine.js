@@ -464,7 +464,7 @@ function createInflate(contentEncoding) {
  *   knows), or undefined for a parser that never decodes (raw)
  * @returns {(options?: object) => Function} the middleware factory
  */
-function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy) {
+function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy, keepsBuffer) {
     return function (options) {
         // a copy, because everything below writes the parsed values back: with the caller's own
         // object, altering it after the parser was built would alter the parser
@@ -500,6 +500,10 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
         }
         if (typeof options.defaultCharset === "undefined") options.defaultCharset = "utf-8";
 
+        // whether the collected bytes escape the collection callback: the raw parser hands the
+        // buffer itself to the application, and a verify hook may keep what it is shown
+        const copyBody = keepsBuffer || typeof options.verify === "function";
+
         // Whether a content-type is one this parser claims, remembered per parser.
         //
         // Only reached when the caller asked for a wildcard or a list, since a plain type takes the
@@ -514,14 +518,17 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
         let additionalMethods;
 
         return (req, res, next) => {
-            next = AsyncResource.bind(next);
+            // Not bound yet: every return in this prologue is synchronous, so the caller's async
+            // context is still intact and an AsyncResource here would be 1.4 microseconds of
+            // nothing. The bind happens below, only once a real read is about to go async.
 
             // skip reading body twice
             if (req.bodyRead) {
                 return next();
             }
 
-            const type = req.headers["content-type"];
+            // straight from the raw entries: three headers do not justify building the object
+            const type = req._rawHeader("content-type");
 
             // req.body is deliberately left undefined until a parser claims the request. That is
             // what lets a handler tell "nothing parsed this" apart from "the body was empty",
@@ -534,13 +541,13 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 return next();
             }
 
-            const length = req.headers["content-length"];
+            const length = req._rawHeader("content-length");
 
             // No content-length and no transfer-encoding means the request carries no body at all,
             // and a body parser must leave it alone rather than parse nothing into an empty value.
             // type-is applies this before matching the type, but the simpleType shortcut below
             // compares strings directly and would otherwise skip the check.
-            if (req.headers["transfer-encoding"] === undefined && isNaN(length)) {
+            if (req._rawHeader("transfer-encoding") === undefined && isNaN(length)) {
                 return next();
             }
 
@@ -620,7 +627,8 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             const abs = [];
             let inflate;
             let totalSize = 0;
-            const contentEncoding = (req.headers["content-encoding"] || "identity").toLowerCase();
+            const rawContentEncoding = req._rawHeader("content-encoding");
+            const contentEncoding = (rawContentEncoding || "identity").toLowerCase();
             if (!options.inflate && contentEncoding !== "identity") {
                 return next(
                     bodyError("content encoding unsupported", 415, "encoding.unsupported", {
@@ -629,17 +637,62 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 );
             }
             if (options.inflate) {
-                inflate = createInflate(req.headers["content-encoding"]);
+                inflate = createInflate(rawContentEncoding);
                 if (inflate === false) {
                     return next(
                         bodyError(
-                            'unsupported content encoding "' + req.headers["content-encoding"] + '"',
+                            'unsupported content encoding "' + rawContentEncoding + '"',
                             415,
                             "encoding.unsupported",
-                            { encoding: req.headers["content-encoding"] }
+                            {
+                                encoding: rawContentEncoding
+                            }
                         )
                     );
                 }
+            }
+
+            // From here the body really gets read, and uWS delivers it on native callbacks that
+            // carry no async context, so this is the one continuation that has to be bound: an
+            // upstream middleware's AsyncLocalStorage must still be there when next runs
+            next = AsyncResource.bind(next);
+
+            // with a known content-length and nothing to decompress, uWS can collect the whole
+            // body in native code: one callback instead of one per chunk, the limit enforced
+            // before any byte reaches JS, and no copy at all - the parsers turn the bytes into
+            // req.body before the callback returns, so a view over uWS's own memory is enough
+            if (!req.receivedData && !inflate && !isNaN(length) && Number(length) > 0 && req._res.collectBody) {
+                req.bodyRead = true;
+                const declared = Number(length);
+                req._res.collectBody(options.limit, (body) => {
+                    if (body === null) {
+                        // over maxSize: uWS refused it natively
+                        return next(
+                            bodyError("request entity too large", 413, "entity.too.large", {
+                                limit: options.limit,
+                                received: options.limit
+                            })
+                        );
+                    }
+                    if (body.byteLength !== declared) {
+                        return next(
+                            bodyError("request size did not match content length", 400, "request.size.invalid", {
+                                expected: declared,
+                                length: declared,
+                                received: body.byteLength
+                            })
+                        );
+                    }
+                    let buf = Buffer.from(body);
+                    if (copyBody) {
+                        buf = Buffer.from(buf);
+                    }
+                    if (!runVerify(req, res, next, options, buf)) {
+                        return;
+                    }
+                    beforeReturn(req, res, next, options, buf, encoding);
+                });
+                return;
             }
 
             // uWS neuters its ArrayBuffer after the callback, so every chunk has to be copied out of
@@ -860,10 +913,17 @@ const json = createBodyParser(
     "utf"
 );
 
-const raw = createBodyParser("application/octet-stream", function (req, res, next, options, buf) {
-    req.body = buf;
-    next();
-});
+const raw = createBodyParser(
+    "application/octet-stream",
+    function (req, res, next, options, buf) {
+        req.body = buf;
+        next();
+    },
+    undefined,
+    undefined,
+    // req.body is the collected buffer itself, so it must not be a view over uWS memory
+    true
+);
 
 const text = createBodyParser(
     "text/plain",

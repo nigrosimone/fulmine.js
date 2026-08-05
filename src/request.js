@@ -325,6 +325,28 @@ module.exports = class Request extends Readable {
     }
 
     /**
+     * One header by its lowercase wire name, straight from the raw entries. The body parsers ask
+     * for three of these per request, and materializing the whole headers object for that costs
+     * more than all three scans together. Reads the built object instead when it already exists,
+     * so joined duplicates come out the same either way.
+     *
+     * @param {string} name lowercase
+     * @returns {string|undefined}
+     */
+    _rawHeader(name) {
+        if (this.#cachedHeaders !== null) {
+            return this.#cachedHeaders[name];
+        }
+        const entries = this.#rawHeadersEntries;
+        for (let i = 0, len = entries.length; i < len; i += 2) {
+            if (entries[i] === name) {
+                return entries[i + 1];
+            }
+        }
+        return undefined;
+    }
+
+    /**
      * Whether there is any point still reading the body: once the response is finished or the
      * connection is gone, uWS has nothing left to hand over.
      */
