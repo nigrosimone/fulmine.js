@@ -6,6 +6,8 @@ const test = require("node:test");
 const assert = require("node:assert");
 const http = require("node:http");
 const path = require("node:path");
+const fs = require("node:fs");
+const os = require("node:os");
 
 const express = require("../../src/index.js");
 
@@ -132,6 +134,136 @@ test("repeated headers reach the request joined, not last-one-wins", async () =>
     });
     assert.match(String(seen), /one/);
     assert.match(String(seen), /two/);
+    await close();
+});
+
+test("a chunked response goes out through the shim's write path", async () => {
+    const app = express();
+    app.get("/chunks", (req, res) => {
+        res.type("text/plain");
+        res.write("first ");
+        res.write("second ");
+        res.end("third");
+    });
+
+    const { url, close } = await serve(app);
+    const res = await fetch(`${url}/chunks`);
+    assert.equal(res.status, 200);
+    assert.equal(await res.text(), "first second third");
+    await close();
+});
+
+test("a body far past the stream's buffer arrives whole, pausing and resuming underneath", async () => {
+    const app = express();
+    // raw() streams the body through the request Readable, whose 128 KB high-water mark is
+    // what makes the shim's pause() and resume() actually run under a 5 MB body
+    app.use(express.raw({ type: "application/octet-stream", limit: "10mb" }));
+    app.post("/big", (req, res) => {
+        res.json({ length: req.body.length, first: req.body[0], last: req.body[req.body.length - 1] });
+    });
+
+    const { url, close } = await serve(app);
+    const payload = Buffer.alloc(5 * 1024 * 1024, 7);
+    payload[payload.length - 1] = 9;
+    const res = await fetch(`${url}/big`, {
+        method: "POST",
+        headers: { "content-type": "application/octet-stream" },
+        body: payload
+    });
+    assert.deepEqual(await res.json(), { length: payload.length, first: 7, last: 9 });
+    await close();
+});
+
+test("a handler consuming the body as a slow stream drives the shim's pause and resume", async () => {
+    const app = express();
+    app.post("/slurp", (req, res) => {
+        let total = 0;
+        req.on("data", (chunk) => {
+            total += chunk.length;
+            // a consumer slower than the wire, which is what backpressure exists for
+            req.pause();
+            setTimeout(() => req.resume(), 1);
+        });
+        req.on("end", () => res.json({ total }));
+    });
+
+    const { url, close } = await serve(app);
+    const payload = Buffer.alloc(2 * 1024 * 1024, 3);
+    const res = await fetch(`${url}/slurp`, {
+        method: "POST",
+        headers: { "content-type": "application/octet-stream" },
+        body: payload
+    });
+    assert.deepEqual(await res.json(), { total: payload.length });
+    await close();
+});
+
+test("a file past the cache cutoff streams through the shim's sized write path", async () => {
+    // over sendFile's 768 KB small-file line, so the streamed branch runs rather than the cache
+    const file = path.join(os.tmpdir(), `fulmine-shim-test-${process.pid}.bin`);
+    fs.writeFileSync(file, Buffer.alloc(1024 * 1024 + 1, 5));
+    const app = express();
+    app.get("/big-file", (req, res) => {
+        res.sendFile(file);
+    });
+
+    const { url, close } = await serve(app);
+    try {
+        const res = await fetch(`${url}/big-file`);
+        assert.equal(res.status, 200);
+        const body = await res.arrayBuffer();
+        assert.equal(body.byteLength, 1024 * 1024 + 1);
+        assert.equal(new Uint8Array(body)[1024 * 1024], 5);
+    } finally {
+        await close();
+        fs.unlinkSync(file);
+    }
+});
+
+test("the socket the shim shows carries the client's port and address", async () => {
+    const app = express();
+    let seen;
+    app.get("/sock", (req, res) => {
+        seen = { port: req.socket.remotePort, address: req.socket.remoteAddress };
+        res.send("ok");
+    });
+
+    const { url, close } = await serve(app);
+    await fetch(`${url}/sock`);
+    assert.ok(Number.isInteger(seen.port) && seen.port > 0, String(seen.port));
+    assert.match(String(seen.address), /127\.0\.0\.1|::1/);
+    await close();
+});
+
+test("a client vanishing mid-response reaches the shim's abort path without wounding the server", async () => {
+    const app = express();
+    let sawClose = false;
+    app.get("/slow", (req, res) => {
+        res.on("close", () => {
+            sawClose = true;
+        });
+        res.type("text/plain");
+        res.write("started ");
+        // the rest never goes out: the client is about to hang up
+    });
+    app.get("/after", (req, res) => res.send("still alive"));
+
+    const { url, close } = await serve(app);
+    await new Promise((resolve) => {
+        const request = http.get(`${url}/slow`, (res) => {
+            res.once("data", () => {
+                request.destroy();
+                resolve();
+            });
+        });
+        request.on("error", resolve);
+    });
+    // the server must still answer new requests afterwards
+    for (let waited = 0; waited < 2000 && !sawClose; waited += 50) {
+        await new Promise((r) => setTimeout(r, 50));
+    }
+    const after = await fetch(`${url}/after`);
+    assert.equal(await after.text(), "still alive");
     await close();
 });
 

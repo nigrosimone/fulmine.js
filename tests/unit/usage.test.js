@@ -85,6 +85,39 @@ test("what a single callback is allowed to do", () => {
         0
     );
 
+    // shapes the walk cannot even read: a class method's source does not parse alone, and a
+    // lying toString parses to something that is not a function
+    class Controller {
+        handle(req, res) {
+            res.send("hi");
+        }
+    }
+    assert.ok(callbackUsage(new Controller().handle) & UNKNOWN);
+    const lying = (req, res) => res.send("hi");
+    lying.toString = () => "42";
+    assert.ok(callbackUsage(lying) & UNKNOWN);
+
+    // arguments could reach anything
+    assert.ok(
+        callbackUsage(function (req, res) {
+            res.send(String(arguments.length));
+        }) & UNKNOWN
+    );
+
+    // names that merely look like the parameters are not uses: a property on another object,
+    // a key in a literal, an inner binding of its own
+    assert.equal(
+        callbackUsage((req, res, next) => res.json({ req: 1, next: "label", held: { next: 2 } })),
+        0
+    );
+    assert.equal(
+        callbackUsage((req, res) => {
+            const state = { req: "not the request" };
+            res.send(state.req);
+        }),
+        0
+    );
+
     // the body parsers carry the mark instead of being read
     assert.equal(callbackUsage(express.json()), NEXT_PLAIN);
     assert.equal(callbackUsage(express.urlencoded({ extended: false })), NEXT_PLAIN);
@@ -108,6 +141,13 @@ test("a chain is judged whole, and the terminal next needs a clear path behind i
     // a param callback is code nobody analyzed
     const withParam = { callbacks: [(req, res) => res.send("x")], paramCallbacks: new Map([["id", []]]) };
     assert.deepEqual(chainUsage([withParam], false), { skipHeaders: false, skipQuery: false });
+
+    // malformed entries answer no rather than throwing: no callback list, or a non-function in it
+    assert.deepEqual(chainUsage([{ callbacks: null }], true), { skipHeaders: false, skipQuery: false });
+    assert.deepEqual(chainUsage([{ callbacks: [42], paramCallbacks: new Map() }], true), {
+        skipHeaders: false,
+        skipQuery: false
+    });
 });
 
 /**
