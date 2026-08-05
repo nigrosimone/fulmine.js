@@ -289,7 +289,10 @@ function serveStatic(root, options) {
     options._ownEtag = true;
 
     return (req, res, next) => {
-        next = AsyncResource.bind(next);
+        // Not bound here: every path down to sendFile is synchronous, statSync included, so the
+        // caller's async context is intact at each of these next() calls. Only sendFile's
+        // completion can arrive on a uWS callback that carries no context, and that one
+        // continuation is bound where it is handed over.
 
         // a file is read, not written: anything but GET and HEAD belongs to whoever comes next, or
         // is refused outright when this middleware is the last word
@@ -410,11 +413,15 @@ function serveStatic(root, options) {
 
         options._stat = stat;
 
-        return res.sendFile(_path, options, (e) => {
-            if (e) {
-                next(options.fallthrough && FALLTHROUGH_STATUSES.has(e.status) ? undefined : e);
-            }
-        });
+        return res.sendFile(
+            _path,
+            options,
+            AsyncResource.bind((e) => {
+                if (e) {
+                    next(options.fallthrough && FALLTHROUGH_STATUSES.has(e.status) ? undefined : e);
+                }
+            })
+        );
     };
 }
 
