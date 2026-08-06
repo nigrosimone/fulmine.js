@@ -953,6 +953,20 @@ function planToSource(plan, target) {
             lines.push(`const nested${i} = express.Router();`);
             for (const route of spec.nested.routes)
                 lines.push(`nested${i}.${route.method}(${JSON.stringify(route.path)}, ${route.kind});`);
+            // the third level and the application below it, which instantiate() builds and this
+            // used to leave out: a case printed without them cannot be reproduced from the print
+            if (spec.nested.deeper) {
+                lines.push(`const deeper${i} = express.Router();`);
+                for (const route of spec.nested.deeper.routes)
+                    lines.push(`deeper${i}.${route.method}(${JSON.stringify(route.path)}, ${route.kind});`);
+                lines.push(`nested${i}.use(${JSON.stringify(spec.nested.deeper.mount)}, deeper${i});`);
+            }
+            if (spec.nested.subApp) {
+                lines.push(`const inner${i} = express();`);
+                for (const route of spec.nested.subApp.routes)
+                    lines.push(`inner${i}.${route.method}(${JSON.stringify(route.path)}, ${route.kind});`);
+                lines.push(`nested${i}.use(${JSON.stringify(spec.nested.subApp.mount)}, inner${i});`);
+            }
             lines.push(`router${i}.use(${JSON.stringify(spec.nested.mount)}, nested${i});`);
         }
         lines.push(`app.use(${JSON.stringify(spec.mount)}, router${i});`);
