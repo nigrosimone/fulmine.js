@@ -45,6 +45,7 @@ shared machine, so the number would describe the machine rather than the framewo
 - [Attribution](#attribution)
 - [Difference from similar projects](#difference-from-similar-projects)
 - [Migrating](#migrating)
+    - [When Express is somebody else's dependency](#when-express-is-somebody-elses-dependency)
 - [Docker](#docker)
 - [Differences from Express](#differences-from-express)
 - [Performance tips](#performance-tips)
@@ -127,6 +128,48 @@ npx fulmine differences         # print the list below and change nothing
 
 The command is installed under both `fulmine` and `fulmine.js`. Use `fulmine`: `npx` cannot run a
 command whose name ends in `.js` on Windows, where it exits without a word.
+
+### When Express is somebody else's dependency
+
+A framework built on Express does not `require("express")` in your code, it requires it in its own,
+so there is nothing for `migrate` to rewrite. Every package manager can answer `express` with this
+package instead, for your project and everything under it:
+
+```jsonc
+// npm and its lockfile, in package.json
+{
+    "overrides": {
+        "express": "npm:fulmine.js@^5"
+    }
+}
+
+// pnpm, in package.json
+{
+    "pnpm": {
+        "overrides": {
+            "express": "npm:fulmine.js@^5"
+        }
+    }
+}
+
+// yarn 1 and berry, in package.json
+{
+    "resolutions": {
+        "express": "npm:fulmine.js@^5"
+    }
+}
+```
+
+Then reinstall, so the lockfile is rewritten: `rm -rf node_modules` and `npm install`, or the
+equivalent for your manager. `npm ls express` should answer `express@npm:fulmine.js`.
+
+Two things to know before you do it. The substitution reaches **every** dependency that asks for
+Express, including ones you have never looked at, so run your own tests afterwards and read
+[the differences](#differences-from-express): what a framework does with Express is usually more
+than what an application does. And a package that reaches into `express/lib/...` rather than its
+public surface will not find what it expects, since the files there are ours.
+
+Bun is not an option: µWebSockets.js is a native Node addon, and Bun does not load it.
 
 ## Docker
 
