@@ -393,9 +393,6 @@ module.exports = class Request extends Readable {
             this.endsWithSlash = this.path.charCodeAt(this.path.length - 1) === 0x2f;
             this._opPath = this.path;
             this._originalPath = this.path;
-            if (this.endsWithSlash && this.path !== "/" && !this.app._strictRouting()) {
-                this._opPath = this._opPath.slice(0, -1);
-            }
             this.method = req.getCaseSensitiveMethod().toUpperCase();
             this._isOptions = this.method === "OPTIONS";
             this._isHead = this.method === "HEAD";
@@ -693,8 +690,7 @@ module.exports = class Request extends Readable {
         this._originalPath = prefix + newPath;
         this.path = newPath;
         this.endsWithSlash = newPath.charCodeAt(newPath.length - 1) === 0x2f;
-        this._opPath =
-            this.endsWithSlash && newPath !== "/" && !this.app._strictRouting() ? newPath.slice(0, -1) : newPath;
+        this._opPath = newPath;
         this._lastUrl = newUrl;
     }
 

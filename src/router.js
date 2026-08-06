@@ -195,10 +195,7 @@ class Walk {
                 req._stackMounted = 0;
                 req.path = req._originalPath;
                 req.url = req._originalPath + req.urlQuery;
-                req._opPath =
-                    req.endsWithSlash && req._originalPath !== "/" && !router._strictRouting()
-                        ? req._originalPath.slice(0, -1)
-                        : req._originalPath;
+                req._opPath = req._originalPath;
                 req._lastUrl = req.url;
             }
             // an error out of a mount is attributed to the mount, so error handlers declared before
@@ -253,10 +250,7 @@ class Walk {
             req._stackMounted = 0;
             req.path = req._originalPath;
             req.url = req._originalPath + req.urlQuery;
-            req._opPath =
-                req.endsWithSlash && req._originalPath !== "/" && !router._strictRouting()
-                    ? req._originalPath.slice(0, -1)
-                    : req._originalPath;
+            req._opPath = req._originalPath;
             req._lastUrl = req.url;
         }
         this.routes = router._routes;
@@ -292,9 +286,6 @@ class Walk {
                 const fullMountpath = router.getFullMountpath(req);
                 req._opPath =
                     fullMountpath !== EMPTY_REGEX ? req._originalPath.replace(fullMountpath, "") : req._originalPath;
-                if (req.endsWithSlash && req._opPath[req._opPath.length - 1] !== "/") {
-                    req._opPath = router._strictRouting() ? req._opPath + "/" : req._opPath.slice(0, -1);
-                }
                 req.url = req._opPath + req.urlQuery;
                 req.path = req._opPath;
                 if (req._opPath === "") {
@@ -363,17 +354,11 @@ class Walk {
                         req._stackMounted--;
                     }
 
-                    const strictRouting = router._strictRouting();
                     const poppedMountpath = req._stack.length > 0 ? router.getFullMountpath(req) : EMPTY_REGEX;
                     req._opPath =
                         poppedMountpath !== EMPTY_REGEX
                             ? req._originalPath.replace(poppedMountpath, "")
                             : req._originalPath;
-                    if (strictRouting) {
-                        if (req.endsWithSlash && req._opPath[req._opPath.length - 1] !== "/") {
-                            req._opPath += "/";
-                        }
-                    }
                     req.url = req._opPath + req.urlQuery;
                     req.path = req._opPath;
                     if (req._opPath === "") {
@@ -381,14 +366,6 @@ class Walk {
                         req.path = "/";
                     }
                     req._lastUrl = req.url;
-                    if (
-                        !strictRouting &&
-                        req.endsWithSlash &&
-                        req._originalPath !== "/" &&
-                        req._opPath[req._opPath.length - 1] === "/"
-                    ) {
-                        req._opPath = req._opPath.slice(0, -1);
-                    }
                     if (req.app.parent && route.callbacks[0]?.constructor.name === "Application") {
                         useApp(req, req.app.parent);
                     }
@@ -396,8 +373,13 @@ class Walk {
                 if (thingamabob === "router") {
                     if (this.skipCheck) {
                         // on a compiled chain, leaving the router is what running out of chain
-                        // already means: ordinary routing takes over after the mount
-                        return this.dispatch(this.routes.length);
+                        // already means: ordinary routing takes over after the mount. With no
+                        // mount in the chain the router being left is the app's own, and nothing
+                        // of it may run afterwards, not even a middleware registered later
+                        if (this.skipUntil?.keepMount) {
+                            return this.dispatch(this.routes.length);
+                        }
+                        return this.resolve(false);
                     }
                     // out of this router entirely, so whoever mounted it carries on after the
                     // mount. The app's own walk has nobody after it, and answers 404
@@ -444,9 +426,6 @@ class Walk {
             const parentMethods = req._matchedMethods;
             if (parentMethods !== null) {
                 req._matchedMethods = new Set();
-            }
-            if (callback._strictRouting() && req.endsWithSlash && req._opPath[req._opPath.length - 1] !== "/") {
-                req._opPath += "/";
             }
             callback
                 ._routeRequest(req, res, 0)
@@ -593,10 +572,7 @@ function nativeFail(err) {
  * @returns {string}
  */
 function regexMountEntry(router, route, req) {
-    let mountPath = req._opPath;
-    if (req.endsWithSlash && mountPath.endsWith("/") && !router._strictRouting()) {
-        mountPath = mountPath.slice(0, -1);
-    }
+    const mountPath = req._opPath;
     const matched = route.pattern.exec(mountPath === "" ? "/" : mountPath);
     return matched ? escapePathLiteral(matched[0]) : "";
 }
@@ -698,7 +674,7 @@ function adoptPlainRequest(req, router) {
     req.originalUrl = req.originalUrl ?? arrived;
     req._originalPath = path;
     req.endsWithSlash = path.charCodeAt(path.length - 1) === 0x2f;
-    req._opPath = req.endsWithSlash && path !== "/" && !router._strictRouting() ? path.slice(0, -1) : path;
+    req._opPath = path;
     req._lastUrl = req.url;
     req._isOptions = req.method === "OPTIONS";
     req._isHead = req.method === "HEAD";
@@ -744,24 +720,20 @@ function onNativeAborted() {
 }
 
 /**
- *
- */
-/**
  * The per-request constants of a fully literal native registration. µWS matched the URL byte for
  * byte against this exact pattern and dispatches by method, so the request constructor can take
  * these as given instead of asking uWS and recomputing them on every request.
  *
  * @param {string} path the registered pattern, which is what getUrl() would have answered
  * @param {string} method uppercase, fixed by which uWS verb the registration used
- * @param {boolean} strict the owner's strict routing, frozen here like the twin registration is
  */
-function nativePreset(path, method, strict) {
+function nativePreset(path, method) {
     const endsWithSlash = path.charCodeAt(path.length - 1) === 0x2f;
     return {
         path,
         method,
         endsWithSlash,
-        opPath: endsWithSlash && path !== "/" && !strict ? path.slice(0, -1) : path,
+        opPath: path,
         isOptions: method === "OPTIONS",
         isHead: method === "HEAD",
         // set at registration when the whole chain provably never reads a header, or never
@@ -1182,18 +1154,10 @@ module.exports = class Router extends EventEmitter {
      * @returns {boolean}
      */
     _pathMatches(route, req) {
+        // the path as it arrived, mount prefixes aside: whether a trailing slash is allowed is
+        // written into the pattern, where express writes it too
         let path = req._opPath;
         let pattern = route.pattern;
-
-        if (route.userRegexp) {
-            // a RegExp the application wrote is matched against the path as it arrived: express
-            // relaxes a trailing slash only for the paths it compiled itself
-            if (req.endsWithSlash && !path.endsWith("/")) {
-                path += "/";
-            }
-        } else if (req.endsWithSlash && path.endsWith("/") && !this._strictRouting()) {
-            path = path.slice(0, -1);
-        }
         // the line above turns the root path into the empty string, which no pattern is written
         // against. A regex route was tested against it and app.get("*path") answered every request
         // but "/"
@@ -1209,7 +1173,18 @@ module.exports = class Router extends EventEmitter {
                 path = path.toLowerCase();
                 pattern = pattern.toLowerCase();
             }
-            return pattern === path;
+            if (pattern === path) {
+                return true;
+            }
+            // a literal path is compared as text rather than compiled, so the trailing slash a
+            // pattern would have carried as "/?" is allowed here instead. The registered path has
+            // had its own taken off already, unless it is the root
+            return (
+                !this._strictRouting() &&
+                path.length === pattern.length + 1 &&
+                path.charCodeAt(path.length - 1) === 0x2f &&
+                path.startsWith(pattern)
+            );
         }
         if (pattern === EMPTY_REGEX) {
             return true;
@@ -1746,7 +1721,7 @@ module.exports = class Router extends EventEmitter {
         }
         // remembered so a middleware or setting arriving after listen can take the skips back
         const makePreset = (path, method, skips) => {
-            const preset = nativePreset(path, method, strictHere);
+            const preset = nativePreset(path, method);
             if (skips.skipHeaders || skips.skipQuery) {
                 preset.skipHeaders = skips.skipHeaders;
                 preset.skipQuery = skips.skipQuery;

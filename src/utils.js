@@ -473,9 +473,12 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true, strict 
         i++;
     }
 
-    const regex = /** @type {PathRegExp} */ (
-        new RegExp(`^${regexPattern}${isPrefix ? "(?=$|/)" : "$"}`, caseSensitive ? "" : "i")
-    );
+    // Without strict routing express allows one trailing slash at the end of the pattern
+    // rather than taking it off the path, which is the only way /things and /things/ can be the
+    // same route while // and /things/ stay different paths. A mount ends at a segment boundary
+    // instead, and the slash after it belongs to what follows.
+    const ending = isPrefix ? "(?=$|/)" : strict ? "$" : "/?$";
+    const regex = /** @type {PathRegExp} */ (new RegExp(`^${regexPattern}${ending}`, caseSensitive ? "" : "i"));
     // read back out of the finished pattern, so the list cannot disagree with the regex. Asking for
     // each name in turn beats walking match.groups with for-in: 176ns against 349
     const paramNames = [...regexPattern.matchAll(NAMED_GROUP)].map((m) => m[1]);
