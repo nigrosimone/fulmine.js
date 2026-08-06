@@ -33,6 +33,7 @@ const path = require("path");
 const os = require("os");
 const { Worker } = require("worker_threads");
 const cluster = require("cluster");
+const { registerWebSocketRoutes } = require("./websocket.js");
 
 const cpuCount = os.cpus().length;
 
@@ -515,6 +516,9 @@ class Application extends Router {
      */
     listen(port, host, backlog, callback) {
         this._compileOptimizedRoutes();
+        // before the catch-all: µWS sends an upgrade to the websocket route even when a
+        // catch-all covers the same path, so the two coexist and the order is only tidiness
+        registerWebSocketRoutes(this);
         this._createRequestHandler();
         // node's shapes: (cb), (port, cb), (port, host, cb) and (port, host, backlog, cb)
         if (typeof port === "function") {
@@ -593,6 +597,32 @@ class Application extends Router {
         this.listenCalled = true;
         this.uwsApp[fn](...args);
         return this;
+    }
+
+    /**
+     * Publishes a message to every socket subscribed to a topic, from outside any of them.
+     *
+     * The socket's own `publish` reaches the same topics; this one is for the sender that is
+     * not a socket, a timer or a route handler broadcasting to a room.
+     *
+     * @param {string} topic
+     * @param {string|ArrayBuffer|Buffer} message
+     * @param {boolean} [isBinary]
+     * @param {boolean} [compress]
+     * @returns {boolean} whether the topic had anyone listening
+     */
+    publish(topic, message, isBinary, compress) {
+        return this.uwsApp.publish(topic, message, isBinary, compress);
+    }
+
+    /**
+     * How many sockets are subscribed to a topic.
+     *
+     * @param {string} topic
+     * @returns {number}
+     */
+    numSubscribers(topic) {
+        return this.uwsApp.numSubscribers(topic);
     }
 
     /**

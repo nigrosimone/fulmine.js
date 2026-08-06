@@ -750,6 +750,33 @@ module.exports = class Request extends Readable {
     }
 
     /**
+     * Cuts this request loose from the µWS response it arrived on, keeping the two things only
+     * that response could answer.
+     *
+     * A websocket upgrade hands the request to the socket, which outlives the response by the
+     * whole life of the connection. Reading the peer address through the freed response is not
+     * an error but a use after free, so the values are taken while it is still alive and an
+     * inert stand-in answers anything that asks later.
+     */
+    _detachFromResponse() {
+        const uwsRes = this._res;
+        if (!this.rawIp) {
+            this.rawIp = uwsRes.getRemoteAddress();
+        }
+        const remotePort = uwsRes.getRemotePort();
+        const rawIp = this.rawIp;
+        this._res = {
+            getRemoteAddress: () => rawIp,
+            getRemotePort: () => remotePort,
+            // a body cannot arrive on an upgraded socket, and a stray reader must not reach µWS
+            onData() {},
+            pause() {},
+            resume() {},
+            close() {}
+        };
+    }
+
+    /**
      * Whether the client's cached copy is still good, from If-None-Match and If-Modified-Since
      * against the response headers set so far. Only GET and HEAD can be fresh.
      * @returns {boolean}

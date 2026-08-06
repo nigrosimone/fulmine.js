@@ -37,6 +37,7 @@ const statuses = require("statuses");
 const { METHODS } = require("http");
 const { isNodeRequest, serveNodeRequest } = require("./node-shim.js");
 const { chainUsage } = require("./usage.js");
+const { checkBehavior } = require("./websocket.js");
 
 // every method the declarative compiler can emit: a patched one must disable compilation, or the
 // patch would be honoured everywhere but on compiled routes
@@ -852,6 +853,10 @@ module.exports = class Router extends EventEmitter {
         this._paramCallbacks = new Map();
         this._mountpathCache = new Map();
         this._routes = [];
+        // websocket routes, kept apart from the HTTP ones: µWS serves them itself and listen()
+        // hands them over whole, mount paths and all
+        /** @type {any[]|null} */
+        this._wsRoutes = null;
         // the native presets allowed to skip the header copy, so a late middleware or an etag
         // arriving after listen can take the permission back; null until one is granted
         /** @type {Set<any>|null} */
@@ -1971,6 +1976,38 @@ module.exports = class Router extends EventEmitter {
             }
         }
         this.createRoute("USE", path, this, ...callbacks);
+        return this;
+    }
+
+    /**
+     * Registers a websocket route, which µWS serves itself.
+     *
+     * The behavior is µWS's, settings and socket handlers alike, plus one addition: an
+     * `upgrade(req, res)` of this project's own shape, which runs before the handshake with a
+     * real request and response. Answering with the response declines the socket, which is how
+     * a check refuses one; returning a promise holds the handshake until it settles.
+     *
+     * The request lives as long as the socket and reaches every handler as `ws.req`, so what
+     * the upgrade learned about the client, and anything it hangs on the request, is there when
+     * a message arrives.
+     *
+     * @example
+     * app.ws("/room/:id", {
+     *     upgrade(req, res) {
+     *         if (!req.query.token) return res.sendStatus(401);
+     *         req.room = req.params.id;
+     *     },
+     *     open(ws) { ws.subscribe(ws.req.room); },
+     *     message(ws, message, isBinary) { ws.publish(ws.req.room, message, isBinary); }
+     * });
+     *
+     * @param {string} path a literal path, or one whose parameters are whole segments
+     * @param {object} behavior µWS's WebSocketBehavior, plus the optional `upgrade` above
+     * @returns {this}
+     */
+    ws(path, behavior) {
+        checkBehavior(path, behavior);
+        (this._wsRoutes ??= []).push({ path, behavior, owner: this });
         return this;
     }
 

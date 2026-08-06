@@ -173,7 +173,8 @@ import {
 } from "fulmine.js";
 import type { Request as FulmineRequest, Response as FulmineResponse } from "fulmine.js";
 
-expectType<IRouter>(NamedRouter());
+// assignable rather than exact: this project's router is an Express one plus ws()
+expectAssignable<IRouter>(NamedRouter());
 expectAssignable<RequestHandler>(namedJson());
 expectAssignable<RequestHandler>(namedUrlencoded());
 expectAssignable<RequestHandler>(namedText());
@@ -187,3 +188,29 @@ const typedHandler = (req: FulmineRequest, res: FulmineResponse) => {
     res.json({ ok: true });
 };
 expectAssignable<RequestHandler>(typedHandler);
+
+// WebSockets: the behavior is µWS's, the upgrade hook and ws.req are this project's
+app.ws("/room/:id", {
+    maxPayloadLength: 1024,
+    idleTimeout: 60,
+    upgrade(req, res) {
+        // a parameter is a string or, for a wildcard, the segments it matched
+        expectAssignable<string | string[]>(req.params.id);
+        if (!req.query.token) res.sendStatus(401);
+    },
+    open(ws) {
+        expectAssignable<FulmineRequest>(ws.req);
+        ws.subscribe("room");
+    },
+    message(ws, message, isBinary) {
+        expectType<ArrayBuffer>(message);
+        expectType<boolean>(isBinary);
+        ws.send(message, isBinary);
+    },
+    close(ws, code) {
+        expectType<number>(code);
+    }
+});
+expectType<boolean>(app.publish("room", "hello"));
+expectType<number>(app.numSubscribers("room"));
+NamedRouter().ws("/lobby", { open: (ws) => ws.send(ws.req.path) });

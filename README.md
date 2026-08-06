@@ -195,10 +195,37 @@ On top of that, a handler simple enough to be read at registration time is compi
 
 ## WebSockets
 
-Since you don't create http server manually, you can't properly use http.on("upgrade") to handle WebSockets. To solve this, there's currently 2 options:
+`app.ws()` registers a WebSocket route, served by µWS itself. There is no `http.Server` underneath, so `http.on("upgrade")` and the libraries built on it do not apply; this is the replacement.
 
-- [Ultimate WS](https://github.com/dimdenGD/ultimate-ws) implements a `ws` compatible API on the same idea: a drop-in replacement for the `ws` module. It was written against Ultimate Express and hooks into the same upgrade mechanism, which Fulmine still exposes, but that combination is not covered by this project's tests. There's a guide for how to upgrade http requests in the documentation.
-- You can simply use `app.uwsApp` to access uWebSockets.js `App` instance and call its `ws()` method directly.
+```js
+app.ws("/room/:id", {
+    upgrade(req, res) {
+        // runs before the handshake, with a real request and response.
+        // Answering the response declines the socket:
+        if (!req.query.token) return res.sendStatus(401);
+        // and anything left on the request is there for the socket's whole life:
+        req.room = req.params.id;
+    },
+    open(ws) {
+        ws.subscribe(ws.req.room);
+    },
+    message(ws, message, isBinary) {
+        ws.publish(ws.req.room, message, isBinary);
+    },
+    close(ws, code, message) {}
+});
+```
+
+- **The behavior object is µWS's**, settings included: `maxPayloadLength`, `idleTimeout`, `compression`, `maxBackpressure`, `sendPingsAutomatically` and the rest are passed through untouched, as are the `open`, `message`, `drain`, `close`, `ping`, `pong`, `dropped` and `subscription` handlers. The socket is µWS's too, so `send`, `subscribe`, `publish`, `cork` and `getBufferedAmount` behave exactly as its documentation describes.
+- **`upgrade(req, res)` is this project's addition.** It runs before the handshake with the same `Request` and `Response` your routes get, so a session, a token or a header decides whether the socket opens. Answering the response, with `res.sendStatus(401)` or any other write, declines the upgrade. Returning a promise holds the handshake until it settles, which is what an authentication lookup needs.
+- **`ws.req` is that request**, and it outlives the response: the client's address, headers, query and params are readable from any handler for as long as the socket is open. Hanging your own values on it in `upgrade` is how per-connection state gets to `message`.
+- **Routers work.** `router.ws("/lobby", …)` mounted with `app.use("/chat", router)` serves `/chat/lobby`.
+- **Paths are the ones µWS matches**: literal, or with parameters that are a whole segment such as `/room/:id`. Anything else throws where it is written rather than failing to match later.
+- **Broadcasting from outside a socket**: `app.publish(topic, message)` and `app.numSubscribers(topic)`.
+
+A WebSocket route and an ordinary route can share a path: the upgrade goes to the WebSocket route, a plain GET goes through normal routing.
+
+If you would rather use the `ws` module's API, [Ultimate WS](https://github.com/dimdenGD/ultimate-ws) is a drop-in replacement for it written against Ultimate Express, and Fulmine still exposes the mechanism it hooks into, but that combination is not covered by this project's tests. `app.uwsApp` also remains available for anything µWS offers that this does not.
 
 ### socket.io
 
