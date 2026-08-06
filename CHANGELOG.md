@@ -1,5 +1,15 @@
 # Changelog
 
+## [5.2.0](https://github.com/nigrosimone/fulmine.js/compare/v5.1.9...v5.2.0) (2026-08-06)
+
+### Features
+
+* app.ws() serves websockets first class, with an upgrade hook and the request on the socket ([fa53c3f](https://github.com/nigrosimone/fulmine.js/commit/fa53c3fe8592a5de10afbe95b943403b1da45dee))
+
+### Performance Improvements
+
+* the request declares next and the response links its request in the constructor ([7d981b9](https://github.com/nigrosimone/fulmine.js/commit/7d981b9ad9651e7194b77bc66bec8f9bd4464ce8))
+
 ## [5.1.9](https://github.com/nigrosimone/fulmine.js/compare/v5.1.8...v5.1.9) (2026-08-05)
 
 ### Bug Fixes
