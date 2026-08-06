@@ -704,7 +704,9 @@ function decodeParam(value) {
     try {
         return decodeURIComponent(value);
     } catch {
-        const err = /** @type {any} */ (new Error(`Failed to decode param '${value}'`));
+        // a URIError, not an Error: express throws what decodeURIComponent threw, so an error
+        // handler written as `err instanceof URIError` has to keep working here
+        const err = /** @type {any} */ (new URIError(`Failed to decode param '${value}'`));
         err.status = 400;
         err.statusCode = 400;
         err.expose = true;

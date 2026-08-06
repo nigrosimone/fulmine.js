@@ -157,14 +157,24 @@ class Walk {
         }
         let routeIndex = startIndex;
         if (!this.skipCheck) {
+            // express matches a layer's path before it looks at the method, and decodes the
+            // parameters there, so a malformed escape answers 400 even when no route of this
+            // method exists. Only a path carrying a percent can produce one, and that check keeps
+            // every other request from matching routes it could never run
+            const mayFailDecode = req._originalPath.indexOf("%") !== -1;
             // written out rather than through a predicate handed to findIndexStartingFrom, which
             // was one closure per hop of every request not on a compiled chain
             for (; routeIndex < routes.length; routeIndex++) {
                 const r = routes[routeIndex];
-                if (
-                    (r.all || r.method === req.method || req._isOptions || (r.gettable && req._isHead)) &&
-                    router._pathMatches(r, req)
-                ) {
+                if (!(r.all || r.method === req.method || req._isOptions || (r.gettable && req._isHead))) {
+                    // taken only to fail: _preprocessRequest decodes again and turns it into the
+                    // error, so the handlers of a route this request cannot run never see it
+                    if (mayFailDecode && router._pathMatches(r, req) && router._paramsFailToDecode(r, req)) {
+                        break;
+                    }
+                    continue;
+                }
+                if (router._pathMatches(r, req)) {
                     break;
                 }
             }
@@ -1960,6 +1970,34 @@ module.exports = class Router extends EventEmitter {
             return this._runParamCallbacks(req, res, route, paramCallbacks);
         }
         return true;
+    }
+
+    /**
+     * Whether this route's parameters carry a percent escape that will not decode. Asked only of a
+     * route whose path matched and whose method did not, which express still decodes: the 400 it
+     * answers there is what this reproduces.
+     *
+     * @param {any} route
+     * @param {any} req
+     * @returns {boolean}
+     */
+    _paramsFailToDecode(route, req) {
+        if (!route.complex) {
+            return false;
+        }
+        let path = req._originalPath;
+        if (req._stack !== null && req._stack.length > 0) {
+            const fullMountpath = this.getFullMountpath(req);
+            if (fullMountpath !== EMPTY_REGEX) {
+                path = path.replace(fullMountpath, "");
+            }
+        }
+        try {
+            this._extractParams(route.pattern, path);
+            return false;
+        } catch {
+            return true;
+        }
     }
 
     /**
