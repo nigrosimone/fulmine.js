@@ -15,6 +15,8 @@
 // and settings are dropped one at a time for as long as the divergence survives, which turns a
 // forty route accident into the two lines worth pasting into tests/.
 
+const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const realExpress = require(path.join(__dirname, "..", "node_modules", "express"));
 const fulmine = require(path.join(__dirname, "..", "src", "index.js"));
@@ -36,7 +38,20 @@ function mulberry32(seed) {
 
 const SEGMENTS = ["a", "b", "users", "posts", "me", "list", "x1", "Mixed"];
 const PARAM_VALUES = ["1", "abc", "x-y", "%41", "%2F", "a.b", "-", "9", "a%00b", "%C3%A9", "a+b", "a b", ".hidden"];
-const SUFFIXES = ["", "?", "?q=1", "?q", "?a=1&a=2", "?%2F=%2F", "#frag", "?q=1#frag", "?="];
+const SUFFIXES = [
+    "",
+    "?",
+    "?q=1",
+    "?q",
+    "?a=1&a=2",
+    "?%2F=%2F",
+    "#frag",
+    "?q=1#frag",
+    "?=",
+    "?callback=cb",
+    "?cb=fn",
+    "?callback=not a name"
+];
 const METHODS = ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"];
 
 // what a request carries when the plan put a body parser in front, one shape per parser
@@ -221,6 +236,27 @@ const LIBRARY_PATHS = [
 // includes patterns its parser refuses
 const libraryRoutes = [];
 
+// A directory both arms serve from. Written once per run rather than kept between runs, and read
+// by both, so the modification time behind every ETag and Last-Modified is the same one: a file
+// per arm would differ by a millisecond and every conditional answer would look like a divergence.
+const FILE_DIR = path.join(os.tmpdir(), "fulmine-fuzz-files");
+const FILES = {
+    "a.txt": "the quick brown fox jumps over the lazy dog",
+    "b.json": '{"name":"b","values":[1,2,3]}',
+    "page.html": "<!doctype html><title>page</title><p>page",
+    ".hidden": "a dotfile, which the static options have opinions about",
+    "sub/index.html": "<!doctype html><title>index</title><p>index",
+    "sub/deep.txt": "deep"
+};
+
+/** Lays the files down, which has to happen before either arm is asked for one. */
+function writeFiles() {
+    fs.mkdirSync(path.join(FILE_DIR, "sub"), { recursive: true });
+    for (const [name, body] of Object.entries(FILES)) {
+        fs.writeFileSync(path.join(FILE_DIR, name), body);
+    }
+}
+
 // Every handler answers from the request alone, with nothing drawn from the clock or from a
 // counter: two servers must be able to produce the same bytes.
 // The kinds whose body is written out rather than closed over. Only these can reach the
@@ -250,7 +286,14 @@ const HANDLER_KINDS = [
     "throw",
     "next-error",
     "next-route",
-    "body-echo"
+    "body-echo",
+    "jsonp",
+    "location",
+    "redirect-relative",
+    "peer",
+    "negotiate",
+    "send-file",
+    "download"
 ];
 
 /**
@@ -292,6 +335,8 @@ function drawPlan(rng) {
     const drawRoute = (allowWildcard) => ({
         // an error handler between the middleware and the handler, which either answers or hands on
         errorArm: chance(0.15) ? pick(["answer", "forward"]) : null,
+        // how it is registered: the ordinary way, through app.route(), or as app.all()
+        shape: chance(0.12) ? pick(["route", "all"]) : null,
         method: chance(0.75) ? "get" : pick(["post", "put", "delete", "all"]),
         // a quarter of the routes come from the library corpus, whose shapes nothing here invents
         path: chance(0.25) && libraryRoutes.length > 0 ? pick(libraryRoutes) : drawPath(allowWildcard),
@@ -314,9 +359,27 @@ function drawPlan(rng) {
     if (chance(0.1)) settings["jsonp callback name"] = "cb";
     if (chance(0.1)) settings["x-powered-by"] = true;
     if (chance(0.1)) settings["subdomain offset"] = 3;
+    if (chance(0.25)) settings["trust proxy"] = pick([true, false, 1, 2, "127.0.0.1", "loopback"]);
 
     // a body parser in front of everything, with a body to match, so req.body is not always absent
     const bodyParser = chance(0.3) ? pick(["json", "urlencoded", "text", "raw"]) : null;
+
+    // a static mount: the options are the ones that change what it answers rather than how fast
+    const staticMount = chance(0.35)
+        ? {
+              mount: pick(["/files", "/", "/a/files"]),
+              options: {
+                  index: pick([false, "index.html"]),
+                  dotfiles: pick(["ignore", "allow", "deny"]),
+                  redirect: chance(0.5),
+                  fallthrough: chance(0.7),
+                  extensions: chance(0.3) ? ["html"] : false,
+                  maxAge: chance(0.4) ? 3600000 : 0,
+                  etag: !chance(0.2),
+                  lastModified: !chance(0.2)
+              }
+          }
+        : null;
 
     const routers = [];
     const routerCount = Math.floor(rng() * 3);
@@ -331,7 +394,16 @@ function drawPlan(rng) {
             mount: drawPath(false),
             options,
             // a router mounted on a router, where the mount paths compose
-            nested: chance(0.3) ? { mount: drawPath(false), routes: [drawRoute(false)] } : null,
+            nested: chance(0.3)
+                ? {
+                      mount: drawPath(false),
+                      routes: [drawRoute(false)],
+                      // a third level, where the mount paths compose twice over
+                      deeper: chance(0.4) ? { mount: drawPath(false), routes: [drawRoute(false)] } : null,
+                      // and an application mounted inside a router, which swaps req.app on the way
+                      subApp: chance(0.3) ? { mount: drawPath(false), routes: [drawRoute(false)] } : null
+                  }
+                : null,
             routes: Array.from({ length: 1 + Math.floor(rng() * 2) }, () => drawRoute(true))
         });
     }
@@ -381,9 +453,46 @@ function drawPlan(rng) {
     if (chance(0.3)) headers["accept-language"] = pick(["en", "it, en;q=0.8"]);
     if (chance(0.3)) headers["x-fuzz"] = "probe";
     if (chance(0.2)) headers.cookie = "fuzz=earlier";
+    if (chance(0.35)) headers["x-forwarded-for"] = pick(["203.0.113.9", "203.0.113.9, 198.51.100.2", "::1"]);
+    if (chance(0.25)) headers["x-forwarded-proto"] = pick(["https", "http", "https, http"]);
+    if (chance(0.2)) headers["x-forwarded-host"] = pick(["example.com", "a.b.example.com:8080"]);
 
     // GET always, since most routes are GET, plus one other verb so the method side is exercised
-    return { settings, routers, subApp, routes, urls, headers, bodyParser, methods: ["GET", pick(METHODS)] };
+    // the paths a static mount can answer, asked for whether or not one is mounted: half the
+    // point is what happens when nothing serves them
+    if (staticMount) {
+        const base = staticMount.mount === "/" ? "" : staticMount.mount;
+        for (const name of [
+            "/a.txt",
+            "/b.json",
+            "/page",
+            "/page.html",
+            "/.hidden",
+            "/sub/",
+            "/sub/deep.txt",
+            "/missing.txt",
+            "/sub"
+        ]) {
+            urls.push(base + name);
+        }
+    }
+
+    // a range now and then, which is the other half of what serving a file means
+    if (chance(0.35)) {
+        headers.range = pick(["bytes=0-4", "bytes=5-", "bytes=-3", "bytes=0-", "bytes=900-999", "bytes=x-y"]);
+    }
+
+    return {
+        settings,
+        routers,
+        subApp,
+        routes,
+        urls,
+        headers,
+        bodyParser,
+        staticMount,
+        methods: ["GET", pick(METHODS)]
+    };
 }
 
 /**
@@ -420,6 +529,30 @@ function makeHandler(route) {
             return arrowFrom(`res.type("txt").send(${text})`);
         case "body-echo":
             return (req, res) => res.json({ id, body: req.body ?? null });
+        case "jsonp":
+            return (req, res) => res.jsonp({ id });
+        case "location":
+            return (req, res) => res.location("/moved/" + id).send(id);
+        case "redirect-relative":
+            // a relative target is resolved against the request, which is where the two could
+            // disagree about what the request was
+            return (req, res) => res.redirect("../sibling");
+        case "peer":
+            // what the proxy headers were believed to say, which is trust proxy's whole job
+            return (req, res) => res.json({ id, ip: req.ip, ips: req.ips, protocol: req.protocol, host: req.hostname });
+        case "send-file":
+            return (req, res) => res.sendFile(path.join(FILE_DIR, "a.txt"));
+        case "download":
+            // the same read with a Content-Disposition on top, which is its own header to compare
+            return (req, res) => res.download(path.join(FILE_DIR, "b.json"), "renamed.json");
+        case "negotiate":
+            return (req, res) =>
+                res.json({
+                    id,
+                    type: req.accepts(["json", "html", "text"]),
+                    language: req.acceptsLanguages(["en", "it"]),
+                    fresh: req.fresh
+                });
         case "send-json":
             return (req, res) => res.json({ id, params: req.params });
         case "status-send":
@@ -519,6 +652,9 @@ async function instantiate(plan, factory, port) {
     if (plan.bodyParser) {
         app.use(express_bodyParser(factory, plan.bodyParser));
     }
+    if (plan.staticMount) {
+        app.use(plan.staticMount.mount, factory.static(FILE_DIR, { ...plan.staticMount.options }));
+    }
 
     const addRoute = (target, route) => {
         const handlers = route.lead ? [makeLead(route), makeHandler(route)] : [];
@@ -566,6 +702,16 @@ async function instantiate(plan, factory, port) {
         if (spec.nested) {
             const nested = factory.Router();
             for (const route of spec.nested.routes) addRoute(nested, route);
+            if (spec.nested.deeper) {
+                const deeper = factory.Router();
+                for (const route of spec.nested.deeper.routes) addRoute(deeper, route);
+                nested.use(spec.nested.deeper.mount, deeper);
+            }
+            if (spec.nested.subApp) {
+                const inner = factory();
+                for (const route of spec.nested.subApp.routes) addRoute(inner, route);
+                nested.use(spec.nested.subApp.mount, inner);
+            }
             router.use(spec.nested.mount, nested);
         }
         app.use(mountPath(spec), router);
@@ -579,7 +725,18 @@ async function instantiate(plan, factory, port) {
         if (!plan.subApp.mountFirst) app.use(plan.subApp.mount, sub);
     }
 
-    for (const route of plan.routes) addRoute(app, route);
+    for (const route of plan.routes) {
+        if (route.shape === "route") {
+            // app.route() hangs several verbs off one path, which is a different layer arrangement
+            app.route(route.path)
+                .get(makeHandler(route))
+                .post(makeHandler({ ...route, id: route.id + "-post" }));
+        } else if (route.shape === "all") {
+            app.all(route.path, makeHandler(route));
+        } else {
+            addRoute(app, route);
+        }
+    }
 
     app.use((req, res) => res.status(404).send("no route"));
     // an error handler of our own, because express's default one prints a stack that cannot match
@@ -817,6 +974,7 @@ async function main() {
                 : "")
     );
 
+    writeFiles();
     console.log(`fuzzing ${rounds} rounds from seed ${baseSeed}`);
     let checked = 0;
     let found = 0;
