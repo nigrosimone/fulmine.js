@@ -1248,7 +1248,7 @@ module.exports = class Router extends EventEmitter {
                 path,
                 pattern:
                     method === "USE" || needsConversionToRegex(path)
-                        ? patternToRegex(path, method === "USE", this._caseSensitive())
+                        ? patternToRegex(path, method === "USE", this._caseSensitive(), this._strictRouting())
                         : path,
                 callbacks,
                 // instanceof walks a prototype chain and length is a property load, and both used

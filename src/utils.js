@@ -116,6 +116,40 @@ function readParamName(text, from) {
     return { name, next: i };
 }
 
+/**
+ * Escapes a string for use inside a regular expression, as path-to-regexp escapes it.
+ * @param {string} str
+ * @returns {string}
+ */
+function escapeRe(str) {
+    return str.replace(/[.+*?^${}()[\]|/\\]/g, "\\$&");
+}
+
+/**
+ * A character class that matches anything except what these two strings could start, which is how
+ * path-to-regexp stops a capture from backtracking over the literal text that follows it. Ported
+ * from its negate(), so the patterns compiled here agree with the ones express matches.
+ *
+ * @param {string} a
+ * @param {string} b
+ * @returns {string}
+ */
+function negate(a, b) {
+    if (b.length > a.length) {
+        return negate(b, a);
+    }
+    if (a === b) {
+        b = "";
+    }
+    if (b.length > 1) {
+        return `(?:(?!${escapeRe(a)}|${escapeRe(b)})[^])`;
+    }
+    if (a.length > 1) {
+        return `(?:(?!${escapeRe(a)})[^${escapeRe(b)}])`;
+    }
+    return `[^${escapeRe(a + b)}]`;
+}
+
 // the opening of a named capture group, which is how the parameter names are read back out of a
 // finished pattern
 const NAMED_GROUP = /\(\?<([^>]+)>/g;
@@ -155,7 +189,7 @@ function getPatternMeta(pattern) {
  * throw: a route that quietly stops matching is worse than one that fails at startup. The names it
  * captures go in a WeakMap beside the regex, see PatternMeta.
  */
-function patternToRegex(pattern, isPrefix = false, caseSensitive = true) {
+function patternToRegex(pattern, isPrefix = false, caseSensitive = true, strict = false) {
     if (pattern instanceof RegExp) {
         // the application's own RegExp matches as written, whatever the routing setting says,
         // which is what express does with one
@@ -187,12 +221,59 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true) {
     // whether the token just emitted was a :parameter, which decides how greedy the next
     // optional group is allowed to be. see the comment where it is read
     let lastTokenWasParam = false;
+    // What path-to-regexp calls the wildcard backtrack: the literal text written since the last
+    // wildcard. Once a wildcard has eaten slashes, a later one in the same path is held to a single
+    // segment, or the two would divide the path between them in more than one way and the regex
+    // would have to backtrack to find out which. /*a/*b against /x/y/ is the case that shows it:
+    // express refuses it under strict routing, and a second greedy wildcard accepts it.
+    // the text written since the last capture of any kind, and the text written since the last
+    // wildcard, which are the two path-to-regexp weighs
+    let backtrack = "";
+    let wildcardBacktrack = "";
+    let lastCaptureWasWildcard = false;
+    let wildcardInSegment = false;
+    /** Records literal text as it is emitted, which is what the rules above are written against. */
+    const literal = (text) => {
+        backtrack += text;
+        if (lastCaptureWasWildcard) {
+            wildcardBacktrack += text;
+        }
+        if (text.includes("/")) {
+            wildcardInSegment = false;
+        }
+    };
+    /** A :parameter ends the run of text and stops the wildcard one from growing. */
+    const noteParam = () => {
+        backtrack = "";
+        lastCaptureWasWildcard = false;
+        lastTokenWasParam = true;
+    };
+    /**
+     * What a wildcard is allowed to match here, and the bookkeeping that goes with emitting one.
+     * The first wildcard of a path takes everything; one sharing a segment with an earlier wildcard
+     * stops at the text between them; and one in a later segment is held to a single segment.
+     *
+     * @returns {string} the body of the capture group
+     */
+    const wildcardClass = () => {
+        const body = wildcardInSegment
+            ? `${negate(backtrack, "")}+`
+            : wildcardBacktrack
+              ? `${negate(wildcardBacktrack, "")}+|${negate("/", "")}+`
+              : "[^]+";
+        backtrack = "";
+        wildcardBacktrack = "";
+        lastCaptureWasWildcard = true;
+        wildcardInSegment = true;
+        return body;
+    };
 
     while (i < len) {
         const ch = pattern[i];
 
         if (ch === "\\" && i + 1 < len) {
             regexPattern += "\\" + pattern[i + 1];
+            literal(pattern[i + 1]);
             i += 2;
             continue;
         }
@@ -211,7 +292,7 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true) {
             }
             const splatGroup = uniqueGroupName(name);
             wildcardNames.push(splatGroup);
-            regexPattern += `(?<${splatGroup}>[^]+)`;
+            regexPattern += `(?<${splatGroup}>${wildcardClass()})`;
             lastTokenWasParam = false;
             continue;
         }
@@ -231,12 +312,20 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true) {
                 const optionalGroup = uniqueGroupName(name);
                 wildcardNames.push(optionalGroup);
                 if (regexPattern.endsWith("/") || regexPattern.endsWith("\\/")) {
-                    // the slash belongs to the optional part, otherwise /{*splat} would not match /
+                    // the slash is part of the alternative rather than optional on its own: a
+                    // mount at /a/{*w} answers /a/ and /a/x, and not /a, which is what express
+                    // compiles it to
                     regexPattern = regexPattern.slice(0, regexPattern.endsWith("\\/") ? -2 : -1);
-                    regexPattern += `(?:/(?<${optionalGroup}>.+))?/?`;
+                    // under strict routing the slash is part of the alternative, so /a/{*w}
+                    // answers /a/ and /a/x and not /a. Without it express loosens the pattern and
+                    // allows a trailing slash instead, which is the shape the path arrives in here
+                    regexPattern += strict
+                        ? `(?:/(?<${optionalGroup}>${wildcardClass()})|/)`
+                        : `(?:/(?<${optionalGroup}>${wildcardClass()}))?/?`;
                 } else {
-                    regexPattern += `(?<${optionalGroup}>.*)`;
+                    regexPattern += `(?<${optionalGroup}>${wildcardClass()}|)`;
                 }
+                lastTokenWasParam = false;
                 continue;
             }
 
@@ -282,6 +371,7 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true) {
                 }
             }
             regexPattern += `(?:${groupRegex})?`;
+            literal(groupContent);
             lastTokenWasParam = false;
             continue;
         }
@@ -297,8 +387,13 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true) {
             }
             // a following optional group needs room to match, so the parameter gives ground
             const paramGroup = uniqueGroupName(name);
-            regexPattern += i < len && pattern[i] === "{" ? `(?<${paramGroup}>[^/]+?)` : `(?<${paramGroup}>[^/]+)`;
-            lastTokenWasParam = true;
+            // after a wildcard in the same segment the parameter must also stop at the text that
+            // separates the two, or /a/*w.:ext would let the extension swallow a dot the wildcard
+            // was meant to keep
+            const paramClass = wildcardInSegment ? `${negate("/", backtrack)}+` : "[^/]+";
+            regexPattern +=
+                i < len && pattern[i] === "{" ? `(?<${paramGroup}>${paramClass}?)` : `(?<${paramGroup}>${paramClass})`;
+            noteParam();
             continue;
         }
 
@@ -314,6 +409,7 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true) {
         } else {
             regexPattern += ch;
         }
+        literal(ch);
         lastTokenWasParam = false;
         i++;
     }
