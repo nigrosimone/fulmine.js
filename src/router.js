@@ -39,6 +39,10 @@ const { isNodeRequest, serveNodeRequest } = require("./node-shim.js");
 const { chainUsage } = require("./usage.js");
 const { checkBehavior } = require("./websocket.js");
 
+// whether a registered path could be asked for in another case, which is what decides whether the
+// native router can be trusted to prefer it, see _optimizeRoute
+const HAS_LETTER = /[a-zA-Z]/;
+
 // every method the declarative compiler can emit: a patched one must disable compilation, or the
 // patch would be honoured everywhere but on compiled routes
 const resCodes = {},
@@ -1344,12 +1348,14 @@ module.exports = class Router extends EventEmitter {
             }
             // otherwise the two overlap only where µWS itself hands the request to the earlier,
             // more specific registration, so this chain never sees those paths. That argument is
-            // about bytes, so under insensitive routing it only holds when no literal hides
-            // behind a case difference
+            // about bytes: under insensitive routing "/POSTS" byte-matches no registration of
+            // "/posts", so µWS hands it here instead, and this chain would answer it as if the
+            // earlier route did not exist. Only an earlier path with no letter in it has no other
+            // case to arrive in, so only that one keeps the optimisation
             if (
                 !r.optimizedPath ||
                 !uwsPrefersEarlier(r.path, route.path) ||
-                (!caseSensitive && (r.path !== rPathFolded || route.path !== routePathFolded))
+                (!caseSensitive && (HAS_LETTER.test(r.path) || route.path !== routePathFolded))
             ) {
                 return false;
             }
