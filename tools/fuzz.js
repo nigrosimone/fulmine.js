@@ -39,6 +39,180 @@ const PARAM_VALUES = ["1", "abc", "x-y", "%41", "%2F", "a.b", "-", "9", "a%00b",
 const SUFFIXES = ["", "?", "?q=1", "?q", "?a=1&a=2", "?%2F=%2F", "#frag", "?q=1#frag", "?="];
 const METHODS = ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"];
 
+// Every path written in the case corpus of path-to-regexp, the library express matches with. It
+// holds both sides of their tests, the patterns and the concrete paths they are matched against,
+// so the same list serves as route vocabulary and as request vocabulary. It is what brings in the
+// shapes nobody would think to generate: escapes, extensions, unicode, percent-encoding, optional
+// groups, and wildcards with a suffix.
+// Taken from pillarjs/path-to-regexp, src/cases.spec.ts.
+const LIBRARY_PATHS = [
+    "/",
+    "/:test",
+    "/:a:b",
+    "/:_",
+    "/:café",
+    "/*path",
+    "/test",
+    "/test/",
+    "/*test",
+    "/TEST/",
+    "/test//",
+    "/route",
+    "/route/",
+    "/route.json",
+    "/route.json/",
+    "/caf%C3%A9",
+    "/;,:@&=+$-_.!~*()",
+    "/param%2523",
+    "/TEST",
+    "/route/nested",
+    "/route/nested/",
+    "/bar",
+    "/foo/bar",
+    "/:test/",
+    "/foo/bar/",
+    "/foo-bar",
+    "/foo-bar/",
+    "/{:test}-bar",
+    "/-bar",
+    "/test.json",
+    "/:test.json",
+    "/route.json.json",
+    "/:test.:format",
+    "/route.html",
+    "/route.html.json",
+    "/:test{.:format}",
+    "/route.json.html",
+    "/:test.:format\\z",
+    "/route.htmlz",
+    "/\\(testing\\)",
+    "/(testing)",
+    "/.\\+\\*\\?\\{\\}=^\\!\\:$\\[\\]\\|",
+    "/.+*?{}=^!:$[]|",
+    "/:foo/:bar",
+    "/match/route",
+    "/:foo\\(test\\)/bar",
+    "/foo(test)/bar",
+    "/:foo\\?",
+    "/route?",
+    "/{:pre}baz",
+    "/foobaz",
+    "/baz",
+    "/:foo\\(:bar\\)",
+    "/hello(world)",
+    "/:foo\\({:bar}\\)",
+    "/hello()",
+    "/foo-ext",
+    "/foo/bar-ext",
+    "/:required{/:optional}-ext",
+    "/:foo",
+    "/café",
+    "/user{s}/:user",
+    "/user/123",
+    "/users/123",
+    "/*path.:ext",
+    "/test.html",
+    "/test.html/nested.json",
+    "/:path.*ext",
+    "/test.html/nested",
+    "/*path{.:ext}",
+    "/test/nested.html",
+    "/entity/:id/*path",
+    "/entity/foo/path",
+    "/*foo/:bar/*baz",
+    "/x/y/z",
+    "/1/2/3/4/5",
+    "/test/nested",
+    "/*path/",
+    "/foo/bar/baz/",
+    "/foo/bar.html",
+    "/foo/bar.html/baz.html",
+    "/:foo{/test/:bar}",
+    "/route/test/again",
+    "/abc{abc:foo}",
+    "/abc",
+    "/abcabc123",
+    "/abcabcabc123",
+    "/abcabcabc",
+    "/:foo{abc:bar}",
+    "/abcabc",
+    "/acb",
+    "/123",
+    "/123abcabc",
+    "/:foo\\abc:bar",
+    "/route|:param|",
+    "/route|world|",
+    "/:foo|:bar|",
+    "/hello|world|",
+    "/:foo{|:bar|}",
+    "/hello||",
+    "/*foo-:bar",
+    "/a-b",
+    "/a-b-c-d",
+    "/*foo-*bar-:baz",
+    "/a-b-c",
+    "/*foo-:bar-*baz",
+    "/*foo-:bar-*baz-:qux",
+    "/*foo-*bar",
+    "/:foo-:bar-*baz",
+    "/:foo-:bar-*baz-:qux",
+    "/a-b-c-d-e",
+    "/a-b-c/d-e-f",
+    "/*foo/:bar/*baz/:qux",
+    "/a/b/c/d/e",
+    "/*foo/abc-:bar/xyz-*baz/:qux",
+    "/a/abc-x/xyz-y/z",
+    "/a/abc-abc/xyz-/xyz-/z",
+    "/a/abc-abc/xyz-/xyz-a/z",
+    "/a/abc/abc-abc/xyz-/xyz-a/z",
+    "/abc-/abc-abc/xyz-/xyz-a/z",
+    "/*a@:b-*c",
+    "/foo@bar-baz",
+    "/:a-*b.:c@*d",
+    "/a-b.c@d",
+    "/a-b-c.d.e@f@g",
+    "/*a--*b@@:c",
+    "/a--b@@c",
+    "/a--b/c@@d--e@@f",
+    "/*a~~:b~~*c/:d",
+    "/a~~b~~c/d",
+    "/*a--*b-.-:c",
+    "/a--b-.-c",
+    "/*a~~*b._.:c",
+    "/a~~b._.c",
+    "/*a@@*b~.~:c",
+    "/a@@b~.~c",
+    "/*a-.-*b@@:c",
+    "/a-.-b@@c",
+    "/*a@.@*b--:c",
+    "/a@.@b--c",
+    "/*a-@-*b..:c",
+    "/a-@-b..c",
+    "/x/*a/*b/y",
+    "/x/foo/bar/y",
+    "/x/*a-:b/*c/y",
+    "/x/foo-bar/baz/y",
+    "/x/foo-bar/baz-qux/y",
+    "/x/*a-:b-:c/*d/y",
+    "/x/foo-bar-baz/qux/y",
+    "/x/*a-:b-:c-*d/*e/y",
+    "/x/foo-bar-baz-qux/quux/y",
+    "/x/*a@/*c/y",
+    "/x/foo@/y/y",
+    "/x/foo@/y/z/y",
+    "/:a-:b^*c@*d%:e",
+    "/a-b^c@d%e",
+    "/hello/world",
+    "/x/foo/y/bar/z",
+    "/x/foo/y/bar/w",
+    "/x/foo/y-/bar/z",
+    "/x/foo/y-/bar/w"
+];
+
+// filled at startup with the ones express itself accepts as routes, since the corpus deliberately
+// includes patterns its parser refuses
+const libraryRoutes = [];
+
 // Every handler answers from the request alone, with nothing drawn from the clock or from a
 // counter: two servers must be able to produce the same bytes.
 const HANDLER_KINDS = [
@@ -97,7 +271,8 @@ function drawPlan(rng) {
 
     const drawRoute = (allowWildcard) => ({
         method: chance(0.75) ? "get" : pick(["post", "put", "delete", "all"]),
-        path: drawPath(allowWildcard),
+        // a quarter of the routes come from the library corpus, whose shapes nothing here invents
+        path: chance(0.25) && libraryRoutes.length > 0 ? pick(libraryRoutes) : drawPath(allowWildcard),
         kind: pick(HANDLER_KINDS),
         // a middleware in front of the handler, which is where next() bookkeeping goes wrong
         lead: chance(0.25) ? pick(["header", "rewrite", "params", "plain"]) : null,
@@ -160,6 +335,10 @@ function drawPlan(rng) {
         if (chance(0.2)) urls.push(filled.replace("/", "//"));
     }
     urls.push("/" + pick(SEGMENTS) + "/absent", "/", "//", "/a/../b", "/%2e%2e/a");
+    // and a handful of corpus paths as requests, which is where its concrete side earns its keep
+    for (let i = 0; i < 6; i++) {
+        urls.push(pick(LIBRARY_PATHS));
+    }
 
     // GET always, since most routes are GET, plus one other verb so the method side is exercised
     return { settings, routers, subApp, routes, urls, methods: ["GET", pick(METHODS)] };
@@ -435,6 +614,33 @@ async function main() {
     const rounds = flag("rounds", 200);
     const baseSeed = flag("seed", (Date.now() ^ (process.pid << 16)) >>> 0);
     const keepGoing = argv.includes("--keep-going");
+
+    // Registration parity first: a pattern one framework takes and the other refuses is a
+    // divergence before any request is made, and it also decides which shapes the rounds can use.
+    const refusedByFulmine = [];
+    for (const candidate of LIBRARY_PATHS) {
+        const accepts = (factory) => {
+            try {
+                factory.Router().get(candidate, (req, res) => res.end());
+                return true;
+            } catch {
+                return false;
+            }
+        };
+        const byExpress = accepts(realExpress);
+        if (byExpress) {
+            libraryRoutes.push(candidate);
+            if (!accepts(fulmine)) {
+                refusedByFulmine.push(candidate);
+            }
+        }
+    }
+    console.log(
+        `${libraryRoutes.length} of ${LIBRARY_PATHS.length} library patterns are valid routes` +
+            (refusedByFulmine.length
+                ? `, ${refusedByFulmine.length} refused by fulmine: ${refusedByFulmine.join(" ")}`
+                : "")
+    );
 
     console.log(`fuzzing ${rounds} rounds from seed ${baseSeed}`);
     let checked = 0;
