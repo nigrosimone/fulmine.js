@@ -251,7 +251,7 @@ function bodyError(message, status, type, extra) {
  * that climbs out of the root, applies the dotfiles and index rules, and hands the rest over.
  *
  * @param {string} root directory to serve from
- * @param {object} [options] index, redirect, fallthrough, dotfiles, extensions, setHeaders, etag
+ * @param {import("./options").StaticOptions} [options]
  * @returns {(req: any, res: any, next: (err?: any) => void) => any}
  */
 function serveStatic(root, options) {
@@ -321,8 +321,8 @@ function serveStatic(root, options) {
             } else return next();
         }
         let _path = url;
-        const fullpath = path.resolve(path.join(options.root, url));
-        if (options.root && !fullpath.startsWith(path.resolve(options.root))) {
+        const fullpath = path.resolve(path.join(root, url));
+        if (root && !fullpath.startsWith(path.resolve(root))) {
             if (!options.fallthrough) {
                 res.status(403);
                 return next(httpError(403));
@@ -472,13 +472,16 @@ function createInflate(contentEncoding) {
  *   knows), or undefined for a parser that never decodes (raw)
  * @param {boolean} [keepsBuffer] whether the collected buffer itself escapes to the application,
  *   which rules out handing it a view over uWS memory
- * @returns {(options?: object) => Function} the middleware factory
+ * @returns {(options?: import("./options").BodyParserOptions) => Function} the middleware factory
  */
 function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy, keepsBuffer) {
-    return function (options) {
+    return function (userOptions) {
         // a copy, because everything below writes the parsed values back: with the caller's own
-        // object, altering it after the parser was built would alter the parser
-        options = options && typeof options === "object" ? { ...options } : new NullObject();
+        // object, altering it after the parser was built would alter the parser. The type says
+        // settled because the block below fills in every default, which is what the middleware
+        // and its closures then rely on
+        /** @type {import("./options").BodyParserOptions} */
+        const options = userOptions && typeof userOptions === "object" ? { ...userOptions } : new NullObject();
         // refused where it is written, not where it is used: an option nobody can honour is a
         // mistake in the application, and body-parser throws for it at the same point
         if (options.verify !== undefined && options.verify !== false && typeof options.verify !== "function") {
@@ -491,10 +494,16 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
         // and every comparison against it is false. express.json({ limit: 5 * 1024 * 1024 }) had no
         // limit at all. parse, and only what needs parsing
         if (typeof options.limit === "undefined") {
-            options.limit = bytes.parse("100kb");
+            options.limit = /** @type {number} */ (bytes.parse("100kb"));
         } else if (typeof options.limit !== "number") {
-            options.limit = bytes.parse(options.limit);
+            // bytes.parse answers null for a size it cannot read, and body-parser passes that
+            // along untouched too: matching it matters more than improving on it here
+            options.limit = /** @type {number} */ (bytes.parse(options.limit));
         }
+
+        // settled above, and read once: every check below wants the value, not the bag
+        const limit = /** @type {number} */ (options.limit);
+        const defaultCharset = /** @type {string} */ (options.defaultCharset ?? "utf-8");
 
         if (typeof options.inflate === "undefined") options.inflate = true;
         if (typeof options.type === "undefined") options.type = defaultType;
@@ -523,7 +532,9 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
         //
         // typeis.is and not typeis(req, ...): the request form first checks that there is a body,
         // and the caller below has established that already.
-        const claimsType = memoizeByString((contentType) => !!typeis.is(contentType, options.type));
+        const claimsType = memoizeByString(
+            (contentType) => !!typeis.is(contentType, /** @type {string[]} */ (options.type))
+        );
 
         let additionalMethods;
 
@@ -585,7 +596,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             // answers 415 even for an empty body, and before the verify hook can run
             let encoding;
             if (charsetPolicy) {
-                encoding = charsetOf(type) ?? options.defaultCharset;
+                encoding = charsetOf(type) ?? defaultCharset;
                 if (
                     (charsetPolicy === "utf" && encoding.slice(0, 4) !== "utf-") ||
                     (charsetPolicy === "urlencoded" && encoding !== "utf-8" && encoding !== "iso-8859-1")
@@ -611,12 +622,12 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             }
 
             // skip reading too large body
-            if (length && +length > options.limit) {
+            if (length && +length > limit) {
                 return next(
                     bodyError("request entity too large", 413, "entity.too.large", {
                         expected: +length,
                         length: +length,
-                        limit: options.limit
+                        limit: limit
                     })
                 );
             }
@@ -674,13 +685,13 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             if (!req.receivedData && !inflate && !isNaN(length) && Number(length) > 0 && req._res.collectBody) {
                 req.bodyRead = true;
                 const declared = Number(length);
-                req._res.collectBody(options.limit, (body) => {
+                req._res.collectBody(limit, (body) => {
                     if (body === null) {
                         // over maxSize: uWS refused it natively
                         return next(
                             bodyError("request entity too large", 413, "entity.too.large", {
-                                limit: options.limit,
-                                received: options.limit
+                                limit: limit,
+                                received: limit
                             })
                         );
                     }
@@ -710,7 +721,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             // known and we aren't inflating, the final size is known up front, so chunks can go
             // straight into one buffer and the body is copied once.
             // the cap means a client that declares a body and never sends it costs no more than one
-            // that actually sends a body that size, and content-length above options.limit was
+            // that actually sends a body that size, and content-length above limit was
             // already rejected above
             const declaredLength = inflate ? -1 : Number(length);
             let target =
@@ -757,13 +768,13 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
              */
             function keepChunk(buf) {
                 totalSize += buf.length;
-                if (totalSize > options.limit) {
+                if (totalSize > limit) {
                     finished = true;
                     abs.length = 0;
                     target = null;
                     next(
                         bodyError("request entity too large", 413, "entity.too.large", {
-                            limit: options.limit,
+                            limit: limit,
                             received: totalSize
                         })
                     );

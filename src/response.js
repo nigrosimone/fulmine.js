@@ -681,7 +681,7 @@ module.exports = class Response extends Writable {
      * "ignore"), `acceptRanges`, `cacheControl`, `immutable`, `etag` and `setHeaders`.
      *
      * @param {string} path
-     * @param {Record<string, any>} [options]
+     * @param {import("./options").SendFileOptions} [options]
      * @param {(err?: Error) => void} [callback] called once sent, or with the error
      */
     sendFile(path, options = new NullObject(), callback) {
@@ -1013,7 +1013,7 @@ module.exports = class Response extends Writable {
      *
      * @param {string} path
      * @param {string} [filename] name offered to the user, defaults to the basename of the path
-     * @param {Record<string, any>} [options] passed through to sendFile
+     * @param {import("./options").SendFileOptions} [options] passed through to sendFile
      * @param {(err?: Error) => void} [callback]
      */
     download(path, filename, options, callback) {
