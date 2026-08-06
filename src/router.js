@@ -347,7 +347,17 @@ class Walk {
                     }
                     req._consumed -= req._stack.pop();
                     setMountedPath(req);
-                    if (req.app.parent && route.callbacks[0]?.constructor.name === "Application") {
+                    // Only an application takes it back. Express restores req.app by putting the
+                    // request prototype back, and it wraps a mounted application to do that only
+                    // in Application#use: hang one off a plain Router and nothing restores it, so
+                    // whatever runs afterwards still reads the settings of the application that
+                    // was entered. Restoring here regardless made a later res.send answer with
+                    // the outer application's etag setting where express answers with the inner.
+                    if (
+                        router._isApplication &&
+                        req.app.parent &&
+                        route.callbacks[0]?.constructor.name === "Application"
+                    ) {
                         useApp(req, req.app.parent);
                     }
                 }
@@ -953,6 +963,15 @@ module.exports = class Router extends EventEmitter {
      * @type {boolean}
      */
     _inheritsSettings = false;
+
+    /**
+     * Whether this is an application rather than a plain router. Read on the hop out of a mount,
+     * where only an application takes req.app back, and a field rather than a name comparison
+     * because that sits on the dispatch path.
+     *
+     * @type {boolean}
+     */
+    _isApplication = false;
 
     /**
      * The two routing flags once read, undefined until then. Express passes caseSensitive and

@@ -92,6 +92,12 @@ class Application extends Router {
     _inheritsSettings = true;
 
     /**
+     * An application, which a plain Router is not. See Router#_isApplication.
+     * @type {boolean}
+     */
+    _isApplication = true;
+
+    /**
      * @param {object} [settings] the options express() takes. uwsOptions goes to uWS and decides
      *   between an HTTP, an HTTPS and an HTTP/3 server; threads sizes the file-reading pool, and 0
      *   turns it off; uwsApp adopts an existing uWS app instead of making one. Everything else is
