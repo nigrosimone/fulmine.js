@@ -232,6 +232,7 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true, strict 
     let wildcardBacktrack = "";
     let lastCaptureWasWildcard = false;
     let wildcardInSegment = false;
+    let paramInSegment = false;
     /** Records literal text as it is emitted, which is what the rules above are written against. */
     const literal = (text) => {
         backtrack += text;
@@ -240,12 +241,56 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true, strict 
         }
         if (text.includes("/")) {
             wildcardInSegment = false;
+            paramInSegment = false;
         }
+    };
+    /**
+     * Whether a wildcard is still to come in the segment being written, which makes the parameters
+     * before it give ground so that it has something left to match.
+     *
+     * @param {number} from where to look from
+     * @returns {boolean}
+     */
+    const wildcardLaterInSegment = (from) => {
+        for (let j = from; j < len; j++) {
+            const c = pattern[j];
+            if (c === "\\") {
+                j++;
+            } else if (c === "/") {
+                return false;
+            } else if (c === "*") {
+                return true;
+            }
+        }
+        return false;
+    };
+    /**
+     * The literal text written immediately after this point, which is what the capture before it
+     * must not swallow.
+     *
+     * @param {number} from
+     * @returns {string}
+     */
+    const textAfter = (from) => {
+        let out = "";
+        for (let j = from; j < len; j++) {
+            const c = pattern[j];
+            if (c === "\\") {
+                out += pattern[++j] ?? "";
+                continue;
+            }
+            if (":*{}".includes(c)) {
+                break;
+            }
+            out += c;
+        }
+        return out;
     };
     /** A :parameter ends the run of text and stops the wildcard one from growing. */
     const noteParam = () => {
         backtrack = "";
         lastCaptureWasWildcard = false;
+        paramInSegment = true;
         lastTokenWasParam = true;
     };
     /**
@@ -387,12 +432,26 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true, strict 
             }
             // a following optional group needs room to match, so the parameter gives ground
             const paramGroup = uniqueGroupName(name);
-            // after a wildcard in the same segment the parameter must also stop at the text that
-            // separates the two, or /a/*w.:ext would let the extension swallow a dot the wildcard
-            // was meant to keep
-            const paramClass = wildcardInSegment ? `${negate("/", backtrack)}+` : "[^/]+";
-            regexPattern +=
-                i < len && pattern[i] === "{" ? `(?<${paramGroup}>${paramClass}?)` : `(?<${paramGroup}>${paramClass})`;
+            // How much of its segment a parameter may take, which path-to-regexp decides by what
+            // else shares the segment with it. Alone it takes everything up to the next slash; with
+            // a wildcard beside it, before or after, it stops at the text that separates the two,
+            // so the wildcard has something left to match; and a second parameter in the segment
+            // may also be exactly that separating text, which is the alternative below.
+            let head;
+            let alternative = "";
+            if (wildcardInSegment) {
+                head = negate("/", backtrack);
+            } else if (wildcardLaterInSegment(i)) {
+                head = negate("/", textAfter(i));
+            } else if (paramInSegment) {
+                head = negate("/", backtrack);
+                alternative = "|" + escapeRe(backtrack);
+            } else {
+                head = "[^/]";
+            }
+            // a following optional group needs room to match, so the parameter gives ground
+            const lazy = i < len && pattern[i] === "{" ? "?" : "";
+            regexPattern += `(?<${paramGroup}>${head}+${lazy}${alternative})`;
             noteParam();
             continue;
         }
