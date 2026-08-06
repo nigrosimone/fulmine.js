@@ -25,6 +25,12 @@ npx fulmine differences         # just the list of what to check by hand
 
 See [Migrating](#migrating) for what it handles and what it deliberately does not.
 
+There is a **[live demo](https://fulmine-demo.fly.dev)**, which is an ordinary Express application:
+real routes, `helmet`, `cors`, `compression`, `express-session` and `morgan` unmodified, and a
+WebSocket chat served by `app.ws()`. It links to [its own source](https://fulmine-demo.fly.dev/source),
+which is [in this repository](./demo). It shows no throughput figure on purpose: it runs on a small
+shared machine, so the number would describe the machine rather than the framework.
+
 [![npm version](https://img.shields.io/npm/v/fulmine.js)](https://www.npmjs.com/package/fulmine.js)
 [![Node.js >= 22.0.0](https://img.shields.io/badge/Node.js-%3E=22.0.0-green)](https://nodejs.org)
 [![Coverage Status](https://coveralls.io/repos/github/nigrosimone/fulmine.js/badge.svg?branch=main)](https://coveralls.io/github/nigrosimone/fulmine.js?branch=main)
@@ -55,6 +61,7 @@ See [Migrating](#migrating) for what it handles and what it deliberately does no
     - [Router](#router)
 - [Tested middlewares](#tested-middlewares)
 - [Tested view engines](#tested-view-engines)
+- [The demo](https://fulmine-demo.fly.dev)
 - [Working on Fulmine](#working-on-fulmine)
     - [Writing a comparison test](#writing-a-comparison-test)
 
