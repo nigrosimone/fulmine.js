@@ -24,7 +24,7 @@ const qs = require("qs");
 const parseQuery = require("./parse-query.js");
 const { kGetSafe } = require("./usage.js");
 const { AsyncResource } = require("async_hooks");
-const { fastQueryParse, NullObject, asStatError, httpError, memoizeByString } = require("./utils.js");
+const { fastQueryParse, NullObject, asStatError, httpError, memoizeByString, containsDotFile } = require("./utils.js");
 
 // largest content-length we will allocate a body buffer for up front. above this the body is
 // collected chunk by chunk instead, so a declared-but-unsent body cannot pin more memory than a
@@ -329,19 +329,59 @@ function serveStatic(root, options) {
             } else return next();
         }
 
+        // Before the stat, because send judges the path before it looks at the disk: a hidden
+        // segment anywhere in a path that does not exist answers what the dotfiles rule says and
+        // not the ENOENT the disk would have given. sendFile applies the same rule below, and
+        // reaches it only for paths that do exist.
+        // normalized first, as send normalizes before it judges: a ".." segment is not a hidden
+        // file, and resolving it away is what tells the two apart
+        if (containsDotFile(path.normalize(url).split(/[\\/]/))) {
+            const refusal = options.dotfiles === "deny" ? 403 : options.dotfiles === "allow" ? 0 : 404;
+            if (refusal !== 0 && !(options.dotfiles === "ignore_files" && !path.basename(url).startsWith("."))) {
+                if (!options.fallthrough) {
+                    res.status(refusal);
+                    return next(httpError(refusal));
+                }
+                return next();
+            }
+        }
+
+        // Asked for with the trailing separator when the url had one, because send normalizes
+        // rather than resolves and keeps it: a directory answers the same either way, and a path
+        // that is not there names itself in the error the way send names it.
+        const statTarget = url.endsWith("/") ? fullpath + path.sep : fullpath;
+
         let stat;
         try {
-            stat = fs.statSync(fullpath);
+            stat = fs.statSync(statTarget);
         } catch (err) {
+            // the one to report when nothing is found: send hands each failed attempt to the next
+            // one and reports whichever came last, so an extensions option that also missed names
+            // the file it looked for and not the bare path
+            let statError = err;
+            // a path written with a trailing slash asks for a directory, and send answers that by
+            // looking for the index inside it. With nothing there, the file it names is that
+            // index and not the directory that does not exist either
+            if (url.endsWith("/") && options.index) {
+                try {
+                    fs.statSync(path.join(fullpath, options.index));
+                } catch (indexError) {
+                    statError = indexError;
+                }
+            }
             const ext = path.extname(fullpath);
             let i = 0;
-            if (ext === "" && options.extensions) {
+            // a path written with a trailing slash names a directory, so send does not try to hang
+            // an extension off it. The test is on the url and not on fullpath, because resolve()
+            // has already taken the trailing separator off that one
+            if (ext === "" && !url.endsWith("/") && options.extensions) {
                 while (i < options.extensions.length) {
                     try {
                         stat = fs.statSync(fullpath + "." + options.extensions[i]);
                         _path = url + "." + options.extensions[i];
                         break;
-                    } catch (err) {
+                    } catch (extensionError) {
+                        statError = extensionError;
                         i++;
                     }
                 }
@@ -353,7 +393,7 @@ function serveStatic(root, options) {
                     // error handler with its errno, code, syscall and path still on it, and an
                     // error handler doing res.send(err) sends those as JSON. Passing the string
                     // sent an HTML page instead.
-                    return next(asStatError(err));
+                    return next(asStatError(statError));
                 } else return next();
             }
         }

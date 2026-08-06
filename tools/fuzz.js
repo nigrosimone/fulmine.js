@@ -307,6 +307,15 @@ function drawPlan(rng) {
     const pick = (list) => list[Math.floor(rng() * list.length)];
     const chance = (p) => rng() < p;
 
+    // An application shaped so that the registration-time analysis may grant a route the right to
+    // skip copying the headers or reading the query: etags off, and no error handler anywhere,
+    // which is what the analysis insists on. Nothing may raise either, since without a handler of
+    // ours an error would reach express's own page and print a stack that cannot match.
+    const skipFriendly = chance(0.3);
+    const kinds = skipFriendly
+        ? HANDLER_KINDS.filter((kind) => kind !== "throw" && kind !== "next-error")
+        : HANDLER_KINDS;
+
     let paramCounter = 0;
     /** A path in path-to-regexp 8 syntax, with parameter names unique inside it. */
     const drawPath = (allowWildcard) => {
@@ -334,13 +343,13 @@ function drawPlan(rng) {
 
     const drawRoute = (allowWildcard) => ({
         // an error handler between the middleware and the handler, which either answers or hands on
-        errorArm: chance(0.15) ? pick(["answer", "forward"]) : null,
+        errorArm: !skipFriendly && chance(0.15) ? pick(["answer", "forward"]) : null,
         // how it is registered: the ordinary way, through app.route(), or as app.all()
         shape: chance(0.12) ? pick(["route", "all"]) : null,
         method: chance(0.75) ? "get" : pick(["post", "put", "delete", "all"]),
         // a quarter of the routes come from the library corpus, whose shapes nothing here invents
         path: chance(0.25) && libraryRoutes.length > 0 ? pick(libraryRoutes) : drawPath(allowWildcard),
-        kind: pick(HANDLER_KINDS),
+        kind: pick(kinds),
         // a middleware in front of the handler, which is where next() bookkeeping goes wrong
         lead: chance(0.25) ? pick(["header", "rewrite", "params", "plain"]) : null,
         id: "r" + paramCounter++
@@ -352,7 +361,11 @@ function drawPlan(rng) {
     if (chance(0.2)) settings["query parser"] = pick(["simple", "extended"]);
     // etag off is what lets a chain skip the header copy and the query, so it is worth reaching
     // often rather than rarely
-    if (chance(0.4)) settings.etag = pick([false, "strong", "weak"]);
+    if (skipFriendly) {
+        settings.etag = false;
+    } else if (chance(0.4)) {
+        settings.etag = pick([false, "strong", "weak"]);
+    }
     if (chance(0.15)) settings["declarative responses"] = false;
     if (chance(0.15)) settings["json spaces"] = 2;
     if (chance(0.1)) settings["json escape"] = true;
@@ -491,6 +504,7 @@ function drawPlan(rng) {
         headers,
         bodyParser,
         staticMount,
+        skipFriendly,
         methods: ["GET", pick(METHODS)]
     };
 }
@@ -739,8 +753,12 @@ async function instantiate(plan, factory, port) {
     }
 
     app.use((req, res) => res.status(404).send("no route"));
-    // an error handler of our own, because express's default one prints a stack that cannot match
-    app.use((err, req, res, next) => res.status(500).send("error: " + err.message));
+    if (!plan.skipFriendly) {
+        // an error handler of our own, because express's default one prints a stack that cannot
+        // match. Left out when the plan wants the analysis to grant a skip, which it refuses to do
+        // while any error handler exists
+        app.use((err, req, res, next) => res.status(500).send("error: " + err.message));
+    }
 
     const server = await new Promise((resolve) => {
         const s = app.listen(port, () => resolve(s));
@@ -919,6 +937,7 @@ function planToSource(plan, target) {
         const options = JSON.stringify(plan.staticMount.options);
         lines.push(`app.use(${JSON.stringify(plan.staticMount.mount)}, express.static(dir, ${options}));`);
     }
+    if (plan.skipFriendly) lines.push("// no error handler anywhere, so the usage analysis may grant a skip");
     if (plan.headers && Object.keys(plan.headers).length > 0) {
         lines.push(`// request headers: ${JSON.stringify(plan.headers)}`);
     }

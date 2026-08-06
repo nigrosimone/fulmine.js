@@ -857,9 +857,6 @@ module.exports = class Response extends Writable {
         if (options.etag && !this.headers["etag"]) {
             this.headers["etag"] = statTag(stat, true);
         }
-        if (!options.etag) {
-            this.req.noEtag = true;
-        }
 
         // announced before the conditional checks, because those can return early and the header
         // still belongs on the response. send does it in the same order, so a 412 or a 416 still
@@ -926,6 +923,14 @@ module.exports = class Response extends Writable {
                     len = range.end - range.start + 1;
                 }
             }
+        }
+
+        // Turning the etag off means this file goes out without one, and only this file: the
+        // exits above hand an error to the application, and the body its handler sends computes
+        // its own etag, as it does on express. Suppressing it before those exits made a 416 or a
+        // 412 answer without one.
+        if (!options.etag) {
+            this.req.noEtag = true;
         }
 
         // anything but the whole file, whether from a Range header or the start/end options,
