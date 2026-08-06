@@ -39,6 +39,14 @@ const PARAM_VALUES = ["1", "abc", "x-y", "%41", "%2F", "a.b", "-", "9", "a%00b",
 const SUFFIXES = ["", "?", "?q=1", "?q", "?a=1&a=2", "?%2F=%2F", "#frag", "?q=1#frag", "?="];
 const METHODS = ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"];
 
+// what a request carries when the plan put a body parser in front, one shape per parser
+const BODY_FOR = {
+    json: { type: "application/json", text: '{"a":1,"b":[2,3],"c":{"d":"e"}}' },
+    urlencoded: { type: "application/x-www-form-urlencoded", text: "a=1&b[]=2&b[]=3&c[d]=e" },
+    text: { type: "text/plain", text: "a body of plain text" },
+    raw: { type: "application/octet-stream", text: "bytes" }
+};
+
 // Every path written in the case corpus of path-to-regexp, the library express matches with. It
 // holds both sides of their tests, the patterns and the concrete paths they are matched against,
 // so the same list serves as route vocabulary and as request vocabulary. It is what brings in the
@@ -215,7 +223,13 @@ const libraryRoutes = [];
 
 // Every handler answers from the request alone, with nothing drawn from the clock or from a
 // counter: two servers must be able to produce the same bytes.
+// The kinds whose body is written out rather than closed over. Only these can reach the
+// declarative compiler, which reads a handler's source and refuses anything it cannot see through,
+// so without them the fuzzer tested every route except the ones µWS answers by itself.
+const LITERAL_KINDS = ["lit-send", "lit-json", "lit-status", "lit-header", "lit-end", "lit-type"];
+
 const HANDLER_KINDS = [
+    ...LITERAL_KINDS,
     "next-router",
     "cookie",
     "vary",
@@ -235,7 +249,8 @@ const HANDLER_KINDS = [
     "async-send",
     "throw",
     "next-error",
-    "next-route"
+    "next-route",
+    "body-echo"
 ];
 
 /**
@@ -290,7 +305,18 @@ function drawPlan(rng) {
     if (chance(0.35)) settings["strict routing"] = chance(0.7);
     if (chance(0.35)) settings["case sensitive routing"] = chance(0.7);
     if (chance(0.2)) settings["query parser"] = pick(["simple", "extended"]);
-    if (chance(0.15)) settings.etag = false;
+    // etag off is what lets a chain skip the header copy and the query, so it is worth reaching
+    // often rather than rarely
+    if (chance(0.4)) settings.etag = pick([false, "strong", "weak"]);
+    if (chance(0.15)) settings["declarative responses"] = false;
+    if (chance(0.15)) settings["json spaces"] = 2;
+    if (chance(0.1)) settings["json escape"] = true;
+    if (chance(0.1)) settings["jsonp callback name"] = "cb";
+    if (chance(0.1)) settings["x-powered-by"] = true;
+    if (chance(0.1)) settings["subdomain offset"] = 3;
+
+    // a body parser in front of everything, with a body to match, so req.body is not always absent
+    const bodyParser = chance(0.3) ? pick(["json", "urlencoded", "text", "raw"]) : null;
 
     const routers = [];
     const routerCount = Math.floor(rng() * 3);
@@ -357,13 +383,43 @@ function drawPlan(rng) {
     if (chance(0.2)) headers.cookie = "fuzz=earlier";
 
     // GET always, since most routes are GET, plus one other verb so the method side is exercised
-    return { settings, routers, subApp, routes, urls, headers, methods: ["GET", pick(METHODS)] };
+    return { settings, routers, subApp, routes, urls, headers, bodyParser, methods: ["GET", pick(METHODS)] };
+}
+
+/**
+ * An arrow function with this body, built from text. The declarative compiler reads the source
+ * of a handler, so a generated one has to be written out rather than closed over to reach it.
+ *
+ * @param {string} body
+ * @returns {Function}
+ */
+function arrowFrom(body) {
+    return new Function(`return (req, res) => { ${body}; }`)();
 }
 
 /** Builds one handler of the kind the plan asked for. */
 function makeHandler(route) {
     const id = route.id;
+    const text = JSON.stringify(id);
     switch (route.kind) {
+        // Written as source and built as an arrow, so the declarative compiler sees a body that
+        // mentions nothing but literals and answers it from µWS without running any javascript. A
+        // closure over the id would print the name rather than the value and be refused, and so is
+        // the shape new Function emits, whose parameter list carries a newline.
+        case "lit-send":
+            return arrowFrom(`res.send(${text})`);
+        case "lit-json":
+            return arrowFrom(`res.json({ id: ${text} })`);
+        case "lit-status":
+            return arrowFrom(`res.status(203).send(${text})`);
+        case "lit-header":
+            return arrowFrom(`res.set("X-Lit", ${text}).send(${text})`);
+        case "lit-end":
+            return arrowFrom("res.end()");
+        case "lit-type":
+            return arrowFrom(`res.type("txt").send(${text})`);
+        case "body-echo":
+            return (req, res) => res.json({ id, body: req.body ?? null });
         case "send-json":
             return (req, res) => res.json({ id, params: req.params });
         case "status-send":
@@ -441,10 +497,28 @@ function makeLead(route) {
     }
 }
 
+/**
+ * The body parser the plan asked for, from the framework being instantiated rather than from a
+ * fixed one: each has to parse with its own.
+ *
+ * @param {any} factory
+ * @param {string} kind
+ * @returns {Function}
+ */
+function express_bodyParser(factory, kind) {
+    if (kind === "json") return factory.json();
+    if (kind === "urlencoded") return factory.urlencoded({ extended: true });
+    if (kind === "text") return factory.text();
+    return factory.raw();
+}
+
 /** Registers a plan on a framework and starts it. Returns the app and how to stop it. */
 async function instantiate(plan, factory, port) {
     const app = factory();
     for (const [key, value] of Object.entries(plan.settings)) app.set(key, value);
+    if (plan.bodyParser) {
+        app.use(express_bodyParser(factory, plan.bodyParser));
+    }
 
     const addRoute = (target, route) => {
         const handlers = route.lead ? [makeLead(route), makeHandler(route)] : [];
@@ -520,10 +594,15 @@ async function instantiate(plan, factory, port) {
 }
 
 /** What is compared: the status, the headers worth comparing, and the body. */
-async function answerOf(port, url, method, headers, conditional) {
+async function answerOf(port, url, method, headers, conditional, body) {
+    const sent = conditional ? { ...headers, "if-none-match": conditional } : { ...headers };
+    if (body) {
+        sent["content-type"] = body.type;
+    }
     const res = await fetch("http://localhost:" + port + url, {
         method,
-        headers: conditional ? { ...headers, "if-none-match": conditional } : headers,
+        headers: sent,
+        body: body && method !== "GET" && method !== "HEAD" ? body.text : undefined,
         signal: AbortSignal.timeout(5000),
         redirect: "manual"
     });
@@ -577,9 +656,10 @@ async function runPlan(plan, stopAtFirst) {
         for (const method of plan.methods) {
             let ra, rb;
             try {
+                const body = BODY_FOR[plan.bodyParser] ?? null;
                 [ra, rb] = await Promise.all([
-                    answerOf(portA, url, method, plan.headers),
-                    answerOf(portB, url, method, plan.headers)
+                    answerOf(portA, url, method, plan.headers, undefined, body),
+                    answerOf(portB, url, method, plan.headers, undefined, body)
                 ]);
             } catch {
                 continue; // a url fetch itself refuses to build is not a comparison
