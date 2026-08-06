@@ -84,6 +84,14 @@ const FILE_CACHE_BUDGET = 64 * 1024 * 1024;
 
 class Application extends Router {
     /**
+     * An application reads an unset routing flag from the app it is mounted on, which a plain
+     * Router does not: express chains a mounted app's settings onto its parent's.
+     *
+     * @type {boolean}
+     */
+    _inheritsSettings = true;
+
+    /**
      * @param {object} [settings] the options express() takes. uwsOptions goes to uWS and decides
      *   between an HTTP, an HTTPS and an HTTP/3 server; threads sizes the file-reading pool, and 0
      *   turns it off; uwsApp adopts an existing uWS app instead of making one. Everything else is
@@ -417,13 +425,13 @@ class Application extends Router {
     }
 
     /**
-     * Whether a setting is truthy. Reads this app's own settings, without falling back to a
-     * parent app the way get() does.
+     * Whether a setting is truthy. Reads through to the app this one is mounted on, as get() does
+     * and as express does: mounting chains a sub-app's settings onto its parent's.
      * @param {string} key setting name
      * @returns {boolean}
      */
     enabled(key) {
-        return !!this.settings[key];
+        return !!this.get(key);
     }
 
     /**
@@ -432,7 +440,7 @@ class Application extends Router {
      * @returns {boolean}
      */
     disabled(key) {
-        return !this.settings[key];
+        return !this.get(key);
     }
 
     /**

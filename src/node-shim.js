@@ -100,8 +100,10 @@ class NodeHttpRequest {
         const url = req.url || "/";
         const question = url.indexOf("?");
         this._path = question === -1 ? url : url.slice(0, question);
-        // uWS answers the query without its "?", and an empty string when there is none
-        this._query = question === -1 ? "" : url.slice(question + 1);
+        // uWS answers the query without its "?", undefined when the url carries none and "" when
+        // it carries an empty one, and req.url keeps that difference
+        /** @type {string|undefined} */
+        this._query = question === -1 ? undefined : url.slice(question + 1);
     }
 
     /** The path, without the query, which is what uWS answers here. */
@@ -109,7 +111,7 @@ class NodeHttpRequest {
         return this._path;
     }
 
-    /** The query string without its "?", empty when there is none, as uWS reports it. */
+    /** The query string without its "?", undefined when the url has none, as uWS reports it. */
     getQuery() {
         return this._query;
     }

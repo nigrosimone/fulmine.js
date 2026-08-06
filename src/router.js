@@ -138,7 +138,7 @@ class Walk {
                 req.path = req._originalPath;
                 req.url = req._originalPath + req.urlQuery;
                 req._opPath =
-                    req.endsWithSlash && req._originalPath !== "/" && !router.get("strict routing")
+                    req.endsWithSlash && req._originalPath !== "/" && !router._strictRouting()
                         ? req._originalPath.slice(0, -1)
                         : req._originalPath;
                 req._lastUrl = req.url;
@@ -196,7 +196,7 @@ class Walk {
             req.path = req._originalPath;
             req.url = req._originalPath + req.urlQuery;
             req._opPath =
-                req.endsWithSlash && req._originalPath !== "/" && !router.get("strict routing")
+                req.endsWithSlash && req._originalPath !== "/" && !router._strictRouting()
                     ? req._originalPath.slice(0, -1)
                     : req._originalPath;
             req._lastUrl = req.url;
@@ -235,7 +235,7 @@ class Walk {
                 req._opPath =
                     fullMountpath !== EMPTY_REGEX ? req._originalPath.replace(fullMountpath, "") : req._originalPath;
                 if (req.endsWithSlash && req._opPath[req._opPath.length - 1] !== "/") {
-                    req._opPath = router.get("strict routing") ? req._opPath + "/" : req._opPath.slice(0, -1);
+                    req._opPath = router._strictRouting() ? req._opPath + "/" : req._opPath.slice(0, -1);
                 }
                 req.url = req._opPath + req.urlQuery;
                 req.path = req._opPath;
@@ -305,7 +305,7 @@ class Walk {
                         req._stackMounted--;
                     }
 
-                    const strictRouting = router.get("strict routing");
+                    const strictRouting = router._strictRouting();
                     const poppedMountpath = req._stack.length > 0 ? router.getFullMountpath(req) : EMPTY_REGEX;
                     req._opPath =
                         poppedMountpath !== EMPTY_REGEX
@@ -380,11 +380,7 @@ class Walk {
             // express restores req.params when a router hands back, so what runs after the mount
             // sees the params it had before it
             const parentParams = req.params;
-            if (
-                callback.settings["strict routing"] &&
-                req.endsWithSlash &&
-                req._opPath[req._opPath.length - 1] !== "/"
-            ) {
+            if (callback._strictRouting() && req.endsWithSlash && req._opPath[req._opPath.length - 1] !== "/") {
                 req._opPath += "/";
             }
             callback
@@ -524,7 +520,7 @@ function nativeFail(err) {
  */
 function regexMountEntry(router, route, req) {
     let mountPath = req._opPath;
-    if (req.endsWithSlash && mountPath.endsWith("/") && !router.get("strict routing")) {
+    if (req.endsWithSlash && mountPath.endsWith("/") && !router._strictRouting()) {
         mountPath = mountPath.slice(0, -1);
     }
     const matched = route.pattern.exec(mountPath === "" ? "/" : mountPath);
@@ -628,7 +624,7 @@ function adoptPlainRequest(req, router) {
     req.originalUrl = req.originalUrl ?? arrived;
     req._originalPath = path;
     req.endsWithSlash = path.charCodeAt(path.length - 1) === 0x2f;
-    req._opPath = req.endsWithSlash && path !== "/" && !router.get("strict routing") ? path.slice(0, -1) : path;
+    req._opPath = req.endsWithSlash && path !== "/" && !router._strictRouting() ? path.slice(0, -1) : path;
     req._lastUrl = req.url;
     req._isOptions = req.method === "OPTIONS";
     req._isHead = req.method === "HEAD";
@@ -861,6 +857,27 @@ module.exports = class Router extends EventEmitter {
     uwsApp;
 
     /**
+     * Whether an unset routing flag reads on through the mount parent. Only an application does,
+     * because express chains a mounted app's settings onto its parent's; a plain Router keeps
+     * whatever its options said and nothing else.
+     *
+     * @type {boolean}
+     */
+    _inheritsSettings = false;
+
+    /**
+     * The two routing flags once read, undefined until then. Express passes caseSensitive and
+     * strict in when it builds a router and never looks at them again, so they are frozen here at
+     * the first read rather than resolved per request.
+     *
+     * @type {boolean|undefined}
+     */
+    _strictFlag;
+
+    /** @type {boolean|undefined} */
+    _caseFlag;
+
+    /**
      * @param {object} [settings] router options. caseSensitive and strict are accepted under the
      *   names Express's Router takes, and stored under the setting names the rest of the code reads
      */
@@ -993,6 +1010,53 @@ module.exports = class Router extends EventEmitter {
     }
 
     /**
+     * A routing flag, read once and kept. Express builds a router's matcher the first time the
+     * router is needed and hands it caseSensitive and strict there, so a mount that happens after
+     * that, or an app.set() that happens after that, cannot change how this router matches. Asking
+     * per request instead would let a strict application make every router mounted on it strict,
+     * which express does not do.
+     *
+     * @param {string} key the setting name
+     * @returns {boolean}
+     */
+    _routingFlag(key) {
+        const own = this.settings[key];
+        if (typeof own !== "undefined") {
+            return Boolean(own);
+        }
+        return this._inheritsSettings && this.parent ? Boolean(this.parent.get(key)) : false;
+    }
+
+    /**
+     * Reads both flags at once, the first time either is wanted, because express reads both at
+     * once too: it passes them together to the router it builds. Freezing them apart would let a
+     * router end up strict from the moment before a mount and case sensitive from the moment
+     * after it, which is a state express can never be in.
+     */
+    _freezeRoutingFlags() {
+        if (this._strictFlag === undefined) {
+            this._strictFlag = this._routingFlag("strict routing");
+            this._caseFlag = this._routingFlag("case sensitive routing");
+        }
+    }
+
+    /**
+     * @returns {boolean} whether this router tells /things from /things/
+     */
+    _strictRouting() {
+        this._freezeRoutingFlags();
+        return /** @type {boolean} */ (this._strictFlag);
+    }
+
+    /**
+     * @returns {boolean} whether this router tells /Things from /things
+     */
+    _caseSensitive() {
+        this._freezeRoutingFlags();
+        return /** @type {boolean} */ (this._caseFlag);
+    }
+
+    /**
      * The pattern matching everything the mounts on this request have consumed so far, which is
      * what a nested router strips off the path before matching against it. Cached per stack, since
      * the same mount chain is walked by every request that reaches it.
@@ -1022,7 +1086,7 @@ module.exports = class Router extends EventEmitter {
             const stackPattern = fullStack.includes(":")
                 ? fullStack.replace(/(\\?):(\w+)/g, (whole, escaped, name, at) => (escaped ? whole : ":m" + at))
                 : fullStack;
-            fullMountpath = patternToRegex(stackPattern, true, Boolean(this.get("case sensitive routing")));
+            fullMountpath = patternToRegex(stackPattern, true, this._caseSensitive());
             this._mountpathCache.set(fullStack, fullMountpath);
         }
         return fullMountpath;
@@ -1047,7 +1111,7 @@ module.exports = class Router extends EventEmitter {
             if (req.endsWithSlash && !path.endsWith("/")) {
                 path += "/";
             }
-        } else if (req.endsWithSlash && path.endsWith("/") && !this.get("strict routing")) {
+        } else if (req.endsWithSlash && path.endsWith("/") && !this._strictRouting()) {
             path = path.slice(0, -1);
         }
         // the line above turns the root path into the empty string, which no pattern is written
@@ -1061,7 +1125,7 @@ module.exports = class Router extends EventEmitter {
             if (pattern === "/*") {
                 return true;
             }
-            if (!this.get("case sensitive routing")) {
+            if (!this._caseSensitive()) {
                 path = path.toLowerCase();
                 pattern = pattern.toLowerCase();
             }
@@ -1105,7 +1169,7 @@ module.exports = class Router extends EventEmitter {
             // a mount always drops it, strict routing or not: strictness is about the end of a
             // path, and a mount has none. Express registers its use layers with strict off
             if (
-                (method === "USE" || !this.get("strict routing")) &&
+                (method === "USE" || !this._strictRouting()) &&
                 typeof path === "string" &&
                 path.endsWith("/") &&
                 path !== "/"
@@ -1120,9 +1184,7 @@ module.exports = class Router extends EventEmitter {
                 path,
                 pattern:
                     method === "USE" || needsConversionToRegex(path)
-                        ? // Boolean, not the raw value: an unset setting reads undefined, which a
-                          // default parameter would silently turn back into case-sensitive
-                          patternToRegex(path, method === "USE", Boolean(this.get("case sensitive routing")))
+                        ? patternToRegex(path, method === "USE", this._caseSensitive())
                         : path,
                 callbacks,
                 // instanceof walks a prototype chain and length is a property load, and both used
@@ -1197,7 +1259,7 @@ module.exports = class Router extends EventEmitter {
         // so the text comparisons below run on the folded form. µWS itself still matches bytes:
         // a request in the registered case takes the chain, any other case takes the fallback,
         // and both answer as express would as long as the chain agrees with registration order
-        const caseSensitive = Boolean(this.get("case sensitive routing"));
+        const caseSensitive = this._caseSensitive();
         const routePathFolded = caseSensitive || typeof route.path !== "string" ? route.path : route.path.toLowerCase();
 
         for (let i = 0; i < routes.length; i++) {
@@ -1445,7 +1507,7 @@ module.exports = class Router extends EventEmitter {
      */
     _isFollowedByAnOverlap(route, routes) {
         // folded under insensitive routing, where a case variant answers the same requests
-        const caseSensitive = Boolean(this.get("case sensitive routing"));
+        const caseSensitive = this._caseSensitive();
         const routePath = caseSensitive ? route.path : route.path.toLowerCase();
         for (let i = routes.length - 1; i >= 0; i--) {
             const later = routes[i];
@@ -1548,7 +1610,7 @@ module.exports = class Router extends EventEmitter {
         // the route's own router decides, not the app running the registration: a router created
         // with { strict: true } and mounted on an app without it does not answer /things/, and
         // registering that path here is the only way it could
-        const strictHere = Boolean((route.owner ?? this).get("strict routing"));
+        const strictHere = (route.owner ?? this)._strictRouting();
 
         // Whether requests served by this registration may skip the header copy: GET and its
         // HEAD twins only, the app must not compute etags (send would consult freshness
