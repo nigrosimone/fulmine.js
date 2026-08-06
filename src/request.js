@@ -217,6 +217,49 @@ module.exports = class Request extends Readable {
     optimizedParams;
 
     /**
+     * Whether a body parser has already read this request, so a second one leaves it alone.
+     * @type {boolean|undefined}
+     */
+    bodyRead;
+
+    /**
+     * The route currently running, which express hands to a handler through the request.
+     * @type {any}
+     */
+    route;
+
+    /**
+     * Which hop the error being carried came from, so an error handler declared before it does
+     * not catch what happened after it.
+     * @type {number|undefined}
+     */
+    _errorKey;
+
+    /**
+     * The peer address as uWS hands it over, sixteen bytes or four.
+     *
+     * Declared although the constructor only sometimes fills it in: a property that appears on
+     * some requests and not others gives the class more than one shape, and every read of every
+     * other field pays for that.
+     *
+     * @type {ArrayBuffer|undefined}
+     */
+    rawIp;
+
+    /**
+     * Whether the request declared a body, content-length or transfer-encoding, spotted during
+     * the header copy. Declared for the same reason as rawIp.
+     * @type {boolean|undefined}
+     */
+    _declaresBody;
+
+    /**
+     * Whether the client asked for the connection to be closed. Declared for the same reason.
+     * @type {boolean|undefined}
+     */
+    _connectionClose;
+
+    /**
      * The continuation of the chain currently running, which express also hands to a handler
      * through the request. Declared rather than left to appear on assignment: runRoute sets it
      * on every request, and an undeclared property is a shape change on each one.
@@ -741,17 +784,19 @@ module.exports = class Request extends Readable {
             }
             this.rawIp = this._res.getRemoteAddress();
         }
+        // read once: the branch above settled it, and every use below wants the bytes
+        const rawIp = /** @type {ArrayBuffer} */ (this.rawIp);
         /** @type {string|undefined} */
         let ip;
-        if (this.rawIp.byteLength === 4) {
+        if (rawIp.byteLength === 4) {
             // ipv4
-            ip = new Uint8Array(this.rawIp).join(".");
+            ip = new Uint8Array(rawIp).join(".");
             if (mapsIPv4Peer(this.app)) {
                 ip = "::ffff:" + ip;
             }
-        } else if (this.rawIp.byteLength === 16) {
+        } else if (rawIp.byteLength === 16) {
             // ipv6
-            const dv = new DataView(this.rawIp);
+            const dv = new DataView(rawIp);
             const groups = new Array(8);
             for (let i = 0; i < 8; i++) {
                 groups[i] = dv.getUint16(i * 2);
