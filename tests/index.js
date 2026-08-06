@@ -5,12 +5,53 @@
 
 const fs = require("fs");
 const path = require("path");
+const net = require("node:net");
 const test = require("node:test");
 const childProcess = require("node:child_process");
 const exec = require("util").promisify(childProcess.exec);
 const assert = require("node:assert");
 
 const TEST_TIMEOUT = 60000;
+
+// The test files share a handful of ports, and two uWS servers can hold one at the same time:
+// verified on Windows, where the second listen succeeds and the older server keeps answering. A
+// file that starts while the previous one is still exiting would then read the previous file's
+// answers, and the express and fulmine arms of one file could both be served by whichever bound
+// first, which is worse than a red test: it is a green one that compared a server with itself.
+const PORT_IN_SOURCE = /listen\(\s*(\d{4,5})/g;
+const PORT_WAIT_STEPS = 200;
+const PORT_WAIT_MS = 25;
+
+/** @param {string} code @returns {number[]} the ports this file listens on */
+function portsOf(code) {
+    return [...new Set([...code.matchAll(PORT_IN_SOURCE)].map((match) => Number(match[1])))];
+}
+
+/** @param {number} port @returns {Promise<boolean>} whether anything answers there right now */
+function portBusy(port) {
+    return new Promise((resolve) => {
+        const socket = net.connect({ port, host: "127.0.0.1" });
+        const done = (busy) => {
+            socket.destroy();
+            resolve(busy);
+        };
+        socket.once("connect", () => done(true));
+        socket.once("error", () => done(false));
+        socket.setTimeout(500, () => done(false));
+    });
+}
+
+/** Waits until nothing is listening on these ports, so a run cannot reach the run before it. */
+async function waitForFreePorts(ports) {
+    for (const port of ports) {
+        for (let step = 0; step < PORT_WAIT_STEPS; step++) {
+            if (!(await portBusy(port))) {
+                break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, PORT_WAIT_MS));
+        }
+    }
+}
 
 // see tests/win-exit-delay.cjs: without it every test crashes on exit under Node 24+ on Windows
 const NODE_ARGS = process.platform === "win32" ? `--require "${path.join(__dirname, "win-exit-delay.cjs")}" ` : "";
@@ -85,7 +126,9 @@ for (const testCategory of testCategories) {
                     // hanging the run. One retry, because a shared CI runner can stall for a
                     // minute for reasons that are nobody's code (res-send-file-large, node 24,
                     // 2026-08-04); the second timeout is a real hang and fails with the arm's name.
+                    const ports = portsOf(testCode);
                     const execTest = async (module) => {
+                        await waitForFreePorts(ports);
                         const command = `node ${NODE_ARGS}${marker === "INSPECT" ? INSPECT_ARG : ""}"${testPath}"`;
                         const options = { maxBuffer: 1024 * 1024 * 100, timeout: TEST_TIMEOUT, killSignal: "SIGKILL" };
                         for (let attempt = 1; ; attempt++) {
