@@ -438,6 +438,13 @@ class Walk {
             // express restores req.params when a router hands back, so what runs after the mount
             // sees the params it had before it
             const parentParams = req.params;
+            // each router answers OPTIONS with the verbs it knows itself, so the one being entered
+            // starts its own list: express keeps that list per router, and a router that hands back
+            // without answering leaves the outer one's untouched
+            const parentMethods = req._matchedMethods;
+            if (parentMethods !== null) {
+                req._matchedMethods = new Set();
+            }
             if (callback._strictRouting() && req.endsWithSlash && req._opPath[req._opPath.length - 1] !== "/") {
                 req._opPath += "/";
             }
@@ -452,14 +459,23 @@ class Walk {
                     if (req._error) {
                         req._errorKey = route.routeKey;
                     }
-                    if (routed) return this.resolve(true);
-                    if (req._isOptions && req._matchedMethods.size) {
+                    if (routed) {
+                        if (parentMethods !== null) {
+                            req._matchedMethods = parentMethods;
+                        }
+                        return this.resolve(true);
+                    }
+                    const childMethods = req._matchedMethods;
+                    if (parentMethods !== null) {
+                        req._matchedMethods = parentMethods;
+                    }
+                    if (req._isOptions && childMethods.size) {
                         // OPTIONS routing is different, it stops in the router if matched.
                         // Express answers as the router hands back, so a throw while answering,
                         // a head already written being the way, walks on to later error handlers
                         if (!req._error) {
                             try {
-                                router._sendOptionsReply(req, res);
+                                router._sendOptionsReply(req, res, childMethods);
                                 return this.resolve(true);
                             } catch (err) {
                                 return this.step(err);
@@ -2261,14 +2277,15 @@ module.exports = class Router extends EventEmitter {
      *
      * @param {any} request
      * @param {any} response
+     * @param {Set<string>} methods the verbs the answering router knows, which are its own
      */
-    _sendOptionsReply(request, response) {
+    _sendOptionsReply(request, response, methods) {
         if (response._headWritten) {
             throw new Error("Cannot set headers after they are sent to the client");
         }
         // Express 5 sorts the methods and joins them with ", ", so the header reads the same
         // regardless of the order the routes happened to be registered in
-        const allowedMethods = Array.from(request._matchedMethods).sort().join(", ");
+        const allowedMethods = Array.from(methods).sort().join(", ");
         response.setHeader("Allow", allowedMethods);
         // the router package answers this one itself, with a plain-text body, the nosniff
         // header and end() rather than send(), so no ETag comes with it
@@ -2291,7 +2308,7 @@ module.exports = class Router extends EventEmitter {
         }
         if (request._isOptions && request._matchedMethods.size > 0) {
             try {
-                this._sendOptionsReply(request, response);
+                this._sendOptionsReply(request, response, request._matchedMethods);
             } catch (err) {
                 // a head already written: the error answers instead, as express's does
                 this._handleError(err, null, request, response);
