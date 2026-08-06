@@ -26,6 +26,12 @@ const { Stats } = require("fs");
 
 const EMPTY_REGEX = new RegExp(``);
 
+// what express hands qs for a query string. allowPrototypes keeps a key named "constructor" or
+// "toString" instead of dropping it, and it is safe here for the reason it is safe there: the
+// result below sits on a null prototype, so such a key is inert data. A caller with options of its
+// own, the extended body parser, passes them and does not get these.
+const QUERY_QS_OPTIONS = { allowPrototypes: true };
+
 /**
  * Parses a query string the way the "extended" parser is expected to, which means qs and its
  * support for nested keys, but without paying for qs on the strings that cannot need it. A short
@@ -45,12 +51,29 @@ function fastQueryParse(query, options) {
         return Object.create(null);
     }
     if (len <= 128) {
-        if (!query.includes("[") && !query.includes("%5B") && !query.includes(".") && !query.includes("%2E")) {
+        // An empty name is the other place the two disagree: "=v" and "a=1&=2" are a pair under
+        // the empty key to fast-querystring, and nothing at all to qs. A query carrying one goes
+        // the slow way, which is what makes the shortcut above safe to take for the rest.
+        if (
+            !query.includes("[") &&
+            !query.includes("%5B") &&
+            !query.includes(".") &&
+            !query.includes("%2E") &&
+            query.charCodeAt(0) !== 0x3d &&
+            !query.includes("&=")
+        ) {
             // already on a bare null prototype, no copy needed, see parse-query.js
-            return parseQuery(query);
+            const parsed = parseQuery(query);
+            // qs drops a "__proto__" key whatever allowPrototypes says, and a null prototype makes
+            // this one an ordinary own property rather than the setter, so reading it is a plain
+            // load and the encoded spelling is covered too: the name is decoded before it lands
+            if (parsed.__proto__ !== undefined) {
+                delete parsed.__proto__;
+            }
+            return parsed;
         }
     }
-    return Object.assign(Object.create(null), qs.parse(query, options));
+    return Object.assign(Object.create(null), qs.parse(query, options ?? QUERY_QS_OPTIONS));
 }
 
 /**
