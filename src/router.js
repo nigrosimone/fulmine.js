@@ -1380,6 +1380,8 @@ module.exports = class Router extends EventEmitter {
         // and both answer as express would as long as the chain agrees with registration order
         const caseSensitive = this._caseSensitive();
         const routePathFolded = caseSensitive || typeof route.path !== "string" ? route.path : route.path.toLowerCase();
+        // whether this route answers only the path as written, or the one with a trailing slash too
+        const strictHere = (route.owner ?? this)._strictRouting();
         /** @type {string[]|null} earlier literals a case variant could smuggle a request past */
         let caseGuards = null;
 
@@ -1424,9 +1426,14 @@ module.exports = class Router extends EventEmitter {
             }
 
             // check if the paths match. A route with parameters is excluded from the text test:
-            // its literal ":name" text would let an earlier regex in on requests it never matches
+            // its literal ":name" text would let an earlier regex in on requests it never matches.
+            // Both spellings of this route's path are tried, because without strict routing it
+            // answers "/x/" as well as "/x", and an earlier pattern that matches only the first is
+            // still an earlier pattern that answers a request this registration would take.
             if (
-                (r.pattern instanceof RegExp && (!withParams || r.use) && r.pattern.test(route.path)) ||
+                (r.pattern instanceof RegExp &&
+                    (!withParams || r.use) &&
+                    (r.pattern.test(route.path) || (!strictHere && r.pattern.test(route.path + "/")))) ||
                 (typeof r.pattern === "string" &&
                     (r.pattern === route.path ||
                         (!caseSensitive && r.pattern.toLowerCase() === routePathFolded) ||
