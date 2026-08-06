@@ -7,3 +7,7 @@ processed.txt
 .DS_Store
 benchmark_summary.md
 .vscode.ab-worktree/
+
+# what a comparison test wrote when the two arms disagreed, kept so a failure that does not
+# happen again can still be read
+test-failures/

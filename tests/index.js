@@ -172,6 +172,17 @@ for (const testCategory of testCategories) {
                         fs.writeFileSync(testPath, newCode);
                         const fulmineOutput = await execTest("fulmine");
 
+                        if (fulmineOutput !== expressOutput) {
+                            // kept on disk, because the assertion prints a truncated diff and a
+                            // disagreement that does not happen again is only diagnosable from
+                            // what the two arms actually wrote
+                            const dir = path.join(__dirname, "..", "test-failures");
+                            fs.mkdirSync(dir, { recursive: true });
+                            const stem = path.join(dir, `${testCategory}-${testName.replace(/\.js$/, "")}`);
+                            fs.writeFileSync(`${stem}.express.txt`, expressOutput);
+                            fs.writeFileSync(`${stem}.fulmine.txt`, fulmineOutput);
+                            console.error(`wrote ${stem}.express.txt and ${stem}.fulmine.txt`);
+                        }
                         assert.strictEqual(fulmineOutput, expressOutput);
                     } finally {
                         fs.writeFileSync(testPath, testCode);
