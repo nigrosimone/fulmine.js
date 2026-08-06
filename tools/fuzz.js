@@ -912,6 +912,16 @@ function planToSource(plan, target) {
     const lines = ["const app = express();"];
     for (const [key, value] of Object.entries(plan.settings))
         lines.push(`app.set(${JSON.stringify(key)}, ${JSON.stringify(value)});`);
+    // what is registered before any route, and what the request carries: leaving these out made a
+    // case look smaller than it was, since the answer often comes from here rather than from a route
+    if (plan.bodyParser) lines.push(`app.use(express.${plan.bodyParser}());`);
+    if (plan.staticMount) {
+        const options = JSON.stringify(plan.staticMount.options);
+        lines.push(`app.use(${JSON.stringify(plan.staticMount.mount)}, express.static(dir, ${options}));`);
+    }
+    if (plan.headers && Object.keys(plan.headers).length > 0) {
+        lines.push(`// request headers: ${JSON.stringify(plan.headers)}`);
+    }
     for (const [i, spec] of plan.routers.entries()) {
         lines.push(`const router${i} = express.Router(${JSON.stringify(spec.options)});`);
         for (const route of spec.routes)
