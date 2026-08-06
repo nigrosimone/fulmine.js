@@ -27,6 +27,16 @@ app.get("/:other", (req, res) => res.send("param other=" + req.params.other));
 app.get("/2024", (req, res) => res.send("literal 2024"));
 app.get("/:year", (req, res) => res.send("param year=" + req.params.year));
 
+// the earlier route carries a parameter of its own, so what the case hides is a pattern
+app.get("/differ/FOO/:x", (req, res) => res.send("cased literal x=" + req.params.x));
+app.get("/differ/:user/:x", (req, res) => res.send(`param user=${req.params.user} x=${req.params.x}`));
+
+// and the same inside a mounted router, where the guard has to carry the mount path
+const mounted = express.Router();
+mounted.get("/list", (req, res) => res.send("mounted literal"));
+mounted.get("/:slug", (req, res) => res.send("mounted param slug=" + req.params.slug));
+app.use("/mnt", mounted);
+
 app.use((req, res) => res.status(404).send("no route"));
 
 app.listen(13333, async () => {
@@ -46,7 +56,15 @@ app.listen(13333, async () => {
         "/reports",
         "/REPORTS",
         "/2024",
-        "/2025"
+        "/2025",
+        "/differ/FOO/9",
+        "/differ/foo/9",
+        "/differ/Foo/9",
+        "/differ/bar/9",
+        "/mnt/list",
+        "/mnt/LIST",
+        "/mnt/List",
+        "/mnt/other"
     ];
 
     for (const path of paths) {

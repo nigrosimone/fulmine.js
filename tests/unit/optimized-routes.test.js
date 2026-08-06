@@ -128,19 +128,18 @@ test("case insensitive routing keeps the native router for the registered case",
     assert.strictEqual(optimized["/health"], true);
 });
 
-test("but refuses a specificity argument that leans on a cased literal", async () => {
-    // µWS prefers /differ/FOO/:x for /differ/FOO/9, which agrees with express for that request,
-    // but /differ/foo/9 matches the FOO route under insensitive folding while µWS's bytes say it
-    // does not, so the later route's chain cannot claim those paths were handed to the earlier one
-    assert.deepStrictEqual(await optimizedFor(["/differ/FOO/:x", "/differ/:user/:x"]), {
-        "/differ/FOO/:x": true,
-        "/differ/:user/:x": false
-    });
-    // written in one case throughout, the same pair compiles: bytes and folding agree
-    assert.deepStrictEqual(await optimizedFor(["/differ/foo/:x", "/differ/:user/:x"]), {
-        "/differ/foo/:x": true,
-        "/differ/:user/:x": true
-    });
+test("and guards the specificity argument where it leans on case", async () => {
+    // µWS prefers /differ/FOO/:x for /differ/FOO/9, which agrees with express, but /differ/foo/9
+    // matches that route under folding while µWS's bytes say it does not, so it arrives at the
+    // later route instead. Both stay native and the later one carries a guard that sends exactly
+    // those requests to the generic router; the answers are compared against express in
+    // tests/tests/routing/case-variant-beats-param.js.
+    for (const pair of [
+        ["/differ/FOO/:x", "/differ/:user/:x"],
+        ["/differ/foo/:x", "/differ/:user/:x"]
+    ]) {
+        assert.deepStrictEqual(await optimizedFor(pair), { [pair[0]]: true, [pair[1]]: true });
+    }
 });
 
 test("a :param route is on the native router", async () => {

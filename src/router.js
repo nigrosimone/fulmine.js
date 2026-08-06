@@ -43,6 +43,50 @@ const { checkBehavior } = require("./websocket.js");
 // native router can be trusted to prefer it, see _optimizeRoute
 const HAS_LETTER = /[a-zA-Z]/;
 
+/**
+ * Whether an earlier route would have answered this path had case not mattered. A guard is a
+ * folded string when the earlier path is a literal, and an insensitive pattern when it has
+ * parameters of its own.
+ *
+ * The string side is compared character by character rather than through toLowerCase, because it
+ * sits on the hot path of every parameter route that has an earlier literal, and saying no must
+ * allocate nothing.
+ *
+ * @param {(string|RegExp)[]} guards
+ * @param {string} path the path as it arrived
+ * @returns {boolean}
+ */
+function anyGuardHits(guards, path) {
+    for (let i = 0; i < guards.length; i++) {
+        const guard = guards[i];
+        if (typeof guard !== "string") {
+            if (guard.test(path)) {
+                return true;
+            }
+            continue;
+        }
+        if (guard.length !== path.length) {
+            continue;
+        }
+        let same = true;
+        for (let j = 0; j < guard.length; j++) {
+            let code = path.charCodeAt(j);
+            // A to Z only, which is the fold express's insensitive routing does
+            if (code >= 65 && code <= 90) {
+                code += 32;
+            }
+            if (code !== guard.charCodeAt(j)) {
+                same = false;
+                break;
+            }
+        }
+        if (same) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // every method the declarative compiler can emit: a patched one must disable compilation, or the
 // patch would be honoured everywhere but on compiled routes
 const resCodes = {},
@@ -1265,6 +1309,8 @@ module.exports = class Router extends EventEmitter {
         // and both answer as express would as long as the chain agrees with registration order
         const caseSensitive = this._caseSensitive();
         const routePathFolded = caseSensitive || typeof route.path !== "string" ? route.path : route.path.toLowerCase();
+        /** @type {string[]|null} earlier literals a case variant could smuggle a request past */
+        let caseGuards = null;
 
         for (let i = 0; i < routes.length; i++) {
             const r = routes[i];
@@ -1347,20 +1393,26 @@ module.exports = class Router extends EventEmitter {
                 continue;
             }
             // otherwise the two overlap only where µWS itself hands the request to the earlier,
-            // more specific registration, so this chain never sees those paths. That argument is
-            // about bytes: under insensitive routing "/POSTS" byte-matches no registration of
-            // "/posts", so µWS hands it here instead, and this chain would answer it as if the
-            // earlier route did not exist. Only an earlier path with no letter in it has no other
-            // case to arrive in, so only that one keeps the optimisation
+            // more specific registration, so this chain never sees those paths
             if (
                 !r.optimizedPath ||
                 !uwsPrefersEarlier(r.path, route.path) ||
-                (!caseSensitive && (HAS_LETTER.test(r.path) || route.path !== routePathFolded))
+                (!caseSensitive && route.path !== routePathFolded)
             ) {
                 return false;
             }
+            // that argument is about bytes. Under insensitive routing "/POSTS" byte-matches no
+            // registration of "/posts", so µWS hands it here instead, where this chain would
+            // answer as if the earlier route did not exist. The literal is remembered so the
+            // registration can send those requests to the generic router, which is the only place
+            // express's own order can decide; a path with no letter in it has no other case to
+            // arrive in and needs no guard
+            if (!caseSensitive && HAS_LETTER.test(r.path)) {
+                (caseGuards ??= []).push(r.path);
+            }
         }
         optimizedPath.push(route);
+        route._caseGuards = caseGuards;
 
         return optimizedPath;
     }
@@ -1450,6 +1502,11 @@ module.exports = class Router extends EventEmitter {
                             pattern: pathPrefix + route.path,
                             optimizedRouter: true
                         };
+                        if (route._caseGuards) {
+                            // compared against the whole path µWS matched, so they carry the mount
+                            // prefix, folded along with the rest of it
+                            registered._caseGuards = route._caseGuards.map((p) => pathPrefix + p);
+                        }
                         this._registerUwsRoute(registered, chain);
                         // the chain holds the original object, so the request-time guard has to
                         // find the computed fields there, or a mounted param route extracts its
@@ -1555,6 +1612,14 @@ module.exports = class Router extends EventEmitter {
         if (route.path.includes(":")) {
             route.optimizedParams = route.path.match(regExParam).map((p) => p.slice(1));
         }
+        // null for almost every route: only a parameter route with an earlier literal that a case
+        // variant could slip past carries one, see _optimizeRoute. Built once here, and matched
+        // insensitively, since that is the folding the guard exists for
+        const caseGuards = route._caseGuards
+            ? route._caseGuards.map((p) =>
+                  needsConversionToRegex(p) ? patternToRegex(p, false, false) : p.toLowerCase()
+              )
+            : null;
         const makeHandler = (chain, preset, skips) => {
             // the mutable object a granted skip lives on, so a middleware arriving after
             // listen can take it back: a literal registration's preset doubles as it, and a
@@ -1576,6 +1641,13 @@ module.exports = class Router extends EventEmitter {
             // and this one never did. nativeDone and nativeFail defer their epilogues to a
             // microtask, which is where the await used to resume, so the visible order holds
             return (res, req) => {
+                // a request that is an earlier literal in another case: express answers it with
+                // that route, and the chain here does not contain it, so the generic router takes
+                // this one
+                if (caseGuards !== null && anyGuardHits(caseGuards, req.getUrl())) {
+                    // an application is what registers native routes, and only it serves
+                    return /** @type {any} */ (this)._serveGeneric(res, req);
+                }
                 const request = this.handleRequest(res, req, preset, skipHolder);
                 const response = request.res;
                 if (optimizedParams) {
@@ -1669,6 +1741,9 @@ module.exports = class Router extends EventEmitter {
             route.callbacks.length === 1 && // must not have multiple callbacks
             typeof route.callbacks[0] === "function" && // must be a function
             route.paramCallbacks.size === 0 && // a param callback has to run, and this answers without running anything
+            // a declarative response is answered by µWS itself, so no javascript runs and the case
+            // guard could not: a route that needs one has to stay an ordinary handler
+            caseGuards === null &&
             !resDecMethods.some((method) => resCodes[method] !== responseProto[method].toString()) && // must not have injected methods
             this.get("declarative responses") // must have declarative responses enabled
         ) {

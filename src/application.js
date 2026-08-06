@@ -479,32 +479,42 @@ class Application extends Router {
      * between an error, the automatic OPTIONS reply and a 404.
      */
     _createRequestHandler() {
-        this.uwsApp.any("/*", async (res, req) => {
-            const request = this.handleRequest(res, req);
-            const response = request.res;
-            // armed up front here: this handler awaits, so the response outlives the callback
-            // on every path through it
-            this._armAbort(res, response);
+        this.uwsApp.any("/*", (res, req) => this._serveGeneric(res, req));
+    }
 
-            try {
-                const routed = this._routeRequest(request, response);
-                // dispatch has run its synchronous stretch inside _routeRequest by now, still
-                // under the cork uWS holds for this callback; the await below leaves it
-                response._corkNeeded = true;
-                const matchedRoute = await routed;
-                if (!matchedRoute && !response.headersSent && !response.aborted) {
-                    this._endUnmatched(request, response);
-                }
-            } catch (err) {
-                // an internal throw answers 500 as express's final handler would, instead of
-                // dying as an unhandled rejection
-                if (response.aborted || response.finished) {
-                    console.error(err);
-                } else {
-                    this._handleError(err, null, request, response);
-                }
+    /**
+     * Serves one request by walking this app's chain, with no registration-time shortcut. It is
+     * what the catch-all runs, and also what a native registration falls back to when it sees a
+     * request it must not answer itself, see the case guard in Router#_registerUwsRoute.
+     *
+     * @param {any} res the uWS response
+     * @param {any} req the uWS request
+     */
+    async _serveGeneric(res, req) {
+        const request = this.handleRequest(res, req);
+        const response = request.res;
+        // armed up front here: this handler awaits, so the response outlives the callback
+        // on every path through it
+        this._armAbort(res, response);
+
+        try {
+            const routed = this._routeRequest(request, response);
+            // dispatch has run its synchronous stretch inside _routeRequest by now, still
+            // under the cork uWS holds for this callback; the await below leaves it
+            response._corkNeeded = true;
+            const matchedRoute = await routed;
+            if (!matchedRoute && !response.headersSent && !response.aborted) {
+                this._endUnmatched(request, response);
             }
-        });
+        } catch (err) {
+            // an internal throw answers 500 as express's final handler would, instead of
+            // dying as an unhandled rejection
+            if (response.aborted || response.finished) {
+                console.error(err);
+            } else {
+                this._handleError(err, null, request, response);
+            }
+        }
     }
 
     /**
