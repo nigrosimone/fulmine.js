@@ -244,6 +244,14 @@ module.exports = class Request extends Readable {
     _errorGroup;
 
     /**
+     * How much of _originalPath the mounts entered so far have taken. Kept as a count rather than
+     * worked out from the mount patterns, because what a mount took is what it matched, and a
+     * pattern rebuilt from the whole stack does not always match the same thing.
+     * @type {number}
+     */
+    _consumed = 0;
+
+    /**
      * The peer address as uWS hands it over, sixteen bytes or four.
      *
      * Declared although the constructor only sometimes fills it in: a property that appears on
@@ -421,9 +429,9 @@ module.exports = class Request extends Readable {
         // null for the same reason as the two above: a request that never enters a mount never
         // needs either array, and the push sites materialize them
         this._stack = null;
-        // number of entries in _stack that aren't the empty path. while this is 0 the whole
-        // stack joins to "", so getFullMountpath can skip the join entirely
-        this._stackMounted = 0;
+        // how many characters of _originalPath the mounts entered so far have taken, which is
+        // where baseUrl ends and the path below them begins
+        this._consumed = 0;
         this._paramStack = null;
         this.receivedData = false;
         // reading ip is very slow in UWS, so its better to not do it unless truly needed
@@ -534,8 +542,8 @@ module.exports = class Request extends Readable {
         if (this._baseUrlOverride !== undefined) {
             return this._baseUrlOverride;
         }
-        const match = this._originalPath.match(this.app.getFullMountpath(this));
-        return match ? match[0] : "";
+        // what the mounts took, which is where the path they left off begins
+        return this._consumed === 0 ? "" : this._originalPath.slice(0, this._consumed);
     }
 
     /**

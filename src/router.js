@@ -17,7 +17,6 @@ limitations under the License.
 
 const {
     patternToRegex,
-    escapePathLiteral,
     getPatternMeta,
     decodeParam,
     needsConversionToRegex,
@@ -195,11 +194,8 @@ class Walk {
             // path is still relative to it. /alone/skip must not be offered to the app as /skip
             if (req._stack !== null && req._stack.length > 0) {
                 req._stack.length = 0;
-                req._stackMounted = 0;
-                req.path = req._originalPath;
-                req.url = req._originalPath + req.urlQuery;
-                req._opPath = req._originalPath;
-                req._lastUrl = req.url;
+                req._consumed = 0;
+                setMountedPath(req);
             }
             // an error out of a mount is attributed to the mount, so error handlers declared before
             // it do not catch it, as in ordinary dispatch
@@ -251,11 +247,8 @@ class Walk {
         this.skipUntil = startIndex > 0 ? this.routes[startIndex - 1] : undefined;
         if (req._stack !== null && req._stack.length > 0) {
             req._stack.length = 0;
-            req._stackMounted = 0;
-            req.path = req._originalPath;
-            req.url = req._originalPath + req.urlQuery;
-            req._opPath = req._originalPath;
-            req._lastUrl = req.url;
+            req._consumed = 0;
+            setMountedPath(req);
         }
         this.routes = router._routes;
         this.skipCheck = false;
@@ -272,31 +265,20 @@ class Walk {
     runRoute(continueRoute) {
         const req = this.req;
         const route = this.route;
-        const router = this.router;
         if (route.use) {
             if (route.mountApp) {
                 // optimized chain: normal dispatch swaps req.app when it enters a mounted
                 // Application, but the compiled mount route has no callback to do it
                 useApp(req, route.mountApp);
             }
-            (req._stack ??= []).push(route.regexMount ? regexMountEntry(router, route, req) : route.path);
+            const taken = mountPrefixLength(route, req);
+            (req._stack ??= []).push(taken);
             // a use with no path consumes nothing, so everything below would work out the values
             // that are already there. Only skipped without a trailing slash, where the rules about
             // one cannot bite. An application is mostly pathless middleware, and this is per hop
-            if (route.path !== "" || req.endsWithSlash) {
-                if (route.path !== "") {
-                    req._stackMounted++;
-                }
-                const fullMountpath = router.getFullMountpath(req);
-                req._opPath =
-                    fullMountpath !== EMPTY_REGEX ? req._originalPath.replace(fullMountpath, "") : req._originalPath;
-                req.url = req._opPath + req.urlQuery;
-                req.path = req._opPath;
-                if (req._opPath === "") {
-                    req.url = "/" + req.urlQuery;
-                    req.path = "/";
-                }
-                req._lastUrl = req.url;
+            if (taken !== 0 || req.endsWithSlash) {
+                req._consumed += taken;
+                setMountedPath(req);
             }
         }
         req.next = this.next;
@@ -363,22 +345,8 @@ class Walk {
                     if (req.url !== req._lastUrl) {
                         req._absorbUrlRewrite();
                     }
-                    if (req._stack.pop() !== "") {
-                        req._stackMounted--;
-                    }
-
-                    const poppedMountpath = req._stack.length > 0 ? router.getFullMountpath(req) : EMPTY_REGEX;
-                    req._opPath =
-                        poppedMountpath !== EMPTY_REGEX
-                            ? req._originalPath.replace(poppedMountpath, "")
-                            : req._originalPath;
-                    req.url = req._opPath + req.urlQuery;
-                    req.path = req._opPath;
-                    if (req._opPath === "") {
-                        req.url = "/" + req.urlQuery;
-                        req.path = "/";
-                    }
-                    req._lastUrl = req.url;
+                    req._consumed -= req._stack.pop();
+                    setMountedPath(req);
                     if (req.app.parent && route.callbacks[0]?.constructor.name === "Application") {
                         useApp(req, req.app.parent);
                     }
@@ -579,19 +547,62 @@ function nativeFail(err) {
 }
 
 /**
- * What a RegExp mount consumed of the path, escaped so the mount-stack join can compile it as a
- * literal. Exec runs on the same fixed-up path _pathMatches tested: a parent mount that consumed
+ * How much of the path a mount takes, which is what its own pattern matched and never more than
+ * there is. Exec runs on the same fixed-up path _pathMatches tested: a parent mount that consumed
  * everything leaves "", where the pattern was matched against "/".
  *
- * @param {any} router
+ * Counting what each mount took, rather than rebuilding one pattern out of the whole stack and
+ * matching that against the original path, is the difference between a sum and a guess: a mount
+ * written as an optional group composes into a pattern the path no longer satisfies, and the
+ * prefix stayed on.
+ *
  * @param {any} route
  * @param {any} req
- * @returns {string}
+ * @returns {number}
  */
-function regexMountEntry(router, route, req) {
-    const mountPath = req._opPath;
-    const matched = route.pattern.exec(mountPath === "" ? "/" : mountPath);
-    return matched ? escapePathLiteral(matched[0]) : "";
+function mountPrefixLength(route, req) {
+    const path = req._opPath;
+    if (typeof route.pattern === "string") {
+        return route.pattern.length;
+    }
+    const matched = route.pattern.exec(path === "" ? "/" : path);
+    return matched ? Math.min(matched[0].length, path.length) : 0;
+}
+
+/**
+ * Writes the path the routes below a mount see: the original with what the mounts took off the
+ * front. The root reads as "/" rather than as nothing, which is how express hands it over.
+ *
+ * @param {any} req
+ */
+function setMountedPath(req) {
+    req._opPath = req._consumed === 0 ? req._originalPath : req._originalPath.slice(req._consumed);
+    req.url = req._opPath === "" ? "/" + req.urlQuery : req._opPath + req.urlQuery;
+    req.path = req._opPath === "" ? "/" : req._opPath;
+    req._lastUrl = req.url;
+}
+
+/**
+ * The route's own params merged with those of the mounts it sits under, in express's order: an
+ * outer mount first, the route's own last. Numbered captures do not overwrite each other, they
+ * shift, so a RegExp mount capturing one group leaves the route's own group numbered from one.
+ *
+ * @param {Record<string, any>} own what this route's own pattern captured
+ * @param {Record<string, any>[]} stack the mounts, outermost first
+ * @returns {Record<string, any>}
+ */
+/**
+ * Whether this route reads the parameters of the mounts above it, which is its own router asking
+ * for them. The stack holds what a mergeParams router captured on the way in, and a plain router
+ * mounted inside one must not read it: express asks each router in turn, not the outermost.
+ *
+ * @param {any} route
+ * @param {any} fallback the router dispatching, when the route names no owner
+ * @returns {boolean}
+ */
+function mergesParams(route, fallback) {
+    const owner = route.owner ?? fallback;
+    return Boolean(owner?.settings?.mergeParams);
 }
 
 /**
@@ -699,7 +710,7 @@ function adoptPlainRequest(req, router) {
     // null, not fresh arrays: the push sites materialize them on the first mount, and most
     // requests never see one, same as the Request constructor
     req._stack = null;
-    req._stackMounted = 0;
+    req._consumed = 0;
     req._paramStack = null;
     req._matchedMethods = req._isOptions ? new Set() : null;
     req.routeCount = 1;
@@ -1966,13 +1977,8 @@ module.exports = class Router extends EventEmitter {
                 return "route";
             }
         } else if (route.complex) {
-            let path = req._originalPath;
-            if (req._stack !== null && req._stack.length > 0) {
-                const fullMountpath = this.getFullMountpath(req);
-                if (fullMountpath !== EMPTY_REGEX) {
-                    path = path.replace(fullMountpath, "");
-                }
-            }
+            // the path with the mounts taken off, which is what _opPath is
+            const path = req._opPath;
             try {
                 req.params = this._extractParams(route.pattern, path);
             } catch (err) {
@@ -1984,14 +1990,14 @@ module.exports = class Router extends EventEmitter {
                 req._errorGroup = route.group;
                 return "route";
             }
-            if (req._paramStack !== null && req._paramStack.length > 0) {
+            if (mergesParams(route, this) && req._paramStack !== null && req._paramStack.length > 0) {
                 req.params = mergeParams(req.params, req._paramStack);
             }
         } else {
             // express 5 gives every matched route null-prototype params; only a pathless
             // middleware layer keeps the plain object, as its router hands one to fast_slash
             req.params = route.use && route.path === "" ? {} : Object.create(null);
-            if (req._paramStack !== null && req._paramStack.length > 0) {
+            if (mergesParams(route, this) && req._paramStack !== null && req._paramStack.length > 0) {
                 req.params = mergeParams(req.params, req._paramStack);
             }
         }
@@ -2018,15 +2024,8 @@ module.exports = class Router extends EventEmitter {
         if (!route.complex) {
             return false;
         }
-        let path = req._originalPath;
-        if (req._stack !== null && req._stack.length > 0) {
-            const fullMountpath = this.getFullMountpath(req);
-            if (fullMountpath !== EMPTY_REGEX) {
-                path = path.replace(fullMountpath, "");
-            }
-        }
         try {
-            this._extractParams(route.pattern, path);
+            this._extractParams(route.pattern, req._opPath);
             return false;
         } catch {
             return true;

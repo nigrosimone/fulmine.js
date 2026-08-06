@@ -320,6 +320,15 @@ function serveStatic(root, options) {
                 return next(httpError(400));
             } else return next();
         }
+        // A decoded NUL is a bad request and not a missing file, which is how send reads it too.
+        // Without this the byte reaches fs, and what comes back is node's own complaint with the
+        // absolute path of the root inside it, so a request could ask the server where it lives.
+        if (url.indexOf("\0") !== -1) {
+            if (!options.fallthrough) {
+                res.status(400);
+                return next(httpError(400));
+            } else return next();
+        }
         let _path = url;
         const fullpath = path.resolve(path.join(root, url));
         if (root && !fullpath.startsWith(path.resolve(root))) {

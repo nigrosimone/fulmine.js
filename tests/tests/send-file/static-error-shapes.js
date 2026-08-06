@@ -52,7 +52,11 @@ app.listen(13333, async () => {
         ["/ignore/a/.hidden/b", {}],
         ["/ignore/.hidden", {}],
         // and a path that walks up and comes back, which is not a hidden file
-        ["/ignore/sub/../a.txt", {}]
+        ["/ignore/sub/../a.txt", {}],
+        // a decoded NUL is a bad request: letting it reach fs answered with node own complaint,
+        // which carries the absolute path of the root inside it
+        ["/ignore/a%00b", {}],
+        ["/ext/a%00b/c", {}]
     ];
 
     for (const [url, headers] of cases) {
