@@ -1144,7 +1144,12 @@ module.exports = class Router extends EventEmitter {
             const stackPattern = fullStack.includes(":")
                 ? fullStack.replace(/(\\?):(\w+)/g, (whole, escaped, name, at) => (escaped ? whole : ":m" + at))
                 : fullStack;
-            fullMountpath = patternToRegex(stackPattern, true, this._caseSensitive());
+            // insensitive whatever this router says, because this only finds again a prefix that
+            // has already been accepted, by the routers that own those mounts and under their
+            // rules. A case sensitive router mounted on an insensitive app is reached as /LIST
+            // while it is registered as /list, and compiling this one its way left the prefix in
+            // place and every parameter below it unread
+            fullMountpath = patternToRegex(stackPattern, true, false);
             this._mountpathCache.set(fullStack, fullMountpath);
         }
         return fullMountpath;
