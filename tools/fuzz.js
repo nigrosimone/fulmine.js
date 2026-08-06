@@ -531,11 +531,20 @@ async function runPlan(plan, stopAtFirst) {
     return { divergences, checked };
 }
 
-/** Whether a reduced plan still shows the same disagreement on the same request. */
+/**
+ * Whether a reduced plan still shows the same disagreement on the same request. The pair of status
+ * codes has to match, not merely some disagreement: without that the shrink wanders off to another
+ * bug, and reports a two line case that does not produce the answers printed above it.
+ */
 async function stillFails(plan, target) {
     const probe = { ...plan, urls: [target.url], methods: [target.method] };
     const { divergences } = await runPlan(probe, true);
-    return divergences.length > 0;
+    if (!divergences.length) {
+        return false;
+    }
+    const statusOf = (answer) => answer.slice(0, answer.indexOf(" "));
+    const found = divergences[0];
+    return statusOf(found.express) === statusOf(target.express) && statusOf(found.fulmine) === statusOf(target.fulmine);
 }
 
 /**
@@ -668,6 +677,15 @@ async function main() {
         console.log("\nshrinking...");
         const small = await shrink(plan, target);
         console.log("\n" + planToSource(small, target));
+        // what the shrunk plan answers on its own, since the two lines above belong to the whole
+        // round: a reader comparing them against this source would be reading two applications
+        const confirmed = await runPlan(small, true);
+        if (confirmed.divergences.length) {
+            console.log(`  express: ${confirmed.divergences[0].express}`);
+            console.log(`  fulmine: ${confirmed.divergences[0].fulmine}`);
+        } else {
+            console.log("  (this shrunk plan does not disagree on its own: it needs the round around it)");
+        }
 
         if (!keepGoing) {
             console.log(`\n${checked} requests compared before this`);

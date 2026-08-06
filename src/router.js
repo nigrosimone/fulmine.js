@@ -830,7 +830,8 @@ function useApp(req, app) {
 const methods = ["all", ...METHODS.filter((method) => method !== "GET").map((method) => method.toLowerCase())];
 const supportedUwsMethods = new Set(["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD", "CONNECT", "TRACE"]);
 
-const regExParam = /:(\w+)/g;
+// the same name rule patternToRegex reads, so a unicode name is found here too
+const regExParam = /:([$_\p{ID_Start}][$\u200c\u200d\p{ID_Continue}]*)/gu;
 
 // Internals here are _underscore and not #private: a callable router is a function with the
 // router's properties copied onto it, and a # field cannot be copied, so #routes would throw
@@ -1897,10 +1898,10 @@ module.exports = class Router extends EventEmitter {
         // asking for each name in turn rather than walking the groups object, which is a
         // null-prototype dictionary and slow to enumerate, and reading the wildcard answer that was
         // worked out when the pattern was compiled instead of searching an array for it
-        const { paramNames, isWildcard } = meta;
+        const { paramNames, outputNames, isWildcard } = meta;
         for (let i = 0, len = paramNames.length; i < len; i++) {
-            const name = paramNames[i];
-            const value = groups[name];
+            const name = outputNames[i];
+            const value = groups[paramNames[i]];
             // an optional group that did not match is absent in v5, not present as undefined
             if (value === undefined) {
                 continue;

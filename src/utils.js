@@ -87,6 +87,35 @@ function removeDuplicateSlashes(path) {
     return path.replace(/\/{2,}/g, "/");
 }
 
+// What path-to-regexp takes as a parameter name, which is a javascript identifier: /:café and
+// /:año are names to express and were a dead route here, because \w stops at ASCII. A named
+// capture group accepts the same spellings, so the compiled pattern still carries the name.
+const ID_START = /[$_\p{ID_Start}]/u;
+// the two joiners are written as escapes on purpose: as themselves they are invisible here
+const ID_CONTINUE = /[$\u200c\u200d\p{ID_Continue}]/u;
+
+/**
+ * Reads a parameter name out of a pattern. Walks code points rather than code units, so a name
+ * starting outside the basic plane is read whole instead of as half a surrogate pair.
+ *
+ * @param {string} text the pattern, or the contents of one optional group
+ * @param {number} from the index just past the ":" or the "*"
+ * @returns {{name: string, next: number}} the name, empty when there is none, and where it ended
+ */
+function readParamName(text, from) {
+    let i = from;
+    let name = "";
+    while (i < text.length) {
+        const char = String.fromCodePoint(/** @type {number} */ (text.codePointAt(i)));
+        if (!(name === "" ? ID_START : ID_CONTINUE).test(char)) {
+            break;
+        }
+        name += char;
+        i += char.length;
+    }
+    return { name, next: i };
+}
+
 // the opening of a named capture group, which is how the parameter names are read back out of a
 // finished pattern
 const NAMED_GROUP = /\(\?<([^>]+)>/g;
@@ -96,7 +125,7 @@ const NAMED_GROUP = /\(\?<([^>]+)>/g;
  * into an array. Here and not on the regex itself, because one own property takes a RegExp off V8's
  * fast path: replace() went from 37ns to 808ns and test() from 22ns to 78ns.
  *
- * @typedef {{wildcardNames: string[], paramNames: string[], isWildcard: boolean[]}} PatternMeta
+ * @typedef {{wildcardNames: string[], paramNames: string[], outputNames: string[], isWildcard: boolean[]}} PatternMeta
  */
 const patternMeta = new WeakMap();
 
@@ -140,6 +169,21 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true) {
     let i = 0;
     const len = pattern.length;
     const wildcardNames = [];
+    // express takes /:a/:a, and two capture groups cannot share a name, so a repeat is compiled
+    // under a spelling of its own and mapped back when the parameters are read out. Reading them
+    // in order then leaves the last occurrence in place, which is the value express reports
+    const groupOutputName = new Map();
+    const uniqueGroupName = (name) => {
+        if (!groupOutputName.has(name)) {
+            groupOutputName.set(name, name);
+            return name;
+        }
+        let n = 2;
+        while (groupOutputName.has(name + "$" + n)) n++;
+        const group = name + "$" + n;
+        groupOutputName.set(group, name);
+        return group;
+    };
     // whether the token just emitted was a :parameter, which decides how greedy the next
     // optional group is allowed to be. see the comment where it is read
     let lastTokenWasParam = false;
@@ -157,16 +201,17 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true) {
         // boundary, so /te*st is literal "/te" followed by a wildcard named "st"
         if (ch === "*") {
             const at = i;
-            i++;
-            let name = "";
-            while (i < len && /\w/.test(pattern[i])) {
-                name += pattern[i++];
-            }
+            const splat = readParamName(pattern, i + 1);
+            const name = splat.name;
+            i = splat.next;
             if (!name) {
-                throw new Error(`Missing parameter name at index ${at}: ${pattern}`);
+                throw new Error(
+                    `Missing parameter name at index ${at + 1}: ${pattern}; visit https://git.new/pathToRegexpError for info`
+                );
             }
-            wildcardNames.push(name);
-            regexPattern += `(?<${name}>[^]+)`;
+            const splatGroup = uniqueGroupName(name);
+            wildcardNames.push(splatGroup);
+            regexPattern += `(?<${splatGroup}>[^]+)`;
             lastTokenWasParam = false;
             continue;
         }
@@ -183,13 +228,14 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true) {
                 if (!name) {
                     throw new Error(`Wildcard must be named in Express 5: use {*splat} (in "${pattern}")`);
                 }
-                wildcardNames.push(name);
+                const optionalGroup = uniqueGroupName(name);
+                wildcardNames.push(optionalGroup);
                 if (regexPattern.endsWith("/") || regexPattern.endsWith("\\/")) {
                     // the slash belongs to the optional part, otherwise /{*splat} would not match /
                     regexPattern = regexPattern.slice(0, regexPattern.endsWith("\\/") ? -2 : -1);
-                    regexPattern += `(?:/(?<${name}>.+))?/?`;
+                    regexPattern += `(?:/(?<${optionalGroup}>.+))?/?`;
                 } else {
-                    regexPattern += `(?<${name}>.*)`;
+                    regexPattern += `(?<${optionalGroup}>.*)`;
                 }
                 continue;
             }
@@ -220,12 +266,10 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true) {
             let gi = 0;
             while (gi < groupContent.length) {
                 if (groupContent[gi] === ":") {
-                    gi++;
-                    let paramName = "";
-                    while (gi < groupContent.length && /\w/.test(groupContent[gi])) {
-                        paramName += groupContent[gi++];
-                    }
-                    groupRegex += `(?<${paramName}>${groupParamClass})`;
+                    const inner = readParamName(groupContent, gi + 1);
+                    const paramName = inner.name;
+                    gi = inner.next;
+                    groupRegex += `(?<${uniqueGroupName(paramName)}>${groupParamClass})`;
                 } else if (groupContent[gi] === ".") {
                     groupRegex += "\\.";
                     gi++;
@@ -243,16 +287,17 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true) {
         }
 
         if (ch === ":") {
-            i++;
-            let name = "";
-            while (i < len && /\w/.test(pattern[i])) {
-                name += pattern[i++];
-            }
+            const named = readParamName(pattern, i + 1);
+            const name = named.name;
+            i = named.next;
             if (!name) {
-                throw new Error(`Missing parameter name at index ${i - 1}: ${pattern}`);
+                throw new Error(
+                    `Missing parameter name at index ${i}: ${pattern}; visit https://git.new/pathToRegexpError for info`
+                );
             }
             // a following optional group needs room to match, so the parameter gives ground
-            regexPattern += i < len && pattern[i] === "{" ? `(?<${name}>[^/]+?)` : `(?<${name}>[^/]+)`;
+            const paramGroup = uniqueGroupName(name);
+            regexPattern += i < len && pattern[i] === "{" ? `(?<${paramGroup}>[^/]+?)` : `(?<${paramGroup}>[^/]+)`;
             lastTokenWasParam = true;
             continue;
         }
@@ -282,6 +327,7 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true) {
     patternMeta.set(regex, {
         wildcardNames,
         paramNames,
+        outputNames: paramNames.map((name) => groupOutputName.get(name) ?? name),
         isWildcard: paramNames.map((name) => wildcardNames.includes(name))
     });
     return regex;
@@ -330,7 +376,7 @@ function canBeOptimized(pattern) {
 
 // a parameter that is the whole segment, which is the only shape µWS matches the same way Express
 // does. "/flights/:from-:to" is one segment to µWS and two parameters to Express.
-const WHOLE_SEGMENT_PARAM = /^:\w+$/;
+const WHOLE_SEGMENT_PARAM = /^:[$_\p{ID_Start}][$\u200c\u200d\p{ID_Continue}]*$/u;
 
 /**
  * Whether µWS's own router matches this path exactly as Express would, parameters included.
