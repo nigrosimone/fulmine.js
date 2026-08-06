@@ -837,10 +837,27 @@ function generateErrorPageHtml(err) {
 }
 
 module.exports = class Router extends EventEmitter {
+    /**
+     * The router or application this one is mounted on, undefined until it is.
+     * @type {any}
+     */
     parent;
 
+    /**
+     * Whether listen() has run, after which a new route can no longer reach uWS.
+     * @type {boolean|undefined}
+     */
     listenCalled;
 
+    /**
+     * The uWS app routes are registered on.
+     *
+     * Typed loosely on purpose: only an Application owns one, and the callers that reach for
+     * it have already established that, so the honest `TemplatedApp|undefined` would only add
+     * casts where the guard already is.
+     *
+     * @type {any}
+     */
     uwsApp;
 
     /**
@@ -1398,7 +1415,6 @@ module.exports = class Router extends EventEmitter {
         const request = new this._request(req, res, this, preset, skipHolder);
         const response = new this._response(res, request, this);
         request.res = response;
-        response.req = request;
 
         return request;
     }

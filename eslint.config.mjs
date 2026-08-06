@@ -47,7 +47,7 @@ export default [
                     // getter, so the setter is not asked for one of its own
                     checkGetters: true,
                     checkSetters: false,
-                    contexts: []
+                    contexts: ["PropertyDefinition"]
                 }
             ],
             // the tags that are there have to be true. A renamed parameter whose @param still says

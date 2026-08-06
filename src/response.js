@@ -123,6 +123,7 @@ module.exports = class Response extends Writable {
     /** @type {Socket|null} */
     #socket = null;
 
+    /** Whether end() has run, which is what makes a second one a no-op rather than a throw. */
     #ended = false;
 
     /** @type {((err?: Error|null) => void)|null} */
@@ -131,6 +132,10 @@ module.exports = class Response extends Writable {
     /** @type {any} */
     #outHeaders = null;
 
+    /**
+     * The request this response answers, linked so either reaches the other.
+     * @type {InstanceType<typeof import("./request.js")>}
+     */
     req;
 
     /**
@@ -145,6 +150,9 @@ module.exports = class Response extends Writable {
     constructor(res, req, app) {
         super();
         this._req = req;
+        // linked here rather than by the caller: the pair is built together, and a field the
+        // constructor leaves unset is a shape change on whoever assigns it first
+        this.req = req;
         this._res = res;
         this.headersSent = false;
         this.app = app;
@@ -893,9 +901,11 @@ module.exports = class Response extends Writable {
         // range requests
         if (options.acceptRanges) {
             if (this.req.headers.range) {
-                let ranges = this.req.range(len, {
-                    combine: true
-                });
+                // the branch above established the header is there, so range() cannot answer
+                // the undefined it uses to mean "no Range header"
+                let ranges = /** @type {ReturnType<typeof import("range-parser")>} */ (
+                    this.req.range(len, { combine: true })
+                );
 
                 // if-range
                 if (!isRangeFresh(this.req, this)) {
@@ -1236,7 +1246,10 @@ module.exports = class Response extends Writable {
      */
     cookie(name, value, options) {
         const opt = { ...(options ?? {}) }; // create a new ref because we change original object (https://github.com/dimdenGD/ultimate-express/issues/68)
-        if (opt.signed && !this.req.secret) {
+        // cookie-parser hangs the secret on the request, so it is read off it rather than
+        // declared here: without that middleware there is none, which is what this checks
+        const req = /** @type {any} */ (this.req);
+        if (opt.signed && !req.secret) {
             // the message has to read like this: it is the one Express throws, and it names the
             // thing that is actually missing rather than the library that noticed
             throw new Error('cookieParser("secret") required for signed cookies');
@@ -1254,7 +1267,7 @@ module.exports = class Response extends Writable {
             delete opt.maxAge;
         }
         if (opt.signed) {
-            val = "s:" + sign(val, this.req.secret);
+            val = "s:" + sign(val, req.secret);
         }
 
         if (opt.path == null) {
@@ -1304,7 +1317,9 @@ module.exports = class Response extends Writable {
      */
     format(object) {
         const keys = Object.keys(object).filter((v) => v !== "default");
-        const key = keys.length > 0 ? this.req.accepts(keys) : false;
+        // accepts answers the whole list only when asked with no arguments; given types it
+        // answers the best of them, or false
+        const key = keys.length > 0 ? /** @type {string|false} */ (this.req.accepts(keys)) : false;
 
         this.vary("Accept");
 
@@ -1501,6 +1516,10 @@ module.exports = class Response extends Writable {
         return this.set("content-type", ct);
     }
 
+    /**
+     * express carries both names for the same method, and middleware reaches for either.
+     * @type {(type: string) => any}
+     */
     contentType = this.type;
 
     /**

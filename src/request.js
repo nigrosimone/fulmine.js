@@ -139,26 +139,53 @@ module.exports = class Request extends Readable {
     /** @type {Record<string, string[]>|null} */
     #cachedDistinctHeaders = null;
 
-    // Flat, name then value: an array of pairs meant one array allocated per header on every
-    // request, and a request carries eight or ten of them. Everything that reads this walks it two
-    // at a time. The names are lowercase by contract: uWS lowers them on the wire and the node
-    // shim lowers them in its forEach, so readers compare without lowering again.
+    /**
+     * Every header, flat: name then value, name then value.
+     *
+     * An array of pairs meant one array allocated per header on every request, and a request
+     * carries eight or ten of them, so everything that reads this walks it two at a time. The
+     * names are lowercase by contract: uWS lowers them on the wire and the node shim lowers
+     * them in its forEach, so readers compare without lowering again.
+     *
+     * @type {string[]}
+     */
     #rawHeadersEntries = [];
 
     /** @type {string|undefined|null} */
     #cachedParsedIp = null;
 
+    /** Whether backpressure has asked uWS to stop delivering the body for now. */
     #paused = false;
 
-    // a bodyless request whose empty end has not been delivered yet, see the constructor
+    /** A bodyless request whose empty end has not been delivered yet, see the constructor. */
     #emptyBody = false;
 
+    /**
+     * What a body parser left behind, and undefined until one claims the request.
+     * @type {any}
+     */
     body;
 
+    /**
+     * The response this request arrived with, linked so either reaches the other.
+     *
+     * Typed loosely on purpose: it is linked right after construction rather than in the
+     * constructor, and the honest `Response|undefined` would put a check in front of every
+     * use of a field that is never observed unset.
+     *
+     * @type {any}
+     */
     res;
 
-    // one function for every request, fed through currentRequest: an arrow in the constructor
-    // captured `this`, which cost a context and a function allocation per request
+    /**
+     * Copies one header out of uWS and notices the two things the constructor decides by.
+     *
+     * One function for every request, fed through currentRequest: an arrow in the constructor
+     * captured `this`, which cost a context and a function allocation per request.
+     *
+     * @param {string} headerKey lowercase, as uWS hands it over
+     * @param {string} value
+     */
     static #collectHeader = (headerKey, value) => {
         const r = currentRequest;
         r.#rawHeadersEntries.push(headerKey, value);
@@ -183,10 +210,31 @@ module.exports = class Request extends Readable {
         }
     };
 
+    /**
+     * The parameters a native uWS route matched, by name, or undefined off that path.
+     * @type {Record<string, string>|undefined}
+     */
     optimizedParams;
 
+    /**
+     * The continuation of the chain currently running, which express also hands to a handler
+     * through the request. Declared rather than left to appear on assignment: runRoute sets it
+     * on every request, and an undeclared property is a shape change on each one.
+     *
+     * @type {any}
+     */
+    next;
+
+    /**
+     * What the chain threw or passed to next(err), waiting for an error handler.
+     * @type {any}
+     */
     _error;
 
+    /**
+     * Set by the paths that must not earn an ETag, res.sendFile's stream among them.
+     * @type {boolean|undefined}
+     */
     noEtag;
 
     /**

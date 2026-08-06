@@ -132,7 +132,6 @@ function makeUpgradeHandler(app, path, behavior) {
 
         const response = new app._response(res, request, app);
         request.res = response;
-        response.req = request;
 
         let decision;
         try {

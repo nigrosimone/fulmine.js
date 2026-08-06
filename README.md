@@ -28,6 +28,33 @@ See [Migrating](#migrating) for what it handles and what it deliberately does no
 [![Coverage Status](https://coveralls.io/repos/github/nigrosimone/fulmine.js/badge.svg?branch=main)](https://coveralls.io/github/nigrosimone/fulmine.js?branch=main)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](./LICENSE)
 
+## Table of contents
+
+- [Why this exists](#why-this-exists)
+- [Performance](#performance)
+- [Public benchmarks](#public-benchmarks)
+- [Attribution](#attribution)
+- [Difference from similar projects](#difference-from-similar-projects)
+- [Migrating](#migrating)
+- [Docker](#docker)
+- [Differences from Express](#differences-from-express)
+- [Performance tips](#performance-tips)
+- [WebSockets](#websockets)
+    - [socket.io](#socketio)
+- [HTTP/3](#http3)
+- [Versioning](#versioning)
+- [Compatibility](#compatibility)
+    - [express](#express)
+    - [Application](#application)
+    - [Application settings](#application-settings)
+    - [Request](#request)
+    - [Response](#response)
+    - [Router](#router)
+- [Tested middlewares](#tested-middlewares)
+- [Tested view engines](#tested-view-engines)
+- [Working on Fulmine](#working-on-fulmine)
+    - [Writing a comparison test](#writing-a-comparison-test)
+
 ## Why this exists
 
 There are several fast HTTP servers for Node built on [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js). What is scarce is one you can actually drop into an existing Express application without rewriting it.
