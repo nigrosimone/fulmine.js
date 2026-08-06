@@ -216,6 +216,11 @@ const libraryRoutes = [];
 // Every handler answers from the request alone, with nothing drawn from the clock or from a
 // counter: two servers must be able to produce the same bytes.
 const HANDLER_KINDS = [
+    "next-router",
+    "cookie",
+    "vary",
+    "format",
+    "links",
     "send-text",
     "send-json",
     "status-send",
@@ -270,6 +275,8 @@ function drawPlan(rng) {
     };
 
     const drawRoute = (allowWildcard) => ({
+        // an error handler between the middleware and the handler, which either answers or hands on
+        errorArm: chance(0.15) ? pick(["answer", "forward"]) : null,
         method: chance(0.75) ? "get" : pick(["post", "put", "delete", "all"]),
         // a quarter of the routes come from the library corpus, whose shapes nothing here invents
         path: chance(0.25) && libraryRoutes.length > 0 ? pick(libraryRoutes) : drawPath(allowWildcard),
@@ -289,6 +296,8 @@ function drawPlan(rng) {
     const routerCount = Math.floor(rng() * 3);
     for (let i = 0; i < routerCount; i++) {
         const options = {};
+        if (chance(0.25)) options.paramCallback = true;
+        if (chance(0.2)) options.mountShape = pick(["array", "regex"]);
         if (chance(0.4)) options.strict = chance(0.5);
         if (chance(0.4)) options.caseSensitive = chance(0.5);
         if (chance(0.3)) options.mergeParams = true;
@@ -340,8 +349,15 @@ function drawPlan(rng) {
         urls.push(pick(LIBRARY_PATHS));
     }
 
+    // a header set per round, so content negotiation and the conditional headers are asked for
+    const headers = {};
+    if (chance(0.5)) headers.accept = pick(["*/*", "application/json", "text/plain", "text/html;q=0.9, */*;q=0.1"]);
+    if (chance(0.3)) headers["accept-language"] = pick(["en", "it, en;q=0.8"]);
+    if (chance(0.3)) headers["x-fuzz"] = "probe";
+    if (chance(0.2)) headers.cookie = "fuzz=earlier";
+
     // GET always, since most routes are GET, plus one other verb so the method side is exercised
-    return { settings, routers, subApp, routes, urls, methods: ["GET", pick(METHODS)] };
+    return { settings, routers, subApp, routes, urls, headers, methods: ["GET", pick(METHODS)] };
 }
 
 /** Builds one handler of the kind the plan asked for. */
@@ -382,6 +398,21 @@ function makeHandler(route) {
             return (req, res, next) => next(new Error("passed by " + id));
         case "next-route":
             return (req, res, next) => next("route");
+        case "next-router":
+            return (req, res, next) => next("router");
+        case "cookie":
+            return (req, res) => res.cookie("fuzz", id, { path: "/", sameSite: "lax" }).send(id);
+        case "vary":
+            return (req, res) => res.vary("Accept-Language").vary("X-Fuzz").send(id);
+        case "links":
+            return (req, res) => res.links({ next: "/next/" + id, last: "/last/" + id }).send(id);
+        case "format":
+            return (req, res) =>
+                res.format({
+                    "text/plain": () => res.send("plain " + id),
+                    "application/json": () => res.json({ id }),
+                    default: () => res.send("default " + id)
+                });
         default:
             return (req, res) => res.send(id);
     }
@@ -416,21 +447,54 @@ async function instantiate(plan, factory, port) {
     for (const [key, value] of Object.entries(plan.settings)) app.set(key, value);
 
     const addRoute = (target, route) => {
-        const handlers = route.lead ? [makeLead(route), makeHandler(route)] : [makeHandler(route)];
+        const handlers = route.lead ? [makeLead(route), makeHandler(route)] : [];
+        handlers.push(makeHandler(route));
+        if (route.errorArm) {
+            // express only reaches a four argument handler through an error, so this one sits
+            // after the handler and answers what the handler threw, or hands it further on
+            handlers.push(
+                route.errorArm === "answer"
+                    ? (err, req, res, next) => res.status(418).send("caught " + err.message)
+                    : (err, req, res, next) => next(err)
+            );
+        }
         target[route.method](route.path, ...handlers);
+    };
+
+    /** The mount path as the plan asked for it: one string, several, or a RegExp. */
+    const mountPath = (spec) => {
+        if (spec.options.mountShape === "array") return [spec.mount, spec.mount + "/alias"];
+        if (spec.options.mountShape === "regex") {
+            return new RegExp("^" + spec.mount.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+        }
+        return spec.mount;
     };
 
     for (const spec of plan.routers) {
         // a copy per instantiation: fulmine's Router rewrites its options object in place, and a
         // shared one would reach express already rewritten and be ignored
-        const router = factory.Router({ ...spec.options });
+        // paramCallback and mountShape belong to the plan and not to Router: the first is set up
+        // below, the second is read off the spec by mountPath
+        const routerOptions = { ...spec.options };
+        const paramCallback = routerOptions.paramCallback;
+        delete routerOptions.paramCallback;
+        delete routerOptions.mountShape;
+        const router = factory.Router(routerOptions);
+        if (paramCallback) {
+            // express calls this once per value and not once per request, and what it writes into
+            // req.params has to survive the rest of the chain
+            router.param("p0", (req, res, next, value) => {
+                res.set("X-Param-Seen", String(value).slice(0, 20));
+                next();
+            });
+        }
         for (const route of spec.routes) addRoute(router, route);
         if (spec.nested) {
             const nested = factory.Router();
             for (const route of spec.nested.routes) addRoute(nested, route);
             router.use(spec.nested.mount, nested);
         }
-        app.use(spec.mount, router);
+        app.use(mountPath(spec), router);
     }
 
     if (plan.subApp) {
@@ -456,9 +520,10 @@ async function instantiate(plan, factory, port) {
 }
 
 /** What is compared: the status, the headers worth comparing, and the body. */
-async function answerOf(port, url, method) {
+async function answerOf(port, url, method, headers, conditional) {
     const res = await fetch("http://localhost:" + port + url, {
         method,
+        headers: conditional ? { ...headers, "if-none-match": conditional } : headers,
         signal: AbortSignal.timeout(5000),
         redirect: "manual"
     });
@@ -472,7 +537,7 @@ async function answerOf(port, url, method) {
         if (res.headers.has(name)) parts.push(`${name}: present`);
     }
     parts.push(JSON.stringify(await res.text()));
-    return parts.join(" | ");
+    return { line: parts.join(" | "), etag: res.headers.get("etag") };
 }
 
 let nextPort = 15000;
@@ -512,14 +577,35 @@ async function runPlan(plan, stopAtFirst) {
         for (const method of plan.methods) {
             let ra, rb;
             try {
-                [ra, rb] = await Promise.all([answerOf(portA, url, method), answerOf(portB, url, method)]);
+                [ra, rb] = await Promise.all([
+                    answerOf(portA, url, method, plan.headers),
+                    answerOf(portB, url, method, plan.headers)
+                ]);
             } catch {
                 continue; // a url fetch itself refuses to build is not a comparison
             }
             checked++;
-            if (ra !== rb) {
-                divergences.push({ url, method, express: ra, fulmine: rb });
+            if (ra.line !== rb.line) {
+                divergences.push({ url, method, express: ra.line, fulmine: rb.line });
                 if (stopAtFirst) break;
+            } else if (ra.etag && ra.etag === rb.etag) {
+                // asked again with the validator both just sent, which is the only way here to a
+                // 304 and to the headers express strips from one
+                checked++;
+                const [ca, cb] = await Promise.all([
+                    answerOf(portA, url, method, plan.headers, ra.etag),
+                    answerOf(portB, url, method, plan.headers, rb.etag)
+                ]);
+                if (ca.line !== cb.line) {
+                    divergences.push({
+                        url,
+                        method,
+                        conditional: true,
+                        express: ca.line,
+                        fulmine: cb.line
+                    });
+                    if (stopAtFirst) break;
+                }
             }
         }
         if (stopAtFirst && divergences.length) break;
@@ -668,7 +754,7 @@ async function main() {
         found += result.divergences.length;
         const target = result.divergences[0];
         console.log(`\n=== divergence in round ${round}, seed ${seed} (replay: --seed ${seed} --rounds 1)`);
-        console.log(`${target.method} ${target.url}`);
+        console.log(`${target.method} ${target.url}${target.conditional ? " asked again with if-none-match" : ""}`);
         console.log(`  express: ${target.express}`);
         console.log(`  fulmine: ${target.fulmine}`);
         if (result.divergences.length > 1)
