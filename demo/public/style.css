@@ -1,0 +1,173 @@
+:root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --ink: #111418;
+    --muted: #5b636b;
+    --line: #e2e5e9;
+    --panel: #f6f7f9;
+    --bolt: #ff8c2c;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #0d1117;
+        --ink: #e6edf3;
+        --muted: #9aa4ae;
+        --line: #2a3038;
+        --panel: #161b22;
+    }
+}
+
+* {
+    box-sizing: border-box;
+}
+body {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 2.5rem 1.25rem 4rem;
+    font:
+        16px/1.6 system-ui,
+        -apple-system,
+        "Segoe UI",
+        Roboto,
+        sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+}
+
+/* a label the screen reader reads and the layout does not */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+header {
+    display: flex;
+    gap: 1.25rem;
+    align-items: flex-start;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--line);
+}
+h1 {
+    margin: 0 0 0.25rem;
+    font-size: 2rem;
+    letter-spacing: -0.02em;
+}
+h2 {
+    margin: 2.5rem 0 0.25rem;
+    font-size: 1.15rem;
+}
+p {
+    margin: 0.5rem 0;
+}
+.hint,
+footer p {
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+.links a {
+    margin-right: 1rem;
+}
+a {
+    color: var(--bolt);
+}
+code {
+    background: var(--panel);
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+.buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 1rem 0;
+}
+button {
+    font: inherit;
+    font-size: 0.9rem;
+    padding: 0.45rem 0.8rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--ink);
+    cursor: pointer;
+}
+button:hover:not(:disabled) {
+    border-color: var(--bolt);
+}
+button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+input {
+    font: inherit;
+    font-size: 0.9rem;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ink);
+    flex: 1;
+    min-width: 0;
+}
+
+pre {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 0.9rem;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+}
+
+.chat {
+    margin-top: 1rem;
+}
+.row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin: 0.5rem 0;
+}
+.row label {
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+#room {
+    flex: 0 0 10rem;
+}
+#people {
+    color: var(--muted);
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+#log {
+    list-style: none;
+    margin: 0;
+    padding: 0.75rem;
+    height: 15rem;
+    overflow-y: auto;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+#log li {
+    padding: 0.15rem 0;
+}
+#log li.system {
+    color: var(--muted);
+    font-style: italic;
+}
+footer {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+}

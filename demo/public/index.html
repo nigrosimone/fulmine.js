@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Fulmine demo: Express 5 on µWebSockets.js</title>
+        <meta
+            name="description"
+            content="A live demo of Fulmine, a drop-in replacement for Express 5 running on µWebSockets.js: real routes, real Express middleware, and WebSocket rooms."
+        />
+        <link rel="icon" href="/logo-mark.svg" type="image/svg+xml" />
+        <link rel="stylesheet" href="/style.css" />
+        <script src="/app.js" defer></script>
+    </head>
+    <body>
+        <header>
+            <img src="/logo-mark.svg" alt="" width="56" height="56" decoding="async" />
+            <div>
+                <h1>fulmine</h1>
+                <p>
+                    A drop-in replacement for Express 5, running on µWebSockets.js. Everything on this page is ordinary
+                    Express code: <code>helmet</code>, <code>cors</code>, <code>compression</code>,
+                    <code>express-session</code> and <code>morgan</code> are the real packages, unmodified.
+                </p>
+                <p class="links">
+                    <a href="https://github.com/nigrosimone/fulmine.js">Repository</a>
+                    <a href="https://www.npmjs.com/package/fulmine.js">npm</a>
+                    <a href="/source">The source of this server</a>
+                </p>
+            </div>
+        </header>
+
+        <main>
+            <section>
+                <h2>Requests</h2>
+                <p class="hint">Every button is a real request to this server. The response is printed as it arrives.</p>
+                <div class="buttons">
+                    <button type="button" data-get="/api/hello">GET /api/hello</button>
+                    <button type="button" data-get="/api/users/42/posts?limit=3">GET /api/users/:id/posts</button>
+                    <button type="button" data-get="/api/visits">GET /api/visits (session)</button>
+                    <button type="button" data-get="/api/echo?q=hello">GET /api/echo</button>
+                    <button type="button" data-post="/api/echo">POST /api/echo</button>
+                    <button type="button" data-get="/api/nope">GET /api/nope (404)</button>
+                </div>
+                <pre id="out" aria-live="polite" aria-label="Response">Nothing asked yet.</pre>
+                <p class="hint">
+                    The session button counts your visits: that is <code>express-session</code> keeping state behind an
+                    unmodified cookie. The response headers of every call carry what <code>helmet</code> sets.
+                </p>
+            </section>
+
+            <section>
+                <h2>WebSockets</h2>
+                <p class="hint">
+                    Served by <code>app.ws("/ws/:room")</code>. The room comes from the path, the upgrade refuses a room
+                    name it does not like, and the request stays reachable from every handler as <code>ws.req</code>.
+                    Open this page in another tab to talk to yourself.
+                </p>
+                <div class="chat">
+                    <div class="row">
+                        <label for="room">Room</label>
+                        <input id="room" name="room" value="lobby" maxlength="24" autocomplete="off" />
+                        <button type="button" id="connect">Connect</button>
+                        <span id="people"></span>
+                    </div>
+                    <ul id="log" aria-live="polite" aria-label="Chat messages"></ul>
+                    <div class="row">
+                        <label class="visually-hidden" for="text">Message</label>
+                        <input
+                            id="text"
+                            name="text"
+                            placeholder="Say something"
+                            maxlength="500"
+                            autocomplete="off"
+                            disabled
+                        />
+                        <button type="button" id="send" disabled>Send</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>
+                No throughput figure is shown here on purpose: this runs on a small shared virtual machine, and the
+                number would describe the machine rather than the framework. The benchmarks worth reading are the ones
+                run by other people on hardware they describe, and they are linked from the repository.
+            </p>
+        </footer>
+    </body>
+</html>
