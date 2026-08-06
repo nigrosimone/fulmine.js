@@ -264,6 +264,10 @@ function writeFiles() {
 // so without them the fuzzer tested every route except the ones µWS answers by itself.
 const LITERAL_KINDS = ["lit-send", "lit-json", "lit-status", "lit-header", "lit-end", "lit-type"];
 
+// the kinds that raise, which the skip-friendly mode leaves out: with no error handler of ours
+// the answer is express own error page, and its stack is its own frames
+const RAISES = new Set(["throw", "next-error", "send-file", "download"]);
+
 const HANDLER_KINDS = [
     ...LITERAL_KINDS,
     "next-router",
@@ -312,9 +316,8 @@ function drawPlan(rng) {
     // which is what the analysis insists on. Nothing may raise either, since without a handler of
     // ours an error would reach express's own page and print a stack that cannot match.
     const skipFriendly = chance(0.3);
-    const kinds = skipFriendly
-        ? HANDLER_KINDS.filter((kind) => kind !== "throw" && kind !== "next-error")
-        : HANDLER_KINDS;
+    // serving a file raises too, on a range it cannot satisfy, so it is out of this mode as well
+    const kinds = skipFriendly ? HANDLER_KINDS.filter((kind) => !RAISES.has(kind)) : HANDLER_KINDS;
 
     let paramCounter = 0;
     /** A path in path-to-regexp 8 syntax, with parameter names unique inside it. */
@@ -668,6 +671,11 @@ async function instantiate(plan, factory, port) {
     const app = factory();
     for (const [key, value] of Object.entries(plan.settings)) app.set(key, value);
     if (plan.bodyParser) {
+        // Fulmine reads a body only for POST, PUT, PATCH and QUERY unless told otherwise, which
+        // the readme states as a deliberate difference: express reads one whenever the request
+        // carries it. Saying so here compares the two on behaviour rather than rediscovering the
+        // difference every time a body rides on a DELETE. Express ignores the setting.
+        app.set("body methods", ["POST", "PUT", "PATCH", "QUERY", "DELETE", "OPTIONS"]);
         app.use(express_bodyParser(factory, plan.bodyParser));
     }
     if (plan.staticMount) {
