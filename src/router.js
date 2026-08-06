@@ -43,6 +43,9 @@ const { checkBehavior } = require("./websocket.js");
 // native router can be trusted to prefer it, see _optimizeRoute
 const HAS_LETTER = /[a-zA-Z]/;
 
+// hands out one number per app.route(), so the routes it creates know they belong together
+let routeGroups = 0;
+
 /**
  * Whether an earlier route would have answered this path had case not mattered. A guard is a
  * folded string when the earlier path is a literal, and an insensitive pattern when it has
@@ -202,6 +205,7 @@ class Walk {
             // it do not catch it, as in ordinary dispatch
             if (req._error && this.skipUntil && this.skipUntil.keepMount && this.skipUntil.routeKey > req._errorKey) {
                 req._errorKey = this.skipUntil.routeKey;
+                req._errorGroup = this.skipUntil.group;
             }
             this.routes = router._routes;
             this.skipCheck = false;
@@ -315,7 +319,15 @@ class Walk {
     errorHop(kind, callback) {
         const req = this.req;
         const route = this.route;
-        if (req._error && kind === CALLBACK_ERROR && route.routeKey >= req._errorKey) {
+        // A four argument handler written inside a route only ever sees what that route raised:
+        // express skips a route layer entirely while an error is in flight, so an error from a
+        // middleware before it, or out of a mount, walks past to the router's own error handlers.
+        // Middleware error handlers keep the ordinary rule, which is that they catch what was
+        // raised before them.
+        const reachable = route.use
+            ? route.routeKey >= req._errorKey
+            : route.routeKey === req._errorKey || (route.group !== undefined && route.group === req._errorGroup);
+        if (req._error && kind === CALLBACK_ERROR && reachable) {
             const out = this.router._handleError(req._error, callback, req, this.res);
             if (out instanceof Promise) {
                 // an error handler's rejected promise moves on to the next error handler, and
@@ -323,6 +335,7 @@ class Walk {
                 out.catch((err) => {
                     req._error = err || new Error("Rejected promise");
                     req._errorKey = route.routeKey;
+                    req._errorGroup = route.group;
                     return this.step(undefined);
                 });
             }
@@ -396,6 +409,7 @@ class Walk {
             } else {
                 req._error = thingamabob;
                 req._errorKey = route.routeKey;
+                req._errorGroup = route.group;
             }
         }
         const kind = route.callbackKinds[this.callbackIndex];
@@ -437,6 +451,7 @@ class Walk {
                     req.params = parentParams;
                     if (req._error) {
                         req._errorKey = route.routeKey;
+                        req._errorGroup = route.group;
                     }
                     if (routed) {
                         if (parentMethods !== null) {
@@ -494,12 +509,14 @@ class Walk {
                     out.catch((err) => {
                         req._error = err || new Error("Rejected promise");
                         req._errorKey = route.routeKey;
+                        req._errorGroup = route.group;
                         return this.step(undefined);
                     });
                 }
             } catch (err) {
                 req._error = err;
                 req._errorKey = route.routeKey;
+                req._errorGroup = route.group;
                 return this.step(undefined);
             }
         }
@@ -1257,6 +1274,9 @@ module.exports = class Router extends EventEmitter {
                 // written by the application, so express matches it as it stands
                 userRegexp: path instanceof RegExp,
                 routeKey: routeKey++,
+                // which app.route() this came from, when it came from one, so the routes it built
+                // count as one route where an error is concerned. undefined for every other route
+                group: this._pendingGroup,
                 // the router this was registered on. Ordinary dispatch is done by that router, so
                 // it could ask itself, but an optimized chain is walked by the app whatever it
                 // contains, and param() callbacks belong to the router that declared them
@@ -1928,6 +1948,7 @@ module.exports = class Router extends EventEmitter {
             } catch (err) {
                 req._error = err;
                 req._errorKey = route.routeKey;
+                req._errorGroup = route.group;
                 return "route";
             }
         } else if (route.complex) {
@@ -1946,6 +1967,7 @@ module.exports = class Router extends EventEmitter {
                 // than run with a value nobody can read.
                 req._error = err;
                 req._errorKey = route.routeKey;
+                req._errorGroup = route.group;
                 return "route";
             }
             if (req._paramStack !== null && req._paramStack.length > 0) {
@@ -2042,6 +2064,7 @@ module.exports = class Router extends EventEmitter {
                     if (err !== "route") {
                         req._error = err;
                         req._errorKey = route.routeKey;
+                        req._errorGroup = route.group;
                     }
                     // the route is skipped either way: an error carries on to the error handlers
                     return resolve("route");
@@ -2215,15 +2238,22 @@ module.exports = class Router extends EventEmitter {
      * @returns {object} an object with one method per HTTP verb, each returning it again
      */
     route(path) {
+        // everything hung off one app.route() shares this, which is what makes them one route as
+        // far as an error is concerned, see errorHop
+        const group = ++routeGroups;
         const fns = new NullObject();
-        for (const method of methods) {
-            fns[method] = (...callbacks) => {
+        const inGroup = (method, callbacks) => {
+            this._pendingGroup = group;
+            try {
                 return this.createRoute(method, path, /** @type {any} */ (fns), ...callbacks);
-            };
-        }
-        fns.get = (...callbacks) => {
-            return this.createRoute("GET", path, /** @type {any} */ (fns), ...callbacks);
+            } finally {
+                this._pendingGroup = undefined;
+            }
         };
+        for (const method of methods) {
+            fns[method] = (...callbacks) => inGroup(method, callbacks);
+        }
+        fns.get = (...callbacks) => inGroup("GET", callbacks);
         return fns;
     }
 

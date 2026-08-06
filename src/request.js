@@ -236,6 +236,14 @@ module.exports = class Request extends Readable {
     _errorKey;
 
     /**
+     * Which app.route() the failing route belonged to, when it belonged to one. Express builds one
+     * route out of everything hung off an app.route(), so an error handler written on it catches
+     * what its siblings raised, and nothing else does.
+     * @type {number|undefined}
+     */
+    _errorGroup;
+
+    /**
      * The peer address as uWS hands it over, sixteen bytes or four.
      *
      * Declared although the constructor only sometimes fills it in: a property that appears on
