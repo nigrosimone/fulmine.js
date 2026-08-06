@@ -375,24 +375,28 @@ function drawPlan(rng) {
     if (chance(0.25)) settings["trust proxy"] = pick([true, false, 1, 2, "127.0.0.1", "loopback"]);
 
     // a body parser in front of everything, with a body to match, so req.body is not always absent
-    const bodyParser = chance(0.3) ? pick(["json", "urlencoded", "text", "raw"]) : null;
+    // left out when nothing is there to catch an error: a body parser and a static mount both
+    // raise, and with no handler of ours the answer is express own error page, whose stack is its
+    // own frames and can never match
+    const bodyParser = !skipFriendly && chance(0.3) ? pick(["json", "urlencoded", "text", "raw"]) : null;
 
     // a static mount: the options are the ones that change what it answers rather than how fast
-    const staticMount = chance(0.35)
-        ? {
-              mount: pick(["/files", "/", "/a/files"]),
-              options: {
-                  index: pick([false, "index.html"]),
-                  dotfiles: pick(["ignore", "allow", "deny"]),
-                  redirect: chance(0.5),
-                  fallthrough: chance(0.7),
-                  extensions: chance(0.3) ? ["html"] : false,
-                  maxAge: chance(0.4) ? 3600000 : 0,
-                  etag: !chance(0.2),
-                  lastModified: !chance(0.2)
+    const staticMount =
+        !skipFriendly && chance(0.35)
+            ? {
+                  mount: pick(["/files", "/", "/a/files"]),
+                  options: {
+                      index: pick([false, "index.html"]),
+                      dotfiles: pick(["ignore", "allow", "deny"]),
+                      redirect: chance(0.5),
+                      fallthrough: chance(0.7),
+                      extensions: chance(0.3) ? ["html"] : false,
+                      maxAge: chance(0.4) ? 3600000 : 0,
+                      etag: !chance(0.2),
+                      lastModified: !chance(0.2)
+                  }
               }
-          }
-        : null;
+            : null;
 
     const routers = [];
     const routerCount = Math.floor(rng() * 3);

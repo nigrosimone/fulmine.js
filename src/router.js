@@ -878,10 +878,24 @@ function callablePrototypeFor(classPrototype) {
  * The default error page, which is the one Express produces: the stack in a pre, and nothing else.
  * What reaches it has already been redacted when the environment calls for it.
  *
+ * The text is escaped, which is not decoration. An error message can carry anything a client sent,
+ * a path or a header among them, and writing it into the page unescaped put whatever it held into
+ * the markup. The Content-Security-Policy on this response stops a script there from running, but
+ * a policy is a second line and not the first. finalhandler escapes and then puts the line breaks
+ * and the indentation back as markup, and this reads the same as what it produces.
+ *
  * @param {any} err
  * @returns {string}
  */
 function generateErrorPageHtml(err) {
+    const text = String(err?.stack ?? err)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;")
+        .replace(/\n/g, "<br>")
+        .replace(/ {2}/g, " &nbsp;");
     return (
         `<!DOCTYPE html>\n` +
         `<html lang="en">\n` +
@@ -890,7 +904,7 @@ function generateErrorPageHtml(err) {
         `<title>Error</title>\n` +
         `</head>\n` +
         `<body>\n` +
-        `<pre>${err?.stack ?? err}</pre>\n` +
+        `<pre>${text}</pre>\n` +
         `</body>\n` +
         `</html>\n`
     );
