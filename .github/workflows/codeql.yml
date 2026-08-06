@@ -1,0 +1,51 @@
+# Static analysis for the shipped source, which is the half of security review a test suite
+# cannot do: the comparison tests say the bytes match Express, not that a path cannot escape a
+# root or that a header cannot be smuggled. Those are exactly the shapes this project handles.
+#
+# security-extended over the default suite: the default one is tuned to keep noise low on
+# application code, and this is a framework, where the interesting queries are the ones about
+# untrusted input reaching a filesystem or a header.
+name: CodeQL
+
+on:
+    push:
+        branches: ["main"]
+    pull_request:
+        branches: ["main"]
+    schedule:
+        # a weekly run, because the queries improve even when the code does not
+        - cron: "37 4 * * 1"
+
+jobs:
+    analyze:
+        name: Analyze JavaScript
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
+        permissions:
+            security-events: write
+            actions: read
+            contents: read
+
+        steps:
+            - name: Checkout Source Tree
+              uses: actions/checkout@v4
+
+            - name: Initialise CodeQL
+              uses: github/codeql-action/init@v3
+              with:
+                  languages: javascript-typescript
+                  queries: security-extended
+                  # only what is published: the benchmark harness and the test fixtures are full
+                  # of deliberately odd requests, and findings there would be about the tests
+                  config: |
+                      paths:
+                        - src
+                      paths-ignore:
+                        - benchmark
+                        - tests
+                        - demo
+
+            - name: Analyse
+              uses: github/codeql-action/analyze@v3
+              with:
+                  category: "/language:javascript-typescript"
