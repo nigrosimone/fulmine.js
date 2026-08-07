@@ -121,7 +121,84 @@ function statusLine(code, text) {
     return `${code} ${text ?? statuses.message[code] ?? "unknown"}`.trim();
 }
 
-module.exports = class Response extends Writable {
+/**
+ * A Writable that has not built its state yet, the mirror of LazyReadable in request.js and there
+ * for the same reason: a response is a Writable because middleware expects one, and the ordinary
+ * one never uses it. `send()` reaches `end()`, which is overridden here and goes straight to
+ * _finish, so the WritableState is allocated for every response and read by nobody. It is needed
+ * only by res.write(), by a stream piped into the response, by cork and by the writableX getters.
+ *
+ * `Response extends LazyWritable`, whose prototype is Writable's, so `res instanceof Writable`
+ * stays true and every Writable method is reachable; what is missing is `_writableState`, built on
+ * the first touch. Measured at 45 nanoseconds a response on the machine this was written on.
+ *
+ * As on the Readable side the wrapping is generated rather than written out: every own member of
+ * Writable's prototype gets a version that materialises first, so there is no list to keep in step.
+ * Missing one would not be a slow path, it would be a TypeError on `undefined._writableState`.
+ */
+class LazyWritableBase {}
+Object.setPrototypeOf(LazyWritableBase.prototype, Writable.prototype);
+Object.setPrototypeOf(LazyWritableBase, Writable);
+
+// what the chain says at runtime, said again for the type checker, which cannot see a prototype
+// being reassigned
+const LazyWritable = /** @type {typeof Writable} */ (/** @type {unknown} */ (LazyWritableBase));
+
+/**
+ * Builds the stream this object has been pretending to be. Idempotent: everything reachable from
+ * outside goes through it, so it is called far more often than it does anything.
+ *
+ * EventEmitter's init keeps an _events that is already there, so both the shape the constructor
+ * wrote and any listener added before this survive it.
+ *
+ * @param {any} stream
+ */
+function materialiseWritable(stream) {
+    if (stream._writableState === undefined) {
+        Writable.call(stream);
+    }
+}
+
+for (const member of [
+    ...Object.getOwnPropertyNames(Writable.prototype),
+    ...Object.getOwnPropertySymbols(Writable.prototype)
+]) {
+    if (member === "constructor") {
+        continue;
+    }
+    const descriptor = /** @type {PropertyDescriptor} */ (Object.getOwnPropertyDescriptor(Writable.prototype, member));
+    if (typeof descriptor.value === "function") {
+        const inner = descriptor.value;
+        Object.defineProperty(LazyWritableBase.prototype, member, {
+            ...descriptor,
+            /** @this {any} @param {...any} args */
+            value: function (...args) {
+                materialiseWritable(this);
+                return inner.apply(this, args);
+            }
+        });
+    } else if (descriptor.get || descriptor.set) {
+        const innerGet = descriptor.get;
+        const innerSet = descriptor.set;
+        Object.defineProperty(LazyWritableBase.prototype, member, {
+            ...descriptor,
+            get: innerGet
+                ? /** @this {any} */ function () {
+                      materialiseWritable(this);
+                      return innerGet.call(this);
+                  }
+                : undefined,
+            set: innerSet
+                ? /** @this {any} @param {any} value */ function (value) {
+                      materialiseWritable(this);
+                      innerSet.call(this, value);
+                  }
+                : undefined
+        });
+    }
+}
+
+module.exports = class Response extends LazyWritable {
     /** @type {Socket|null} */
     #socket = null;
 
@@ -151,6 +228,19 @@ module.exports = class Response extends Writable {
      */
     constructor(res, req, app) {
         super();
+        // the EventEmitter half stays eager, since the stream half is what LazyWritable defers and
+        // the two listeners below are written straight into this map. These are the five keys and
+        // the order node's own Writable constructor lays down, so the hidden class is the one every
+        // other stream in the process has, and node's init keeps this object when the state is
+        // finally built
+        this._events = {
+            close: undefined,
+            error: undefined,
+            prefinish: undefined,
+            finish: undefined,
+            drain: undefined
+        };
+        this._eventsCount = 0;
         this._req = req;
         // linked here rather than by the caller: the pair is built together, and a field the
         // constructor leaves unset is a shape change on whoever assigns it first

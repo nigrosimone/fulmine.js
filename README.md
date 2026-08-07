@@ -661,7 +661,8 @@ Almost all middlewares that are compatible with Express are compatible with Fulm
 - ✅ [express-rate-limit](https://npmjs.com/package/express-rate-limit)
 - ✅ [express-subdomain](https://npmjs.com/package/express-subdomain)
 - ✅ [vhost](https://npmjs.com/package/vhost)
-- ✅ [tsoa](https://github.com/lukeautry/tsoa)
+- ✅ [http-proxy-middleware](https://www.npmjs.com/package/http-proxy-middleware)
+- ✅ [express-http-proxy](https://www.npmjs.com/package/express-http-proxy)
 - ✅ [express-mongo-sanitize](https://www.npmjs.com/package/express-mongo-sanitize)
 - ✅ [helmet](https://www.npmjs.com/package/helmet)
 - ✅ [passport](https://www.npmjs.com/package/passport)
@@ -670,6 +671,10 @@ Almost all middlewares that are compatible with Express are compatible with Fulm
 - ✅ [graphql-http](https://www.npmjs.com/package/graphql-http)
 - ✅ [better-sse](https://www.npmjs.com/package/better-sse)
 - ✅ [supertest](https://www.npmjs.com/package/supertest)
+
+[tsoa](https://github.com/lukeautry/tsoa) works too, but it is not in the suite above: it resolves
+`express` itself, so testing it here needs a dependency override rather than the one-line swap
+everything else takes.
 
 ## Tested view engines
 
