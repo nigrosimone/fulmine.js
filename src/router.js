@@ -859,6 +859,22 @@ const CALLBACK_ROUTER = 2;
  * @param {any} app
  */
 /**
+ * Whether a route could answer a request for this path, judged on the pattern it was compiled to.
+ * A literal answers only itself; anything with a parameter or a wildcard answers what its regex
+ * says. Used where the question is "would this earlier route have had its turn first".
+ *
+ * @param {any} route
+ * @param {string} path
+ * @returns {boolean}
+ */
+function couldAnswer(route, path) {
+    if (route.pattern instanceof RegExp) {
+        return route.pattern.test(path);
+    }
+    return route.pattern === path;
+}
+
+/**
  * Notes which application is current before a mounted one is entered, so that exact one comes back
  * when it hands over.
  *
@@ -1475,6 +1491,18 @@ module.exports = class Router extends EventEmitter {
             if (!r.all && r.method !== route.method) {
                 // check if the methods are compatible (GET and HEAD)
                 if (!(r.method === "HEAD" && route.method === "GET")) {
+                    // A mount is registered ALL, because what lives under it can answer any
+                    // method, and this chain is computed once for all of them. So an earlier
+                    // route of some other method is not irrelevant here the way it is for a
+                    // plain route: it belongs in the chain of the leaves that share its method
+                    // and in no other, and one chain cannot say that. µWS would then jump
+                    // straight to a leaf and answer as though the earlier route did not exist,
+                    // which is what let a literal route inside a mounted router beat a parameter
+                    // route written before the mount. Leave the mount to ordinary dispatch,
+                    // where express's own order is what decides.
+                    if (route.use && typeof route.path === "string" && couldAnswer(r, route.path)) {
+                        return false;
+                    }
                     continue;
                 }
             }
