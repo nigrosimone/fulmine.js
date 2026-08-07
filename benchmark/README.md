@@ -50,6 +50,12 @@ the median less than `--null` does on your machine, it did not move anything thi
 Two rounds are run and thrown away first. Whichever server is hit first is hit cold, and without
 that the first recorded round came out 60% away from every round after it.
 
+**Nine rounds do not resolve one percent.** A change measured at 0.98 over nine rounds, which read
+as a real regression next to a `--null` median of 0.999, came back at 0.996 over fifteen. The median
+of nine per-round ratios still wanders a percent or two on its own, so a result under about 3% needs
+`--rounds 15` before it is worth believing, and a `--null` run from the same sitting to read it
+against. Nine is for telling 1.2x from 1.0.
+
 ## Writing a scenario
 
 A scenario module exports the route setup and, when the request is anything other than a plain GET,
