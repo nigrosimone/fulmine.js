@@ -1236,7 +1236,11 @@ module.exports = class Response extends Writable {
         const done =
             callback ||
             ((err, str) => {
-                if (err) return this.req.next(err);
+                // the router's next and not the route's, the same as sendFile: express reports a
+                // view it could not render to req.next, which the router owns, so the rest of the
+                // route is skipped and a four argument handler written inside it never sees the
+                // error. A callback, when there is one, hears everything instead
+                if (err) return (this.req._leaveRoute ?? this.req.next)(err);
                 this.send(str);
             });
 
@@ -1333,6 +1337,12 @@ module.exports = class Response extends Writable {
 
         this.vary("Accept");
 
+        // req.next, not the router next sendFile and render use. Express's is the router's here
+        // too, so inside a route with a four argument handler of its own this hands the error to
+        // that handler where express would have left the route. Passing the router next instead
+        // fails express's own res.format test, which asserts the handler is given the very same
+        // function the surrounding middleware received: outside a route the two are equivalent but
+        // not identical. The whole thing is the open req.next question at Walk's constructor
         if (key) {
             this.set("Content-Type", normalizeType(key).value);
             object[key](this.req, this, this.req.next);

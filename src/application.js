@@ -379,10 +379,6 @@ class Application extends Router {
                 // express's wording, which applications match on
                 throw new TypeError("unknown value for query parser function: " + value);
             }
-        } else if (key === "views") {
-            // a list of directories is searched in order by View.lookup, each resolved here once
-            this.settings[key] = Array.isArray(value) ? value.map((dir) => path.resolve(dir)) : path.resolve(value);
-            return this;
         } else if (key === "etag") {
             // an etag arriving after listen would make send consult freshness headers the
             // header-skip routes never copied, so those skips are taken back
