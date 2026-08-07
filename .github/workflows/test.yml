@@ -110,6 +110,43 @@ jobs:
                   github-token: ${{ secrets.GITHUB_TOKEN }}
                   file: coverage/lcov.info
 
+    # A handful of fuzz rounds on a seed nobody chose, every push and every pull request.
+    #
+    # One run proves nothing; a few hundred runs walk over ground no hand written test was ever
+    # going to reach, and every bug it has found so far was real. It is deliberately short, so it
+    # costs a couple of minutes rather than an hour, and deliberately random, so the coverage
+    # accumulates across pushes instead of repeating.
+    #
+    # A divergence turns this job red and prints the seed that reproduces it, along with the case
+    # shrunk to the few lines worth pasting into tests/. Nothing here blocks a merge: read the
+    # seed, replay it locally with `node tools/fuzz.js --seed N --rounds 1`, and decide whether it
+    # is a bug or something the fuzzer needs taught.
+    fuzz:
+        runs-on: ubuntu-latest
+        timeout-minutes: 15
+        steps:
+            - name: Checkout Source Tree
+              uses: actions/checkout@v3
+
+            - name: Cache Node.js dependencies
+              uses: actions/cache@v3
+              with:
+                  path: ~/.npm
+                  key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+                  restore-keys: |
+                      ${{ runner.os }}-node-
+
+            - name: Setup Node.js environment
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "24"
+
+            - name: Install dependencies
+              run: npm install --include=dev
+
+            - name: Fuzz against Express on a random seed
+              run: npm run fuzz -- --rounds 20
+
     # Express's own suite, run against this project. A gate since the count reached 1130/0:
     # any failing test, any file without a result, or a moved express tag is red. Linux only:
     # the Windows exit hang the tool works around does not exist here
