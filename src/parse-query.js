@@ -1,8 +1,9 @@
 "use strict";
 
 /*
-The parser from fast-querystring 1.1.x (MIT, Copyright (c) Yagiz Nizipli,
-https://github.com/anonrig/fast-querystring), vendored for one change: the result is a bare
+The parser from fast-querystring 1.1.x (https://github.com/anonrig/fast-querystring), Copyright
+(c) 2022 Yagiz Nizipli, MIT, whose permission notice is reproduced in full in NOTICE at the root
+of this package. Vendored for one change: the result is a bare
 Object.create(null) instead of the library's Empty-constructor trick. The trick is faster to
 construct but node inspects it as "Empty <[Object: null prototype] {}>", where Express shows
 "[Object: null prototype]", and matching that used to cost an Object.assign copy of every parse

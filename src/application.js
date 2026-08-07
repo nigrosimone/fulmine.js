@@ -2,6 +2,8 @@
 Copyright 2024 dimden.dev
 Copyright 2026 Nigro Simone
 
+This file is derived from Ultimate Express and has been modified.
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
