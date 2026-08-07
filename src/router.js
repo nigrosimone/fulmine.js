@@ -304,6 +304,7 @@ class Walk {
             if (route.mountApp) {
                 // optimized chain: normal dispatch swaps req.app when it enters a mounted
                 // Application, but the compiled mount route has no callback to do it
+                rememberApp(this, route, req);
                 useApp(req, route.mountApp);
             }
             const taken = mountPrefixLength(route, req);
@@ -383,19 +384,7 @@ class Walk {
                     }
                     req._consumed -= req._stack.pop();
                     setMountedPath(req);
-                    // Only an application takes it back. Express restores req.app by putting the
-                    // request prototype back, and it wraps a mounted application to do that only
-                    // in Application#use: hang one off a plain Router and nothing restores it, so
-                    // whatever runs afterwards still reads the settings of the application that
-                    // was entered. Restoring here regardless made a later res.send answer with
-                    // the outer application's etag setting where express answers with the inner.
-                    if (
-                        router._isApplication &&
-                        req.app.parent &&
-                        route.callbacks[0]?.constructor.name === "Application"
-                    ) {
-                        useApp(req, req.app.parent);
-                    }
+                    restoreApp(route, req);
                 }
                 if (thingamabob === "router") {
                     if (this.skipCheck) {
@@ -439,6 +428,7 @@ class Walk {
         }
         if (kind === CALLBACK_ROUTER) {
             if (callback.constructor.name === "Application") {
+                rememberApp(this, route, req);
                 useApp(req, callback);
             }
             const pushedParams = callback.settings.mergeParams;
@@ -865,6 +855,55 @@ const CALLBACK_ROUTER = 2;
  * Hands the request and the response to the app about to handle them, so that a mounted sub-app's
  * settings decide what its responses do. Express re-parents both objects for the same reason.
  *
+ * @param {any} req
+ * @param {any} app
+ */
+/**
+ * Notes which application is current before a mounted one is entered, so that exact one comes back
+ * when it hands over.
+ *
+ * Only an application takes it back. Express restores req.app by putting the request prototype
+ * back, and it wraps a mounted application to do that only in Application#use: hang one off a plain
+ * Router and nothing restores it, so whatever runs afterwards still reads the settings of the
+ * application that was entered. Restoring regardless made a later res.send answer with the outer
+ * application's etag setting where express answers with the inner.
+ *
+ * And what comes back is what was current, not the entered application's parent. Those differ the
+ * moment a sub-app is entered from inside another sub-app that a plain Router mounted: the outer
+ * one is still current, express puts that one back, and reaching for `.parent` skipped a level.
+ * A 404 from the top application then carried an ETag under `app.set("etag", false)`, because the
+ * settings answering were the inner application's. Found by fuzzing three levels of routers.
+ *
+ * The route is remembered alongside, so the pop can only ever take back what this same route put
+ * there: a mounted application that answers instead of handing over leaves its entry behind, and
+ * the request is over by then.
+ *
+ * @param {any} walk
+ * @param {any} route
+ * @param {any} req
+ */
+function rememberApp(walk, route, req) {
+    if (walk.router._isApplication && route.callbacks[0]?.constructor.name === "Application") {
+        (req._appStack ??= []).push(route, req.app);
+    }
+}
+
+/**
+ * Puts back what rememberApp noted, if this is the route that noted it.
+ *
+ * @param {any} route
+ * @param {any} req
+ */
+function restoreApp(route, req) {
+    const stack = req._appStack;
+    if (stack !== undefined && stack.length > 0 && stack[stack.length - 2] === route) {
+        const app = stack.pop();
+        stack.pop();
+        useApp(req, app);
+    }
+}
+
+/**
  * @param {any} req
  * @param {any} app
  */

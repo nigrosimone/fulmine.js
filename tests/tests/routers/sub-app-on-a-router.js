@@ -28,7 +28,16 @@ onApp.set("name", "on-app");
 onApp.get("/inside", (req, res) => res.send("app-mounted app"));
 app.use("/viaapp", onApp);
 
-app.use((req, res) => res.status(404).json({ app: req.app.get("name") }));
+// and the two of them one after the other, which is what the restore has to get right: entering
+// this one from inside the router-mounted one leaves that one current, and it is that one express
+// puts back rather than this one's parent. Reaching for the parent skipped a level, and the 404
+// below came back with an ETag under `etag: false`
+const alsoOnApp = express();
+alsoOnApp.set("name", "also-on-app");
+alsoOnApp.get("/inside", (req, res) => res.send("the second app-mounted app"));
+app.use("/{:anything}", alsoOnApp);
+
+app.use((req, res) => res.status(404).json({ app: req.app.get("name"), etag: res.get("etag") ?? null }));
 
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
@@ -40,7 +49,11 @@ app.listen(13333, async () => {
         // the sub-app hands back and something after it answers: this is where the two differ
         "/viarouter/app/missing",
         "/viaapp/missing",
-        "/elsewhere"
+        "/elsewhere",
+        // through the router-mounted one and then through an application-mounted one, so what the
+        // second hands back to is the first and not the outer application
+        "/viarouter/app/missing/deeper",
+        "/viarouter/missing"
     ];
 
     for (const path of paths) {

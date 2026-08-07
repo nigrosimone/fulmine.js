@@ -559,6 +559,9 @@ module.exports = class Request extends LazyReadable {
         // where baseUrl ends and the path below them begins
         this._consumed = 0;
         this._paramStack = null;
+        // route and application in pairs, one pair per mounted application entered from another
+        // application, so handing back puts the one that was current back, see rememberApp
+        this._appStack = undefined;
         this.receivedData = false;
         // reading ip is very slow in UWS, so its better to not do it unless truly needed
         if (this.app.needsIpAfterResponse || this.key < 100) {
