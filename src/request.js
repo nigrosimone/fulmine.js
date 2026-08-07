@@ -252,6 +252,13 @@ module.exports = class Request extends Readable {
     _consumed = 0;
 
     /**
+     * next() as the router means it: the rest of the route is skipped. res.sendFile reports its
+     * failures here, because express reports them to the router and not to the route.
+     * @type {((err?: any) => void)|undefined}
+     */
+    _leaveRoute;
+
+    /**
      * The peer address as uWS hands it over, sixteen bytes or four.
      *
      * Declared although the constructor only sometimes fills it in: a property that appears on

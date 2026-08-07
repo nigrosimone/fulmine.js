@@ -138,20 +138,22 @@ for (const testCategory of testCategories) {
                                 // maxBuffer also kills the child, and retrying an output that big
                                 // would only mislabel it as a hang
                                 const timedOut = error.killed && !String(error.message).includes("maxBuffer");
-                                if (!timedOut) {
+                                // The libuv exit assertion this project already carries a preload
+                                // for, see tests/win-exit-delay.cjs. The child prints everything it
+                                // was going to print and then dies on the way out, so the run is
+                                // sound and only the exit code is not. It is timing dependent, so
+                                // one retry clears it; twice in a row is something else and fails.
+                                const crashedOnExit = String(error.stderr || "").includes("UV_HANDLE_CLOSING");
+                                if (!timedOut && !crashedOnExit) {
                                     throw error;
                                 }
+                                const what = timedOut ? `timed out at ${TEST_TIMEOUT}ms` : "crashed on exit in libuv";
                                 if (attempt > 1) {
-                                    throw new Error(
-                                        `${module} timed out twice at ${TEST_TIMEOUT}ms running ${testPath}`,
-                                        {
-                                            cause: error
-                                        }
-                                    );
+                                    throw new Error(`${module} ${what} twice running ${testPath}`, {
+                                        cause: error
+                                    });
                                 }
-                                console.error(
-                                    `${module} timed out after ${TEST_TIMEOUT}ms running ${testPath}, retrying once`
-                                );
+                                console.error(`${module} ${what} running ${testPath}, retrying once`);
                             }
                         }
                     };

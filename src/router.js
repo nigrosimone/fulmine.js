@@ -139,6 +139,29 @@ class Walk {
         // bound, not wrapped in an arrow: an arrow forwarding into step() is one more call on every
         // hop, and it measured 495 microseconds per thousand requests of nothing else
         this.next = this.step.bind(this);
+        // What res.sendFile reports a failure to. Express hands it req.next, which is the router
+        // next and not the route one, so a file that cannot be served leaves the route and its
+        // error reaches the router error handlers rather than a four argument handler written
+        // inside the route. req.next itself is left alone: making it mean this everywhere is what
+        // express does, and it breaks express own res.format and app.routes.error tests here, so
+        // that stays open rather than half done.
+        this.leaveRoute = this.stepOutOfRoute.bind(this);
+    }
+
+    /**
+     * Leaves the rest of this route, with the error if there is one, and carries on with the route
+     * after it.
+     *
+     * @param {any} [err]
+     */
+    stepOutOfRoute(err) {
+        if (err) {
+            const req = this.req;
+            req._error = err;
+            req._errorKey = this.route.routeKey;
+            req._errorGroup = this.route.group;
+        }
+        this.step("route");
     }
 
     /**
@@ -282,6 +305,7 @@ class Walk {
             }
         }
         req.next = this.next;
+        req._leaveRoute = this.leaveRoute;
         if (continueRoute === "route") {
             this.step("route");
         } else if (continueRoute) {

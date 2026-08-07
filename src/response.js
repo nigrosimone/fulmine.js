@@ -703,7 +703,10 @@ module.exports = class Response extends Writable {
         // Express's completion handler, exactly: a callback hears everything and the response is
         // left alone, so it can still answer 200 after a 404 error. Without one, a directory
         // falls through as a plain next(), and aborts and write errors go nowhere.
-        const next = this.req.next;
+        // the router's next and not the route's: express reports a file it could not serve past
+        // the rest of the route, so a four argument handler written inside the route never sees
+        // it. _leaveRoute is that; req.next is kept for everything else, see Walk#stepOutOfRoute
+        const next = this.req._leaveRoute ?? this.req.next;
         const done = /** @type {(err?: any) => void} */ (
             (err) => {
                 if (callback) return callback(err);
