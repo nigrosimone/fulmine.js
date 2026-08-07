@@ -957,6 +957,68 @@ function couldAnswer(route, path) {
 }
 
 /**
+ * Whether a layer written before a mount could answer a request for one of the paths inside it.
+ *
+ * A mount covers everything under its path, so this is a question about a subtree rather than about
+ * the mount point, and the two answers differ: `/a` and `/:p0/:p1/:p2` match none of each other's
+ * text, and both answer `/a/x/y`. µWS jumps straight to whichever leaf it registered, so a leaf a
+ * layer like this could have answered has to stay on the generic path, which is the only place
+ * express's registration order decides.
+ *
+ * Only layers with more segments than the mount path reach this: one with as few already matches
+ * the mount point itself, and _optimizeRoute has refused the mount before the walk gets here.
+ *
+ * Compared folded whichever way the routers are set. A wrong yes costs a leaf its native
+ * registration and nothing else.
+ *
+ * @param {{path: string, use: boolean, method: string, all: boolean}} guard
+ * @param {string} leafPath the leaf's absolute path, parameters and all
+ * @param {any} leaf
+ * @returns {boolean}
+ */
+function shadowsLeaf(guard, leafPath, leaf) {
+    if (!guard.all && guard.method !== leaf.method && !(guard.method === "HEAD" && leaf.method === "GET")) {
+        return false;
+    }
+    return pathsCanOverlap(guard.path.toLowerCase(), leafPath.toLowerCase(), guard.use);
+}
+
+/**
+ * The layers before a mount that answer some of what is inside it and not all of it, which is the
+ * one thing neither the chain nor µWS's own choice can say: the chain runs what is in it without
+ * matching again, and µWS picks by specificity. They are carried down the walk instead and asked
+ * about every leaf, see shadowsLeaf.
+ *
+ * @param {any} router the router the mount belongs to
+ * @param {any} mount
+ * @param {string} pathPrefix what the mounts above this one consumed
+ * @param {any[]} chain the layers that always run before the mount, which need no guard
+ * @param {any[]} inherited the guards from further out, since a mount two levels down is under
+ *   everything written before either of them
+ * @returns {any[]|null} null when a path cannot be read segment by segment, which leaves the mount
+ *   to ordinary dispatch rather than guessing about it
+ */
+function guardsInside(router, mount, pathPrefix, chain, inherited) {
+    let guards = inherited;
+    for (const r of router._routes) {
+        if (r.routeKey > mount.routeKey) {
+            break;
+        }
+        if (r === mount || chain.includes(r)) {
+            continue;
+        }
+        if (typeof r.path !== "string") {
+            return null;
+        }
+        if (guards === inherited) {
+            guards = [...inherited];
+        }
+        guards.push({ path: pathPrefix + r.path, use: r.use === true, method: r.method, all: r.all === true });
+    }
+    return guards;
+}
+
+/**
  * Notes which application is current before a mounted one is entered, so that exact one comes back
  * when it hands over.
  *
@@ -1701,8 +1763,9 @@ module.exports = class Router extends EventEmitter {
             return;
         }
 
-        // pathPrefix/chainPrefix accumulate across nested sole-callback mounts
-        const walk = (router, pathPrefix, chainPrefix) => {
+        // pathPrefix/chainPrefix accumulate across nested sole-callback mounts, and outerGuards
+        // carries what was written before them and answers only part of what is under them
+        const walk = (router, pathPrefix, chainPrefix, outerGuards) => {
             for (const route of router._routes) {
                 if (route.use) {
                     // only sole-callback mounts. Case rules do not gate the walk: each level's
@@ -1721,23 +1784,33 @@ module.exports = class Router extends EventEmitter {
                             route._whyGeneric = "something before it in the same router overlaps its paths";
                             continue;
                         }
-                        route._walkedInto = true;
                         pathToMount = pathToMount.slice(0, -1);
-                        walk(route.callbacks[0], pathPrefix + route.path, [
-                            ...chainPrefix,
-                            ...pathToMount,
-                            {
-                                ...route,
-                                callbacks: [],
-                                callbackKinds: [],
-                                keepMount: true,
-                                // mounted sub-apps become req.app during their dispatch, like express
-                                mountApp:
-                                    route.callbacks[0].constructor.name === "Application"
-                                        ? route.callbacks[0]
-                                        : undefined
-                            }
-                        ]);
+                        const guards = guardsInside(router, route, pathPrefix, pathToMount, outerGuards);
+                        if (guards === null) {
+                            route._whyGeneric = "a path written before it cannot be read segment by segment";
+                            continue;
+                        }
+                        route._walkedInto = true;
+                        walk(
+                            route.callbacks[0],
+                            pathPrefix + route.path,
+                            [
+                                ...chainPrefix,
+                                ...pathToMount,
+                                {
+                                    ...route,
+                                    callbacks: [],
+                                    callbackKinds: [],
+                                    keepMount: true,
+                                    // mounted sub-apps become req.app during their dispatch, like express
+                                    mountApp:
+                                        route.callbacks[0].constructor.name === "Application"
+                                            ? route.callbacks[0]
+                                            : undefined
+                                }
+                            ],
+                            guards
+                        );
                     } else {
                         // said once here rather than at each condition above: a mount is walked into
                         // only when µWS can match its path on its own and it carries exactly one
@@ -1757,6 +1830,16 @@ module.exports = class Router extends EventEmitter {
                             (!pathPrefix || !router._isFollowedByAnOverlap(route, router._routes)))) &&
                     supportedUwsMethods.has(route.method)
                 ) {
+                    // something outside this router, written before the mount it is in, that could
+                    // answer this exact path. µWS would jump here and never give it its turn
+                    if (outerGuards.length > 0 && typeof route.path === "string") {
+                        const absolute = pathPrefix + route.path;
+                        const guard = outerGuards.find((g) => shadowsLeaf(g, absolute, route));
+                        if (guard) {
+                            route._whyGeneric = `${guard.path} is written before the mount it is in and answers the same paths`;
+                            continue;
+                        }
+                    }
                     const leafPath = router._optimizeRoute(route, router._routes);
                     if (!leafPath) {
                         route._whyGeneric = "something before it in the same router overlaps its paths";
@@ -1816,7 +1899,7 @@ module.exports = class Router extends EventEmitter {
             }
         };
 
-        walk(this, "", []);
+        walk(this, "", [], []);
     }
 
     /**
