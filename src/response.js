@@ -190,8 +190,33 @@ module.exports = class Response extends Writable {
         this._corkNeeded = false;
         // shared methods, not arrows: two closures and a once() wrapper here were four
         // allocations per request. EventEmitter calls listeners with this = the emitter.
-        this.on("error", this._onAbortError);
-        this.on("close", this._onCloseCleanup);
+        //
+        // Written into the map rather than through on(). A stream arrives with its _events already
+        // shaped, "close" and "error" among the keys and every value undefined, so filling two of
+        // them is the same hidden class on() would have produced and none of its work: the argument
+        // check, the newListener emission, the is-there-one-already branch and the max listener
+        // count. Two calls per response, and the profile put them at 6% of a hello-world.
+        //
+        // The condition is the whole safety of it: a fresh response has no listeners, so both slots
+        // are free, and anything else falls back to on(). Adding one later goes through on() as
+        // usual and finds what this wrote, because this wrote what on() writes.
+        // cast because _events and _eventsCount are EventEmitter's own bookkeeping and carry no
+        // type: they are what on() writes, and this writes the same two entries
+        const self = /** @type {any} */ (this);
+        const events = self._events;
+        if (
+            self._eventsCount === 0 &&
+            events !== undefined &&
+            events.error === undefined &&
+            events.close === undefined
+        ) {
+            events.error = this._onAbortError;
+            events.close = this._onCloseCleanup;
+            self._eventsCount = 2;
+        } else {
+            this.on("error", this._onAbortError);
+            this.on("close", this._onCloseCleanup);
+        }
     }
 
     /** @param {Error} err */
