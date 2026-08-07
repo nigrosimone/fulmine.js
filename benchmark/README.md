@@ -131,3 +131,20 @@ and Express getting faster.
 
 Only rows that clear the ±10% noise floor are marked. Anything under it is weather: a table of a
 dozen ratios always has one that moved a few percent.
+
+## A unix socket instead of a port
+
+```bash
+npm run benchmark:compare -- --duration 20 --socket 1     # linux and macOS only
+```
+
+Both arms move together: µWS listens through `listen_unix` and node's server does it natively, and
+autocannon dials the socket instead of the port. It is there to answer one question, whether the
+loopback TCP stack is part of what makes a row move ten percent between two runs of the same code,
+and it is asked rather than assumed because the answer is not free either way: the two arms need not
+pay the same for a change of transport, and a ratio that moves because µWS and `node:net` differ on
+AF_UNIX has stopped saying anything about the frameworks.
+
+So run it both ways and compare the **ratios**. If they agree, the socket is a cheaper transport and
+the noise it removes is real. If they do not, the transport is part of what the benchmark measures
+and the port stays. The Benchmark workflow can be dispatched either way from the Actions tab.

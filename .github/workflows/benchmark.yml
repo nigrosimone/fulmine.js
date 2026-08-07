@@ -6,6 +6,16 @@ on:
     pull_request:
         branches:
             - main
+    # for the one question a scheduled run cannot answer: whether the loopback TCP stack is part of
+    # what makes a row move ten percent between two runs of the same code. Dispatch it once each
+    # way and compare the ratios, which is what the summary's own history section is for
+    workflow_dispatch:
+        inputs:
+            transport:
+                description: "What both arms are reached on"
+                type: choice
+                options: [tcp, unix-socket]
+                default: tcp
 
 permissions: write-all
 
@@ -60,7 +70,9 @@ jobs:
               # set on the step, not the job, so npm install still pulls devDependencies
               env:
                   NODE_ENV: production
-              run: npm run benchmark:compare -- --duration 20 --output benchmark_summary.md
+              run: |
+                  npm run benchmark:compare -- --duration 20 --output benchmark_summary.md \
+                      ${{ inputs.transport == 'unix-socket' && '--socket 1' || '' }}
 
             - name: Upload benchmark markdown artifact
               uses: actions/upload-artifact@v4

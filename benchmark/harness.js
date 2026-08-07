@@ -51,8 +51,7 @@ function startScenarioServer(framework, scenarioName, env, stdio) {
         framework.id,
         "--scenario",
         scenarioName,
-        "--port",
-        String(framework.port)
+        ...(framework.socketPath ? ["--socket", framework.socketPath] : ["--port", String(framework.port)])
     ];
 
     const server = spawn(process.execPath, serverArgs, {
@@ -76,7 +75,7 @@ function startScenarioServer(framework, scenarioName, env, stdio) {
 // the ports get reused, and a server still draining a load run's keep-alive connections will
 // happily answer a readiness probe and then never answer the real request.
 function waitForReady(server, framework, scenarioName, timeoutMs = 15000) {
-    const expected = `ready:${framework.id}:${scenarioName}:${framework.port}`;
+    const expected = `ready:${framework.id}:${scenarioName}:${framework.socketPath ?? framework.port}`;
 
     return new Promise((resolve, reject) => {
         let stdout = "";
@@ -106,7 +105,12 @@ function waitForReady(server, framework, scenarioName, timeoutMs = 15000) {
         };
 
         const timer = setTimeout(() => {
-            finish(new Error(`Timeout waiting for ${framework.id}/${scenarioName} on port ${framework.port}`));
+            finish(
+                new Error(
+                    `Timeout waiting for ${framework.id}/${scenarioName} on ` +
+                        (framework.socketPath ? `socket ${framework.socketPath}` : `port ${framework.port}`)
+                )
+            );
         }, timeoutMs);
 
         server.stdout.on("data", onData);

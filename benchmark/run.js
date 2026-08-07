@@ -3,6 +3,7 @@
 const fs = require("fs");
 const http = require("http");
 const path = require("path");
+const os = require("os");
 const zlib = require("zlib");
 const crypto = require("crypto");
 const autocannon = require("autocannon");
@@ -27,6 +28,35 @@ const FRAMEWORKS = [
     { id: "fulmine", label: "Fulmine", port: 3000 }
 ];
 
+/**
+ * Puts both arms on a unix socket instead of a TCP port, when `--socket` asked for it.
+ *
+ * The question this exists to answer is whether the loopback stack is part of what makes a row
+ * move ten percent between two runs of the same code. It is asked rather than assumed, because the
+ * answer is not free either way: the two arms do not necessarily pay the same for a change of
+ * transport, and a ratio that moves because µWS and node:net differ on AF_UNIX has stopped saying
+ * anything about the frameworks. Run it both ways and compare the ratios, not the throughput.
+ *
+ * @param {boolean} wanted
+ */
+function useSockets(wanted) {
+    if (!wanted) {
+        return;
+    }
+    if (process.platform === "win32") {
+        throw new Error("--socket needs a unix socket, and this is Windows. Run it on the CI or a mac.");
+    }
+    for (const framework of FRAMEWORKS) {
+        framework.socketPath = path.join(os.tmpdir(), `fulmine-bench-${framework.id}-${process.pid}.sock`);
+        // a socket left behind by a killed run would refuse the bind
+        try {
+            fs.unlinkSync(framework.socketPath);
+        } catch {
+            // there was none, which is the normal case
+        }
+    }
+}
+
 function parseArgs(argv) {
     const args = {};
     for (let i = 0; i < argv.length; i++) {
@@ -39,7 +69,7 @@ function parseArgs(argv) {
     return args;
 }
 
-function runHttpRequest(port, request, timeoutMs = 30000) {
+function runHttpRequest(framework, request, timeoutMs = 30000) {
     return new Promise((resolve, reject) => {
         const method = request.method || "GET";
         const pathName = request.path || "/";
@@ -52,8 +82,11 @@ function runHttpRequest(port, request, timeoutMs = 30000) {
 
         const req = http.request(
             {
-                host: "127.0.0.1",
-                port,
+                // a socket path and a host/port are alternatives here, as they are for node's
+                // own server: whichever the run asked for is what both arms are reached on
+                ...(framework.socketPath
+                    ? { socketPath: framework.socketPath }
+                    : { host: "127.0.0.1", port: framework.port }),
                 path: pathName,
                 method,
                 headers
@@ -130,7 +163,7 @@ async function validateScenarioResponses(scenarioName, scenario) {
         const { server, stderrRef } = startScenarioServer(framework, scenarioName);
         try {
             await waitForReady(server, framework, scenarioName);
-            results[framework.id] = await runHttpRequest(framework.port, request);
+            results[framework.id] = await runHttpRequest(framework, request);
         } catch (error) {
             // say which server failed to answer. Without it the report names neither, and a
             // validation that never ran is indistinguishable from one that ran and disagreed
@@ -195,7 +228,9 @@ async function runScenario(framework, scenarioName, scenario, durationSeconds) {
         const result = await autocannon({
             // the path goes in the url: autocannon only honours a top-level `path` through the
             // `requests` array, so passing it alongside `url` silently sends every request to /
-            url: `http://127.0.0.1:${framework.port}${request.path}`,
+            url: `http://127.0.0.1${framework.socketPath ? "" : ":" + framework.port}${request.path}`,
+            // autocannon dials the socket and keeps using the url only for the request line
+            socketPath: framework.socketPath,
             method: request.method,
             headers: request.headers,
             body: request.body ?? undefined,
@@ -391,6 +426,7 @@ async function main() {
     // turns it off; there is no `--no-history` because the argument parser always eats the next token
     const historyFile =
         args.history === "none" ? null : path.resolve(process.cwd(), args.history || "benchmark_history.json");
+    useSockets(args.socket !== undefined && args.socket !== "false");
     const requestedScenario = args.scenario;
     const scenarioList = requestedScenario ? [requestedScenario] : SCENARIO_FILES;
 

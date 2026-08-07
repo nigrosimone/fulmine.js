@@ -101,7 +101,10 @@ async function main() {
     const args = parseArgs(process.argv.slice(2));
     const frameworkName = args.framework;
     const scenarioName = args.scenario;
-    const port = Number(args.port || 3000);
+    // a path rather than a port when the run asked for one: uWS listens on a unix socket
+    // through listen_unix and node's server does it natively, so both arms move together
+    const socketPath = args.socket;
+    const port = socketPath || Number(args.port || 3000);
 
     if (!frameworkName || !scenarioName) {
         throw new Error("Missing required args: --framework and --scenario");
