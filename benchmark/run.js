@@ -7,6 +7,15 @@ const zlib = require("zlib");
 const crypto = require("crypto");
 const autocannon = require("autocannon");
 const { startScenarioServer, waitForReady, stopScenarioServer } = require("./harness.js");
+const {
+    machineKey,
+    looseKey,
+    readHistory,
+    runRecordOf,
+    baselineFor,
+    appendRun,
+    historyMarkdown
+} = require("./history.js");
 
 const SCENARIO_FILES = fs
     .readdirSync(path.join(__dirname, "scenarios"))
@@ -231,7 +240,7 @@ async function runScenario(framework, scenarioName, scenario, durationSeconds) {
     }
 }
 
-function buildMarkdown(results) {
+function buildMarkdown(results, historySection) {
     const lines = [];
     lines.push("<!-- benchmark-comment -->");
     lines.push("## Benchmark Comparison");
@@ -317,6 +326,10 @@ function buildMarkdown(results) {
         }
     }
 
+    if (historySection) {
+        lines.push(historySection);
+    }
+
     if (unvalidated.length > 0) {
         const disagreed = unvalidated.filter((entry) => entry.ran).length;
         const neverRan = unvalidated.length - disagreed;
@@ -374,6 +387,10 @@ async function main() {
     const args = parseArgs(process.argv.slice(2));
     const durationSeconds = Number(args.duration || 20);
     const outputPath = path.resolve(process.cwd(), args.output || "benchmark_summary.md");
+    // where the previous run on this machine was left, and where this one goes. `--history none`
+    // turns it off; there is no `--no-history` because the argument parser always eats the next token
+    const historyFile =
+        args.history === "none" ? null : path.resolve(process.cwd(), args.history || "benchmark_history.json");
     const requestedScenario = args.scenario;
     const scenarioList = requestedScenario ? [requestedScenario] : SCENARIO_FILES;
 
@@ -448,7 +465,31 @@ async function main() {
 
     results.sort((a, b) => a.name.localeCompare(b.name));
 
-    const markdown = buildMarkdown(results);
+    // twenty minutes of measurement must not be thrown away because a file could not be written,
+    // so everything here is best effort and says so rather than failing the run
+    let historySection = null;
+    if (historyFile) {
+        try {
+            const key = machineKey();
+            const history = readHistory(historyFile);
+            const baseline = baselineFor(history, key, looseKey());
+            const record = runRecordOf(results);
+            historySection = historyMarkdown(baseline, record);
+            appendRun(historyFile, history, key, record);
+            process.stdout.write(
+                `[history] ${Object.keys(record.scenarios).length} scenario(s) under ${key}` +
+                    `${
+                        baseline
+                            ? `, compared against ${baseline.run.commit || baseline.run.at}${baseline.exact ? "" : " on another cpu"}`
+                            : ", nothing to compare against yet"
+                    }\n`
+            );
+        } catch (error) {
+            process.stderr.write(`[history] skipped: ${error.message}\n`);
+        }
+    }
+
+    const markdown = buildMarkdown(results, historySection);
     fs.writeFileSync(outputPath, markdown, "utf8");
     process.stdout.write(markdown);
 }

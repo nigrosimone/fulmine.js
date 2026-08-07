@@ -38,6 +38,22 @@ jobs:
             - name: Install dependencies
               run: npm install --include=dev
 
+            # the ratios the last green run on main measured, so this one can say what moved rather
+            # than only what it is. Always main's, never the branch's: every run is read against the
+            # same baseline. Best effort throughout - a first run, an expired artifact or a run that
+            # never uploaded one all mean "nothing to compare against", which is not a failure
+            - name: Fetch the previous run's ratios
+              continue-on-error: true
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  previous=$(gh run list --workflow benchmark.yml --branch main --status success \
+                      --limit 1 --json databaseId --jq '.[0].databaseId')
+                  if [ -n "$previous" ]; then
+                      gh run download "$previous" --name benchmark-history --dir . || true
+                  fi
+                  ls -l benchmark_history.json || echo "no history to compare against"
+
             - name: Run benchmark suite
               # without this, template engines run in debug mode and recompile the view on every
               # request, so engines/art measures the template compiler rather than either server.
@@ -51,6 +67,15 @@ jobs:
               with:
                   name: benchmark-summary
                   path: benchmark_summary.md
+
+            # what the next run reads. Keyed by machine and major node inside, so a run only ever
+            # compares itself against one that is comparable
+            - name: Upload the ratios for the next run
+              uses: actions/upload-artifact@v4
+              with:
+                  name: benchmark-history
+                  path: benchmark_history.json
+                  if-no-files-found: warn
 
             - name: Comment on commit
               if: github.event_name == 'push'

@@ -6,6 +6,9 @@ processed.txt
 /coverage
 .DS_Store
 benchmark_summary.md
+# the ratios a benchmark run leaves for the next one. Per machine, so it is never the same file
+# twice and never worth committing: in CI it travels as an artifact instead
+benchmark_history.json
 .vscode.ab-worktree/
 
 # what a comparison test wrote when the two arms disagreed, kept so a failure that does not

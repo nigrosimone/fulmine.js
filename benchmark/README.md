@@ -100,5 +100,34 @@ separate `wrk` lua script, and when one of the scripts was renamed the load run 
 on every request, and `engines/art` ends up measuring the template compiler rather than either
 server.
 
-Ratios are not comparable across runs. GitHub's runners vary enough that the same code measures
-15k or 28k req/sec on the same row, so only compare figures produced in the same run.
+Absolute req/sec are not comparable across runs. GitHub's runners vary enough that the same code
+measures 15k or 28k req/sec on the same row, so never read two runs' throughput against each other.
+
+The speedup is the one figure that travels, because both arms ran on the same machine in the same
+run: a slow neighbour or a warm cache moves them together and the ratio holds still.
+
+## Comparing against the last run
+
+Each run writes its ratios to `benchmark_history.json` and, if a previous run's file is there,
+reports what moved since. In CI the file travels as the `benchmark-history` artifact: the workflow
+downloads it from the last green run **on main**, so every run is read against the same baseline
+rather than against whatever ran before it.
+
+```bash
+npm run benchmark:compare -- --duration 20            # reads and writes benchmark_history.json
+npm run benchmark:compare -- --history none           # off
+npm run benchmark:compare -- --history /tmp/mine.json # somewhere else
+```
+
+Runs are filed under machine and major node version, and only compared against one filed under the
+same key. Both halves of that key have moved a ratio on their own before: the jump from node 22 to
+24 was Express roughly tripling on some rows, which read as a regression here and was not one. When
+no run exists for this exact cpu, the most recent one on a machine of the same shape is used and the
+report says so, since a hosted runner pool holds more than one cpu and they do not agree.
+
+The raw req/sec of both arms are kept next to the ratio. They are not comparable across runs, but
+when a ratio does move they say which arm moved, which is the difference between a regression here
+and Express getting faster.
+
+Only rows that clear the ±10% noise floor are marked. Anything under it is weather: a table of a
+dozen ratios always has one that moved a few percent.
