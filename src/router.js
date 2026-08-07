@@ -1314,7 +1314,10 @@ module.exports = class Router extends EventEmitter {
                 path.endsWith("/") &&
                 path !== "/"
             ) {
-                path = path.slice(0, -1);
+                // every one of them, not the last: express loosens with /\/+$/, so a route written
+                // "/test//" is registered as "/test" and answers "/test" and "/test/" but not the
+                // path it was written as
+                path = path.replace(/\/+$/, "");
             }
             if (path === "*") {
                 path = "/{*splat}";

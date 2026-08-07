@@ -21,6 +21,9 @@ app.get("/*any", (req, res) => res.json({ r: "any", any: req.params.any }));
 app.get("/ASDF", (req, res) => res.send("upper"));
 app.get("/lower", (req, res) => res.send("lower"));
 app.get("/def/", (req, res) => res.send("written with a slash"));
+// written with two, which express registers as none: it answers /twice and /twice/ and not the
+// path it was written as
+app.get("/twice//", (req, res) => res.send("written with two slashes"));
 
 // an optional group at the end, where the slash decides which route answers
 app.get("/opt/:a/{:b}", (req, res) => res.json({ r: "opt", params: req.params }));
@@ -51,6 +54,10 @@ app.listen(13333, async () => {
         "/def",
         "/def/",
         "/DEF/",
+        "/twice",
+        "/twice/",
+        "/twice//",
+        "/twice///",
         "/opt/x",
         "/opt/x/",
         "/opt/x/y",
