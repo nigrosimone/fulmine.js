@@ -185,6 +185,12 @@ class Application extends Router {
             if (parent.response) {
                 Object.setPrototypeOf(this.response, parent.response);
             }
+            // and the engines with them, which is the same chaining express does: a sub-app renders
+            // with whatever the parent registered unless it registered its own. Without this a
+            // render inside a mounted app looked for a module named after the extension.
+            if (parent.engines) {
+                Object.setPrototypeOf(this.engines, parent.engines);
+            }
             // a "trust proxy" this app never set is inherited from the parent, as express does:
             // the defaults are deleted so get() falls through to the parent's value
             if (

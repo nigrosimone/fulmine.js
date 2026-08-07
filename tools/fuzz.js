@@ -240,6 +240,13 @@ const libraryRoutes = [];
 // by both, so the modification time behind every ETag and Last-Modified is the same one: a file
 // per arm would differ by a millisecond and every conditional answer would look like a divergence.
 const FILE_DIR = path.join(os.tmpdir(), "fulmine-fuzz-files");
+const VIEW_DIR = path.join(FILE_DIR, "views");
+const VIEWS = {
+    "page.html": "<p>{{title}}</p>",
+    "other.html": "<p>other {{title}}</p>",
+    "sub/deep.html": "<p>deep {{title}}</p>"
+};
+
 const FILES = {
     "a.txt": "the quick brown fox jumps over the lazy dog",
     "b.json": '{"name":"b","values":[1,2,3]}',
@@ -252,8 +259,12 @@ const FILES = {
 /** Lays the files down, which has to happen before either arm is asked for one. */
 function writeFiles() {
     fs.mkdirSync(path.join(FILE_DIR, "sub"), { recursive: true });
+    fs.mkdirSync(path.join(VIEW_DIR, "sub"), { recursive: true });
     for (const [name, body] of Object.entries(FILES)) {
         fs.writeFileSync(path.join(FILE_DIR, name), body);
+    }
+    for (const [name, body] of Object.entries(VIEWS)) {
+        fs.writeFileSync(path.join(VIEW_DIR, name), body);
     }
 }
 
@@ -266,7 +277,7 @@ const LITERAL_KINDS = ["lit-send", "lit-json", "lit-status", "lit-header", "lit-
 
 // the kinds that raise, which the skip-friendly mode leaves out: with no error handler of ours
 // the answer is express own error page, and its stack is its own frames
-const RAISES = new Set(["throw", "next-error", "send-file", "download"]);
+const RAISES = new Set(["throw", "next-error", "send-file", "download", "render-missing", "render-callback"]);
 
 const HANDLER_KINDS = [
     ...LITERAL_KINDS,
@@ -297,7 +308,11 @@ const HANDLER_KINDS = [
     "peer",
     "negotiate",
     "send-file",
-    "download"
+    "download",
+    "render",
+    "render-ext",
+    "render-missing",
+    "render-callback"
 ];
 
 /**
@@ -376,6 +391,8 @@ function drawPlan(rng) {
     if (chance(0.1)) settings["x-powered-by"] = true;
     if (chance(0.1)) settings["subdomain offset"] = 3;
     if (chance(0.25)) settings["trust proxy"] = pick([true, false, 1, 2, "127.0.0.1", "loopback"]);
+    if (chance(0.5)) settings["view engine"] = "html";
+    if (chance(0.3)) settings["view cache"] = chance(0.5);
 
     // a body parser in front of everything, with a body to match, so req.body is not always absent
     // left out when nothing is there to catch an error: a body parser and a static mount both
@@ -527,6 +544,26 @@ function arrowFrom(body) {
     return new Function(`return (req, res) => { ${body}; }`)();
 }
 
+/**
+ * The template engine both arms register. It reports the file it was given, relative to the views
+ * directory, so what is compared is the lookup rather than anything the engine invented, and then
+ * substitutes the locals so those are compared too.
+ *
+ * @param {string} filePath
+ * @param {Record<string, any>} options
+ * @param {(err: any, rendered?: string) => void} callback
+ */
+function viewEngine(filePath, options, callback) {
+    fs.readFile(filePath, "utf8", (err, text) => {
+        if (err) {
+            return callback(err);
+        }
+        const relative = path.relative(VIEW_DIR, filePath).split(path.sep).join("/");
+        const body = text.replace(/\{\{(\w+)\}\}/g, (whole, key) => String(options[key] ?? ""));
+        callback(null, `[${relative}] ${body}`);
+    });
+}
+
 /** Builds one handler of the kind the plan asked for. */
 function makeHandler(route) {
     const id = route.id;
@@ -561,6 +598,17 @@ function makeHandler(route) {
         case "peer":
             // what the proxy headers were believed to say, which is trust proxy's whole job
             return (req, res) => res.json({ id, ip: req.ip, ips: req.ips, protocol: req.protocol, host: req.hostname });
+        case "render":
+            return (req, res) => res.render("page", { title: id });
+        case "render-ext":
+            // named with its extension, which skips the default engine and takes another lookup path
+            return (req, res) => res.render("sub/deep.html", { title: id });
+        case "render-missing":
+            return (req, res) => res.render("nowhere", { title: id });
+        case "render-callback":
+            // with a callback the error is the caller's to handle, and the response is untouched
+            return (req, res, next) =>
+                res.render("other", { title: id }, (err, html) => (err ? next(err) : res.type("html").send(html)));
         case "send-file":
             return (req, res) => res.sendFile(path.join(FILE_DIR, "a.txt"));
         case "download":
@@ -670,6 +718,10 @@ function express_bodyParser(factory, kind) {
 async function instantiate(plan, factory, port) {
     const app = factory();
     for (const [key, value] of Object.entries(plan.settings)) app.set(key, value);
+    // registered on every plan: an engine costs nothing until something renders, and a mounted
+    // application inherits it, which is part of what this is here to compare
+    app.set("views", VIEW_DIR);
+    app.engine("html", viewEngine);
     if (plan.bodyParser) {
         // Fulmine reads a body only for POST, PUT, PATCH and QUERY unless told otherwise, which
         // the readme states as a deliberate difference: express reads one whenever the request

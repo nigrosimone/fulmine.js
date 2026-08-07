@@ -55,6 +55,16 @@ jobs:
             - name: Run tests
               run: npm run test
 
+            # what the two arms wrote when they disagreed. A failure that only happens on a
+            # platform nobody develops on is diagnosable from these two files and from nothing else
+            - name: Keep what the arms wrote when they disagreed
+              if: failure()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: test-failures-node-${{ matrix.node-version }}
+                  path: test-failures/
+                  if-no-files-found: ignore
+
             # the pure functions, which the comparison suite cannot reach: it runs each test
             # against Express and against this and compares the output, which says nothing about a
             # branch no request happens to take
