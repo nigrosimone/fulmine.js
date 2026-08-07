@@ -335,13 +335,20 @@ module.exports = class Request extends LazyReadable {
         ) {
             r._connectionClose = true;
         } else if (
-            // content-length: 0 declares that there is nothing, which is the same as declaring
-            // nothing: the stream ends empty either way, without the onData subscription
-            (headerKey.length === 14 && headerKey === "content-length" && value !== "0") ||
+            (headerKey.length === 14 && headerKey === "content-length") ||
             (headerKey.length === 17 && headerKey === "transfer-encoding")
         ) {
-            // noticed here so the body decision in the constructor does not build the headers object
-            r._declaresBody = true;
+            // saying anything about framing at all, "0" included. A parser that can see a
+            // content-length answers about the body it describes, even an empty one: a zero length
+            // with a charset nobody can decode is a 415 in express and here, so a chain may only
+            // step over a parser when the request said nothing about a body whatsoever
+            r._hasBodyHeaders = true;
+            // content-length: 0 declares that there is nothing, which is the same as declaring
+            // nothing: the stream ends empty either way, without the onData subscription
+            if (value !== "0" || headerKey.length === 17) {
+                // noticed here so the body decision in the constructor does not build the headers object
+                r._declaresBody = true;
+            }
         }
     };
 
@@ -419,6 +426,15 @@ module.exports = class Request extends LazyReadable {
     _declaresBody;
 
     /**
+     * Whether the request said anything at all about framing, a content-length of "0" included.
+     * Wider than _declaresBody on purpose: a parser that can see a content-length answers about
+     * the body it describes even when that body is empty, so this is what decides whether a chain
+     * may step over one. Declared for the same reason as rawIp.
+     * @type {boolean|undefined}
+     */
+    _hasBodyHeaders;
+
+    /**
      * Whether the client asked for the connection to be closed. Declared for the same reason.
      * @type {boolean|undefined}
      */
@@ -475,6 +491,9 @@ module.exports = class Request extends LazyReadable {
             // the parsers and the stream want the whole picture, so it takes the full copy.
             const length = req.getHeader("content-length");
             const transferEncoding = req.getHeader("transfer-encoding");
+            if (length !== "" || transferEncoding !== "") {
+                this._hasBodyHeaders = true;
+            }
             if ((length !== "" && length !== "0") || transferEncoding !== "") {
                 currentRequest = this;
                 this._req.forEach(Request.#collectHeader);

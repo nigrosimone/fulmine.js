@@ -21,6 +21,7 @@ There is a command that does that replacing for you, across a whole project, and
 npx fulmine migrate --dry-run   # say what it would change, change nothing
 npx fulmine migrate             # do it
 npx fulmine differences         # just the list of what to check by hand
+npx fulmine profile             # what listen() decided about each route
 ```
 
 See [Migrating](#migrating) for what it handles and what it deliberately does not.
@@ -259,6 +260,37 @@ On top of that, a handler simple enough to be read at registration time is compi
 - it answers `Connection: keep-alive` even to a request that asked for `Connection: close`. The connection is still closed, since uWS decides that itself, and a client that asked to close is closing anyway.
 
 `app.set("declarative responses", false)` turns the whole thing off if you would rather have Express's exact framing than the speed.
+
+None of that is guesswork you have to do from the outside. `listen()` decides it all, and `npx fulmine profile` prints what it decided:
+
+```sh
+npx fulmine profile              # the file package.json's "main" points at
+npx fulmine profile server.js    # or name it
+```
+
+```text
+7 route(s), 4 answered by µWS itself
+
+  GET    /api/health          µWS  /api/health  (2 in front of it in its chain)
+  GET    /hello               µWS  /hello  (compiled to a response, reads no query)
+  GET    /:anything           router: something before it in the same router overlaps its paths
+  GET    /after-the-param     router: the parameter route /:anything is written before it
+  SEARCH /odd                 router: µWS does not serve SEARCH
+
+What this adds up to
+
+  4 of 7 route(s) matched by µWS in C++
+  1 answered from a response written at startup, running no javascript
+  layers in front of a compiled handler: 1 at least, 2 at most, 1.8 on average
+
+Worth changing, if these are routes that carry traffic
+
+  GET /after-the-param
+    write it above /:anything. Express answers whichever matches first, so the order is
+    already what decides, and with the literal first µWS can match it in C++ as well.
+```
+
+It loads the application with `listen()` replaced by the half that compiles the routes, so nothing binds a port and the listen callback does not run: profiling a running service does not start a second copy of it. There is no score, on purpose. A percentage of routes is not a percentage of traffic, and an application with a thousand cold routes and one hot one that fell back would score well and serve badly.
 
 2. Do not use external `serve-static` module. Instead use built-in `express.static()` middleware, which is optimized for Fulmine.
 
