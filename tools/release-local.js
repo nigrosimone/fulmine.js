@@ -1,10 +1,17 @@
 "use strict";
 
-// The first publish, from a machine logged in to npm. Later ones go through the Release workflow.
+// Publishing by hand, from a machine logged in to npm.
 //
-//   node tools/release-local.js 5.0.0-rc.1 --dry-run   rehearse, change nothing
-//   node tools/release-local.js 5.0.0-rc.1             do it
-//   node tools/release-local.js 5.0.0-rc.1 --skip-tests   after a publish that failed at the end
+//   node tools/release-local.js 5.3.0 --dry-run      rehearse, change nothing
+//   node tools/release-local.js 5.3.0                do it
+//   node tools/release-local.js 5.3.0 --skip-tests   after a publish that failed at the end
+//
+// This wrote the first release. It is not how releases are made any more: `.github/workflows/
+// release.yml` does that, either dispatched or triggered by a pushed tag, and that is the path to
+// use. What keeps this here is the case the workflow cannot fix by itself, which is a release that
+// got half way: the version bumped and the tag pushed, and then npm refused the package. Rerunning
+// the workflow will not republish a tag it has already seen, and `npm publish` by hand skips every
+// check. This does the checks and then publishes.
 //
 // Everything that can fail happens before anything becomes public, and the tag is pushed only once
 // npm has accepted the package.

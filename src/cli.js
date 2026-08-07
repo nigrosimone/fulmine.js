@@ -397,6 +397,86 @@ function profile(argv) {
     process.exit(0);
 }
 
+// what a reason means for whoever wrote the route, when it means anything they can act on. A
+// method µWS does not serve, or a path only a regular expression can match, is not something to
+// go and fix; an ordering that costs the native match is.
+/** @type {[RegExp, (match: RegExpExecArray) => string][]} */
+const ADVICE = [
+    [
+        /^the parameter route (.+) is written before it$/,
+        (match) =>
+            `write it above ${match[1]}. Express answers whichever matches first, so the order is` +
+            ` already what decides,\n    and with the literal first µWS can match it in C++ as well.`
+    ],
+    [
+        /^something before it in the same router overlaps its paths$/,
+        () =>
+            "something registered earlier answers some of the same paths, so the chain that would" +
+            " reach this route\n    cannot be worked out ahead of time. Narrowing the earlier path, or moving this one above it, frees it."
+    ],
+    [
+        /^a route after it in the same mounted router could answer the same paths$/,
+        () =>
+            "a route below it in the same mounted router overlaps it. Inside a mount the later one" +
+            " has to be able to win,\n    which a precomputed chain cannot express. Narrowing either path frees it."
+    ]
+];
+
+/**
+ * A summary that says how much of this application the native router carries, and what could be
+ * changed to make it carry more.
+ *
+ * There is no score here on purpose. A percentage of routes is not a percentage of traffic: an
+ * application with a thousand cold routes and one hot one that fell back would score well and
+ * serve badly. What is printed instead is counted rather than judged, and the advice is only
+ * printed for the reasons somebody can actually act on.
+ *
+ * @param {any[]} routes
+ * @param {any[]} native
+ * @param {any[]} declarative
+ */
+function printSummary(routes, native, declarative) {
+    console.log("\nWhat this adds up to\n");
+    console.log(`  ${native.length} of ${routes.length} route(s) matched by µWS in C++`);
+    if (declarative.length > 0) {
+        console.log(`  ${declarative.length} answered from a response written at startup, running no javascript`);
+    }
+
+    const skipHeaders = native.filter(({ route }) => route._native.skipHeaders).length;
+    const skipQuery = native.filter(({ route }) => route._native.skipQuery).length;
+    if (skipHeaders || skipQuery) {
+        console.log(
+            `  ${skipHeaders} copy no request headers, ${skipQuery} read no query: the analysis proved nothing asks for them`
+        );
+    }
+
+    if (native.length > 0) {
+        const ahead = native.map(({ route }) => route._native.ahead);
+        const total = ahead.reduce((sum, n) => sum + n, 0);
+        console.log(
+            `  layers in front of a compiled handler: ${Math.min(...ahead)} at least, ${Math.max(...ahead)} at most,` +
+                ` ${(total / ahead.length).toFixed(1)} on average`
+        );
+    }
+
+    // the routes whose reason somebody can do something about
+    const worth = [];
+    for (const { route, full } of routes) {
+        if (route._native || !route._whyGeneric) continue;
+        for (const [pattern, say] of ADVICE) {
+            const match = pattern.exec(route._whyGeneric);
+            if (match) {
+                worth.push(`  ${route.method} ${full}\n    ${say(match)}`);
+                break;
+            }
+        }
+    }
+    if (worth.length > 0) {
+        console.log(`\nWorth changing, if these are routes that carry traffic\n`);
+        console.log(worth.join("\n\n"));
+    }
+}
+
 /**
  * @param {any} app
  * @param {boolean} several whether to say which application this is
@@ -455,6 +535,8 @@ function printProfile(app, several) {
                 ` matches,\nand a compiled route walks them from a list worked out at startup rather than by matching.`
         );
     }
+
+    printSummary(routes, native, declarative);
 
     console.log(
         "\nA route answered by µWS is matched in C++ and reaches javascript with its chain already\n" +

@@ -10,7 +10,7 @@ the map.
 | -------------------------------------- | --------------------------------------------- | ----------------------- |
 | [`fuzz.js`](fuzz.js)                   | random applications, compared against Express | `npm run fuzz`          |
 | [`express-suite.js`](express-suite.js) | Express's own test suite, run against this    | `npm run test:express`  |
-| [`release-local.js`](release-local.js) | the first publish, from a logged-in machine   | `npm run release:local` |
+| [`release-local.js`](release-local.js) | publishing by hand, when the workflow cannot  | `npm run release:local` |
 
 ## fuzz.js
 
@@ -66,13 +66,17 @@ and the counts are good.
 
 ## release-local.js
 
-The first publish of a version, from a machine logged in to npm. Later ones go through the Release
-workflow instead.
+**Not how releases are made.** `.github/workflows/release.yml` does that, either dispatched from the
+Actions tab or triggered by a pushed tag, and that is the path to use.
+
+This is for the case the workflow cannot fix by itself: a release that got half way, with the
+version bumped and the tag pushed and then npm refusing the package. Rerunning the workflow will not
+republish a tag it has already seen, and `npm publish` by hand skips every check.
 
 ```bash
-node tools/release-local.js 5.0.0-rc.1 --dry-run      # rehearse, change nothing
-node tools/release-local.js 5.0.0-rc.1
-node tools/release-local.js 5.0.0-rc.1 --skip-tests   # after a publish that failed at the end
+node tools/release-local.js 5.3.0 --dry-run      # rehearse, change nothing
+node tools/release-local.js 5.3.0
+node tools/release-local.js 5.3.0 --skip-tests   # after a publish that failed at the end
 ```
 
 Everything that can fail happens before anything becomes public, and the tag is pushed only once npm
