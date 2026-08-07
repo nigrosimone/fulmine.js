@@ -1,3 +1,22 @@
+/*
+Copyright 2024 dimden.dev
+Copyright 2026 Nigro Simone
+
+This file is derived from Ultimate Express and has been modified.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 const acorn = require("acorn");
 const { stringify, withDefaultCharset, withUtf8Charset } = require("./utils.js");
 // H3App, DeclarativeResponse and _cfg all exist at runtime but are missing from the
