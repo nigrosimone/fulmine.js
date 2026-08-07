@@ -1,5 +1,23 @@
 # Changelog
 
+## [5.4.0](https://github.com/nigrosimone/fulmine.js/compare/v5.3.0...v5.4.0) (2026-08-07)
+
+### Features
+
+* **demo:** the demo reports Server-Timing, and the page shows what the server measured ([9fb663f](https://github.com/nigrosimone/fulmine.js/commit/9fb663f9e2c9b66033e3c04ae6efe4eb2c68f553))
+* req.ip can come from a PROXY protocol preamble, when the application asks for it ([474ef52](https://github.com/nigrosimone/fulmine.js/commit/474ef528f58c0e2eb3c14a857968109d591febc8))
+
+### Bug Fixes
+
+* a 406 from res.format leaves the route, as express's does ([6abd2f1](https://github.com/nigrosimone/fulmine.js/commit/6abd2f1ffa58746b601c4efd57985e0d27d53a4a))
+* a mount does not answer past a layer that was written before it and reaches inside ([8c8252d](https://github.com/nigrosimone/fulmine.js/commit/8c8252d9eb326edd38fcf7529fba07e0dace615a))
+* the demo deploy changes directory instead of passing a config path fly resolves twice ([9593cfd](https://github.com/nigrosimone/fulmine.js/commit/9593cfdbf7ce0c0d416040ce7f5ddb0e2adc2942))
+* the window that reads the peer address up front closes once instead of reopening every 100000 requests ([4d17252](https://github.com/nigrosimone/fulmine.js/commit/4d172529a1b0d165db21ccb06f3fe2da20787df3))
+
+### Performance Improvements
+
+* the response says Writable and does not build one until something asks ([6944807](https://github.com/nigrosimone/fulmine.js/commit/694480769ae263a18297c24277db7d78d551ad74))
+
 ## [5.3.0](https://github.com/nigrosimone/fulmine.js/compare/v5.2.0...v5.3.0) (2026-08-07)
 
 ### Features
