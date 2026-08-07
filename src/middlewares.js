@@ -359,14 +359,9 @@ function serveStatic(root, options) {
             }
         }
 
-        // Asked for with the trailing separator when the url had one, because send normalizes
-        // rather than resolves and keeps it: a directory answers the same either way, and a path
-        // that is not there names itself in the error the way send names it.
-        const statTarget = rawPath.endsWith("/") ? fullpath + path.sep : fullpath;
-
         let stat;
         try {
-            stat = fs.statSync(statTarget);
+            stat = fs.statSync(fullpath);
         } catch (err) {
             // the one to report when nothing is found: send hands each failed attempt to the next
             // one and reports whichever came last, so an extensions option that also missed names
