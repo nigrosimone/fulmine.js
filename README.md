@@ -246,6 +246,56 @@ app.listen(3000, () => {
 
 ## Performance tips
 
+Where the speed comes from, before the rules that govern it. Express finds a route by walking its
+stack and testing each layer against the path. Fulmine hands every route it can to µWS's own router,
+which matches in C++, and works out at `listen()` which layers stand in front of each one, so
+arriving at a handler costs no matching at all:
+
+```text
+   Express                              Fulmine
+   GET /users/42                        GET /users/42
+        |                                    |
+        v                                    v
+   +--------------+                    +------------------+
+   | layer 1      | path? no           |   µWS router     |  one match, in C++,
+   | layer 2      | path? no           |   /users/:id     |  against every path
+   | ...          |                    +--------+---------+  registered
+   | layer 214    | path? yes -+                |
+   +--------------+            |                v
+     a test per layer,         |       +------------------+
+     every request             |       | the chain, known |  the layers in front,
+                               |       | since listen()   |  in order, no matching
+                               v       +--------+---------+
+                            handler             |
+                                                v
+                                             handler
+```
+
+That is the whole difference on a large route table: the scan grows with the table and the match
+does not, which is why a thousand routes measure 10x and a handful measure 3x.
+
+Two more things happen on the way in, and `npx fulmine profile` will tell you which of them your
+routes get:
+
+```text
+   a request arriving at a compiled route
+
+   µWS match ──► the chain ──────────────────────────► handler ──► response
+                    |                                     |
+                    |  a body parser is stepped over      |  the Readable is not
+                    |  when the request declared no       |  built unless something
+                    |  body and the verb reads none       |  asks the body for one
+                    |                                     |
+                    |  the headers are not copied out     |  the two internal
+                    |  of µWS when the analysis proved    |  listeners are written
+                    |  nothing in the chain reads one     |  into the event map
+                    v                                     v
+              work that does not happen           work that is not prepared
+
+   and when the handler is simple enough to be read at registration time, none of the
+   above happens either: µWS answers from a response written once, at startup
+```
+
 1. Fulmine tries to optimize routing as much as possible, but it's only possible if:
 
 - the path is a plain string, or its parameters are whole segments: `/users/:id` and `/a/:b/c/:d` qualify, `/flights/:from-:to` does not, and neither does a `*splat` or a `{}` group. Routing is case-insensitive by default, as in Express; a request in the registered case is still served natively, any other case takes the ordinary path, and a route whose overlap with an earlier one leans on a cased literal goes the ordinary way for every request.
