@@ -538,6 +538,12 @@ module.exports = class Response extends LazyWritable {
         // the value here is nearly always the 10-char "keep-alive", which paid a scan per response
         const closing =
             typeof connection === "string" && connection.length === 5 && connection.toLowerCase() === "close";
+        // for..in over an object some responses delete from, which is the shape the request side
+        // was taken off for #rawHeadersEntries. It stays here, and the difference is where the
+        // deletes are: a 200 with a body performs none. Only 204, 304, 205, the freshness branch of
+        // sendFile and removeHeader do, this object is built fresh per response, so a dictionary one
+        // of them made costs that response and nothing after it. The request side deleted on every
+        // request, which is what made it worth a different structure
         for (const header in headers) {
             if (closing && header === "keep-alive") {
                 continue;
