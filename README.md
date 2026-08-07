@@ -175,18 +175,18 @@ Bun is not an option: µWebSockets.js is a native Node addon, and Bun does not l
 
 Two things about µWebSockets.js make a Dockerfile that works for Express fail here, and both have easy answers:
 
-- **No Alpine, and no Debian bookworm either.** µWebSockets.js ships prebuilt binaries linked against glibc 2.38 or newer. Alpine images use musl, so the binary does not load at all; `node:22` and `node:22-slim` are Debian bookworm, whose glibc 2.36 fails at startup with `GLIBC_2.38' not found`. Use the trixie variants: `node:22-trixie-slim` and up.
-- **`git` must be there when `npm install` runs.** µWebSockets.js is not on npm; it is installed straight from GitHub (`github:uNetworking/uWebSockets.js`), and npm uses git to fetch it. Full images like `node:22-trixie` have git; `-slim` ones do not.
+- **No Alpine, and no Debian bookworm either.** µWebSockets.js ships prebuilt binaries linked against glibc 2.38 or newer. Alpine images use musl, so the binary does not load at all; `node:26` and `node:26-slim` are Debian bookworm, whose glibc 2.36 fails at startup with `GLIBC_2.38' not found`. Use the trixie variants: `node:26-trixie-slim` and up.
+- **`git` must be there when `npm install` runs.** µWebSockets.js is not on npm; it is installed straight from GitHub (`github:uNetworking/uWebSockets.js`), and npm uses git to fetch it. Full images like `node:26-trixie` have git; `-slim` ones do not.
 
 The clean way to satisfy both is a multi-stage build: install with the full image, run with the slim one.
 
 ```dockerfile
-FROM node:22-trixie AS build
+FROM node:26-trixie AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
 
-FROM node:22-trixie-slim
+FROM node:26-trixie-slim
 WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
 COPY . .
@@ -194,7 +194,7 @@ EXPOSE 3000
 CMD ["node", "server.js"]
 ```
 
-A single-stage `node:22-trixie-slim` image works too if you `apt-get install -y git ca-certificates` before `npm ci`. Prebuilt binaries exist for x64 and arm64 on Linux, macOS and Windows, so nothing is compiled at install time either way.
+A single-stage `node:26-trixie-slim` image works too if you `apt-get install -y git ca-certificates` before `npm ci`. Prebuilt binaries exist for x64 and arm64 on Linux, macOS and Windows, so nothing is compiled at install time either way.
 
 ## Differences from Express
 
