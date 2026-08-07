@@ -765,7 +765,12 @@ class Application extends Router {
             view = new View(name, {
                 defaultEngine: this.get("view engine"),
                 root: this.get("views"),
-                engines: { ...this.engines }
+                // the object itself, not a copy of it: a mounted app reaches its parent's engines
+                // through the prototype chain, and a spread only carries what the app owns, so a
+                // sub-app rendering with the parent's engine went off to require() a module named
+                // after the extension. Express hands its own object over too, and means to: a view
+                // that loads an engine by require caches it back here
+                engines: this.engines
             });
             if (!view.path) {
                 const dirs =

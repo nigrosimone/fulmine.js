@@ -337,6 +337,16 @@ function serveStatic(root, options) {
         }
         let _path = url;
         const fullpath = path.resolve(path.join(root, url));
+        // What serve-static hands send is this path, except that a bare "/" under a mount the
+        // request did not write with one becomes "": without that rule a mount whose root is a file
+        // would ask the disk for a directory and could never answer at all.
+        //
+        // Send then stats `normalize(join(root, path))`, and both of those keep a trailing
+        // separator where `resolve` takes it off. The separator is not decoration: the disk refuses
+        // a file that is asked for as a directory, and the name inside the error carries it, which
+        // is what an error handler prints when fallthrough is off.
+        const mountRelative = rawPath === "/" && !req.endsWithSlash ? "" : url;
+        const statTarget = mountRelative.endsWith("/") && !fullpath.endsWith(path.sep) ? fullpath + path.sep : fullpath;
         if (root && !fullpath.startsWith(path.resolve(root))) {
             if (!options.fallthrough) {
                 res.status(403);
@@ -363,7 +373,7 @@ function serveStatic(root, options) {
 
         let stat;
         try {
-            stat = fs.statSync(fullpath);
+            stat = fs.statSync(statTarget);
         } catch (err) {
             // the one to report when nothing is found: send hands each failed attempt to the next
             // one and reports whichever came last, so an extensions option that also missed names

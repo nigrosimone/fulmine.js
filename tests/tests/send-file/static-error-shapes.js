@@ -57,13 +57,18 @@ app.listen(13333, async () => {
         // which carries the absolute path of the root inside it
         ["/ignore/a%00b", {}],
         ["/ext/a%00b/c", {}],
-        // an encoded slash is not a trailing slash: the path names a file called "/" inside a
-        // directory, so no index is looked for and no extension is tried. Only the one that
-        // resolves to something real is asked here: where nothing is there, the name inside the
-        // ENOENT differs by platform, because send stats what normalize left and this stats what
-        // resolve left, and resolve is the one that drops a trailing separator. The status and the
-        // error are the same either way, and chasing the two spellings once cost a red main.
-        ["/ignore/sub/%2F", {}]
+        // an encoded slash is not a trailing slash for the index lookup, which reads the path as
+        // written, but it is one for the disk, which reads what the escape decoded to. So no index
+        // is looked for and no extension is tried, and the name inside the ENOENT still carries the
+        // separator, because send stats what join and normalize left it. Getting this wrong is
+        // invisible until an error handler prints the message, which is why the fuzzer found it
+        // and no hand written test had
+        ["/ignore/sub/%2F", {}],
+        ["/ignore/missing/%2F", {}],
+        // and the same thing written plainly: a directory that is not there, named with the
+        // separator the request wrote
+        ["/ignore/missing/", {}],
+        ["/deny/missing/", {}]
     ];
 
     for (const [url, headers] of cases) {
