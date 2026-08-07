@@ -43,7 +43,18 @@ therefore public:
 fly secrets set SESSION_SECRET="$(openssl rand -hex 32)" --app fulmine-demo
 ```
 
-A deploy can also be done by hand from this directory with `fly deploy`.
+A deploy can also be done by hand, from the repository root rather than from here, so the paths do
+not have to be typed:
+
+```sh
+npm run demo:deploy    # fly deploy ./demo --config ./demo/fly.toml
+npm run demo:logs      # what the machine is saying
+npm run demo:start     # installs and runs it locally instead
+```
+
+This is what to reach for after a release: the demo depends on `fulmine.js` from npm rather than on
+the source next to it, so it picks up a new version by being deployed again. A new **major** needs
+the range in `demo/package.json` widened first, since `^5` will not cross to `6`.
 
 ## What is in fly.toml
 
