@@ -56,7 +56,12 @@ app.listen(13333, async () => {
         // a decoded NUL is a bad request: letting it reach fs answered with node own complaint,
         // which carries the absolute path of the root inside it
         ["/ignore/a%00b", {}],
-        ["/ext/a%00b/c", {}]
+        ["/ext/a%00b/c", {}],
+        // an encoded slash is not a trailing slash: the path names a file called "/" inside a
+        // directory, so no index is looked for and no extension is tried
+        ["/ignore/-/%2F", {}],
+        ["/ext/-/%2F", {}],
+        ["/ignore/sub/%2F", {}]
     ];
 
     for (const [url, headers] of cases) {

@@ -309,9 +309,13 @@ function serveStatic(root, options) {
 
         const iq = req.url.indexOf("?");
         let url;
+        // the path as it was written, before decoding: whether it names a directory is decided on
+        // this and not on what the escapes turn into, which is how send decides it. "/a/%2F" asks
+        // for a file called "/" inside "a", and not for the index of a directory
+        const rawPath = iq !== -1 ? req.url.substring(0, iq) : req.url;
 
         try {
-            url = decodeURIComponent(iq !== -1 ? req.url.substring(0, iq) : req.url);
+            url = decodeURIComponent(rawPath);
         } catch (e) {
             // 400 and not 404: send answers a path it cannot decode with a Bad Request, since
             // nothing was asked for that could be missing
@@ -358,7 +362,7 @@ function serveStatic(root, options) {
         // Asked for with the trailing separator when the url had one, because send normalizes
         // rather than resolves and keeps it: a directory answers the same either way, and a path
         // that is not there names itself in the error the way send names it.
-        const statTarget = url.endsWith("/") ? fullpath + path.sep : fullpath;
+        const statTarget = rawPath.endsWith("/") ? fullpath + path.sep : fullpath;
 
         let stat;
         try {
@@ -371,7 +375,7 @@ function serveStatic(root, options) {
             // a path written with a trailing slash asks for a directory, and send answers that by
             // looking for the index inside it. With nothing there, the file it names is that
             // index and not the directory that does not exist either
-            if (url.endsWith("/") && options.index) {
+            if (rawPath.endsWith("/") && options.index) {
                 try {
                     fs.statSync(path.join(fullpath, options.index));
                 } catch (indexError) {
@@ -380,9 +384,10 @@ function serveStatic(root, options) {
             }
             const ext = path.extname(fullpath);
             let i = 0;
-            // a path written with a trailing slash names a directory, so send does not try to hang
-            // an extension off it. The test is on the url and not on fullpath, because resolve()
-            // has already taken the trailing separator off that one
+            // a path that resolves to a directory gets no extension hung off it. The test is on the
+            // decoded url and not on fullpath, because resolve() has already taken the trailing
+            // separator off that one, and not on the raw path either: send tries the extension on
+            // what the escapes decoded to, while it looks for an index on the path as written
             if (ext === "" && !url.endsWith("/") && options.extensions) {
                 while (i < options.extensions.length) {
                     try {

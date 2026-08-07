@@ -780,6 +780,17 @@ async function instantiate(plan, factory, port) {
     };
 }
 
+// The default error page carries the stack of whoever raised, and those frames belong to each
+// project: nothing about them can match. The message above the first line break is compared, the
+// rest is dropped, which is what the comparison tests do with the same page.
+const DEFAULT_ERROR_PAGE = /<pre>([^]*?)<br>[^]*<\/pre>/;
+
+/** @param {string} body @returns {string} */
+function withoutStack(body) {
+    const matched = DEFAULT_ERROR_PAGE.exec(body);
+    return matched ? body.replace(matched[0], "<pre>" + matched[1] + "<br>(stack)</pre>") : body;
+}
+
 /** What is compared: the status, the headers worth comparing, and the body. */
 async function answerOf(port, url, method, headers, conditional, body) {
     const sent = conditional ? { ...headers, "if-none-match": conditional } : { ...headers };
@@ -802,7 +813,7 @@ async function answerOf(port, url, method, headers, conditional, body) {
     for (const name of PRESENCE_ONLY_HEADERS) {
         if (res.headers.has(name)) parts.push(`${name}: present`);
     }
-    parts.push(JSON.stringify(await res.text()));
+    parts.push(JSON.stringify(withoutStack(await res.text())));
     return { line: parts.join(" | "), etag: res.headers.get("etag") };
 }
 
