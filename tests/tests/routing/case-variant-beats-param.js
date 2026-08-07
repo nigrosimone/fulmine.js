@@ -31,6 +31,12 @@ app.get("/:year", (req, res) => res.send("param year=" + req.params.year));
 app.get("/differ/FOO/:x", (req, res) => res.send("cased literal x=" + req.params.x));
 app.get("/differ/:user/:x", (req, res) => res.send(`param user=${req.params.user} x=${req.params.x}`));
 
+// written with a trailing slash, and asked for with one. The registration drops the slash, so the
+// guard is one character shorter than the path that arrives and used to miss it: "/X1/" went to the
+// parameter route while express answered from the literal
+app.get("/x1/", (req, res) => res.send("literal x1 slashed"));
+app.get("/:p6", (req, res, next) => next("route"));
+
 // and the same inside a mounted router, where the guard has to carry the mount path
 const mounted = express.Router();
 mounted.get("/list", (req, res) => res.send("mounted literal"));
@@ -61,6 +67,10 @@ app.listen(13333, async () => {
         "/differ/foo/9",
         "/differ/Foo/9",
         "/differ/bar/9",
+        "/x1",
+        "/x1/",
+        "/X1",
+        "/X1/",
         "/mnt/list",
         "/mnt/LIST",
         "/mnt/List",

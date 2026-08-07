@@ -69,7 +69,17 @@ function anyGuardHits(guards, path) {
             }
             continue;
         }
-        if (guard.length !== path.length) {
+        // the guard is a registered path, which under the default routing answers the same path
+        // with one trailing slash as well: "/x1" registered is what serves "/x1/", so "/X1/" is
+        // just as much a case variant of it as "/X1" is. Missing that answered "/X1/" from the
+        // parameter route behind it while express answered from the literal.
+        //
+        // The regex guards, for earlier paths that carry parameters of their own, are built
+        // non-strict and already accept it. Erring wide costs nothing here either: a guard that
+        // hits only hands the request to the generic router, which is where express's own order
+        // decides anyway
+        const slashed = path.length === guard.length + 1 && path.charCodeAt(guard.length) === 0x2f;
+        if (guard.length !== path.length && !slashed) {
             continue;
         }
         let same = true;
