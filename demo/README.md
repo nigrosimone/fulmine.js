@@ -47,10 +47,14 @@ A deploy can also be done by hand, from the repository root rather than from her
 not have to be typed:
 
 ```sh
-npm run demo:deploy    # fly deploy ./demo --config ./demo/fly.toml
+npm run demo:deploy    # cd demo && fly deploy
 npm run demo:logs      # what the machine is saying
 npm run demo:start     # installs and runs it locally instead
 ```
+
+The deploy changes directory rather than passing `--config`: `fly deploy ./demo --config ./demo/fly.toml`
+looks correct and is not, because flyctl moves into the working directory first and then resolves the
+config path inside it, so it goes looking for `demo/demo/fly.toml` and reports an app with no name.
 
 This is what to reach for after a release: the demo depends on `fulmine.js` from npm rather than on
 the source next to it, so it picks up a new version by being deployed again. A new **major** needs

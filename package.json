@@ -30,7 +30,7 @@
         "cover:full": "nyc --silent npm run test && nyc --silent --no-clean npm run test:unit && nyc --silent --no-clean npm run test:express && nyc report",
         "cover:check": "nyc check-coverage --statements 93 --branches 88 --functions 92 --lines 93",
         "demo:start": "npm --prefix demo install && npm --prefix demo start",
-        "demo:deploy": "fly deploy ./demo --config ./demo/fly.toml",
+        "demo:deploy": "cd demo && fly deploy",
         "demo:logs": "fly logs --app fulmine-demo"
     },
     "engines": {
