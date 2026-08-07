@@ -1362,23 +1362,22 @@ module.exports = class Response extends Writable {
 
         this.vary("Accept");
 
-        // req.next, not the router next sendFile and render use. Express's is the router's here
-        // too, so inside a route with a four argument handler of its own this hands the error to
-        // that handler where express would have left the route. Passing the router next instead
-        // fails express's own res.format test, which asserts the handler is given the very same
-        // function the surrounding middleware received: outside a route the two are equivalent but
-        // not identical. The whole thing is the open req.next question at Walk's constructor
+        // the router next, as express hands over: inside a route with a four argument handler of
+        // its own, a 406 leaves the route rather than being caught by that handler. Where the two
+        // are the same step, _leaveRoute is the very object the surrounding layer received, which
+        // is what express's own test asserts, see Walk#runRoute
+        const next = this.req._leaveRoute ?? this.req.next;
         if (key) {
             this.set("Content-Type", normalizeType(key).value);
-            object[key](this.req, this, this.req.next);
+            object[key](this.req, this, next);
         } else if (object.default) {
-            object.default(this.req, this, this.req.next);
+            object.default(this.req, this, next);
         } else {
             // an error and not an answer: express hands the error handler the types it could have
             // sent, which is how an application says what it supports
             const err = httpError(406);
             err.types = keys.map((type) => normalizeType(type).value);
-            this.req.next(err);
+            next(err);
         }
 
         return this;

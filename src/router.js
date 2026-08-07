@@ -333,7 +333,11 @@ class Walk {
             }
         }
         req.next = this.next;
-        req._leaveRoute = this.leaveRoute;
+        // the same step when the route has one callback, and then it has to be the same object:
+        // express hands res.format's handlers the next its own layer received, and its test asserts
+        // that identity. With more than one callback the two differ for real, and what express
+        // hands over is the one that leaves the route
+        req._leaveRoute = route.callbacks.length > 1 ? this.leaveRoute : this.next;
         if (continueRoute === "route") {
             this.step("route");
         } else if (continueRoute) {
