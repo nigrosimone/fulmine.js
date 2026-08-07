@@ -924,6 +924,16 @@ const BODY_METHODS = new Set(["POST", "PUT", "PATCH", "QUERY"]);
  * written on, and the parser prologue it reaches measured 38. Ten to one, for a layer that had
  * nothing to do.
  *
+ * That number is also why fusing consecutive layers into one generated function keeps coming up,
+ * and why it is not here. Counted over a real front, morgan, helmet, compression, cors, the two body
+ * parsers, express-session, a middleware of one's own and express.static: three of the nine can be
+ * fused, and the longest run of fusable ones in a row is one. Fusing needs two. The rule was relaxed
+ * from "calls next once, unconditionally" to merely "calls next synchronously" and the answer did
+ * not move, because the six that fail all call next from inside a callback: they are asynchronous by
+ * nature, reading a body, stat-ing a file, loading a session. A layer that has not decided by the
+ * time it returns cannot be fused by any design that keeps the semantics. What fuses is a run of
+ * trivial middlewares, which is a benchmark shape rather than an application's.
+ *
  * @param {any} route
  * @param {any} req
  * @returns {boolean}
