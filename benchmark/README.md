@@ -148,3 +148,32 @@ AF_UNIX has stopped saying anything about the frameworks.
 So run it both ways and compare the **ratios**. If they agree, the socket is a cheaper transport and
 the noise it removes is real. If they do not, the transport is part of what the benchmark measures
 and the port stays. The Benchmark workflow can be dispatched either way from the Actions tab.
+
+### What running it both ways answered
+
+Both ways on the same commit (`ac5272d`), on the same runner pool, minutes apart. They do not agree,
+so the port stays and the socket is kept as a diagnostic rather than made the default.
+
+| Test                                 | over TCP | over the socket |
+| ------------------------------------ | -------: | --------------: |
+| routing/routes-1000-params           |    9.83x |          16.49x |
+| routing/routes-1000                  |    9.60x |          15.91x |
+| routing/router-mounted-params        |    7.03x |          10.86x |
+| middlewares/body-urlencoded          |    4.34x |           6.27x |
+| routing/hello-world                  |    2.68x |           2.60x |
+| routing/middlewares-100              |    1.85x |           1.61x |
+| streaming/writable-no-content-length |    1.01x |           0.93x |
+
+Over TCP, Fulmine lands in a 42k-49k band on every row that is only routing, whatever the row asks
+it to route, while Express sits at 4.5k-16k and never approaches it. A band that tight on one arm
+only is a limiter rather than a result: the loopback stack and the load generator cap the fast side,
+and a ratio measured under a cap is partly a measurement of the cap. Over the socket the band opens
+to 61k-87k and those rows separate by how much work each one actually saves.
+
+It moves the other way too. `middlewares-100` and the streaming rows lose ratio on the socket, and
+for the same reason read from the other end: there Fulmine is already spending its budget on its own
+chain or on per-byte copying, so a cheaper transport is worth more to the arm that had room to gain.
+
+The transport is therefore part of what these rows measure, in both directions. The published
+numbers stay on TCP because that is the transport a client uses, with the caveat this run makes
+concrete: on routes cheap enough to reach the cap, the published ratio is a floor.
