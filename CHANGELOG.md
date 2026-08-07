@@ -1,5 +1,50 @@
 # Changelog
 
+## [5.3.0](https://github.com/nigrosimone/fulmine.js/compare/v5.2.0...v5.3.0) (2026-08-07)
+
+### Features
+
+* a demo that shows a fulmine app is an express app, deployed on fly ([e1b3d61](https://github.com/nigrosimone/fulmine.js/commit/e1b3d61f6724338c500958b1a2aa8dc51aa620cf))
+* npx fulmine profile prints what listen worked out about each route ([5678ff4](https://github.com/nigrosimone/fulmine.js/commit/5678ff4015ce04b8ff6c386e67da320eceac7d87))
+
+### Bug Fixes
+
+* a case variant asked for with a trailing slash still finds the literal route ([dd4ea01](https://github.com/nigrosimone/fulmine.js/commit/dd4ea012d69c18fee0dc3f244ceaa43e1bc6b1e7))
+* a case variant of a literal route leaves the native fast path ([df466b5](https://github.com/nigrosimone/fulmine.js/commit/df466b579c80f66da4b69d7e68e0e4aad4e5b1e5))
+* a file that cannot be served reports past the route, as express does ([d8d14db](https://github.com/nigrosimone/fulmine.js/commit/d8d14db08447ebcfa2c888a8393f88c601c0ff6e))
+* a later literal route yields to an earlier one that answers the slashed path ([5c90c0e](https://github.com/nigrosimone/fulmine.js/commit/5c90c0ee41d196ef09ff6cd705175aa2ee144ec8))
+* a literal route wins over a later param route in any case ([75c6430](https://github.com/nigrosimone/fulmine.js/commit/75c6430c93826895d2fc810c85c2c5dd05a5312f))
+* a mount reached in another case still hands over its parameters ([c11d4ac](https://github.com/nigrosimone/fulmine.js/commit/c11d4acfc05554bff93b5ba20a41b213e98b871a))
+* a param that will not decode answers 400 whatever the method ([151b82a](https://github.com/nigrosimone/fulmine.js/commit/151b82a5c975800470503303e41665656fc65645))
+* a parameter name may carry accents, and may be written twice ([a6174aa](https://github.com/nigrosimone/fulmine.js/commit/a6174aa704380387702a210f2616090965f295ea))
+* a route before a mount keeps its turn even when its method differs ([2418c1f](https://github.com/nigrosimone/fulmine.js/commit/2418c1fc674998f2571afef3300c044048b9e638))
+* a route written with trailing slashes is registered without them ([ebdcaaa](https://github.com/nigrosimone/fulmine.js/commit/ebdcaaa15a4c98d5958533ceb3eda22d5f5f6cac))
+* a route's error handler catches only what that route raised ([338f663](https://github.com/nigrosimone/fulmine.js/commit/338f6634270473771f6171696eacda3218b626bf))
+* a second wildcard in a path is held to one segment, as express holds it ([4b200f2](https://github.com/nigrosimone/fulmine.js/commit/4b200f26421d1cd2ed0535cb2751f5ed7bca4eb0))
+* a segment shared by two captures is divided as express divides it ([6e9f7f0](https://github.com/nigrosimone/fulmine.js/commit/6e9f7f0d49e982469071b489c0718de8cda7f201))
+* a view that will not render reports past the route, and views keeps the path it was given ([89fe63e](https://github.com/nigrosimone/fulmine.js/commit/89fe63e6bf4db2413c7d471e20a1ba14b7e7211b))
+* an encoded slash does not make a path a directory request ([fd3d8c2](https://github.com/nigrosimone/fulmine.js/commit/fd3d8c28fe3bb1b47aa2fc5903308c5f9ac31f45))
+* express.static names the file send would have named ([9caafdc](https://github.com/nigrosimone/fulmine.js/commit/9caafdcb2fad1924141fb4284664fefadaf90989))
+* handing back from a sub-app restores the app that was current, not its parent ([b2fe3ac](https://github.com/nigrosimone/fulmine.js/commit/b2fe3ac455754b4dadd6afe84358de5ca305b9a4))
+* mounted routers, enabled(), and a lone "?" answer as express does ([a35e967](https://github.com/nigrosimone/fulmine.js/commit/a35e96729682230fe15dd14e594b0aa44dd9c733))
+* mounts count what they took, and a NUL in a static path is a bad request ([b9ad4d8](https://github.com/nigrosimone/fulmine.js/commit/b9ad4d80526d5fade10318e69c1b70faef20062f))
+* only an application takes req.app back when a sub-app hands over ([a1cc927](https://github.com/nigrosimone/fulmine.js/commit/a1cc9276adfb2585c46c2392ed268e7d93daad14))
+* static stats the path it resolved, which is what linux and windows agree on ([ab77728](https://github.com/nigrosimone/fulmine.js/commit/ab77728ee42942381904f36fbba3ca60c38e6aa2))
+* static stats the path send stats, and a sub-app renders with its parent's engine ([b55ee2e](https://github.com/nigrosimone/fulmine.js/commit/b55ee2ec08c3408d4c68e62f00f2aecaee4f043b))
+* the default error page escapes what it prints ([e3e3185](https://github.com/nigrosimone/fulmine.js/commit/e3e31854674b219a55d9a3700eaa23014d406a25))
+* the extended query parser answers what qs answers ([2a866c3](https://github.com/nigrosimone/fulmine.js/commit/2a866c3a27bb4134d32ec9a409477ec5ea39b75e))
+* the first error wins, so a decode failure does not replace what a middleware refused ([7b13c05](https://github.com/nigrosimone/fulmine.js/commit/7b13c054f53d62fc0765b986a414545d9907bf5c))
+* the OPTIONS reply lists the answering router's own verbs ([b3c98c7](https://github.com/nigrosimone/fulmine.js/commit/b3c98c7ebe28394eaaea97d92be03d8a9e0d2da7))
+* the pattern allows the trailing slash instead of the path losing it ([759d69f](https://github.com/nigrosimone/fulmine.js/commit/759d69fbdae3600f84463314380c8fd93b68fe04))
+
+### Performance Improvements
+
+* a chain steps over a body parser the request gets nothing out of ([e5e48f2](https://github.com/nigrosimone/fulmine.js/commit/e5e48f2690e3133467caf693d6aaedc8aa38d3be))
+* a mapped IPv4 peer is read straight out of the bytes ([537be62](https://github.com/nigrosimone/fulmine.js/commit/537be62147045898ba3606735606b915ca202901))
+* the request declares the six fields that were appearing on it after construction ([5c7a3d7](https://github.com/nigrosimone/fulmine.js/commit/5c7a3d797013c0c52f9ccef538033710ff380945))
+* the request says Readable and builds one only when something asks ([8981e93](https://github.com/nigrosimone/fulmine.js/commit/8981e932565c867f2f7eaf5814c55935916cc40e))
+* the response arms its two listeners by writing the map on() would have written ([87b5ce5](https://github.com/nigrosimone/fulmine.js/commit/87b5ce5663b8ebca55651c30e8b42956eeec9424))
+
 ## [5.2.0](https://github.com/nigrosimone/fulmine.js/compare/v5.1.9...v5.2.0) (2026-08-06)
 
 ### Features
