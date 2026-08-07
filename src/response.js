@@ -275,6 +275,10 @@ module.exports = class Response extends LazyWritable {
         }
 
         this.body = undefined;
+        // what was handed to uWS, kept so a caller asking for content-length after the fact can be
+        // answered, see get(). Undefined until the response ends, and for one that sends no body
+        /** @type {string|Buffer|undefined} */
+        this._sentBody = undefined;
         // false while the uWS route handler is still in its synchronous window, where uWS holds
         // the socket corked itself; the two uWS entry points flip it once that window closes
         this._corkNeeded = false;
@@ -680,8 +684,12 @@ module.exports = class Response extends LazyWritable {
             // an allocation per body, and uWS reads the view's own offset and length
             if (this.req.method === "HEAD") {
                 const length = Buffer.byteLength(data ?? "");
+                this.headers["content-length"] = String(length);
                 this._res.endWithoutBody(length.toString());
             } else {
+                // remembered rather than measured: only a caller that asks for content-length pays
+                // for it, and uWS is measuring the same bytes for the wire anyway
+                this._sentBody = data ?? "";
                 this._res.end(data);
             }
         }
@@ -1281,7 +1289,19 @@ module.exports = class Response extends LazyWritable {
      * @returns {string|string[]|undefined}
      */
     get(field) {
-        return this.headers[field.toLowerCase()];
+        const name = field.toLowerCase();
+        const value = this.headers[name];
+        // Content-Length is on the wire but not in here: uWS measures the body it is handed and
+        // writes the header itself, which saves measuring it twice. Express sets it in send(), so
+        // anything reading it back finds it there, and morgan's common and combined formats do
+        // exactly that on every line they write. Worked out here rather than in send() so a
+        // response nobody asks pays nothing, and kept once worked out.
+        if (value === undefined && name === "content-length" && this._sentBody !== undefined) {
+            const length = Buffer.byteLength(this._sentBody);
+            this.headers["content-length"] = String(length);
+            return String(length);
+        }
+        return value;
     }
 
     /**
