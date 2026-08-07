@@ -392,9 +392,7 @@ function profile(argv) {
     for (const app of apps) {
         printProfile(app, apps.length > 1);
     }
-    // the application was loaded, and loading it may have opened a database handle, a timer or a
-    // µWS app of its own. None of that is ours to unwind, and there is nothing left to print
-    process.exit(0);
+    return 0;
 }
 
 // what a reason means for whoever wrote the route, when it means anything they can act on. A
@@ -655,7 +653,14 @@ function printDifferences() {
 }
 
 if (require.main === module) {
-    process.exitCode = main(process.argv.slice(2));
+    const code = main(process.argv.slice(2));
+    if (process.argv[2] === "profile") {
+        // profile loaded somebody's application, and loading it may have opened a database handle,
+        // a timer or a µWS app of its own. None of that is ours to unwind, and there is nothing
+        // left to print. Only here, so the command itself stays a function a test can call
+        process.exit(code);
+    }
+    process.exitCode = code;
 }
 
-module.exports = { main, findSpecifiers, collectFiles, DIFFERENCES };
+module.exports = { main, findSpecifiers, collectFiles, findEntry, collectRoutes, profile, DIFFERENCES };
