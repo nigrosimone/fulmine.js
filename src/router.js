@@ -1213,6 +1213,26 @@ module.exports = class Router extends EventEmitter {
     _isApplication = false;
 
     /**
+     * Whether anything served from here has been seen reading req.ip after the response, by which
+     * point µWS has freed the address. Set once, from Request#parsedIp, and read on every request
+     * after that. Here rather than on Application because a plain Router serves requests of its own
+     * through the node shim.
+     *
+     * @type {boolean}
+     */
+    needsIpAfterResponse = false;
+
+    /**
+     * How many requests still read the peer address up front whether or not anyone asks, so that
+     * one of them can be the one that finds out. Counts to a hundred and stops: it used to be read
+     * off a module-wide counter that wrapped at 100000, so the window reopened every time it did
+     * and a hundred requests paid again for a discovery made long before.
+     *
+     * @type {number}
+     */
+    _ipProbes = 0;
+
+    /**
      * The two routing flags once read, undefined until then. Express passes caseSensitive and
      * strict in when it builds a router and never looks at them again, so they are frozen here at
      * the first read rather than resolved per request.

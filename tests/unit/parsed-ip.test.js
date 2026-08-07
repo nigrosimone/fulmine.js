@@ -107,6 +107,29 @@ test("only the whole ::ffff:0:0/96 prefix takes the shortcut", () => {
     assert.strictEqual(ipOf(alsoNot), "::1:ffff:7f00:1");
 });
 
+test("the window that reads the address up front closes and stays closed", async () => {
+    const express = require("../../src/index.js");
+    const app = express();
+    // reads req.ip while the response is still open, which is the case that needs nothing read
+    // ahead of time: an app that asks after the response is what flips needsIpAfterResponse
+    app.get("/", (req, res) => res.send(String(req.ip)));
+    const port = await new Promise((resolve) => app.listen(0, () => resolve(app.address().port)));
+    try {
+        for (let i = 0; i < 120; i++) {
+            // dialled by address, not by name: "localhost" resolves to ::1 here and the loopback
+            // this checks is the mapped IPv4 one
+            const res = await fetch(`http://127.0.0.1:${port}/`);
+            assert.equal(await res.text(), "::ffff:127.0.0.1");
+        }
+        // saturated rather than wrapped: the counter this replaced went round at 100000 and let a
+        // hundred requests pay again for a discovery made long before
+        assert.equal(app._ipProbes, 100);
+        assert.equal(app.needsIpAfterResponse, false);
+    } finally {
+        app.close();
+    }
+});
+
 test("four bytes are an IPv4 peer, and anything else is no address at all", () => {
     const four = new Uint8Array([203, 0, 113, 7]);
     // the app is not bound to an IPv4 address here, so node would report the mapped form

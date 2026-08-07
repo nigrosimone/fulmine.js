@@ -149,8 +149,6 @@ const discardedDuplicates = new Set([
     "user-agent"
 ]);
 
-let key = 0;
-
 // 128 KB of body buffered before uWS is asked to pause
 const READABLE_OPTIONS = { highWaterMark: 128 * 1024 };
 
@@ -543,10 +541,6 @@ module.exports = class Request extends LazyReadable {
             currentRequest = null;
         }
         this.routeCount = 1;
-        this.key = key++;
-        if (key > 100000) {
-            key = 0;
-        }
         this.app = app;
         // both forms are kept, because both are asked for: the query with its "?" goes into
         // req.url, and req.query parses the raw one. Keeping only the first meant slicing the "?"
@@ -618,9 +612,14 @@ module.exports = class Request extends LazyReadable {
         this._appStack = undefined;
         this.receivedData = false;
         // reading ip is very slow in UWS, so its better to not do it unless truly needed
-        if (this.app.needsIpAfterResponse || this.key < 100) {
-            // if app needs ip after response, read it now because after response its not accessible
-            // also read it for first 100 requests to not error
+        if (app.needsIpAfterResponse) {
+            // an app that has been seen asking after the response reads it now, because by then
+            // µWS has freed it
+            this.rawIp = this._readRawIp();
+        } else if (app._ipProbes < 100) {
+            // and until this app has been seen either way, the first hundred requests read it, so
+            // one of them can be the one that finds out
+            app._ipProbes++;
             this.rawIp = this._readRawIp();
         }
 
