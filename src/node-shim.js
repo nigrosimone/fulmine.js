@@ -24,6 +24,9 @@ limitations under the License.
 
 const { IncomingMessage } = require("http");
 
+/** What µWS returns for an address nobody declared. */
+const emptyAddress = new ArrayBuffer(0);
+
 /**
  * An IP address as the four or sixteen bytes uWS hands over, since that is what req.ip parses.
  * Anything unreadable comes back empty, which req.ip reports as undefined, the same answer it gives
@@ -368,6 +371,14 @@ class NodeHttpResponse {
     /** The client address as text, which uWS also offers. */
     getRemoteAddressAsText() {
         return Buffer.from(this._nodeReq.socket?.remoteAddress || "");
+    }
+
+    /**
+     * Always empty: node's server does not read the PROXY protocol, so a request that arrived
+     * through it never carries an address a proxy declared, whatever "trust proxy protocol" says.
+     */
+    getProxiedRemoteAddress() {
+        return emptyAddress;
     }
 
     /** The client port, or 0 when the socket has already gone. */

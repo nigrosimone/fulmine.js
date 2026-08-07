@@ -125,6 +125,9 @@ function mapsIPv4Peer(app) {
     return !(host && isIP(host) === 4);
 }
 
+/** What µWS returns for a proxied address when no PROXY protocol preamble arrived. */
+const emptyAddress = new ArrayBuffer(0);
+
 const discardedDuplicates = new Set([
     "age",
     "authorization",
@@ -419,6 +422,13 @@ module.exports = class Request extends LazyReadable {
     rawIp;
 
     /**
+     * Whether rawIp came from a PROXY protocol preamble rather than from the socket. Only the
+     * IPv4 mapping reads it, see parsedIp. Declared for the same reason as rawIp.
+     * @type {boolean}
+     */
+    _ipFromProxy = false;
+
+    /**
      * Whether the request declared a body, content-length or transfer-encoding, spotted during
      * the header copy. Declared for the same reason as rawIp.
      * @type {boolean|undefined}
@@ -611,7 +621,7 @@ module.exports = class Request extends LazyReadable {
         if (this.app.needsIpAfterResponse || this.key < 100) {
             // if app needs ip after response, read it now because after response its not accessible
             // also read it for first 100 requests to not error
-            this.rawIp = this._res.getRemoteAddress();
+            this.rawIp = this._readRawIp();
         }
 
         // A body exists on the wire only when the request declares one, content-length or
@@ -950,6 +960,32 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
+     * The peer address bytes, from the socket or, when the application asked for it, from a PROXY
+     * protocol preamble the load balancer in front of this server sent ahead of the request.
+     *
+     * The setting is off by default and has to stay that way. µWS parses the preamble from whoever
+     * sends it, with nothing to ask for it at listen time and no way to restrict who may, so an
+     * application that took the address unconditionally would let any client claim any address:
+     * the first sixteen bytes of a connection are enough to become 10.0.0.1 for a rate limiter, an
+     * allow list or an audit log. Turn it on only when nothing can reach this server except the
+     * proxy in front of it.
+     *
+     * @returns {ArrayBuffer} the socket's own address when no preamble arrived
+     */
+    _readRawIp() {
+        const uwsRes = this._res;
+        if (this.app.get("trust proxy protocol")) {
+            const proxied = uwsRes.getProxiedRemoteAddress();
+            // empty unless a preamble arrived, which is the only thing that tells the two apart
+            if (proxied.byteLength !== 0) {
+                this._ipFromProxy = true;
+                return proxied;
+            }
+        }
+        return uwsRes.getRemoteAddress();
+    }
+
+    /**
      * The peer address as text, read from uWS and cached. Reading it is expensive and it is gone
      * once the response has finished, so it is read up front for the first hundred requests, and
      * for every request once an application has been seen asking too late. That app gets 127.0.0.1
@@ -971,7 +1007,7 @@ module.exports = class Request extends LazyReadable {
                 // fallback once
                 return mapsIPv4Peer(this.app) ? "::ffff:127.0.0.1" : "127.0.0.1";
             }
-            this.rawIp = this._res.getRemoteAddress();
+            this.rawIp = this._readRawIp();
         }
         // read once: the branch above settled it, and every use below wants the bytes
         const rawIp = /** @type {ArrayBuffer} */ (this.rawIp);
@@ -980,7 +1016,10 @@ module.exports = class Request extends LazyReadable {
         if (rawIp.byteLength === 4) {
             // ipv4
             ip = new Uint8Array(rawIp).join(".");
-            if (mapsIPv4Peer(this.app)) {
+            // the mapped form belongs to a dual stack listener, which is what makes an IPv4 peer
+            // arrive as ::ffff:a.b.c.d. An address a proxy declared never came through that socket,
+            // so it is left as the four numbers the proxy sent
+            if (!this._ipFromProxy && mapsIPv4Peer(this.app)) {
                 ip = "::ffff:" + ip;
             }
         } else if (rawIp.byteLength === 16) {
@@ -1053,12 +1092,15 @@ module.exports = class Request extends LazyReadable {
     _detachFromResponse() {
         const uwsRes = this._res;
         if (!this.rawIp) {
-            this.rawIp = uwsRes.getRemoteAddress();
+            this.rawIp = this._readRawIp();
         }
         const remotePort = uwsRes.getRemotePort();
         const rawIp = this.rawIp;
         this._res = {
             getRemoteAddress: () => rawIp,
+            // whatever a preamble said is already in rawIp, and asking again is the use after free
+            // this method exists to avoid
+            getProxiedRemoteAddress: () => emptyAddress,
             getRemotePort: () => remotePort,
             // a body cannot arrive on an upgraded socket, and a stray reader must not reach µWS
             onData() {},

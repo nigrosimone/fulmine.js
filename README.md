@@ -53,6 +53,7 @@ shared machine, so the number would describe the machine rather than the framewo
 - [WebSockets](#websockets)
     - [socket.io](#socketio)
 - [HTTP/3](#http3)
+- [Behind a proxy](#behind-a-proxy)
 - [Versioning](#versioning)
 - [Compatibility](#compatibility)
     - [express](#express)
@@ -428,6 +429,32 @@ const app = express({
 });
 ```
 
+## Behind a proxy
+
+`trust proxy` works as it does in Express: set it and `req.ip`, `req.ips`, `req.protocol` and
+`req.hostname` are read from `X-Forwarded-*` when the connection comes from a peer you trust.
+
+Fulmine adds the other way of being told, the one that does not use headers at all. HAProxy, AWS
+NLB, nginx with `proxy_protocol` and Envoy can prepend a **PROXY protocol** preamble to the
+connection, and µWebSockets.js parses it. Off by default, and one line turns it on:
+
+```js
+app.set("trust proxy protocol", true);
+// req.ip, req.socket.remoteAddress and everything reading them are now the address the proxy
+// declared, and fall back to the socket's own on a connection that sent no preamble
+```
+
+> [!WARNING]
+> **Only turn this on when nothing but the proxy can reach the server.** µWS reads the preamble
+> from whoever sends it. There is no way to say which peers may use it, so on a port open to the
+> internet the first sixteen bytes of any connection are enough for a client to become `10.0.0.1`
+> for your rate limiter, your allow list and your audit log. Bind to the private interface, or
+> keep this off.
+
+`trust proxy` and this can both be on. The preamble decides what the connection's address is, and
+`trust proxy` then peels `X-Forwarded-For` off that, so a proxy that sends both is read the way it
+meant.
+
 ## Versioning
 
 **The major number tracks Express, not semver.** Fulmine 5.x follows Express 5. If Express 6
@@ -511,9 +538,11 @@ Two of these keep a compiled form alongside the value, which you can also set di
 - `etag fn`, the function that produces an ETag. Setting `etag` compiles one; setting this replaces it.
 - `query parser fn`, likewise for `query parser`.
 
-Fulmine adds one of its own:
+Fulmine adds three of its own:
 
 - `declarative responses`, on by default. Lets a simple enough handler be compiled into a native uWS response, described under [Performance tips](#performance-tips).
+- `file cache`, on by default. Small files served by `res.sendFile` come from a bounded in-process cache, checked against the file's `stat` on every request, so an edited file is never served stale.
+- `trust proxy protocol`, off by default. Takes `req.ip` from a PROXY protocol preamble, described under [Behind a proxy](#behind-a-proxy). Read the warning there before turning it on.
 
 ### Request
 

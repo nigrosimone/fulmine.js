@@ -809,7 +809,11 @@ const defaultSettings = {
     // "case sensitive routing" is deliberately absent: unset means insensitive, as in Express 5.
     // The native µWS router matches bytes, so the compiler in _compileOptimizedRoutes only hands
     // it routes whose earlier siblings it can prove agree under either case rule.
-    "declarative responses": true
+    "declarative responses": true,
+    // off, and it is a security setting rather than a compatibility one: with it on, req.ip is the
+    // address a PROXY protocol preamble declared. µWS reads that preamble from any client, so this
+    // belongs only to a server nothing can reach except the proxy in front of it. See Request#_readRawIp
+    "trust proxy protocol": false
 };
 
 /**
