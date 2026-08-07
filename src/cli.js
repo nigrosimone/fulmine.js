@@ -20,6 +20,12 @@ limitations under the License.
 // Rewrites the module specifier and nothing else. An Express 5 app is a Fulmine app already, so
 // there is no code to translate: what there is instead is a short list of things that behave
 // differently, printed at the end, because no rewrite can find those for you.
+//
+// npx fulmine profile [entry]
+//
+// Prints what listen() worked out about each route and normally keeps to itself: which ones µWS
+// answers on its own, which ones fell back to the ordinary router and why, and which ones were
+// compiled all the way down to a response written at startup.
 
 const fs = require("fs");
 const path = require("path");
@@ -259,6 +265,205 @@ function walk(node, visit) {
     }
 }
 
+/** Where an application usually is, when the command was given no entry to load. */
+const DEFAULT_ENTRIES = ["server.js", "app.js", "index.js", "src/server.js", "src/app.js", "src/index.js"];
+
+/**
+ * The file to load, from the argument, or from package.json's main, or from the usual names.
+ *
+ * @param {string|undefined} given
+ * @returns {string|null}
+ */
+function findEntry(given) {
+    if (given) {
+        const resolved = path.resolve(given);
+        return fs.existsSync(resolved) ? resolved : null;
+    }
+    try {
+        const pkg = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf8"));
+        if (pkg.main && fs.existsSync(path.resolve(pkg.main))) {
+            return path.resolve(pkg.main);
+        }
+    } catch {
+        // no package.json, or one that will not parse: the usual names are still worth trying
+    }
+    for (const name of DEFAULT_ENTRIES) {
+        const resolved = path.resolve(name);
+        if (fs.existsSync(resolved)) {
+            return resolved;
+        }
+    }
+    return null;
+}
+
+/**
+ * Every route of an application and of the routers under it, each with the router it belongs to
+ * and the path it answers from the outside.
+ *
+ * @param {any} router
+ * @param {string} prefix
+ * @param {any[]} [into]
+ * @returns {any[]}
+ */
+function collectRoutes(router, prefix, into = []) {
+    for (const route of router._routes ?? []) {
+        const full = prefix + (typeof route.path === "string" ? route.path : String(route.pattern)) || "/";
+        into.push({ route, full });
+        const mounted = route.callbacks?.[0];
+        if (mounted && Array.isArray(mounted._routes)) {
+            collectRoutes(mounted, typeof route.path === "string" ? prefix + route.path : prefix, into);
+        }
+    }
+    return into;
+}
+
+/**
+ * Loads an application without letting it listen, and prints what compiling its routes decided.
+ *
+ * listen() is where the routes are compiled and also where the port is bound, and only the first
+ * of those is wanted here: an application that answered on its port while being profiled would be
+ * a surprise, and a second copy of a running service is worse than a surprise. So listen is
+ * replaced by the half that matters. The callback it was given is not run, for the same reason.
+ *
+ * @param {string[]} argv
+ * @returns {number} exit code
+ */
+function profile(argv) {
+    const entry = findEntry(argv.find((arg) => !arg.startsWith("--")));
+    if (!entry) {
+        console.error(
+            "Nothing to profile: name the file that builds the application, or run this from a\n" +
+                "directory whose package.json main points at it."
+        );
+        return 1;
+    }
+
+    // the same module instance the application will load, so patching this prototype patches the
+    // application it builds. An app is a callable, so its own prototype is not the one that carries
+    // the methods: walk up to whichever link owns listen
+    const express = require("./index.js");
+    let proto = Object.getPrototypeOf(express());
+    while (proto && !Object.prototype.hasOwnProperty.call(proto, "listen")) {
+        proto = Object.getPrototypeOf(proto);
+    }
+    if (!proto) {
+        console.error("This build of fulmine has no listen() to stand in for, which should not happen.");
+        return 1;
+    }
+
+    const listened = [];
+    const realListen = proto.listen;
+    proto.listen = function stubbedListen() {
+        this._compileOptimizedRoutes();
+        listened.push(this);
+        return this;
+    };
+
+    try {
+        require(entry);
+    } catch (e) {
+        const error = /** @type {any} */ (e);
+        proto.listen = realListen;
+        console.error(`${path.relative(process.cwd(), entry)} could not be loaded:\n${error.stack ?? error}`);
+        return 1;
+    }
+    proto.listen = realListen;
+
+    let apps = listened;
+    if (apps.length === 0) {
+        // an application that exports itself rather than listening, which is how a testable one is
+        // usually written. Compiling it here is the same work listen() would have done
+        const exported = require(entry);
+        const candidate = exported?.default ?? exported?.app ?? exported;
+        if (candidate && Array.isArray(candidate._routes)) {
+            candidate._compileOptimizedRoutes();
+            apps = [candidate];
+        }
+    }
+
+    if (apps.length === 0) {
+        console.error(
+            `${path.relative(process.cwd(), entry)} built no application: it neither called listen() nor\n` +
+                "exported one. Point this at the file that does."
+        );
+        return 1;
+    }
+
+    for (const app of apps) {
+        printProfile(app, apps.length > 1);
+    }
+    // the application was loaded, and loading it may have opened a database handle, a timer or a
+    // µWS app of its own. None of that is ours to unwind, and there is nothing left to print
+    process.exit(0);
+}
+
+/**
+ * @param {any} app
+ * @param {boolean} several whether to say which application this is
+ */
+function printProfile(app, several) {
+    const entries = collectRoutes(app, "");
+    const routes = entries.filter(({ route }) => !route.use);
+    const mounts = entries.filter(({ route }) => route.use);
+    const native = routes.filter(({ route }) => route._native);
+    const declarative = native.filter(({ route }) => route._native.declarative);
+
+    if (several) {
+        console.log(`\n=== an application listening on ${app._listenHost ?? "its own port"} ===`);
+    }
+    console.log(
+        `\n${routes.length} route(s), ${native.length} answered by µWS itself` +
+            `${declarative.length ? `, ${declarative.length} of them without running any javascript` : ""}\n`
+    );
+
+    for (const { route, full } of routes) {
+        const method = String(route.method).padEnd(7);
+        const where = full.padEnd(34);
+        if (route._native) {
+            const notes = [];
+            if (route._native.declarative) notes.push("compiled to a response");
+            if (route._native.ahead) notes.push(`${route._native.ahead} in front of it in its chain`);
+            if (route._native.guards) notes.push(`${route._native.guards} case guard(s)`);
+            if (route._native.skipHeaders) notes.push("copies no request headers");
+            if (route._native.skipQuery) notes.push("reads no query");
+            console.log(
+                `  ${method}${where}µWS  ${route._native.path}${notes.length ? `  (${notes.join(", ")})` : ""}`
+            );
+        } else {
+            console.log(`  ${method}${where}router: ${route._whyGeneric ?? "it was not eligible"}`);
+        }
+    }
+
+    // a mount holding a router is one the compiler could have walked into; anything else is
+    // middleware, and listing every helmet and cors as a mount that "was not walked into" says
+    // nothing anyone can act on
+    const routers = mounts.filter(
+        ({ route }) => route.callbacks?.length === 1 && Array.isArray(route.callbacks[0]?._routes)
+    );
+    const missed = routers.filter(({ route }) => !route._walkedInto);
+    if (missed.length > 0) {
+        console.log(`\n${missed.length} mounted router(s) the compiler did not walk into:\n`);
+        for (const { route, full } of missed) {
+            console.log(`  ${(full || "/").padEnd(40)}${route._whyGeneric ?? "it was not eligible"}`);
+        }
+    }
+
+    const middleware = mounts.length - routers.length;
+    if (middleware > 0) {
+        console.log(
+            `\n${middleware} middleware in front of them. Every request walks the ones whose path it` +
+                ` matches,\nand a compiled route walks them from a list worked out at startup rather than by matching.`
+        );
+    }
+
+    console.log(
+        "\nA route answered by µWS is matched in C++ and reaches javascript with its chain already\n" +
+            "known. One that fell back is matched here, in order, the way Express does it: correct\n" +
+            "either way, and the reason is printed so it can be changed if it is worth changing.\n" +
+            "The server was not started and its listen callback was not run."
+    );
+}
+
 /**
  * @param {string[]} argv
  */
@@ -268,13 +473,18 @@ function main(argv) {
         printDifferences();
         return 0;
     }
+    if (command === "profile") {
+        return profile(argv.slice(1));
+    }
     if (command !== "migrate") {
         console.log(`Usage:
-  npx ${TO} migrate [dir]    rewrite require("${FROM}") and import from "${FROM}" to "${TO}"
-  npx ${TO} differences      print what behaves differently, without changing anything
+  npx ${TO} migrate [dir]      rewrite require("${FROM}") and import from "${FROM}" to "${TO}"
+  npx ${TO} profile [entry]    load an application without listening and print what compiling
+                               its routes decided, route by route
+  npx ${TO} differences        print what behaves differently, without changing anything
 
 Options:
-  --dry-run                  say what would change and change nothing`);
+  --dry-run                    migrate: say what would change and change nothing`);
         return command ? 1 : 0;
     }
 

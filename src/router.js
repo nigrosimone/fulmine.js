@@ -1652,8 +1652,10 @@ module.exports = class Router extends EventEmitter {
                     ) {
                         let pathToMount = router._optimizeRoute(route, router._routes);
                         if (!pathToMount) {
+                            route._whyGeneric = "something before it in the same router overlaps its paths";
                             continue;
                         }
+                        route._walkedInto = true;
                         pathToMount = pathToMount.slice(0, -1);
                         walk(route.callbacks[0], pathPrefix + route.path, [
                             ...chainPrefix,
@@ -1670,6 +1672,13 @@ module.exports = class Router extends EventEmitter {
                                         : undefined
                             }
                         ]);
+                    } else {
+                        // said once here rather than at each condition above: a mount is walked into
+                        // only when µWS can match its path on its own and it carries exactly one
+                        // router, and those are the two things worth telling anyone about
+                        route._whyGeneric = !(route.callbacks.length === 1 && route.callbacks[0] instanceof Router)
+                            ? "it is middleware rather than a single mounted router"
+                            : "µWS cannot match this mount path on its own";
                     }
                     // µWS picks by specificity and Express by registration order, so the chain
                     // computed for whichever route µWS lands on runs everything that could have
@@ -1684,6 +1693,7 @@ module.exports = class Router extends EventEmitter {
                 ) {
                     const leafPath = router._optimizeRoute(route, router._routes);
                     if (!leafPath) {
+                        route._whyGeneric = "something before it in the same router overlaps its paths";
                         continue;
                     }
                     // param route earlier in the same router would steal this static path
@@ -1696,6 +1706,7 @@ module.exports = class Router extends EventEmitter {
                             shadow.path !== route.path &&
                             shadow.pattern instanceof RegExp
                         ) {
+                            route._whyGeneric = `the parameter route ${shadow.path} is written before it`;
                             continue;
                         }
                     }
@@ -1722,9 +1733,19 @@ module.exports = class Router extends EventEmitter {
                         // adds no parameter of its own
                         route.optimizedParams = registered.optimizedParams;
                         route.optimizedPath = registered.optimizedPath;
+                        // and what was decided about it, for the same reason: the copy is thrown
+                        // away and the profile reads the route the application actually holds
+                        route._native = registered._native;
                     } else {
                         this._registerUwsRoute(route, chain);
                     }
+                } else if (!supportedUwsMethods.has(route.method)) {
+                    route._whyGeneric = `µWS does not serve ${route.method}`;
+                } else if (canBeOptimizedWithParams(route.path)) {
+                    // eligible but for the overlap test, which only applies inside a mount
+                    route._whyGeneric = "a route after it in the same mounted router could answer the same paths";
+                } else {
+                    route._whyGeneric = "µWS cannot match this path on its own";
                 }
             }
         };
@@ -1962,6 +1983,18 @@ module.exports = class Router extends EventEmitter {
         } else {
             replacedPath = route.path.replace(regExParam, ":x");
         }
+
+        // what listen() settled about this route, kept so `npx fulmine profile` can print it rather
+        // than making anyone read the source or instrument it. Written once, during compilation,
+        // so no request pays for it
+        route._native = {
+            path: replacedPath,
+            declarative: fn !== jsFn,
+            skipHeaders: getSkips.skipHeaders === true,
+            skipQuery: getSkips.skipQuery === true,
+            ahead: optimizedPath.length - 1,
+            guards: caseGuards ? caseGuards.length : 0
+        };
 
         this.uwsApp[method](replacedPath, fn);
         if (!strictHere && route.path[route.path.length - 1] !== "/") {
