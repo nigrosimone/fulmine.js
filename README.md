@@ -621,10 +621,17 @@ not ask for it. Everywhere else it is worth having: it is what caught a pathless
 middleware in front of it.
 
 `npm run test:express` is the other kind of test: it clones Express at the version in
-`devDependencies`, points its entry at this source and runs its suite against it. It is a bug mine
-rather than a gate, and its exit status says nothing. Read the header of `tools/express-suite.js`
+`devDependencies`, points its entry at this source and runs its suite against it. Locally it is a
+bug mine and its exit status says nothing; with `--ci`, which is how it runs in CI, it is a gate,
+red on any failing test or any file without a result. Read the header of `tools/express-suite.js`
 before reading its numbers: some of what it reports is Express testing its own internals, which the
 clone still has, and some is internals used as public API.
 
-`benchmark/README.md` covers measuring, including why the A/B runs pipelined by default and why a
-null control matters.
+`npm run fuzz` is the third kind: it builds random applications, registers them on Express and on
+this, and compares the answers. A divergence prints the seed that reproduces it and the case shrunk
+to the few lines worth keeping. Twenty rounds on a random seed run on every push.
+
+[`tools/README.md`](./tools/README.md) covers those two and the release script.
+[`benchmark/README.md`](./benchmark/README.md) covers measuring, including why the A/B runs
+pipelined by default, why a null control matters, and how a run is compared against the last one on
+the same machine.
