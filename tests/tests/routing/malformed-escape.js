@@ -20,6 +20,17 @@ const mounted = express.Router();
 mounted.get("/inner", (req, res) => res.json({ where: "mounted", base: req.baseUrl }));
 app.use("/m/:mid", mounted);
 
+// a middleware that refuses the path before any of that, with a parameter route behind it that
+// would also fail to decode. Matching a route decodes its parameters even while the walk is only
+// looking for an error handler, and express keeps the error it already has rather than replacing
+// it, so what comes out is this refusal and not the decode failure of a route that never runs
+app.use("/first", (req, res, next) => {
+    const refusal = new Error("the middleware refused it");
+    refusal.status = 400;
+    next(refusal);
+});
+app.get("/first/:id", (req, res) => res.json({ where: "never reached", id: req.params.id }));
+
 app.use((req, res) => res.status(404).send("no route"));
 app.use((err, req, res, next) => {
     res.status(err.status || 500).json({
@@ -51,7 +62,11 @@ app.listen(13333, async () => {
         // a literal path matches as bytes, so nothing is decoded and nothing fails
         "/lit/bad%zz",
         // and no route at all is still a plain 404
-        "/nothing/a%zz"
+        "/nothing/a%zz",
+        // the first error wins: the middleware refused before the route behind it was matched, and
+        // matching it would have failed to decode
+        "/first/a%zz",
+        "/first/ok"
     ];
 
     for (const path of paths) {

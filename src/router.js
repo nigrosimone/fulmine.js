@@ -859,6 +859,30 @@ const CALLBACK_ROUTER = 2;
  * @param {any} app
  */
 /**
+ * Reports a parameter that will not decode, unless something is already being reported.
+ *
+ * Matching a route decodes its parameters, and that happens while the walk is still looking for
+ * whoever should answer, including when it is looking for an error handler. Express does the same
+ * and keeps the first error it has: `layerError = layerError || match` in its router. Overwriting
+ * meant a middleware that had already refused the path, express.static answering Bad Request on an
+ * escape it could not decode, had its answer replaced by the decode failure of a route further down
+ * that was never going to run. Same status, different message, and only when a later route happens
+ * to match the same path. Found by fuzzing route tables against express.
+ *
+ * @param {any} req
+ * @param {any} route
+ * @param {any} err
+ */
+function raiseDecodeFailure(req, route, err) {
+    if (req._error) {
+        return;
+    }
+    req._error = err;
+    req._errorKey = route.routeKey;
+    req._errorGroup = route.group;
+}
+
+/**
  * Whether a route could answer a request for this path, judged on the pattern it was compiled to.
  * A literal answers only itself; anything with a parameter or a wildcard answers what its regex
  * says. Used where the question is "would this earlier route have had its turn first".
@@ -2103,9 +2127,7 @@ module.exports = class Router extends EventEmitter {
                     req.params[name] = decodeParam(req.optimizedParams[name]);
                 }
             } catch (err) {
-                req._error = err;
-                req._errorKey = route.routeKey;
-                req._errorGroup = route.group;
+                raiseDecodeFailure(req, route, err);
                 return "route";
             }
         } else if (route.complex) {
@@ -2117,9 +2139,7 @@ module.exports = class Router extends EventEmitter {
                 // a parameter that will not decode. Express throws out of the match and lets the
                 // error reach the error handler, which answers 400, so the route is skipped rather
                 // than run with a value nobody can read.
-                req._error = err;
-                req._errorKey = route.routeKey;
-                req._errorGroup = route.group;
+                raiseDecodeFailure(req, route, err);
                 return "route";
             }
             if (mergesParams(route, this) && req._paramStack !== null && req._paramStack.length > 0) {
