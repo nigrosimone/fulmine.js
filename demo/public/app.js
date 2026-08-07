@@ -3,6 +3,42 @@
 
 const out = document.getElementById("out");
 
+/**
+ * What the server said it spent, read from the browser's own performance entry rather than from
+ * the header text: the Server-Timing header is parsed for us into PerformanceServerTiming, which
+ * is the same data DevTools draws in the timing panel.
+ *
+ * The entry appears after the response is complete, and not always in the same tick, so this waits
+ * a beat for it. Cross-origin would need Timing-Allow-Origin; this page is same-origin, so the
+ * durations come through.
+ *
+ * https://web.dev/articles/custom-metrics#server-timing-api
+ *
+ * @param {string} url
+ * @returns {Promise<string>} a line to print, or "" when the browser has no entry for it
+ */
+async function serverTiming(url) {
+    if (!("getEntriesByType" in performance)) return "";
+    const absolute = new URL(url, location.href).href;
+    for (let attempt = 0; attempt < 3; attempt++) {
+        const entry = performance
+            .getEntriesByType("resource")
+            .reverse()
+            .find((candidate) => candidate.name === absolute);
+        const timings = entry && entry.serverTiming;
+        if (timings && timings.length > 0) {
+            return timings
+                .map(
+                    (timing) =>
+                        `${timing.name}${timing.description ? ` (${timing.description})` : ""}: ${timing.duration} ms`
+                )
+                .join("\n");
+        }
+        await new Promise((resolve) => setTimeout(resolve, 30));
+    }
+    return "";
+}
+
 /** Prints a request and what came back, headers included, since those are helmet's doing. */
 async function show(method, url, body) {
     out.textContent = `${method} ${url}\n…`;
@@ -25,7 +61,11 @@ async function show(method, url, body) {
             .filter(([name]) => name !== "date")
             .map(([name, value]) => `${name}: ${value}`)
             .join("\n");
-        out.textContent = `${method} ${url} → ${response.status} (${took} ms)\n\n${headers}\n\n${printed}`;
+        // what the round trip cost here against what the server says it spent inside itself: the
+        // gap between the two is the network and the browser, which is the point of the header
+        const timing = await serverTiming(url);
+        const server = timing ? `\n\nwhat the server measured (Server-Timing)\n${timing}` : "";
+        out.textContent = `${method} ${url} → ${response.status} (${took} ms round trip)${server}\n\n${headers}\n\n${printed}`;
     } catch (err) {
         out.textContent = `${method} ${url} → failed: ${err.message}`;
     }

@@ -11,11 +11,39 @@ const compression = require("compression");
 const cors = require("cors");
 const session = require("express-session");
 const morgan = require("morgan");
+const onHeaders = require("on-headers");
 const path = require("path");
 
 const app = express();
 const started = Date.now();
 let served = 0;
+
+// Server-Timing, so the browser's own tools say how long this server took rather than the page
+// claiming it. DevTools draws these under the request's timing panel, and any script on the page
+// can read the same numbers through PerformanceServerTiming, which is what /api/hello shows.
+// https://web.dev/articles/custom-metrics#server-timing-api
+//
+// First in the stack, and it writes the header through on-headers rather than around next():
+// everything mounted below happens inside this middleware's own call, so the number is only known
+// when the response is about to go out. on-headers is the hook for exactly that moment, and it is
+// what compression, morgan and express-session below already use, so wrapping writeHead by hand
+// here lands after they have flushed and throws.
+app.use((req, res, next) => {
+    const startedAt = process.hrtime.bigint();
+    const marks = [];
+    // what a route can add to the picture: res.timing("db", 12.3) and it lands in the header
+    res.timing = (name, ms, description) => {
+        marks.push(`${name};dur=${Number(ms).toFixed(2)}${description ? `;desc="${description}"` : ""}`);
+        return res;
+    };
+    onHeaders(res, () => {
+        const total = Number(process.hrtime.bigint() - startedAt) / 1e6;
+        // "app" is the whole of this handler chain, which is what the browser can compare against
+        // its own view of the request. The name is short because it is drawn in a narrow column
+        res.setHeader("Server-Timing", [...marks, `app;dur=${total.toFixed(2)};desc="Fulmine"`].join(", "));
+    });
+    next();
+});
 
 app.use(morgan("tiny"));
 app.use(helmet());
