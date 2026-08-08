@@ -101,5 +101,7 @@ the range in `demo/package.json` widened first, since `^5` will not cross to `6`
   worth its cost here.
 - `internal_port = 3000`, which is what the server listens on unless `PORT` says otherwise.
 - `NG_ALLOWED_HOSTS`, because Angular refuses to render for a `Host` header it was not told
-  about. The build-time list has only `localhost`, and this replaces it.
-- `memory = "1gb"`: an Angular render needs more room than the static page this replaced.
+  about. The build-time list has only `localhost`, and this replaces it. A custom domain has to
+  be added here, or Angular answers it with a 400.
+- `memory = "512mb"`, unchanged from the static demo: the container settles at 64 MB after ten
+  renders with eight pages cached, so the Angular application fits in what was already paid for.

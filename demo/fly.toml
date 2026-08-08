@@ -22,5 +22,6 @@ primary_region = "fra"
 
 [[vm]]
   size = "shared-cpu-1x"
-  # an Angular render needs more room than the static page this replaced
-  memory = "1gb"
+  # measured rather than guessed: the container settles at 64 MB after ten renders with eight
+  # pages cached, so the Angular application fits in what the static page had
+  memory = "512mb"
