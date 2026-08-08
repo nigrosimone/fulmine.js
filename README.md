@@ -230,6 +230,7 @@ A single-stage `node:26-trixie-slim` image works too if you `apt-get install -y 
 - `app.listen()` returns the app, not an `http.Server`. There is no node server underneath, so `server.close()`, `server.address()` and anything that attaches itself to a real `http.Server` need a look. `app.close()`, `app.address()` and `app.listening` are there and do what you would expect.
 - `x-powered-by` is disabled by default. Express sends `X-Powered-By: Express` unless you turn it off; Fulmine does not send it unless you turn it on with `app.set("x-powered-by", true)`. The header only tells anyone asking which framework is running.
 - request body is only read for POST, PUT, PATCH and QUERY requests by default. You can add additional methods by setting `body methods` to array with uppercased methods.
+- **Informational responses go nowhere.** `res.writeEarlyHints()`, `res.writeContinue()` and `res.writeProcessing()` are all there, take what node's take and throw what node's throw once the head has gone out, but nothing reaches the wire: µWebSockets.js has no API for a `1xx`. They exist so that code written for Express keeps running rather than dying on "is not a function", which is the only thing a drop-in can honestly promise here. `res.addTrailers()` is the same story, and `res.setTimeout()` and `req.setTimeout()` register the listener without changing anything, since µWS runs its own idle timeout through `uwsOptions.idleTimeout`.
 - For HTTPS, instead of doing this:
 
 ```js
