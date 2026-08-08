@@ -147,11 +147,16 @@ as external in `angular.json`:
 ```
 
 What it is worth, measured on an Angular 22 application with each server reporting its own CPU per
-request, nine alternating rounds: **static assets 3.29x**, and **a page served from an in-process
-cache 1.90x**, but only when the cache keeps the body's ETag and length beside the bytes. A cache
-that stores the bytes alone measures level with Express, because both then hash the document again
-on every hit. The render itself is the same JavaScript on both sides and measures the same: on a
-cache miss the framework is not what your page is waiting for.
+request, nine alternating rounds: **static assets 3.29x**, and **a page served from a cache 1.50x**.
+The render itself is the same JavaScript on both sides and measures the same, so on a cache miss the
+framework is not what your page is waiting for. Which is the useful way round: an SSR application
+spends most of its traffic outside the render, and that is where the difference is.
+
+Caching those pages is [`ng-ssr-caching`](https://www.npmjs.com/package/ng-ssr-caching), a middleware
+that runs on Express and here alike, and the same measurement says a page costs 17.2ms to render and
+1.9ms to serve from it. It is worth knowing why it keeps the ETag beside the bytes: a cache that
+stores only the body makes the server hash the whole document again on every hit, and measures level
+with no cache at all on the serving side.
 
 ### When Express is somebody else's dependency
 
