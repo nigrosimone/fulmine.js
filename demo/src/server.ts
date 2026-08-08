@@ -73,6 +73,13 @@ app.use(
         // Angular's build inlines the critical CSS into the document, and the tool that does it has
         // no nonce to sign it with
         'style-src': ["'self'", "'unsafe-inline'"],
+        // Hydration writes two inline scripts, the event dispatch contract and its bootstrap call,
+        // and Angular 22 offers no way to turn event replay off. A nonce is the proper answer and
+        // is not available to us: a nonce has to be different on every request, and this page is
+        // served from a cache, so the HTML and the header would carry the same one forever, which
+        // is no better than what is written here and harder to read.
+        'script-src': ["'self'", "'unsafe-inline'"],
+        'script-src-attr': ["'unsafe-inline'"],
         // the weather comes from open-meteo, and the chat opens a socket back here
         'connect-src': ["'self'", 'https://*.open-meteo.com', 'ws:', 'wss:'],
         'img-src': ["'self'", 'data:'],

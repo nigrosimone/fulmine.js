@@ -16,7 +16,8 @@ import { WeatherUtils } from '../utils/weather.utils';
       (keydown)="onKeyDown($event)"
     >
       <div class="forecast-item__day">{{ dayName() }}</div>
-      <div class="forecast-item__icon">{{ icon() }}</div>
+      <!-- decorative: the condition next to it already says the same thing in words -->
+      <div class="forecast-item__icon" aria-hidden="true">{{ icon() }}</div>
       <div class="forecast-item__info">
         <div class="forecast-item__condition">{{ condition() }}</div>
         <div class="forecast-item__temps" data-testid="forecast-temps">
@@ -79,7 +80,14 @@ export class ForecastItemComponent {
   readonly toggle = output<number>();
 
   readonly dayName = computed(() => WeatherUtils.formatDate(this.daily().time[this.index()]));
-  readonly ariaLabel = computed(() => `View detailed forecast for ${this.dayName()}`);
+  // WCAG 2.5.3 wants the accessible name to start with the text you can see, in the order you see
+  // it, so that saying aloud what is written on a control activates it. "View detailed forecast for
+  // Today" reads well and fails that, which is why this repeats the row before adding to it.
+  readonly ariaLabel = computed(
+    () =>
+      `${this.dayName()} ${this.condition()} ${this.highTemperature()} ${this.lowTemperature()}, ` +
+      `show details`,
+  );
   readonly icon = computed(() =>
     WeatherUtils.getWeatherIcon(this.daily().weather_code[this.index()]),
   );

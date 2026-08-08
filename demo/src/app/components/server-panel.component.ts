@@ -120,6 +120,10 @@ interface Probe {
       font-size: var(--font-size-sm);
       margin: 0 0 var(--space-md);
     }
+    /* the browser default link blue is 1.61:1 against this panel, which fails at any size */
+    .panel a {
+      color: var(--color-primary);
+    }
     .panel__buttons {
       display: flex;
       flex-wrap: wrap;
