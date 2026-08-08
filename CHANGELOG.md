@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.5.0](https://github.com/nigrosimone/fulmine.js/compare/v5.4.1...v5.5.0) (2026-08-08)
+
+### Features
+
+* res.flushHeaders, and the types stop lying about the app and about listen ([eb35d95](https://github.com/nigrosimone/fulmine.js/commit/eb35d95ea5f27f4f86f1e7f693b2dfea2d5ac0e6))
+
 ## [5.4.1](https://github.com/nigrosimone/fulmine.js/compare/v5.4.0...v5.4.1) (2026-08-08)
 
 ### Performance Improvements
