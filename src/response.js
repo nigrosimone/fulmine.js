@@ -1357,6 +1357,211 @@ module.exports = class Response extends LazyWritable {
     }
 
     /**
+     * node's `writeEarlyHints`, which sends a `103` carrying the resources the page will want, so a
+     * browser can start fetching them while the server is still rendering.
+     *
+     * **Nothing is sent here.** µWebSockets.js has no API for an informational response, so the
+     * hints cannot reach the wire, and this exists so that code written for Express keeps running
+     * rather than dying on "res.writeEarlyHints is not a function". The callback is still called,
+     * because node calls it once the hints are out and a caller may be waiting on it.
+     *
+     * `writeContinue` and `writeProcessing` below are the same story with `100` and `102`.
+     *
+     * @param {Record<string, string|string[]>} [hints]
+     * @param {() => void} [callback]
+     * @returns {void}
+     */
+
+    /**
+     *
+     */
+    writeEarlyHints(hints, callback) {
+        this.#refuseInformationAfterHead();
+        // node writes the hints first and calls back after, so a caller that sequences work on it
+        // gets the same order here
+        if (typeof callback === "function") {
+            process.nextTick(callback);
+        }
+    }
+
+    /**
+     * node's `writeContinue`, the `100` that answers an `Expect: 100-continue`. Nothing is sent:
+     * see {@link Response#writeEarlyHints}.
+     *
+     * @returns {void}
+     */
+    writeContinue() {
+        this.#refuseInformationAfterHead();
+    }
+
+    /**
+     * node's `writeProcessing`, the `102`. Nothing is sent: see {@link Response#writeEarlyHints}.
+     *
+     * @returns {void}
+     */
+    writeProcessing() {
+        this.#refuseInformationAfterHead();
+    }
+
+    /**
+     * node throws from all three of the above once the head has gone out, since an informational
+     * response can only come before it, and an application may well be relying on that throw.
+     *
+     * @returns {void}
+     */
+    #refuseInformationAfterHead() {
+        if (this.headersSent) {
+            /** @type {NodeJS.ErrnoException} */
+            const err = new Error("Cannot write headers after they are sent to the client");
+            err.code = "ERR_HTTP_HEADERS_SENT";
+            throw err;
+        }
+    }
+
+    /**
+     * node's `addTrailers`, the headers that follow a chunked body. µWebSockets.js cannot send
+     * them, so nothing is written and the response is otherwise unaffected.
+     *
+     * @param {Record<string, string>|[string, string][]} [headers]
+     * @returns {void}
+     */
+
+    /**
+     *
+     */
+    addTrailers(headers) {}
+
+    /**
+     * node's per-response socket timeout. µWS runs its own idle timeout, set through
+     * `uwsOptions.idleTimeout`, and this cannot change it. The callback is registered on "timeout"
+     * as node's does, so nothing is lost by calling it, and nothing happens either.
+     *
+     * @param {number} msecs
+     * @param {() => void} [callback]
+     * @returns {this}
+     */
+
+    /**
+     *
+     */
+    setTimeout(msecs, callback) {
+        if (typeof callback === "function") {
+            this.once("timeout", callback);
+        }
+        return this;
+    }
+
+    /**
+     * node's `assignSocket` and `detachSocket`, which the http server uses when a response is
+     * handed a raw socket. There is no such socket here.
+     *
+     * @param {any} [socket]
+     * @returns {void}
+     */
+
+    /**
+     *
+     */
+    assignSocket(socket) {}
+
+    /**
+     * @param {any} [socket]
+     * @returns {void}
+     */
+
+    /**
+     *
+     */
+    detachSocket(socket) {}
+
+    /**
+     * node's `statusMessage`, the reason phrase. It is held as `statusText` here, and the two are
+     * the same thing: this is the name node and Express use, so code that sets it keeps working.
+     *
+     * @returns {string|undefined}
+     */
+    get statusMessage() {
+        return this.statusText;
+    }
+
+    set statusMessage(value) {
+        this.statusText = value;
+    }
+
+    /**
+     * Whether a header has been set on this response, which is node's `hasHeader`. Names are
+     * compared lowercased, as node compares them.
+     *
+     * @param {string} name
+     * @returns {boolean}
+     */
+    hasHeader(name) {
+        return this.headers[name.toLowerCase()] !== undefined;
+    }
+
+    /**
+     * The names of the headers set so far, lowercased, which is node's `getHeaderNames`.
+     *
+     * @returns {string[]}
+     */
+    getHeaderNames() {
+        return Object.keys(this.headers);
+    }
+
+    /**
+     * node's `getRawHeaderNames`, which returns the names in the case they were set in. Header
+     * names are held lowercased here, so this returns what {@link Response#getHeaderNames} does.
+     *
+     * @returns {string[]}
+     */
+    getRawHeaderNames() {
+        return Object.keys(this.headers);
+    }
+
+    /**
+     * Adds a value to a header without replacing what is there, which is node's `appendHeader`.
+     * A header that already has one value becomes a list, as node makes it.
+     *
+     * @param {string} name
+     * @param {string|readonly string[]} value
+     * @returns {this}
+     */
+    appendHeader(name, value) {
+        const key = name.toLowerCase();
+        const current = this.headers[key];
+        if (current === undefined) {
+            return this.setHeader(name, /** @type {any} */ (value));
+        }
+        const merged = [].concat(/** @type {any} */ (current), /** @type {any} */ (value));
+        return this.setHeader(name, /** @type {any} */ (merged));
+    }
+
+    /**
+     * Sets several headers at once from a Headers or a Map, which is node's `setHeaders`. A
+     * `Headers` gives `set-cookie` back through getSetCookie, so those stay separate values rather
+     * than one folded string.
+     *
+     * @param {Headers|Map<string, string|readonly string[]>} headers
+     * @returns {this}
+     */
+    setHeaders(headers) {
+        if (typeof Headers === "function" && headers instanceof Headers) {
+            for (const name of new Set([...headers.keys()])) {
+                if (name === "set-cookie") {
+                    this.setHeader(name, /** @type {any} */ (headers.getSetCookie()));
+                } else {
+                    this.setHeader(name, /** @type {any} */ (headers.get(name)));
+                }
+            }
+            return this;
+        }
+        for (const [name, value] of headers) {
+            this.setHeader(name, /** @type {any} */ (value));
+        }
+        return this;
+    }
+
+    /**
      * Node asks this before validating a header value, and answering true keeps it permissive.
      * Only reached through code that goes down node's own header path.
      */
