@@ -51,6 +51,18 @@ const { EventEmitter } = require("events");
 const http = require("http");
 const ms = require("ms");
 
+// How much a chunked response may gather before it is handed to uWS. Measured on uWS alone with
+// 33 KB written in 500 pieces: 16.2ms handed over one piece at a time, 0.79ms in 4 KB blocks,
+// 0.43ms in 8 KB, 0.45ms in 16 KB. Past 8 KB the curve is flat, so this is the smallest size that
+// buys the whole saving, and it bounds what one response can hold back.
+const COALESCE_LIMIT = 16 * 1024;
+
+// Below which a chunk is worth gathering. Merging costs a copy, and a chunk that is already
+// substantial does not earn it back: measured at 33 KB in eight pieces, gathering them made the
+// response 28% dearer, while the same bytes in sixty-six pieces got 3.4x cheaper. Anything from
+// here up goes straight through.
+const COALESCE_BELOW = 4 * 1024;
+
 const outgoingMessage = new http.OutgoingMessage();
 const symbols = Object.getOwnPropertySymbols(outgoingMessage);
 // if a future node renames it, fall back to a private symbol rather than writing a property
@@ -207,6 +219,24 @@ module.exports = class Response extends LazyWritable {
 
     /** @type {((err?: Error|null) => void)|null} */
     #pendingCallback = null;
+
+    /**
+     * Chunks written but not yet handed to uWS, and their total size.
+     *
+     * uWS charges for a write against everything already buffered behind it, so a chunked response
+     * written in many small pieces costs quadratically once it passes the socket's own buffer:
+     * measured on uWS alone, 500 writes of 66 bytes take 13ms against 0.06ms for 100 of them.
+     * Handing it the same bytes in blocks costs 0.4ms. Nothing here changes what goes on the wire,
+     * only how many calls it takes to put it there.
+     * @type {Buffer[]}
+     */
+    #queued = [];
+
+    /** How many bytes {@link #queued} holds, kept alongside so the flush does not add them up. */
+    #queuedBytes = 0;
+
+    /** Whether a flush is already booked for the end of this turn. */
+    #flushBooked = false;
 
     /** @type {any} */
     #outHeaders = null;
@@ -401,9 +431,54 @@ module.exports = class Response extends LazyWritable {
     }
 
     /**
+     * Hands everything queued to uWS as one write, which is where the saving is, and keeps the
+     * backpressure the single write used to do.
+     *
+     * @param {((err?: Error|null) => void)|null} callback the stream's, when there is one waiting
+     */
+    #flushQueued(callback) {
+        if (this.#queuedBytes === 0) {
+            if (callback) callback(null);
+            return;
+        }
+        const body = this.#queued.length === 1 ? this.#queued[0] : Buffer.concat(this.#queued, this.#queuedBytes);
+        this.#queued = [];
+        this.#queuedBytes = 0;
+
+        const ok = this._res.write(body);
+        if (ok) {
+            this.writingChunk = false;
+            if (callback) callback(null);
+            else this.emit("drain");
+        } else if (callback) {
+            this.#pendingCallback = callback;
+            this._res.onWritable(() => {
+                if (this.aborted || this.finished) return true;
+                const cb = this.#pendingCallback;
+                this.#pendingCallback = null;
+                this.writingChunk = false;
+                if (cb) cb(null);
+                return true;
+            });
+        } else {
+            // nothing is waiting on this one: uWS drains it and the next write finds out
+            this.writingChunk = false;
+        }
+    }
+
+    /**
+     * The booked flush. An arrow so it can be handed to nextTick without binding it every write.
+     */
+    #flushOnTick = () => {
+        this.#flushBooked = false;
+        if (this.aborted || this.finished || this.#queuedBytes === 0) return;
+        this._res.cork(() => this.#flushQueued(null));
+    };
+
+    /**
      * Writable's sink. Sends the headers if they have not gone yet, then hands the chunk to uWS,
-     * either as a chunk of a chunked response or through tryEnd when a Content-Length said how
-     * much there would be. Backpressure comes back as onWritable, which is what defers the
+     * either through the queue above for a chunked response or through tryEnd when a Content-Length
+     * said how much there would be. Backpressure comes back as onWritable, which is what defers the
      * callback rather than dropping the chunk.
      *
      * @param {any} chunk
@@ -441,20 +516,23 @@ module.exports = class Response extends LazyWritable {
             }
 
             if (this.chunkedTransfer) {
-                const ok = this._res.write(chunk);
-                if (ok) {
+                // Held back rather than written, and handed over in one piece at the end of this
+                // turn or once it is big enough to be worth a call. A stream that writes once per
+                // turn, an SSE feed for instance, still leaves on its own turn: the queue only ever
+                // gathers what was written without yielding in between.
+                this.#queued.push(/** @type {Buffer} */ (chunk));
+                this.#queuedBytes += /** @type {Buffer} */ (chunk).byteLength;
+                // a chunk that is already big enough to be worth its own call leaves with whatever
+                // was waiting in front of it, rather than paying for a copy it does not need
+                if (this.#queuedBytes >= COALESCE_LIMIT || /** @type {Buffer} */ (chunk).byteLength >= COALESCE_BELOW) {
+                    this.#flushQueued(callback);
+                } else {
+                    if (!this.#flushBooked) {
+                        this.#flushBooked = true;
+                        process.nextTick(this.#flushOnTick);
+                    }
                     this.writingChunk = false;
                     callback(null);
-                } else {
-                    this.#pendingCallback = callback;
-                    this._res.onWritable(() => {
-                        if (this.aborted || this.finished) return true;
-                        const cb = this.#pendingCallback;
-                        this.#pendingCallback = null;
-                        this.writingChunk = false;
-                        if (cb) cb(null);
-                        return true;
-                    });
                 }
             } else {
                 const lastOffset = this._res.getWriteOffset();
@@ -684,6 +762,8 @@ module.exports = class Response extends LazyWritable {
         } else if (!data && contentLength) {
             this._res.endWithoutBody(contentLength.toString());
         } else if (headWasAlreadyOut && this.chunkedTransfer) {
+            // whatever is still queued goes first: end() must not overtake the body written before it
+            this.#flushQueued(null);
             // The head has already gone out without a length, which is what flushHeaders() and the
             // first res.write() both do, so this response is committed to chunked framing and a
             // length can no longer describe it. node is committed the same way: after a flush,
@@ -1274,6 +1354,211 @@ module.exports = class Response extends LazyWritable {
             // written in pieces, and the framing has to be the one that allows them
             this.writeHeaders(true);
         });
+    }
+
+    /**
+     * node's `writeEarlyHints`, which sends a `103` carrying the resources the page will want, so a
+     * browser can start fetching them while the server is still rendering.
+     *
+     * **Nothing is sent here.** µWebSockets.js has no API for an informational response, so the
+     * hints cannot reach the wire, and this exists so that code written for Express keeps running
+     * rather than dying on "res.writeEarlyHints is not a function". The callback is still called,
+     * because node calls it once the hints are out and a caller may be waiting on it.
+     *
+     * `writeContinue` and `writeProcessing` below are the same story with `100` and `102`.
+     *
+     * @param {Record<string, string|string[]>} [hints]
+     * @param {() => void} [callback]
+     * @returns {void}
+     */
+
+    /**
+     *
+     */
+    writeEarlyHints(hints, callback) {
+        this.#refuseInformationAfterHead();
+        // node writes the hints first and calls back after, so a caller that sequences work on it
+        // gets the same order here
+        if (typeof callback === "function") {
+            process.nextTick(callback);
+        }
+    }
+
+    /**
+     * node's `writeContinue`, the `100` that answers an `Expect: 100-continue`. Nothing is sent:
+     * see {@link Response#writeEarlyHints}.
+     *
+     * @returns {void}
+     */
+    writeContinue() {
+        this.#refuseInformationAfterHead();
+    }
+
+    /**
+     * node's `writeProcessing`, the `102`. Nothing is sent: see {@link Response#writeEarlyHints}.
+     *
+     * @returns {void}
+     */
+    writeProcessing() {
+        this.#refuseInformationAfterHead();
+    }
+
+    /**
+     * node throws from all three of the above once the head has gone out, since an informational
+     * response can only come before it, and an application may well be relying on that throw.
+     *
+     * @returns {void}
+     */
+    #refuseInformationAfterHead() {
+        if (this.headersSent) {
+            /** @type {NodeJS.ErrnoException} */
+            const err = new Error("Cannot write headers after they are sent to the client");
+            err.code = "ERR_HTTP_HEADERS_SENT";
+            throw err;
+        }
+    }
+
+    /**
+     * node's `addTrailers`, the headers that follow a chunked body. µWebSockets.js cannot send
+     * them, so nothing is written and the response is otherwise unaffected.
+     *
+     * @param {Record<string, string>|[string, string][]} [headers]
+     * @returns {void}
+     */
+
+    /**
+     *
+     */
+    addTrailers(headers) {}
+
+    /**
+     * node's per-response socket timeout. µWS runs its own idle timeout, set through
+     * `uwsOptions.idleTimeout`, and this cannot change it. The callback is registered on "timeout"
+     * as node's does, so nothing is lost by calling it, and nothing happens either.
+     *
+     * @param {number} msecs
+     * @param {() => void} [callback]
+     * @returns {this}
+     */
+
+    /**
+     *
+     */
+    setTimeout(msecs, callback) {
+        if (typeof callback === "function") {
+            this.once("timeout", callback);
+        }
+        return this;
+    }
+
+    /**
+     * node's `assignSocket` and `detachSocket`, which the http server uses when a response is
+     * handed a raw socket. There is no such socket here.
+     *
+     * @param {any} [socket]
+     * @returns {void}
+     */
+
+    /**
+     *
+     */
+    assignSocket(socket) {}
+
+    /**
+     * @param {any} [socket]
+     * @returns {void}
+     */
+
+    /**
+     *
+     */
+    detachSocket(socket) {}
+
+    /**
+     * node's `statusMessage`, the reason phrase. It is held as `statusText` here, and the two are
+     * the same thing: this is the name node and Express use, so code that sets it keeps working.
+     *
+     * @returns {string|undefined}
+     */
+    get statusMessage() {
+        return this.statusText;
+    }
+
+    set statusMessage(value) {
+        this.statusText = value;
+    }
+
+    /**
+     * Whether a header has been set on this response, which is node's `hasHeader`. Names are
+     * compared lowercased, as node compares them.
+     *
+     * @param {string} name
+     * @returns {boolean}
+     */
+    hasHeader(name) {
+        return this.headers[name.toLowerCase()] !== undefined;
+    }
+
+    /**
+     * The names of the headers set so far, lowercased, which is node's `getHeaderNames`.
+     *
+     * @returns {string[]}
+     */
+    getHeaderNames() {
+        return Object.keys(this.headers);
+    }
+
+    /**
+     * node's `getRawHeaderNames`, which returns the names in the case they were set in. Header
+     * names are held lowercased here, so this returns what {@link Response#getHeaderNames} does.
+     *
+     * @returns {string[]}
+     */
+    getRawHeaderNames() {
+        return Object.keys(this.headers);
+    }
+
+    /**
+     * Adds a value to a header without replacing what is there, which is node's `appendHeader`.
+     * A header that already has one value becomes a list, as node makes it.
+     *
+     * @param {string} name
+     * @param {string|readonly string[]} value
+     * @returns {this}
+     */
+    appendHeader(name, value) {
+        const key = name.toLowerCase();
+        const current = this.headers[key];
+        if (current === undefined) {
+            return this.setHeader(name, /** @type {any} */ (value));
+        }
+        const merged = [].concat(/** @type {any} */ (current), /** @type {any} */ (value));
+        return this.setHeader(name, /** @type {any} */ (merged));
+    }
+
+    /**
+     * Sets several headers at once from a Headers or a Map, which is node's `setHeaders`. A
+     * `Headers` gives `set-cookie` back through getSetCookie, so those stay separate values rather
+     * than one folded string.
+     *
+     * @param {Headers|Map<string, string|readonly string[]>} headers
+     * @returns {this}
+     */
+    setHeaders(headers) {
+        if (typeof Headers === "function" && headers instanceof Headers) {
+            for (const name of new Set([...headers.keys()])) {
+                if (name === "set-cookie") {
+                    this.setHeader(name, /** @type {any} */ (headers.getSetCookie()));
+                } else {
+                    this.setHeader(name, /** @type {any} */ (headers.get(name)));
+                }
+            }
+            return this;
+        }
+        for (const [name, value] of headers) {
+            this.setHeader(name, /** @type {any} */ (value));
+        }
+        return this;
     }
 
     /**

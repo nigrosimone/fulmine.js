@@ -700,6 +700,73 @@ module.exports = class Request extends LazyReadable {
         return this.res?.finished || this.res?.aborted;
     }
 
+    /** @type {AbortController|undefined} */
+    #abortController;
+
+    /**
+     * node's `req.signal`, an AbortSignal that fires when the request is over, so work started for
+     * a visitor who has gone away can be stopped. `@angular/ssr` reads it when it builds a web
+     * Request out of this one, which is how an SSR render learns to give up.
+     *
+     * Made on the first ask rather than for every request: most requests never look at it, and an
+     * AbortController each would be an allocation nobody reads.
+     *
+     * @returns {AbortSignal}
+     */
+    get signal() {
+        if (!this.#abortController) {
+            const controller = new AbortController();
+            this.#abortController = controller;
+            const stop = () => controller.abort();
+            if (this.res?.aborted || this.res?.finished) {
+                stop();
+            } else {
+                // the request, not the response: a client abort is reported by destroying this
+                // stream and emitting "aborted" on it, and the response is never told to close
+                this.once("aborted", stop);
+                this.once("close", stop);
+            }
+        }
+
+        return this.#abortController.signal;
+    }
+
+    /**
+     * The trailing headers of a chunked request. µWebSockets.js does not surface them, so these
+     * stay empty, which is also what node hands back until the request has ended.
+     *
+     * @returns {Record<string, string>}
+     */
+    get trailers() {
+        return {};
+    }
+
+    /**
+     * @returns {Record<string, string[]>}
+     */
+    get trailersDistinct() {
+        return {};
+    }
+
+    /**
+     * node's per-request socket timeout. µWS runs its own idle timeout, set through
+     * `uwsOptions.idleTimeout`, and this cannot change it. The listener is registered as node's is.
+     *
+     * @param {number} msecs
+     * @param {() => void} [callback]
+     * @returns {this}
+     */
+
+    /**
+     *
+     */
+    setTimeout(msecs, callback) {
+        if (typeof callback === "function") {
+            this.once("timeout", callback);
+        }
+        return this;
+    }
+
     /**
      * Readable's pull. uWS pushes the body rather than being pulled from, so all this does is
      * lift the backpressure that a full queue put on it.
