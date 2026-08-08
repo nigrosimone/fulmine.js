@@ -267,9 +267,6 @@ Object.defineProperty(LazyReadableBase.prototype, "readable", {
 
 module.exports = class Request extends LazyReadable {
     /** @type {Record<string, any>|null} */
-    #cachedQuery = null;
-
-    /** @type {Record<string, any>|null} */
     #cachedHeaders = null;
 
     /** @type {Record<string, string[]>|null} */
@@ -892,7 +889,6 @@ module.exports = class Request extends LazyReadable {
         this._rawQuery = queryIndex === -1 ? "" : newUrl.slice(queryIndex + 1);
         // a rewrite to "/a?" keeps its "?", as one arriving that way does
         this.urlQuery = queryIndex === -1 ? "" : "?" + this._rawQuery;
-        this.#cachedQuery = null;
         this._originalPath = prefix + newPath;
         this.path = newPath;
         this.endsWithSlash = newPath.charCodeAt(newPath.length - 1) === 0x2f;
@@ -913,27 +909,28 @@ module.exports = class Request extends LazyReadable {
      * the parse cached and handed out as itself, the sanitised value leaked into req.query here and
      * a handler written against express read a trimmed value where express gives it the raw one.
      *
-     * The parse itself is still done once. What is copied per read is the shallow result, which is
-     * cheaper than express's re-parse and answers the same for everything but a write to a nested
-     * key, which only the extended parser can produce.
+     * And that is why there is no cache: the fresh object comes from parsing the raw string again,
+     * not from copying a kept parse. As first shipped this was parse-once-copy-per-read, and the
+     * copy was the expensive half: Object.assign between null-prototype objects, which live in
+     * V8's dictionary mode, measured 638ns for a two-parameter query where parsing the same string
+     * measures 119ns, and on a benchmark whose every request carries such a query it cost +1.5us
+     * of CPU per request, which a public arena saw as -8% on its query-carrying rows. A handler
+     * that reads req.query once per request now pays exactly what it paid when the parse was
+     * cached, one parse, and a handler that reads it N times pays N parses, which is express's
+     * own cost shape.
      *
      * @returns {Record<string, any>}
      */
     get query() {
-        let parsed = this.#cachedQuery;
-        if (parsed === null) {
-            const qp = this.app.get("query parser fn");
-            // the vendored default already answers on a bare null prototype, so it goes out as is;
-            // any other parser is copied onto one, which is what kept fast-querystring's result from
-            // inspecting as "Empty <[Object: null prototype] {}>" where Express shows the bare form
-            parsed = qp
-                ? qp === parseQuery
-                    ? parseQuery(this._rawQuery)
-                    : Object.assign(Object.create(null), qp(this._rawQuery))
-                : Object.create(null);
-            this.#cachedQuery = parsed;
-        }
-        return Object.assign(Object.create(null), parsed);
+        const qp = this.app.get("query parser fn");
+        // the vendored default already answers on a bare null prototype, so it goes out as is;
+        // any other parser is copied onto one, which is what kept fast-querystring's result from
+        // inspecting as "Empty <[Object: null prototype] {}>" where Express shows the bare form
+        return qp
+            ? qp === parseQuery
+                ? parseQuery(this._rawQuery)
+                : Object.assign(Object.create(null), qp(this._rawQuery))
+            : Object.create(null);
     }
 
     /**
