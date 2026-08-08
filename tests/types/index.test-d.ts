@@ -139,7 +139,7 @@ server.close();
 
 // The surface that is Fulmine's own rather than re-exported from Express: the constructor
 // settings, the uWS app hanging off both the application and the server, and the listen
-// overloads that hand back a uWS listen token.
+// overloads.
 const configured = express({
     threads: 2,
     http3: false,
@@ -147,14 +147,22 @@ const configured = express({
 });
 expectType<uWS.TemplatedApp>(configured.uwsApp);
 
-const withToken = configured.listen(3000, (token) => {
-    expectType<any>(token);
+// The callback is Express 5's, not µWS's: nothing on success, the error when the bind failed. This
+// used to be typed as a µWS listen token, which never arrives, and the type test asserted the same
+// wrong thing. Verified against the runtime: zero arguments on success, one EADDRINUSE error when
+// the port is taken.
+const bound = configured.listen(3000, (error) => {
+    expectType<Error | undefined>(error);
 });
-expectType<uWS.TemplatedApp>(withToken.uwsApp);
-withToken.close();
+expectType<uWS.TemplatedApp>(bound.uwsApp);
+bound.close();
 
 expectAssignable<Server>(configured.listen(3000, "127.0.0.1"));
-expectAssignable<Server>(configured.listen((_token) => {}));
+expectAssignable<Server>(configured.listen((_error) => {}));
+// what process.env.PORT gives you, which is what every generated server.ts passes
+expectAssignable<Server>(configured.listen(process.env.PORT || 4000, (_error) => {}));
+// and node's fourth shape, which the runtime has always accepted
+expectAssignable<Server>(configured.listen(3000, "127.0.0.1", 511, () => {}));
 
 // an existing uWS app can be handed in instead of letting Fulmine create one
 express({ uwsApp: configured.uwsApp }).listen(3001).close();

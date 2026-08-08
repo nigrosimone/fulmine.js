@@ -658,6 +658,10 @@ module.exports = class Response extends LazyWritable {
      * @param {any} cb
      */
     _finish(data, cb) {
+        // read before the head is written below, which is what sets the flag: what matters further
+        // down is whether something had already committed the framing, a flushHeaders() or a first
+        // res.write(), not whether this call is about to write the head itself
+        const headWasAlreadyOut = this.headersSent;
         if (!this.headersSent) {
             // freshness is not decided here. node's end() knows nothing about conditional
             // requests, and Express answers 304 from send() and from sendFile(), each of
@@ -679,6 +683,18 @@ module.exports = class Response extends LazyWritable {
             this._res.endWithoutBody();
         } else if (!data && contentLength) {
             this._res.endWithoutBody(contentLength.toString());
+        } else if (headWasAlreadyOut && this.chunkedTransfer) {
+            // The head has already gone out without a length, which is what flushHeaders() and the
+            // first res.write() both do, so this response is committed to chunked framing and a
+            // length can no longer describe it. node is committed the same way: after a flush,
+            // res.end("body") sends a chunk, not a Content-Length. Handing the body to uWS's end()
+            // here would have it append a length to a head that already said otherwise, which is
+            // what the comparison test caught.
+            if (data) {
+                this._res.write(data);
+                this._sentBody = data;
+            }
+            this._res.endWithoutBody();
         } else {
             // a Buffer goes to uWS as the view it is: copying it into a fresh ArrayBuffer was
             // an allocation per body, and uWS reads the view's own offset and length
@@ -1230,6 +1246,34 @@ module.exports = class Response extends LazyWritable {
             this.headers[field] = String(value);
         }
         return this;
+    }
+
+    /**
+     * Sends the status line and the headers now, without waiting for a body, which is node's
+     * flushHeaders(). Callers use it to let the client start on the head while the body is still
+     * being produced, and one of them is `@angular/ssr`'s writeResponseToNodeResponse, which calls
+     * it before streaming a rendered page.
+     *
+     * A second call does nothing, as node's does. Nothing is written for a response already
+     * finished or aborted: uWS has let go of it by then.
+     *
+     * @returns {void}
+     */
+    flushHeaders() {
+        if (this.headersSent || this.finished || this.aborted) {
+            return;
+        }
+        this._res.cork(() => {
+            this.writeHead(this.statusCode);
+            // the same rule the chunked write path follows: uWS emits the 200 head itself, byte for
+            // byte, so writing it again would only cost a crossing
+            if (this.statusCode !== 200 || this.statusText !== undefined) {
+                this._res.writeStatus(statusLine(this.statusCode, this.statusText));
+            }
+            // true, as the chunked path passes for a string chunk: what follows a flush is a body
+            // written in pieces, and the framing has to be the one that allows them
+            this.writeHeaders(true);
+        });
     }
 
     /**

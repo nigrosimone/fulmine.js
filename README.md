@@ -46,6 +46,7 @@ shared machine, so the number would describe the machine rather than the framewo
 - [Attribution](#attribution)
 - [Difference from similar projects](#difference-from-similar-projects)
 - [Migrating](#migrating)
+    - [Angular SSR](#angular-ssr)
     - [When Express is somebody else's dependency](#when-express-is-somebody-elses-dependency)
 - [Docker](#docker)
 - [Differences from Express](#differences-from-express)
@@ -129,6 +130,28 @@ npx fulmine differences         # print the list below and change nothing
 
 The command is installed under both `fulmine` and `fulmine.js`. Use `fulmine`: `npx` cannot run a
 command whose name ends in `.js` on Windows, where it exits without a word.
+
+### Angular SSR
+
+The `server.ts` that `ng add @angular/ssr` generates is an ordinary Express application, so the same
+one-line change applies, and `@angular/ssr`'s own `AngularNodeAppEngine` and
+`writeResponseToNodeResponse` work against Fulmine's request and response unchanged. One extra step
+is needed, and it is Angular's build rather than this library: the server bundle is built with
+esbuild, which tries to inline every dependency and cannot load µWS's native binary. Declare the two
+as external in `angular.json`:
+
+```json
+"architect": { "build": { "options": {
+    "externalDependencies": ["fulmine.js", "uWebSockets.js"]
+} } }
+```
+
+What it is worth, measured on an Angular 22 application with each server reporting its own CPU per
+request, nine alternating rounds: **static assets 3.29x**, and **a page served from an in-process
+cache 1.90x**, but only when the cache keeps the body's ETag and length beside the bytes. A cache
+that stores the bytes alone measures level with Express, because both then hash the document again
+on every hit. The render itself is the same JavaScript on both sides and measures the same: on a
+cache miss the framework is not what your page is waiting for.
 
 ### When Express is somebody else's dependency
 
@@ -627,6 +650,7 @@ Fulmine adds three of its own:
 - ✅ res.removeHeader()
 - ✅ res.write()
 - ✅ res.writeHead()
+- ✅ res.flushHeaders()
 
 ### Router
 

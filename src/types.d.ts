@@ -96,10 +96,39 @@ declare module "fulmine.js" {
     }
 
     interface Fulmine extends Omit<e.Express, "listen"> {
+        /**
+         * The app is a node request handler, so it can be handed to anything that takes one. That
+         * is what `http.createServer(app)` does, what supertest does, and what `@angular/ssr`'s
+         * createNodeRequestHandler(app) does in the server.ts Angular generates.
+         *
+         * Express declares this through its own RequestHandler on the Express interface; here it
+         * has to be written out, because the request and response an application sees are this
+         * project's own and node's shapes only arrive through the shim. It has always worked at
+         * runtime and the type did not say so, which compiled fine in JavaScript and stopped a
+         * TypeScript consumer at the first line that passed the app anywhere.
+         */
+        (
+            req: import("http").IncomingMessage,
+            res: import("http").ServerResponse,
+            next?: (err?: unknown) => void
+        ): void | Promise<void>;
+
         readonly uwsApp: uWS.TemplatedApp;
-        listen(port: number, callback?: (token: any) => void): FulmineServer;
-        listen(port: number, host: string, callback?: (token: any) => void): FulmineServer;
-        listen(callback: (token: any) => void): FulmineServer;
+
+        /**
+         * Binds, and calls back the way Express 5 does: with nothing when the socket is listening,
+         * and with the error when the bind failed, since Express registers the listen callback on
+         * 'error' as well as on 'listening'. `this` inside it is the app, which is what listen
+         * returns here and what Express's http.Server is there.
+         *
+         * A string port is accepted and is what `process.env.PORT` gives you: numeric strings are
+         * bound as ports, anything else is taken as a unix socket path and bound through µWS's
+         * listen_unix. The four shapes below are node's own.
+         */
+        listen(callback?: (error?: Error) => void): FulmineServer;
+        listen(port: number | string, callback?: (error?: Error) => void): FulmineServer;
+        listen(port: number | string, host: string, callback?: (error?: Error) => void): FulmineServer;
+        listen(port: number | string, host: string, backlog: number, callback?: (error?: Error) => void): FulmineServer;
         ws(path: string, behavior: WebSocketBehavior): this;
         publish(topic: string, message: string | ArrayBuffer | Buffer, isBinary?: boolean, compress?: boolean): boolean;
         numSubscribers(topic: string): number;
