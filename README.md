@@ -26,11 +26,12 @@ npx fulmine profile             # what listen() decided about each route
 
 See [Migrating](#migrating) for what it handles and what it deliberately does not.
 
-There is a **[live demo](https://fulmine-demo.fly.dev)**, which is an ordinary Express application:
-real routes, `helmet`, `cors`, `compression`, `express-session` and `morgan` unmodified, and a
-WebSocket chat served by `app.ws()`. It links to [its own source](https://fulmine-demo.fly.dev/source),
-which is [in this repository](./demo). It shows no throughput figure on purpose: it runs on a small
-shared machine, so the number would describe the machine rather than the framework.
+There is a **[live demo](https://fulmine-demo.fly.dev)**: a real Angular 22 application, server-side
+rendered, with `helmet`, `cors`, `compression`, `express-session` and `morgan` unmodified in front of
+it, its rendered HTML kept by [ng-ssr-caching](https://www.npmjs.com/package/ng-ssr-caching), and a
+WebSocket chat served by `app.ws()`. The source is [in this repository](./demo). It shows no
+throughput figure on purpose: it runs on a small shared machine, so the number would describe the
+machine rather than the framework.
 
 [![npm version](https://img.shields.io/npm/v/fulmine.js)](https://www.npmjs.com/package/fulmine.js)
 [![Node.js >= 22.0.0](https://img.shields.io/badge/Node.js-%3E=22.0.0-green)](https://nodejs.org)
