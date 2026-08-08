@@ -56,6 +56,19 @@ of nine per-round ratios still wanders a percent or two on its own, so a result 
 `--rounds 15` before it is worth believing, and a `--null` run from the same sitting to read it
 against. Nine is for telling 1.2x from 1.0.
 
+**"From the same sitting" is the load-bearing part.** The floor is not a property of the machine, it
+is a property of the machine right now. The same laptop, the same command, the same day: `--null`
+over fifteen rounds read 0.999 with a spread of 0.96 to 1.05 in the morning, and 1.020 with a spread
+of 0.61 to 1.20 in the evening, with the absolute throughput swinging between 20k and 54k inside a
+single run. A -3.5% measured in that second sitting says nothing at all. So a `--null` is not a
+number to look up once and quote later; it is run next to the thing being measured, or the thing
+being measured is not evidence.
+
+When the machine is like that, throughput is the wrong instrument entirely. `profile.js` reports the
+CPU microseconds the server spends per request, and a noisy neighbour stealing cycles lowers
+throughput without changing how much work a request costs, so it survives conditions that make this
+harness useless.
+
 ## Writing a scenario
 
 A scenario module exports the route setup and, when the request is anything other than a plain GET,
