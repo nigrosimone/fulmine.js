@@ -3,13 +3,17 @@
 FROM node:26-trixie AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm install --omit=dev
+RUN npm install
+COPY . .
+RUN npm run build
+# the Angular toolchain is a third of a gigabyte and none of it runs in production
+RUN npm prune --omit=dev
 
 FROM node:26-trixie-slim
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app/node_modules ./node_modules
-COPY server.js ./
-COPY public ./public
+COPY --from=build /app/dist ./dist
+COPY package.json ./
 EXPOSE 3000
-CMD ["node", "server.js"]
+CMD ["node", "dist/fulmine-demo/server/server.mjs"]

@@ -1,18 +1,36 @@
 # The demo
 
-What runs at **fulmine-demo.fly.dev**. It shows that a Fulmine application is an Express
-application: the routes, the middleware and the session are the ordinary ones, and the only line
-that differs from any other Express server is the first `require`.
+What runs at **fulmine-demo.fly.dev**: a real Angular 22 application, server-side rendered, behind
+an ordinary Express middleware stack. Everything in `src/server.ts` is the code you would write on
+Express. The only line that differs from any other Express server is the first `import`.
 
 It deliberately shows no throughput figure. This runs on a small shared virtual machine, so any
 number would describe the machine rather than the framework; the benchmarks worth reading are the
 ones other people run on hardware they describe, and the root readme links them.
+
+## What it is made of
+
+| Piece                                                          | What it shows                                             |
+| :------------------------------------------------------------- | :-------------------------------------------------------- |
+| Angular 22 SSR, `AngularNodeAppEngine`                         | the schematic's own handler, unchanged                    |
+| [ng-ssr-caching](https://www.npmjs.com/package/ng-ssr-caching) | the rendered page kept and replayed, with its ETag        |
+| helmet, compression, cors, express-session, morgan, on-headers | third-party middleware, unmodified, in their usual order  |
+| `app.ws('/ws/:room')`                                          | the chat, which is the one thing here that is not Express |
+| Server-Timing                                                  | the server's own number, drawn by the browser's DevTools  |
+
+The weather itself comes from [open-meteo](https://open-meteo.com), so the page is rendered from
+real data rather than a fixture, and the cache is therefore caching something that can go stale.
+
+The application is [Alicia Sykes](https://github.com/Lissy93)' weather app from
+[framework-benchmarks](https://github.com/lissy93/framework-benchmarks), MIT licensed, with SSR
+added and two components of our own: the server panel and the chat.
 
 ## Running it locally
 
 ```sh
 cd demo
 npm install
+npm run build
 npm start          # http://localhost:3000
 ```
 
@@ -20,8 +38,24 @@ Or the way it is deployed, which also checks the glibc and git constraints µWS 
 
 ```sh
 docker build -t fulmine-demo .
-docker run --rm -p 3000:3000 fulmine-demo
+docker run --rm -p 3000:3000 -e NG_ALLOWED_HOSTS=localhost fulmine-demo
 ```
+
+### `ng build` crashes on Windows, and it is not Angular
+
+The build ends with a segmentation fault, after producing everything except the files copied from
+`public/`. The cause is upstream and reproduces in three lines:
+
+```sh
+node -e "new (require('worker_threads').Worker)('require(\"uWebSockets.js\")',{eval:true})"
+# Segmentation fault
+```
+
+Loading the µWS native addon inside a worker thread kills the process on Windows, and Angular's
+build launches the SSR entry in a worker to walk the routes. The same code is routine on Linux,
+which is where the Docker build above and the deploy run, so this affects local Windows builds
+only. Until it is fixed upstream, build in Docker or copy `public/` into
+`dist/fulmine-demo/browser/` afterwards.
 
 ## Deploying it
 
@@ -36,8 +70,7 @@ the library rather than an application:
 | Config path               | `demo/fly.toml`                                |
 | Branch                    | `main`                                         |
 
-One secret is worth setting, because this page links to its own source and the fallback in it is
-therefore public:
+One secret is worth setting, because the fallback in the source is public:
 
 ```sh
 fly secrets set SESSION_SECRET="$(openssl rand -hex 32)" --app fulmine-demo
@@ -49,7 +82,7 @@ not have to be typed:
 ```sh
 npm run demo:deploy    # cd demo && fly deploy
 npm run demo:logs      # what the machine is saying
-npm run demo:start     # installs and runs it locally instead
+npm run demo:start     # installs, builds and runs it locally instead
 ```
 
 The deploy changes directory rather than passing `--config`: `fly deploy ./demo --config ./demo/fly.toml`
@@ -67,3 +100,6 @@ the range in `demo/package.json` widened first, since `^5` will not cross to `6`
   takes ten seconds to wake up would prove the opposite of the point. This is the one setting
   worth its cost here.
 - `internal_port = 3000`, which is what the server listens on unless `PORT` says otherwise.
+- `NG_ALLOWED_HOSTS`, because Angular refuses to render for a `Host` header it was not told
+  about. The build-time list has only `localhost`, and this replaces it.
+- `memory = "1gb"`: an Angular render needs more room than the static page this replaced.

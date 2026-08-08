@@ -7,6 +7,9 @@ primary_region = "fra"
 
 [env]
   PORT = "3000"
+  # Angular refuses to render for a Host it was not told about, which is its SSRF guard. The
+  # build-time list only has localhost, and this replaces it in production.
+  NG_ALLOWED_HOSTS = "fulmine-demo.fly.dev"
 
 [http_service]
   internal_port = 3000
@@ -19,4 +22,5 @@ primary_region = "fra"
 
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "512mb"
+  # an Angular render needs more room than the static page this replaced
+  memory = "1gb"

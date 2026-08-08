@@ -14,3 +14,7 @@ benchmark_history.json
 # what a comparison test wrote when the two arms disagreed, kept so a failure that does not
 # happen again can still be read
 test-failures/
+
+# the demo is an Angular application: its build cache and its output
+demo/.angular/
+demo/dist/

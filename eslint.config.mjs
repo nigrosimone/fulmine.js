@@ -5,7 +5,15 @@ import jsdoc from "eslint-plugin-jsdoc";
 
 export default [
     {
-        ignores: ["node_modules/**", "coverage/**", ".nyc_output/**", "benchmark/assets/**", "src/types.d.ts"]
+        // the demo is an Angular application with its own toolchain: its compiler type-checks it
+        ignores: [
+            "node_modules/**",
+            "coverage/**",
+            ".nyc_output/**",
+            "benchmark/assets/**",
+            "src/types.d.ts",
+            "demo/**"
+        ]
     },
     js.configs.recommended,
     {
@@ -78,20 +86,6 @@ export default [
         files: ["tests/**/*.js", "tests/**/*.cjs"],
         rules: {
             "no-useless-catch": "off"
-        }
-    },
-    {
-        // the demo's client half runs in a browser, not in node, so its globals are the browser's
-        files: ["demo/public/**/*.js"],
-        languageOptions: {
-            globals: {
-                document: "readonly",
-                window: "readonly",
-                location: "readonly",
-                fetch: "readonly",
-                performance: "readonly",
-                WebSocket: "readonly"
-            }
         }
     },
     // formatting is prettier's job; this turns off every rule that would argue with it

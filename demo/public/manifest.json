@@ -1,0 +1,31 @@
+{
+    "name": "Fulmine demo: Angular SSR",
+    "short_name": "Fulmine demo",
+    "description": "An Angular 22 application, server-side rendered and served by Fulmine on uWebSockets.js.",
+    "start_url": "/",
+    "scope": "/",
+    "display": "standalone",
+    "background_color": "#6762ff",
+    "theme_color": "#6762ff",
+    "orientation": "any",
+    "id": "https://fulmine-demo.fly.dev/",
+    "icons": [
+        {
+            "src": "favicon.png",
+            "sizes": "48x48",
+            "type": "image/png"
+        },
+        {
+            "src": "favicon.ico",
+            "sizes": "48x48 32x32 16x16",
+            "type": "image/x-icon"
+        }
+    ],
+    "related_applications": [
+        {
+            "platform": "web",
+            "url": "https://github.com/nigrosimone/fulmine.js"
+        }
+    ],
+    "categories": ["developer tools"]
+}
