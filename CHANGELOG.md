@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.4.1](https://github.com/nigrosimone/fulmine.js/compare/v5.4.0...v5.4.1) (2026-08-08)
+
+### Performance Improvements
+
+* req.query hands out a fresh parse instead of a copy of a cached one ([3d72875](https://github.com/nigrosimone/fulmine.js/commit/3d72875d4fbdce371749141812198dc13447b6d0))
+
 ## [5.4.0](https://github.com/nigrosimone/fulmine.js/compare/v5.3.0...v5.4.0) (2026-08-07)
 
 ### Features
