@@ -1,5 +1,15 @@
 # Changelog
 
+## [5.5.1](https://github.com/nigrosimone/fulmine.js/compare/v5.5.0...v5.5.1) (2026-08-08)
+
+### Bug Fixes
+
+* the response and request members node has that we did not ([f446342](https://github.com/nigrosimone/fulmine.js/commit/f446342751891859e3997e8b418d44280fb7e6dc))
+
+### Performance Improvements
+
+* a chunked body is gathered before it reaches uWS ([1e1f2b3](https://github.com/nigrosimone/fulmine.js/commit/1e1f2b33fadd8ccce2340362bfdb13b34cb5d138))
+
 ## [5.5.0](https://github.com/nigrosimone/fulmine.js/compare/v5.4.1...v5.5.0) (2026-08-08)
 
 ### Features
