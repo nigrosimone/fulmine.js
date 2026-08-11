@@ -500,31 +500,16 @@ class Application extends Router {
      * @param {any} res the uWS response
      * @param {any} req the uWS request
      */
-    async _serveGeneric(res, req) {
+    _serveGeneric(res, req) {
         const request = this.handleRequest(res, req);
         const response = request.res;
-        // armed up front here: this handler awaits, so the response outlives the callback
-        // on every path through it
+        // armed up front here: this handler can outlive the callback on every path through it
         this._armAbort(res, response);
 
-        try {
-            const routed = this._routeRequest(request, response);
-            // dispatch has run its synchronous stretch inside _routeRequest by now, still
-            // under the cork uWS holds for this callback; the await below leaves it
-            response._corkNeeded = true;
-            const matchedRoute = await routed;
-            if (!matchedRoute && !response.headersSent && !response.aborted) {
-                this._endUnmatched(request, response);
-            }
-        } catch (err) {
-            // an internal throw answers 500 as express's final handler would, instead of
-            // dying as an unhandled rejection
-            if (response.aborted || response.finished) {
-                console.error(err);
-            } else {
-                this._handleError(err, null, request, response);
-            }
-        }
+        this._routeRequestDirect(request, response);
+        // the synchronous stretch has run under the cork uWS holds for this callback, and
+        // whatever comes after it is outside
+        response._corkNeeded = true;
     }
 
     /**

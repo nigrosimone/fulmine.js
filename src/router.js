@@ -2542,6 +2542,24 @@ module.exports = class Router extends EventEmitter {
     }
 
     /**
+     * The same walk without the promise pair, for a uWS handler that never awaited it. nativeDone
+     * and nativeFail defer their epilogues to the microtask the await used to resume on, so the
+     * visible order holds.
+     *
+     * @param {any} req
+     * @param {any} res
+     */
+    _routeRequestDirect(req, res) {
+        const walk = new Walk(this, req, res, this._routes, false, undefined, nativeDone, nativeFail);
+        try {
+            walk.dispatch(0);
+        } catch (err) {
+            // what a throw inside a promise executor did: reject, once
+            nativeFail.call(walk, err);
+        }
+    }
+
+    /**
      * Mounts middleware, or a whole router, at a path. The path is optional, and a mount matches
      * everything under it, which is what separates it from all(). Mounting a Router sets its
      * mountpath and parent and emits 'mount' on it.
