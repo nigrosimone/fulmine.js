@@ -228,6 +228,11 @@ test("createETagGenerator takes a body or a stat, and weak differs from strong",
 
     // a Buffer and the string it holds are the same entity
     assert.strictEqual(weak(Buffer.from("hello")), weak("hello"));
+    // including a multi-byte one, where the string is hashed without being copied first
+    assert.strictEqual(weak("caffè macchiato ☕"), weak(Buffer.from("caffè macchiato ☕", "utf8")));
+    // an encoding other than utf8 names bytes the string does not hold, so it is decoded first
+    assert.strictEqual(weak("6869", "hex"), weak(Buffer.from("6869", "hex")));
+    assert.notStrictEqual(weak("6869", "hex"), weak("6869"));
 
     // a stat is tagged from its size and mtime rather than its contents
     const stat = Object.create(Stats.prototype);

@@ -1102,6 +1102,11 @@ function createETagGenerator(options) {
         if (body instanceof Stats) {
             return statTag(body, options.weak);
         }
+        // crypto.hash reads a string as the utf8 bytes Buffer.from would have produced, so the tag
+        // is the same one without copying the whole body first
+        if (typeof body === "string" && (encoding === undefined || encoding === "utf8" || encoding === "utf-8")) {
+            return entityTag(body, options.weak);
+        }
         const buf = !Buffer.isBuffer(body) ? Buffer.from(body, encoding) : body;
         return entityTag(buf, options.weak);
     };
