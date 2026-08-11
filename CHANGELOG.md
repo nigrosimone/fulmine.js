@@ -1,5 +1,15 @@
 # Changelog
 
+## [5.5.2](https://github.com/nigrosimone/fulmine.js/compare/v5.5.1...v5.5.2) (2026-08-11)
+
+### Performance Improvements
+
+* a mounted application is recognised by its field, not by its constructor name ([9c2494d](https://github.com/nigrosimone/fulmine.js/commit/9c2494d9ea3e69364d8b85ab31f10f0a0280e7ba))
+* a response builds its chunk queue and its flush closure only when it streams ([7650293](https://github.com/nigrosimone/fulmine.js/commit/765029381662047c04496107f65a96334d7876d5))
+* a use with no path answers its mount prefix without running a regex ([ddc6bb3](https://github.com/nigrosimone/fulmine.js/commit/ddc6bb3aa0e060420e3196e2fa90aac836d379e3))
+* the etag hashes a string body instead of copying it into a buffer first ([306d739](https://github.com/nigrosimone/fulmine.js/commit/306d739749de7702e620deaecce86691c197413b))
+* the generic handler walks without the promise pair nobody awaited ([2b2dbc4](https://github.com/nigrosimone/fulmine.js/commit/2b2dbc4743943b1cda0dcad5b1706aecb14c1a8b))
+
 ## [5.5.1](https://github.com/nigrosimone/fulmine.js/compare/v5.5.0...v5.5.1) (2026-08-08)
 
 ### Bug Fixes
