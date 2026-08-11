@@ -616,10 +616,15 @@ function nativeFail(err) {
  * @returns {number}
  */
 function mountPrefixLength(route, req) {
-    const path = req._opPath;
+    // a use with no path is EMPTY_REGEX, which matches "" at 0 whatever the path is. Answered
+    // without the exec, since this runs per hop and most middleware is pathless
+    if (route.pattern === EMPTY_REGEX) {
+        return 0;
+    }
     if (typeof route.pattern === "string") {
         return route.pattern.length;
     }
+    const path = req._opPath;
     const matched = route.pattern.exec(path === "" ? "/" : path);
     return matched ? Math.min(matched[0].length, path.length) : 0;
 }
