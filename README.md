@@ -200,6 +200,11 @@ Two things about µWebSockets.js make a Dockerfile that works for Express fail h
 
 - **No Alpine, and no Debian bookworm either.** µWebSockets.js ships prebuilt binaries linked against glibc 2.38 or newer. Alpine images use musl, so the binary does not load at all; `node:26` and `node:26-slim` are Debian bookworm, whose glibc 2.36 fails at startup with `GLIBC_2.38' not found`. Use the trixie variants: `node:26-trixie-slim` and up.
 - **`git` must be there when `npm install` runs.** µWebSockets.js is not on npm; it is installed straight from GitHub (`github:uNetworking/uWebSockets.js`), and npm uses git to fetch it. Full images like `node:26-trixie` have git; `-slim` ones do not.
+- **git must be allowed to speak https.** Where the build environment rewrites GitHub URLs to ssh, which some CI images and company-wide git configs do, the fetch asks for a key the image does not have and the install dies on a permission denied that never names µWebSockets.js. One line before `npm ci` puts it back:
+
+    ```dockerfile
+    RUN git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+    ```
 
 The clean way to satisfy both is a multi-stage build: install with the full image, run with the slim one.
 
