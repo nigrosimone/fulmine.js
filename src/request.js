@@ -756,10 +756,6 @@ module.exports = class Request extends LazyReadable {
      * @param {() => void} [callback]
      * @returns {this}
      */
-
-    /**
-     *
-     */
     setTimeout(msecs, callback) {
         if (typeof callback === "function") {
             this.once("timeout", callback);
