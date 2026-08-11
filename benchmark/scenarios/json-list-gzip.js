@@ -4,8 +4,8 @@
 // json-list because the two answer different questions: this one is capped by zlib and the other
 // is not, and reading them together is how a compression change gets mistaken for a routing one.
 //
-// Level 1 on purpose: the leaderboards measure throughput of compressed JSON, and the payloads are
-// small enough that a higher level buys bytes nobody counts.
+// Level 1, which is no longer what the HttpArena entry ships: that profile scores
+// rps * (minBpr/myBpr)^2, so the bytes do count, and it moved to brotli q3 for 12% fewer of them.
 const zlib = require("zlib");
 
 const ITEM_COUNT = 50;
