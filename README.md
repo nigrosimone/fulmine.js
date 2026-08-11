@@ -196,7 +196,7 @@ Bun is not an option: µWebSockets.js is a native Node addon, and Bun does not l
 
 ## Docker
 
-Two things about µWebSockets.js make a Dockerfile that works for Express fail here, and both have easy answers:
+Three things about µWebSockets.js make a Dockerfile that works for Express fail here, and all three have easy answers:
 
 - **No Alpine, and no Debian bookworm either.** µWebSockets.js ships prebuilt binaries linked against glibc 2.38 or newer. Alpine images use musl, so the binary does not load at all; `node:26` and `node:26-slim` are Debian bookworm, whose glibc 2.36 fails at startup with `GLIBC_2.38' not found`. Use the trixie variants: `node:26-trixie-slim` and up.
 - **`git` must be there when `npm install` runs.** µWebSockets.js is not on npm; it is installed straight from GitHub (`github:uNetworking/uWebSockets.js`), and npm uses git to fetch it. Full images like `node:26-trixie` have git; `-slim` ones do not.
@@ -206,7 +206,7 @@ Two things about µWebSockets.js make a Dockerfile that works for Express fail h
     RUN git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
     ```
 
-The clean way to satisfy both is a multi-stage build: install with the full image, run with the slim one.
+The clean way to satisfy the first two is a multi-stage build: install with the full image, run with the slim one.
 
 ```dockerfile
 FROM node:26-trixie AS build
