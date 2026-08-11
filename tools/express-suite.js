@@ -68,7 +68,6 @@ const TIMEOUT_MS = 120000;
 // waited for. Mocha prints the epilogue first and the failure details after it, so this cannot fire
 // on the summary line itself without losing the part that says what went wrong
 const GRACE_MS = 1500;
-
 function parseArgs(argv) {
     const args = { filters: [] };
     for (let i = 0; i < argv.length; i++) {
@@ -89,32 +88,39 @@ function parseArgs(argv) {
     return args;
 }
 
-function run(command, commandArgs, cwd) {
+function runGit(commandArgs, cwd) {
     // npm is a batch file on Windows, and node refuses to spawn one directly since the argument
     // injection fix. Through the command interpreter, the way node's own shell option does it
-    const windowsNpm = process.platform === "win32" && command === "npm";
-    const file = windowsNpm ? process.env.ComSpec || "cmd.exe" : command;
-    const argv = windowsNpm ? ["/d", "/s", "/c", command, ...commandArgs] : commandArgs;
-    const result = spawnSync(file, argv, {
-        cwd,
-        encoding: "utf8",
-        stdio: "inherit"
-    });
+    const result = spawnSync("git", commandArgs, { cwd, encoding: "utf8", stdio: "inherit" });
     if (result.error) {
         throw result.error;
     }
     if (result.status !== 0) {
-        throw new Error(`${command} ${commandArgs.join(" ")} exited with ${result.status}`);
+        throw new Error(`git ${commandArgs.join(" ")} exited with ${result.status}`);
     }
 }
 
-function capture(command, commandArgs, cwd) {
-    const result = spawnSync(command, commandArgs, { cwd, encoding: "utf8" });
+function runNpm(commandArgs, cwd) {
+    // npm is a batch file on Windows, and node refuses to spawn one directly since the argument
+    // injection fix. Through the command interpreter, the way node's own shell option does it
+    const file = process.platform === "win32" ? (process.env.ComSpec || "cmd.exe") : "npm";
+    const argv = process.platform === "win32" ? ["/d", "/s", "/c", "npm", ...commandArgs] : commandArgs;
+    const result = spawnSync(file, argv, { cwd, encoding: "utf8", stdio: "inherit" });
     if (result.error) {
         throw result.error;
     }
     if (result.status !== 0) {
-        throw new Error(`${command} ${commandArgs.join(" ")} exited with ${result.status}`);
+        throw new Error(`npm ${commandArgs.join(" ")} exited with ${result.status}`);
+    }
+}
+
+function captureGit(commandArgs, cwd) {
+    const result = spawnSync("git", commandArgs, { cwd, encoding: "utf8" });
+    if (result.error) {
+        throw result.error;
+    }
+    if (result.status !== 0) {
+        throw new Error(`git ${commandArgs.join(" ")} exited with ${result.status}`);
     }
     return result.stdout.trim();
 }
@@ -185,11 +191,11 @@ function ensureSuite(dir, tag, refresh) {
     if (!fs.existsSync(dir)) {
         console.log(`cloning express ${tag}`);
         fs.mkdirSync(path.dirname(dir), { recursive: true });
-        run("git", ["clone", "--quiet", "--depth", "1", "--branch", tag, REPO, dir], ROOT);
+        runGit(["clone", "--quiet", "--depth", "1", "--branch", tag, REPO, dir], ROOT);
     }
     if (!fs.existsSync(path.join(dir, "node_modules", "mocha"))) {
         console.log("installing the suite's own dependencies, which takes a minute the first time");
-        run("npm", ["install", "--no-audit", "--no-fund", "--loglevel", "error"], dir);
+        runNpm(["install", "--no-audit", "--no-fund", "--loglevel", "error"], dir);
     }
     const mocha = path.join(dir, "node_modules", "mocha", "bin", "mocha.js");
     if (!fs.existsSync(mocha)) {
@@ -216,7 +222,7 @@ function useFulmine(dir) {
 }
 
 function useExpress(dir) {
-    run("git", ["checkout", "--", "index.js"], dir);
+    runGit(["checkout", "--", "index.js"], dir);
 }
 
 function runFile(dir, mocha, file, timeoutMs) {
