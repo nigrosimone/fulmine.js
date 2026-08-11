@@ -228,9 +228,10 @@ module.exports = class Response extends LazyWritable {
      * measured on uWS alone, 500 writes of 66 bytes take 13ms against 0.06ms for 100 of them.
      * Handing it the same bytes in blocks costs 0.4ms. Nothing here changes what goes on the wire,
      * only how many calls it takes to put it there.
-     * @type {Buffer[]}
+     * Null until the first chunked write, since a res.send never queues anything.
+     * @type {Buffer[]|null}
      */
-    #queued = [];
+    #queued = null;
 
     /** How many bytes {@link #queued} holds, kept alongside so the flush does not add them up. */
     #queuedBytes = 0;
@@ -437,12 +438,12 @@ module.exports = class Response extends LazyWritable {
      * @param {((err?: Error|null) => void)|null} callback the stream's, when there is one waiting
      */
     #flushQueued(callback) {
-        if (this.#queuedBytes === 0) {
+        if (this.#queued === null || this.#queuedBytes === 0) {
             if (callback) callback(null);
             return;
         }
         const body = this.#queued.length === 1 ? this.#queued[0] : Buffer.concat(this.#queued, this.#queuedBytes);
-        this.#queued = [];
+        this.#queued = null;
         this.#queuedBytes = 0;
 
         const ok = this._res.write(body);
@@ -467,13 +468,16 @@ module.exports = class Response extends LazyWritable {
     }
 
     /**
-     * The booked flush. An arrow so it can be handed to nextTick without binding it every write.
+     * The booked flush. Static, so a response that never writes in pieces allocates nothing for it:
+     * nextTick forwards the receiver as an argument.
+     *
+     * @param {any} res
      */
-    #flushOnTick = () => {
-        this.#flushBooked = false;
-        if (this.aborted || this.finished || this.#queuedBytes === 0) return;
-        this._res.cork(() => this.#flushQueued(null));
-    };
+    static #flushOnTick(res) {
+        res.#flushBooked = false;
+        if (res.aborted || res.finished || res.#queuedBytes === 0) return;
+        res._res.cork(() => res.#flushQueued(null));
+    }
 
     /**
      * Writable's sink. Sends the headers if they have not gone yet, then hands the chunk to uWS,
@@ -520,7 +524,7 @@ module.exports = class Response extends LazyWritable {
                 // turn or once it is big enough to be worth a call. A stream that writes once per
                 // turn, an SSE feed for instance, still leaves on its own turn: the queue only ever
                 // gathers what was written without yielding in between.
-                this.#queued.push(/** @type {Buffer} */ (chunk));
+                (this.#queued ??= []).push(/** @type {Buffer} */ (chunk));
                 this.#queuedBytes += /** @type {Buffer} */ (chunk).byteLength;
                 // a chunk that is already big enough to be worth its own call leaves with whatever
                 // was waiting in front of it, rather than paying for a copy it does not need
@@ -529,7 +533,7 @@ module.exports = class Response extends LazyWritable {
                 } else {
                     if (!this.#flushBooked) {
                         this.#flushBooked = true;
-                        process.nextTick(this.#flushOnTick);
+                        process.nextTick(Response.#flushOnTick, this);
                     }
                     this.writingChunk = false;
                     callback(null);
@@ -1425,10 +1429,6 @@ module.exports = class Response extends LazyWritable {
      * @param {Record<string, string>|[string, string][]} [headers]
      * @returns {void}
      */
-
-    /**
-     *
-     */
     addTrailers(headers) {}
 
     /**
@@ -1439,10 +1439,6 @@ module.exports = class Response extends LazyWritable {
      * @param {number} msecs
      * @param {() => void} [callback]
      * @returns {this}
-     */
-
-    /**
-     *
      */
     setTimeout(msecs, callback) {
         if (typeof callback === "function") {
@@ -1458,19 +1454,11 @@ module.exports = class Response extends LazyWritable {
      * @param {any} [socket]
      * @returns {void}
      */
-
-    /**
-     *
-     */
     assignSocket(socket) {}
 
     /**
      * @param {any} [socket]
      * @returns {void}
-     */
-
-    /**
-     *
      */
     detachSocket(socket) {}
 
@@ -2006,12 +1994,6 @@ module.exports = class Response extends LazyWritable {
     }
 
     /**
-     * express carries both names for the same method, and middleware reaches for either.
-     * @type {(type: string) => any}
-     */
-    contentType = this.type;
-
-    /**
      * Adds a field to Vary, without repeating one already there.
      * @param {string|string[]} field
      * @returns {this}
@@ -2040,3 +2022,7 @@ module.exports = class Response extends LazyWritable {
         return this.finished;
     }
 };
+
+// res.contentType is res.type under express's other name. On the prototype rather than an instance
+// field, which wrote one own property per response in the constructor.
+/** @type {any} */ (module.exports.prototype).contentType = module.exports.prototype.type;
