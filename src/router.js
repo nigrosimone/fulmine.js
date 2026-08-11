@@ -446,7 +446,7 @@ class Walk {
             return this.step(undefined);
         }
         if (kind === CALLBACK_ROUTER) {
-            if (callback.constructor.name === "Application") {
+            if (callback._isApplication) {
                 rememberApp(this, route, req);
                 useApp(req, callback);
             }
@@ -1062,7 +1062,7 @@ function guardsInside(router, mount, pathPrefix, chain, inherited) {
  * @param {any} req
  */
 function rememberApp(walk, route, req) {
-    if (walk.router._isApplication && route.callbacks[0]?.constructor.name === "Application") {
+    if (walk.router._isApplication && route.callbacks[0]?._isApplication) {
         (req._appStack ??= []).push(route, req.app);
     }
 }
