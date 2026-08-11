@@ -1333,10 +1333,15 @@ module.exports = class Response extends LazyWritable {
     }
 
     /**
-     * Sends the status line and the headers now, without waiting for a body, which is node's
+     * Hands the status line and the headers over now, without waiting for a body, which is node's
      * flushHeaders(). Callers use it to let the client start on the head while the body is still
      * being produced, and one of them is `@angular/ssr`'s writeResponseToNodeResponse, which calls
      * it before streaming a rendered page.
+     *
+     * **The head does not reach the wire here.** uWS holds it until the first body chunk, so a
+     * client sees nothing until then, where express answers at once. `beginWrite` is uWS's API for
+     * this and is unusable: it emits a stray CRLF before the first chunk size, which node's parser
+     * rejects as HPE_INVALID_CHUNK_SIZE. Checked against v20.69.0, the latest release.
      *
      * A second call does nothing, as node's does. Nothing is written for a response already
      * finished or aborted: uWS has let go of it by then.
