@@ -371,7 +371,7 @@ Worth changing, if these are routes that carry traffic
 
 It loads the application with `listen()` replaced by the half that compiles the routes, so nothing binds a port and the listen callback does not run: profiling a running service does not start a second copy of it. There is no score, on purpose. A percentage of routes is not a percentage of traffic, and an application with a thousand cold routes and one hot one that fell back would score well and serve badly.
 
-2. Do not use external `serve-static` module. Instead use built-in `express.static()` middleware, which is optimized for Fulmine.
+2. Do not use external `serve-static` module. Instead use built-in `express.static()` middleware, which is optimized for Fulmine. If your build already writes `.br` and `.gz` files next to the originals, `express.static(dir, { preCompressed: true })` serves those to the clients that accept them, so nothing is compressed at request time. It costs one more `stat` per request and sends a fraction of the bytes: on a 4KB script with a brotli twin, 12 times fewer. `Vary: Accept-Encoding` is sent whether or not a variant is found, the content type stays the one the requested name implies, and each variant carries its own ETag.
 
 3. Do not use `body-parser` module. Instead use built-in `express.text()`, `express.json()` etc.
 
@@ -577,7 +577,7 @@ Two of these keep a compiled form alongside the value, which you can also set di
 Fulmine adds three of its own:
 
 - `declarative responses`, on by default. Lets a simple enough handler be compiled into a native uWS response, described under [Performance tips](#performance-tips).
-- `file cache`, on by default. Small files served by `res.sendFile` come from a bounded in-process cache, checked against the file's `stat` on every request, so an edited file is never served stale.
+- `file cache`, on by default. Small files served by `res.sendFile` come from a bounded in-process cache, checked against the file's `stat` on every request, so an edited file is never served stale. Turn it off where every request has to reach the disk, which is what a public benchmark asks of a standard entry: it was worth about 4% on a 4KB file here, so the cost of turning it off is small.
 - `trust proxy protocol`, off by default. Takes `req.ip` from a PROXY protocol preamble, described under [Behind a proxy](#behind-a-proxy). Read the warning there before turning it on.
 
 ### Request

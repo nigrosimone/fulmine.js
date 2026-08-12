@@ -68,6 +68,12 @@ export interface StaticOptions extends SendFileOptions {
     fallthrough?: boolean;
     /** Extensions tried when the path names no file, or false to try none. */
     extensions?: string[] | false;
+    /**
+     * Serve `file.br` or `file.gz` in place of `file` when one is on disk and the client takes it.
+     * Off by default. Vary: Accept-Encoding is sent whether or not a variant is found, and the
+     * content type stays the one the requested name implies.
+     */
+    preCompressed?: boolean;
 }
 
 /** A body parser's options once its factory has filled in every default it needs. */
