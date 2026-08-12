@@ -36,6 +36,7 @@ const os = require("os");
 const { Worker } = require("worker_threads");
 const cluster = require("cluster");
 const { registerWebSocketRoutes } = require("./websocket.js");
+const { addServerMembers } = require("./server-shape.js");
 
 const cpuCount = os.cpus().length;
 
@@ -871,3 +872,7 @@ module.exports = function (options) {
 // the class itself, so index.js can expose its prototype as express.application does. Adding a
 // method to that prototype adds it to every app, which is what the property is for.
 module.exports.Application = Application;
+
+// and what makes an application answer as an http.Server, since that is what a library handed the
+// result of listen() looks for. See server-shape.js for what is answered and what is not.
+addServerMembers(Application.prototype);
