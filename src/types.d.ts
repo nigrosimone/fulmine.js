@@ -17,6 +17,7 @@ limitations under the License.
 declare module "fulmine.js" {
     import e from "express";
     import uWS from "uWebSockets.js";
+    import { ZlibOptions, BrotliOptions } from "zlib";
 
     type Settings = {
         uwsOptions?: uWS.AppOptions;
@@ -36,6 +37,24 @@ declare module "fulmine.js" {
 
         export import static = e.static;
         // export import query = e.query;
+
+        // express has no compression middleware, so there is nothing to re-export: these are the
+        // compression module's options, which this one takes as they are
+        interface CompressionOptions extends ZlibOptions {
+            /** The smallest body worth compressing, in bytes or as "1kb". Default 1024. */
+            threshold?: number | string;
+            /** Whether this response should be compressed at all. */
+            filter?: (req: e.Request, res: e.Response) => boolean;
+            /** What to use when the request carries no Accept-Encoding. Default "identity". */
+            enforceEncoding?: string;
+            /** Brotli options. The default quality is 4. */
+            brotli?: BrotliOptions;
+        }
+        export function compression(options?: CompressionOptions): e.RequestHandler;
+        export namespace compression {
+            /** The default filter: any compressible content type. */
+            function filter(req: e.Request, res: e.Response): boolean;
+        }
 
         export import urlencoded = e.urlencoded;
 

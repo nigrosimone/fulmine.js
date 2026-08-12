@@ -49,6 +49,7 @@ try {
  *   response: object,
  *   application: object,
  *   static: Function,
+ *   compression: Function,
  *   json: Function,
  *   urlencoded: Function,
  *   text: Function,
@@ -72,6 +73,9 @@ module.exports.response = Response.prototype;
 module.exports.application = Application.Application.prototype;
 
 module.exports.static = middlewares.static;
+// not one of express's, since express has none: the compression module is what everyone installs
+// instead, and this is that middleware's options and behaviour without the install
+module.exports.compression = require("./compression.js");
 module.exports.json = middlewares.json;
 module.exports.urlencoded = middlewares.urlencoded;
 module.exports.text = middlewares.text;
