@@ -26,12 +26,18 @@ limitations under the License.
 // Prints what listen() worked out about each route and normally keeps to itself: which ones µWS
 // answers on its own, which ones fell back to the ordinary router and why, and which ones were
 // compiled all the way down to a response written at startup.
+//
+// npx fulmine verify [dir]
+//
+// Whether this machine and this project can run it at all: the node version, the C library, the
+// µWebSockets.js binary, the base image a Dockerfile names. See src/verify.js.
 
 const fs = require("fs");
 const path = require("path");
 const acorn = require("acorn");
 // the same walk express.testing asserts on, so the command and the assertions cannot drift
 const { collectRoutes } = require("./testing.js");
+const { verify } = require("./verify.js");
 
 const FROM = "express";
 const TO = "fulmine.js";
@@ -326,24 +332,25 @@ function findEntry(given) {
 }
 
 /**
- * Loads an application without letting it listen, and prints what compiling its routes decided.
+ * The applications a file builds, compiled but not listening.
  *
  * listen() is where the routes are compiled and also where the port is bound, and only the first
- * of those is wanted here: an application that answered on its port while being profiled would be
- * a surprise, and a second copy of a running service is worse than a surprise. So listen is
- * replaced by the half that matters. The callback it was given is not run, for the same reason.
+ * of those is wanted here: an application that answered on its port while being read would be a
+ * surprise, and a second copy of a running service is worse than a surprise. So listen is replaced
+ * by the half that matters, and the callback it was given is not run for the same reason.
  *
  * @param {string[]} argv
- * @returns {number} exit code
+ * @param {string} command the word for the message when there is nothing to load
+ * @returns {{apps: any[], entry: string}|null} null once the reason has been printed
  */
-function profile(argv) {
+function loadApps(argv, command) {
     const entry = findEntry(argv.find((arg) => !arg.startsWith("--")));
     if (!entry) {
         console.error(
-            "Nothing to profile: name the file that builds the application, or run this from a\n" +
-                "directory whose package.json main points at it."
+            `Nothing to ${command}: name the file that builds the application, or run this from a
+` + "directory whose package.json main points at it."
         );
-        return 1;
+        return null;
     }
 
     // the same module instance the application will load, so patching this prototype patches the
@@ -356,7 +363,7 @@ function profile(argv) {
     }
     if (!proto) {
         console.error("This build of fulmine has no listen() to stand in for, which should not happen.");
-        return 1;
+        return null;
     }
 
     const listened = [];
@@ -372,8 +379,9 @@ function profile(argv) {
     } catch (e) {
         const error = /** @type {any} */ (e);
         proto.listen = realListen;
-        console.error(`${path.relative(process.cwd(), entry)} could not be loaded:\n${error.stack ?? error}`);
-        return 1;
+        console.error(`${path.relative(process.cwd(), entry)} could not be loaded:
+${error.stack ?? error}`);
+        return null;
     }
     proto.listen = realListen;
 
@@ -391,14 +399,32 @@ function profile(argv) {
 
     if (apps.length === 0) {
         console.error(
-            `${path.relative(process.cwd(), entry)} built no application: it neither called listen() nor\n` +
-                "exported one. Point this at the file that does."
+            `${path.relative(process.cwd(), entry)} built no application: it neither called listen() nor
+` + "exported one. Point this at the file that does."
         );
+        return null;
+    }
+    return { apps, entry };
+}
+
+/**
+ * Loads an application without letting it listen, and prints what compiling its routes decided.
+ *
+ * listen() is where the routes are compiled and also where the port is bound, and only the first
+ * of those is wanted here: an application that answered on its port while being profiled would be
+ * a surprise, and a second copy of a running service is worse than a surprise. So listen is
+ * replaced by the half that matters. The callback it was given is not run, for the same reason.
+ *
+ * @param {string[]} argv
+ * @returns {number} exit code
+ */
+function profile(argv) {
+    const loaded = loadApps(argv, "profile");
+    if (!loaded) {
         return 1;
     }
-
-    for (const app of apps) {
-        printProfile(app, apps.length > 1);
+    for (const app of loaded.apps) {
+        printProfile(app, loaded.apps.length > 1);
     }
     return 0;
 }
@@ -427,6 +453,108 @@ const ADVICE = [
             " has to be able to win,\n    which a precomputed chain cannot express. Narrowing either path frees it."
     ]
 ];
+
+/**
+ * The plan for one route, the way a database explains a query.
+ *
+ * `profile` answers "how much of this application is on the fast path", which is a question about
+ * the whole table. This one answers "what happens when this request arrives", which is the question
+ * somebody has when one endpoint is slower than they expected: how it is matched, what is copied
+ * out of it, what runs, and what each layer costs the route.
+ *
+ * @param {string[]} argv the path to explain, then the entry
+ * @returns {number} exit code
+ */
+function explain(argv) {
+    const args = argv.filter((arg) => !arg.startsWith("--"));
+    const wanted = args[0];
+    if (!wanted) {
+        console.error(`Name the route to explain: npx ${TO} explain /api/items`);
+        return 1;
+    }
+    const loaded = loadApps(args.slice(1), "explain");
+    if (!loaded) {
+        return 1;
+    }
+
+    const { callbackUsage, UNKNOWN, QUERY } = require("./usage.js");
+    let found = 0;
+    for (const app of loaded.apps) {
+        const entries = collectRoutes(app, "").filter(({ route }) => !route.use);
+        for (const { route, full } of entries) {
+            if (!matchesWanted(full, route.method, wanted)) {
+                continue;
+            }
+            found++;
+            const native = route._native;
+            console.log(`
+${String(route.method).toUpperCase()} ${full}
+`);
+            console.log(
+                `  route      ${native ? `native (µWS matched ${native.path} and dispatched by method)` : `router (matched here, layer by layer: ${route._whyGeneric ?? "it was not eligible"})`}`
+            );
+            if (native) {
+                console.log(
+                    `  headers    ${native.skipHeaders ? "not copied (nothing in the chain reads one)" : "copied out of µWS (something in the chain reads them)"}`
+                );
+                console.log(
+                    `  query      ${native.skipQuery ? "not parsed (nothing in the chain reads it)" : "parsed when something asks for it"}`
+                );
+                if (native.guards) {
+                    console.log(`  guards     ${native.guards} case guard(s) in front of it`);
+                }
+            }
+
+            const chain = route.callbacks ?? [];
+            const ahead = native?.ahead ? `, ${native.ahead} mounted layer(s) in front of it` : "";
+            console.log(
+                `  chain      ${chain.length} layer(s)${ahead}${native?.declarative ? ", compiled into a response written at startup" : ""}`
+            );
+            for (const fn of chain) {
+                const usage = callbackUsage(fn);
+                const name = fn.name || "(anonymous)";
+                const notes = [];
+                if (usage & UNKNOWN) {
+                    notes.push("not readable at registration: it keeps the route off the compiled path");
+                } else {
+                    notes.push("readable at registration");
+                    if (usage & QUERY) notes.push("reads the query");
+                }
+                console.log(`    ${name.padEnd(22)}${notes.join(", ")}`);
+            }
+            console.log(
+                `  body       ${route.bodyMethods ? `read for ${route.bodyMethods.join(", ")}` : "read for POST, PUT, PATCH and QUERY, when one is declared"}`
+            );
+        }
+    }
+
+    if (found === 0) {
+        console.error(`No route is registered as "${wanted}". Run \`npx ${TO} profile\` to see the ones that are.`);
+        return 1;
+    }
+    return 0;
+}
+
+/**
+ * Whether a route answers to the name given on the command line: the path as registered, with an
+ * optional method in front and an optional "*" at the end for a prefix.
+ *
+ * @param {string} full
+ * @param {string} method
+ * @param {string} wanted
+ * @returns {boolean}
+ */
+function matchesWanted(full, method, wanted) {
+    let path = wanted;
+    const space = wanted.indexOf(" ");
+    if (space !== -1) {
+        if (wanted.slice(0, space).toUpperCase() !== String(method).toUpperCase()) {
+            return false;
+        }
+        path = wanted.slice(space + 1);
+    }
+    return path.endsWith("*") ? full.startsWith(path.slice(0, -1)) : full === path;
+}
 
 /**
  * A summary that says how much of this application the native router carries, and what could be
@@ -564,11 +692,19 @@ function main(argv) {
     if (command === "profile") {
         return profile(argv.slice(1));
     }
+    if (command === "verify") {
+        return verify(argv.slice(1));
+    }
+    if (command === "explain") {
+        return explain(argv.slice(1));
+    }
     if (command !== "migrate") {
         console.log(`Usage:
   npx ${TO} migrate [dir]      rewrite require("${FROM}") and import from "${FROM}" to "${TO}"
   npx ${TO} profile [entry]    load an application without listening and print what compiling
                                its routes decided, route by route
+  npx ${TO} explain <route>    what happens when a request for that route arrives
+  npx ${TO} verify [dir]       check that this machine and this project can run it at all
   npx ${TO} differences        print what behaves differently, without changing anything
 
 Options:
