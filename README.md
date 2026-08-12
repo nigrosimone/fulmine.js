@@ -1,6 +1,6 @@
 <img src="./assets/logo-mark.svg" alt="" width="88" align="right">
 
-# Fulmine
+# Fulmine.js
 
 A drop-in replacement for Express 5, running on [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js) instead of `node:http`. Your existing middleware keeps working.
 
