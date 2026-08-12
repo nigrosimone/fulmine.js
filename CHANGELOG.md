@@ -1,5 +1,16 @@
 # Changelog
 
+## [5.7.0](https://github.com/nigrosimone/fulmine.js/compare/v5.6.0...v5.7.0) (2026-08-12)
+
+### Bug Fixes
+
+* a wildcard followed by an optional group left the group empty ([f182812](https://github.com/nigrosimone/fulmine.js/commit/f1828127a6f0921a07816c238ff42835ca2720ac))
+
+### Performance Improvements
+
+* compression skips the response wrapping when nothing can be compressed ([f7caeb0](https://github.com/nigrosimone/fulmine.js/commit/f7caeb0d2753a216860b25cff60821888379a301))
+* preCompressed costs one stat per request instead of three ([549f2f9](https://github.com/nigrosimone/fulmine.js/commit/549f2f9126a02485591bcaacf1044ab5147efadf))
+
 ## [5.6.0](https://github.com/nigrosimone/fulmine.js/compare/v5.5.2...v5.6.0) (2026-08-12)
 
 ### Features
