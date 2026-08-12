@@ -22,11 +22,22 @@ const path = require("path");
 const bytes = require("bytes");
 const zlib = require("fast-zlib");
 const typeis = require("type-is");
+const mime = require("mime-types");
 const qs = require("qs");
 const parseQuery = require("./parse-query.js");
 const { kGetSafe } = require("./usage.js");
 const { AsyncResource } = require("async_hooks");
-const { fastQueryParse, NullObject, asStatError, httpError, memoizeByString, containsDotFile } = require("./utils.js");
+const {
+    fastQueryParse,
+    NullObject,
+    asStatError,
+    httpError,
+    memoizeByString,
+    containsDotFile,
+    negotiateEncoding,
+    ENCODING_BR,
+    ENCODING_GZIP
+} = require("./utils.js");
 
 // largest content-length we will allocate a body buffer for up front. above this the body is
 // collected chunk by chunk instead, so a declared-but-unsent body cannot pin more memory than a
@@ -35,6 +46,14 @@ const MAX_PREALLOCATED_BODY = 1024 * 1024;
 
 // what the finish pass feeds zlib: no bytes, only the flush flag
 const EMPTY_BUFFER = Buffer.alloc(0);
+
+// What express.static serves instead of the file itself when preCompressed is on and the client
+// takes it: the suffix nginx, brotli_static and every build tool that writes these agree on.
+// Ordered by what is worth having, and negotiation decides between them.
+const PRECOMPRESSED = [
+    { encoding: "br", suffix: ".br", flag: ENCODING_BR },
+    { encoding: "gzip", suffix: ".gz", flag: ENCODING_GZIP }
+];
 
 // The failures express.static answers by moving on to the next handler rather than by reporting
 // them, when fallthrough is on. They all mean the same thing: the request is not a file here.
@@ -249,6 +268,46 @@ function bodyError(message, status, type, extra) {
 }
 
 /**
+ * The compressed twin of a file to serve in its place, or undefined when the client would rather
+ * have the file itself or the twin is not there.
+ *
+ * The stat comes back with it, and is what sendFile then answers from: the ETag and the
+ * Last-Modified of a variant are its own, which is the whole point. Two bodies sharing one ETag is
+ * how a shared cache ends up handing brotli to a client that cannot read it.
+ *
+ * At most two stats, and usually one: negotiation picks the best of the two encodings first, and
+ * only looks at the other when the client takes it too and the first file is missing.
+ *
+ * @param {string} filePath absolute path of the file that was asked for
+ * @param {string|undefined} accept the request's Accept-Encoding
+ * @returns {{suffix: string, encoding: string, stat: import("fs").Stats}|undefined}
+ */
+function pickPrecompressed(filePath, accept) {
+    if (!accept) {
+        return undefined;
+    }
+    let allowed = ENCODING_BR | ENCODING_GZIP;
+    // twice at most: the second pass is the case where brotli won and there is no .br on disk
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const chosen = negotiateEncoding(accept, allowed);
+        const variant = PRECOMPRESSED.find((candidate) => candidate.encoding === chosen);
+        if (!variant) {
+            return undefined;
+        }
+        try {
+            const stat = fs.statSync(filePath + variant.suffix);
+            if (!stat.isDirectory()) {
+                return { suffix: variant.suffix, encoding: variant.encoding, stat };
+            }
+        } catch {
+            // not on disk, which is the ordinary case for a file nobody precompressed
+        }
+        allowed &= ~variant.flag;
+    }
+    return undefined;
+}
+
+/**
  * express.static, which is a thin front for res.sendFile: it resolves the path, refuses anything
  * that climbs out of the root, applies the dotfiles and index rules, and hands the rest over.
  *
@@ -337,6 +396,9 @@ function serveStatic(root, options) {
         }
         let _path = url;
         const fullpath = path.resolve(path.join(root, url));
+        // the same file as _path, absolute: the two move together through the index and extension
+        // rules below, and only the precompressed lookup needs the absolute one
+        let filePath = fullpath;
         // What serve-static hands send is this path, except that a bare "/" under a mount the
         // request did not write with one becomes "": without that rule a mount whose root is a file
         // would ask the disk for a directory and could never answer at all.
@@ -400,6 +462,7 @@ function serveStatic(root, options) {
                     try {
                         stat = fs.statSync(fullpath + "." + options.extensions[i]);
                         _path = url + "." + options.extensions[i];
+                        filePath = fullpath + "." + options.extensions[i];
                         break;
                     } catch (extensionError) {
                         statError = extensionError;
@@ -453,6 +516,7 @@ function serveStatic(root, options) {
                 try {
                     stat = fs.statSync(path.join(fullpath, options.index));
                     _path = path.join(url, options.index);
+                    filePath = path.join(fullpath, options.index);
                 } catch (err) {
                     if (!options.fallthrough) {
                         res.status(404);
@@ -470,6 +534,23 @@ function serveStatic(root, options) {
                     return next(httpError(404));
                 }
                 return next();
+            }
+        }
+
+        if (options.preCompressed) {
+            // whatever is served, the answer depended on the header, so a shared cache has to be
+            // told. Said before the lookup, because it is true even when there is no variant
+            res.vary("Accept-Encoding");
+            const variant = pickPrecompressed(filePath, req.headers["accept-encoding"]);
+            if (variant) {
+                _path += variant.suffix;
+                stat = variant.stat;
+                res.setHeader("Content-Encoding", variant.encoding);
+                // from the name of the file that was asked for, since the one being sent ends in
+                // .br and nothing would call that javascript. sendFile leaves a content-type that
+                // is already there alone, which is what makes this the deciding one
+                const type = mime.lookup(filePath);
+                res.type(type || "application/octet-stream");
             }
         }
 
