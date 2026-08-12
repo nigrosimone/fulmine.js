@@ -220,9 +220,13 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true, strict 
         groupOutputName.set(group, name);
         return group;
     };
-    // whether the token just emitted was a :parameter, which decides how greedy the next
-    // optional group is allowed to be. see the comment where it is read
+    // whether the token just emitted was a :parameter or a wildcard, which decides how greedy the
+    // next optional group is allowed to be. see the comment where it is read
     let lastTokenWasParam = false;
+    // the wildcard just emitted, and where it ends, so an optional group written right after it
+    // can rewrite the two into one alternation. See the { branch
+    let lastWildcard = /** @type {{start: number, body: string, name: string}|null} */ (null);
+    let lastWildcardEnd = -1;
     // What path-to-regexp calls the wildcard backtrack: the literal text written since the last
     // wildcard. Once a wildcard has eaten slashes, a later one in the same path is held to a single
     // segment, or the two would divide the path between them in more than one way and the regex
@@ -339,8 +343,16 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true, strict 
             }
             const splatGroup = uniqueGroupName(name);
             wildcardNames.push(splatGroup);
-            regexPattern += `(?<${splatGroup}>${wildcardClass()})`;
-            lastTokenWasParam = false;
+            const body = wildcardClass();
+            // where this capture starts and what it is made of, so an optional group written right
+            // after it can rewrite the pair into the alternation path-to-regexp compiles. See the
+            // { branch below
+            lastWildcard = { start: regexPattern.length, body, name };
+            regexPattern += `(?<${splatGroup}>${body})`;
+            lastWildcardEnd = regexPattern.length;
+            // the group that follows is held to one segment of its own, the way it is after a
+            // parameter: without it ext could take the separator back and swallow the dots
+            lastTokenWasParam = true;
             continue;
         }
 
@@ -417,7 +429,23 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true, strict 
                     gi++;
                 }
             }
-            regexPattern += `(?:${groupRegex})?`;
+            if (lastWildcard && lastWildcardEnd === regexPattern.length) {
+                // A wildcard immediately before the group. `(?<w>[^]+)(?:group)?` can never let
+                // the group match, because the wildcard is greedy and the group may be empty, and
+                // making the wildcard lazy is not the same thing either: it gives the trailing
+                // slash away, and /*path{.:ext} against /a/b/ then loses the empty last segment.
+                // path-to-regexp writes the two branches out instead, group first and the
+                // wildcard greedy in both, so that is what goes here. The second branch captures
+                // the same parameter under a name of its own, which is what uniqueGroupName is for.
+                const second = uniqueGroupName(lastWildcard.name);
+                wildcardNames.push(second);
+                const withWildcard = regexPattern.slice(lastWildcard.start);
+                regexPattern =
+                    regexPattern.slice(0, lastWildcard.start) +
+                    `(?:${withWildcard}${groupRegex}|(?<${second}>${lastWildcard.body}))`;
+            } else {
+                regexPattern += `(?:${groupRegex})?`;
+            }
             literal(groupContent);
             lastTokenWasParam = false;
             continue;
