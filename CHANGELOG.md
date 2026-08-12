@@ -1,5 +1,17 @@
 # Changelog
 
+## [5.6.0](https://github.com/nigrosimone/fulmine.js/compare/v5.5.2...v5.6.0) (2026-08-12)
+
+### Features
+
+* **cli:** migrate names the modules with a faster built-in ([898f660](https://github.com/nigrosimone/fulmine.js/commit/898f660ae1dfc1457b2ad55daefacfd382a01dad))
+* express.compression(), the compression module's middleware built in ([2384faa](https://github.com/nigrosimone/fulmine.js/commit/2384faa7377b0a83ed06367bb6488a25254921ae))
+* express.static() serves the .br and .gz twins with preCompressed ([082f376](https://github.com/nigrosimone/fulmine.js/commit/082f37642e6367827623c9e8f92d2d0d03417da3))
+
+### Bug Fixes
+
+* res.end(null) left the response unfinished ([19b596a](https://github.com/nigrosimone/fulmine.js/commit/19b596a3a4815b42d1061c49fa46197d085bdade))
+
 ## [5.5.2](https://github.com/nigrosimone/fulmine.js/compare/v5.5.1...v5.5.2) (2026-08-11)
 
 ### Performance Improvements
