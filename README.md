@@ -374,6 +374,18 @@ Worth changing, if these are routes that carry traffic
 
 It loads the application with `listen()` replaced by the half that compiles the routes, so nothing binds a port and the listen callback does not run: profiling a running service does not start a second copy of it. There is no score, on purpose. A percentage of routes is not a percentage of traffic, and an application with a thousand cold routes and one hot one that fell back would score well and serve badly.
 
+The same verdicts are readable from a test, which is where they belong for the routes that carry the traffic. A route stays on the fast path only while it stays eligible, and nothing complains when it stops: the answer is still correct, only slower, and the commit that did it is found weeks later.
+
+```js
+const { expectNative, expectDeclarative, routeReport } = require("fulmine.js").testing;
+
+expectNative(app, ["/api/*", "GET /health"]); // throws, naming the route and the reason
+expectDeclarative(app, "/health"); // the step past native: no javascript at all
+routeReport(app); // the whole list, to assert on however you like
+```
+
+A path is written as it was registered, `"/users/:id"` and not `"/users/7"`, and a trailing `*` names everything under a prefix. A pattern that matches no route throws too, so a misspelled path fails instead of passing quietly. The application does not need to be listening.
+
 2. Do not use external `serve-static` module. Instead use built-in `express.static()` middleware, which is optimized for Fulmine. If your build already writes `.br` and `.gz` files next to the originals, `express.static(dir, { preCompressed: true })` serves those to the clients that accept them, so nothing is compressed at request time and a fraction of the bytes goes out: on a 4KB script with a brotli twin, 12 times fewer. It costs no more than serving the file itself, one `stat` per request, because the twin is looked for before the file and its own `stat` is the only one the request needs. A type that is already compressed, a woff2 or a webp, is not looked up at all, and which twins a path has is remembered for a second: `{ cache: false }` asks the disk every time, `{ cache: "5s" }` sets the window. Only their presence is remembered, never their size or mtime, so nothing is ever described by a stale number. `Vary: Accept-Encoding` is sent whether or not a twin is found, the content type stays the one the requested name implies, and each variant carries its own ETag.
 
 3. Do not use `body-parser` module. Instead use built-in `express.text()`, `express.json()` etc.

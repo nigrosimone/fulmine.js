@@ -49,6 +49,7 @@ try {
  *   response: object,
  *   application: object,
  *   static: Function,
+ *   testing: object,
  *   compression: Function,
  *   json: Function,
  *   urlencoded: Function,
@@ -73,6 +74,9 @@ module.exports.response = Response.prototype;
 module.exports.application = Application.Application.prototype;
 
 module.exports.static = middlewares.static;
+// what listen() decided about each route, as something a test can assert on rather than something
+// to read in a terminal. See src/testing.js
+module.exports.testing = require("./testing.js");
 // not one of express's, since express has none: the compression module is what everyone installs
 // instead, and this is that middleware's options and behaviour without the install
 module.exports.compression = require("./compression.js");

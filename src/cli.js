@@ -30,6 +30,8 @@ limitations under the License.
 const fs = require("fs");
 const path = require("path");
 const acorn = require("acorn");
+// the same walk express.testing asserts on, so the command and the assertions cannot drift
+const { collectRoutes } = require("./testing.js");
 
 const FROM = "express";
 const TO = "fulmine.js";
@@ -53,9 +55,10 @@ const TYPESCRIPT_EXTENSIONS = new Set([".ts", ".mts", ".cts", ".tsx"]);
 const DIFFERENCES = [
     [
         "app.listen() returns the app, not an http.Server",
-        "There is no node http server underneath, so anything doing `const server = app.listen(...)` and then\n" +
-            "reaching for server.close(), server.address() or attaching a websocket library to it needs a look.\n" +
-            "app.close(), app.address() and app.listening exist and do what you would expect."
+        "The app answers as one: instanceof http.Server is true, and close(), address(), listening,\n" +
+            "getConnections(), ref(), unref() and setTimeout() are all there. What is missing is the plumbing\n" +
+            "that carries node sockets, so nothing emits connection, request or upgrade, and a library that\n" +
+            "serves its own protocol on the socket, socket.io being the usual one, wants app.uwsApp instead."
     ],
     [
         "an HTTPS server is configured through express(), not https.createServer()",
@@ -320,27 +323,6 @@ function findEntry(given) {
         }
     }
     return null;
-}
-
-/**
- * Every route of an application and of the routers under it, each with the router it belongs to
- * and the path it answers from the outside.
- *
- * @param {any} router
- * @param {string} prefix
- * @param {any[]} [into]
- * @returns {any[]}
- */
-function collectRoutes(router, prefix, into = []) {
-    for (const route of router._routes ?? []) {
-        const full = prefix + (typeof route.path === "string" ? route.path : String(route.pattern)) || "/";
-        into.push({ route, full });
-        const mounted = route.callbacks?.[0];
-        if (mounted && Array.isArray(mounted._routes)) {
-            collectRoutes(mounted, typeof route.path === "string" ? prefix + route.path : prefix, into);
-        }
-    }
-    return into;
 }
 
 /**

@@ -50,6 +50,32 @@ declare module "fulmine.js" {
             /** Brotli options. The default quality is 4. */
             brotli?: BrotliOptions;
         }
+        // what listen() decided about each route, for a test to hold on to
+        interface RouteVerdict {
+            /** The method as it was registered, "GET". */
+            method: string;
+            /** The path as it was registered, "/users/:id". */
+            path: string;
+            /** Whether µWS matches this route itself. */
+            native: boolean;
+            /** Whether it was compiled into a response written at startup. */
+            declarative: boolean;
+            /** Whether the chain provably reads no request header. */
+            skipHeaders: boolean;
+            /** Whether the chain provably reads no query. */
+            skipQuery: boolean;
+            /** Why it fell back to the ordinary router, when it did. */
+            reason?: string;
+        }
+        export namespace testing {
+            /** Every route, with what compiling it decided. */
+            function routeReport(app: Fulmine): RouteVerdict[];
+            /** Throws unless µWS answers every route named. A trailing "*" names a prefix. */
+            function expectNative(app: Fulmine, patterns: string | string[]): void;
+            /** Throws unless every route named was compiled into a response. */
+            function expectDeclarative(app: Fulmine, patterns: string | string[]): void;
+        }
+
         export function compression(options?: CompressionOptions): e.RequestHandler;
         export namespace compression {
             /** The default filter: any compressible content type. */
