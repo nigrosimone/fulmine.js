@@ -36,10 +36,30 @@ limitations under the License.
 const zlib = require("zlib");
 const bytes = require("bytes");
 const compressible = require("compressible");
-const { negotiateEncoding, ENCODING_ANY } = require("./utils.js");
+const { negotiateEncoding, ENCODING_ANY, memoizeByString } = require("./utils.js");
 
 // Cache-Control: no-transform forbids recoding the body, which is what this does
 const NO_TRANSFORM = /(?:^|,)\s*?no-transform\s*?(?:,|$)/;
+
+/**
+ * Says the answer depends on Accept-Encoding. res.vary() parses what is there and merges, which on
+ * the usual response is parsing an absent header: only a response that already varies pays for it.
+ *
+ * @param {any} res
+ */
+function addVary(res) {
+    if (res.getHeader("Vary") === undefined) {
+        res.setHeader("Vary", "Accept-Encoding");
+        return;
+    }
+    res.vary("Accept-Encoding");
+}
+
+/**
+ * res.flush for a response that is not being compressed. The compression module puts a function
+ * there on every response it sees, and code written against it calls one without asking first.
+ */
+function noFlush() {}
 
 // what enforceEncoding is allowed to name, the compression module's list
 const ENFORCEABLE = new Set(["gzip", "deflate", "identity", "br"]);
@@ -61,11 +81,15 @@ const SYNC_LIMIT = 24 * 1024;
  */
 function shouldCompress(req, res) {
     const type = res.getHeader("Content-Type");
-    if (type === undefined || !compressible(String(type))) {
+    if (type === undefined) {
         return false;
     }
-    return true;
+    // memoized, because an application answers with two or three content-types and compressible
+    // splits the parameters off and searches the mime database to reach the same answer each time
+    return isCompressible(typeof type === "string" ? type : String(type));
 }
+
+const isCompressible = memoizeByString((type) => compressible(type) === true);
 
 /**
  * How many bytes a chunk is, which is what the threshold is compared against.
@@ -184,6 +208,37 @@ function compression(options) {
     }
 
     return function compression(req, res, next) {
+        // Negotiated here rather than when the body arrives, because the answer to "could this
+        // request take a compressed body at all" decides how much of this middleware the response
+        // has to carry. Most requests to most routes cannot: a client that sent no Accept-Encoding,
+        // one that refused everything, a HEAD. Those get the Vary and nothing else, since the
+        // answer still depends on the header even when this particular client did not ask.
+        const accept = req.headers["accept-encoding"];
+        let chosen = negotiateEncoding(accept === undefined ? "" : accept, ENCODING_ANY);
+        if (accept === undefined && ENFORCEABLE.has(enforceEncoding)) {
+            chosen = enforceEncoding;
+        }
+        if (!chosen || chosen === "identity" || req.method === "HEAD") {
+            res.flush = noFlush;
+            const _plainEnd = res.end;
+            let varied = false;
+            res.end = function end(chunk, encoding, callback) {
+                if (!varied) {
+                    varied = true;
+                    const cacheControl = res.headersSent ? undefined : res.getHeader("Cache-Control");
+                    if (
+                        !res.headersSent &&
+                        filter(req, res) &&
+                        !(cacheControl && NO_TRANSFORM.test(String(cacheControl)))
+                    ) {
+                        addVary(res);
+                    }
+                }
+                return _plainEnd.call(this, chunk, encoding, callback);
+            };
+            return next();
+        }
+
         const _write = res.write;
         const _end = res.end;
         const _on = res.on;
@@ -243,7 +298,7 @@ function compression(options) {
             if (cacheControl && NO_TRANSFORM.test(String(cacheControl))) {
                 return noCompress();
             }
-            res.vary("Accept-Encoding");
+            addVary(res);
             // NaN when there is no Content-Length, and a comparison against NaN is false: a body
             // whose size is not known yet is compressed whatever the threshold says
             if (Number(res.getHeader("Content-Length")) < threshold || Number(length) < threshold) {
@@ -253,27 +308,17 @@ function compression(options) {
             if (already && already !== "identity") {
                 return noCompress();
             }
-            if (req.method === "HEAD") {
-                return noCompress();
-            }
             // a range is a window into the bytes on disk, and a client that asked for one cannot
             // decode a compressed answer to it
             if (res.statusCode === 206 || res.getHeader("Content-Range") !== undefined) {
                 return noCompress();
             }
-            const accept = req.headers["accept-encoding"];
-            let method = negotiateEncoding(accept === undefined ? "" : accept, ENCODING_ANY);
-            if (accept === undefined && ENFORCEABLE.has(enforceEncoding)) {
-                method = enforceEncoding;
-            }
-            if (!method || method === "identity") {
-                return noCompress();
-            }
-            res.setHeader("Content-Encoding", method);
+            // HEAD never reaches here: it took the Vary-only path above
+            res.setHeader("Content-Encoding", chosen);
             // what it says is the size of the body before this middleware saw it. The whole-body
             // path below puts the right one back; the streaming one cannot know it in advance
             res.removeHeader("Content-Length");
-            return method;
+            return chosen;
         }
 
         /**
