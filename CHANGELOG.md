@@ -1,5 +1,14 @@
 # Changelog
 
+## [5.8.0](https://github.com/nigrosimone/fulmine.js/compare/v5.7.0...v5.8.0) (2026-08-12)
+
+### Features
+
+* an application answers as an http.Server ([56def4d](https://github.com/nigrosimone/fulmine.js/commit/56def4d6033cecb7ae1263f79189b8b1cedaea68))
+* **cli:** verify checks the machine and the image, explain reads one route ([1d90a9a](https://github.com/nigrosimone/fulmine.js/commit/1d90a9a316ecbc30cf70c7543bfb787db1f86494))
+* express.serverTiming() reports how the request was routed ([92c667e](https://github.com/nigrosimone/fulmine.js/commit/92c667eef964b1b4b686a921cc4a66c942390ae3))
+* express.testing asserts what listen() decided about a route ([70b69ba](https://github.com/nigrosimone/fulmine.js/commit/70b69bad342a680b0c4fadeac7671281d73ed7fb))
+
 ## [5.7.0](https://github.com/nigrosimone/fulmine.js/compare/v5.6.0...v5.7.0) (2026-08-12)
 
 ### Bug Fixes
