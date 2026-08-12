@@ -59,7 +59,6 @@ See [Migrating](#migrating) for what it handles and what it deliberately does no
     - [Router](#router)
 - [Tested middlewares](#tested-middlewares)
 - [Tested view engines](#tested-view-engines)
-- [The demo](https://fulmine-demo.fly.dev)
 - [Working on Fulmine](./CONTRIBUTING.md)
 
 ## Why this exists
