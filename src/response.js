@@ -790,7 +790,10 @@ module.exports = class Response extends LazyWritable {
                 // remembered rather than measured: only a caller that asks for content-length pays
                 // for it, and uWS is measuring the same bytes for the wire anyway
                 this._sentBody = data ?? "";
-                this._res.end(data);
+                // and null is sent as the empty body it means. uWS answers end(null) with a
+                // response the client never sees the end of, where node and express send an empty
+                // 200: res.end(null) is what the compression module's own test suite does
+                this._res.end(data ?? "");
             }
         }
 
