@@ -23,6 +23,8 @@ const bytes = require("bytes");
 const zlib = require("fast-zlib");
 const typeis = require("type-is");
 const mime = require("mime-types");
+const compressible = require("compressible");
+const ms = require("ms");
 const qs = require("qs");
 const parseQuery = require("./parse-query.js");
 const { kGetSafe } = require("./usage.js");
@@ -268,6 +270,52 @@ function bodyError(message, status, type, extra) {
 }
 
 /**
+ * Whether a file of this extension is one anybody writes a `.br` or a `.gz` next to. A webp or a
+ * woff2 is already compressed and never has a twin, and looking for one costs two stats on a
+ * request that could not have used it: on a mixed directory that is most of the stat time. An
+ * extension nothing knows is looked up anyway, since it might well be text.
+ *
+ * @param {string} extension including the dot, or "" for a name without one
+ * @returns {boolean}
+ */
+const hasTwins = memoizeByString((extension) => {
+    const type = mime.lookup(extension);
+    return type ? compressible(type) === true : true;
+});
+
+// Which twins a path has, remembered for a moment. What is cached is only whether they are there,
+// never their size or their mtime: those decide the ETag, the Last-Modified and the length, so they
+// are read fresh on every request and a file that changed is never described by a stale number.
+// The worst a stale entry can do is serve the file where it could have served the twin, or look for
+// a twin that has just been deleted and fall back. nginx's open_file_cache is the same trade.
+const twinCache = new Map();
+const TWIN_CACHE_LIMIT = 4096;
+
+/**
+ * What is known about a path's twins right now, as a record to fill in.
+ *
+ * @param {string} filePath
+ * @param {number} ttl how long an answer stays good, in milliseconds
+ * @returns {{br: boolean|undefined, gz: boolean|undefined, until: number}}
+ */
+function twinsOf(filePath, ttl) {
+    const now = Date.now();
+    const known = twinCache.get(filePath);
+    if (known !== undefined && known.until > now) {
+        return known;
+    }
+    const entry = { br: undefined, gz: undefined, until: now + ttl };
+    // cleared rather than evicted one by one, as memoizeByString does: this holds one small object
+    // per path served, and a directory big enough to reach the limit is being served by something
+    // other than an application server anyway
+    if (twinCache.size >= TWIN_CACHE_LIMIT) {
+        twinCache.clear();
+    }
+    twinCache.set(filePath, entry);
+    return entry;
+}
+
+/**
  * The compressed twin of a file to serve in its place, or undefined when the client would rather
  * have the file itself or the twin is not there.
  *
@@ -275,17 +323,19 @@ function bodyError(message, status, type, extra) {
  * Last-Modified of a variant are its own, which is the whole point. Two bodies sharing one ETag is
  * how a shared cache ends up handing brotli to a client that cannot read it.
  *
- * At most two stats, and usually one: negotiation picks the best of the two encodings first, and
- * only looks at the other when the client takes it too and the first file is missing.
+ * One stat when the answer is a twin, and none at all when the last request already found there is
+ * no twin to have. See twinCache above for what is remembered and what is not.
  *
  * @param {string} filePath absolute path of the file that was asked for
  * @param {string|undefined} accept the request's Accept-Encoding
+ * @param {number} ttl how long the twin cache holds an answer, 0 to ask the disk every time
  * @returns {{suffix: string, encoding: string, stat: import("fs").Stats}|undefined}
  */
-function pickPrecompressed(filePath, accept) {
-    if (!accept) {
+function pickPrecompressed(filePath, accept, ttl) {
+    if (!accept || !hasTwins(filePath.slice(filePath.lastIndexOf(".")))) {
         return undefined;
     }
+    const known = ttl > 0 ? twinsOf(filePath, ttl) : undefined;
     let allowed = ENCODING_BR | ENCODING_GZIP;
     // twice at most: the second pass is the case where brotli won and there is no .br on disk
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -294,13 +344,17 @@ function pickPrecompressed(filePath, accept) {
         if (!variant) {
             return undefined;
         }
-        try {
-            const stat = fs.statSync(filePath + variant.suffix);
-            if (!stat.isDirectory()) {
-                return { suffix: variant.suffix, encoding: variant.encoding, stat };
+        if (known === undefined || known[variant.encoding === "br" ? "br" : "gz"] !== false) {
+            try {
+                const stat = fs.statSync(filePath + variant.suffix);
+                if (!stat.isDirectory()) {
+                    if (known !== undefined) known[variant.encoding === "br" ? "br" : "gz"] = true;
+                    return { suffix: variant.suffix, encoding: variant.encoding, stat };
+                }
+            } catch {
+                // not on disk, which is the ordinary case for a file nobody precompressed
             }
-        } catch {
-            // not on disk, which is the ordinary case for a file nobody precompressed
+            if (known !== undefined) known[variant.encoding === "br" ? "br" : "gz"] = false;
         }
         allowed &= ~variant.flag;
     }
@@ -342,6 +396,26 @@ function serveStatic(root, options) {
     }
     if (options.setHeaders !== undefined && typeof options.setHeaders !== "function") {
         throw new TypeError("option setHeaders must be function");
+    }
+    // How long express.static remembers which twins a path has. A second is short enough that a
+    // deploy is picked up while it is still going out, and long enough that the lookup costs
+    // nothing under any traffic at all. { cache: false } asks the disk on every request.
+    let twinTtl = 0;
+    if (options.preCompressed) {
+        const cache = /** @type {any} */ (
+            typeof options.preCompressed === "object" ? options.preCompressed.cache : undefined
+        );
+        twinTtl =
+            cache === undefined
+                ? 1000
+                : cache === false
+                  ? 0
+                  : typeof cache === "string"
+                    ? ms(/** @type {any} */ (cache))
+                    : cache;
+        if (typeof twinTtl !== "number" || !(twinTtl >= 0)) {
+            throw new TypeError("option preCompressed.cache must be a duration");
+        }
     }
     options.root = root;
     // serve-static decides this for itself and never asks the app, so a static file keeps its
@@ -434,8 +508,22 @@ function serveStatic(root, options) {
         }
 
         let stat;
+        // The twin, looked for before the file itself rather than after it. When there is one, it
+        // is the file being served and its stat is the only one this request needs: the request
+        // that asks for /app.js and gets /app.js.br has no use for /app.js's size or mtime. A
+        // directory, or a path written with a trailing slash, keeps the ordinary order, since what
+        // decides those is the stat of the thing that was asked for.
+        let twin;
+        if (options.preCompressed && !rawPath.endsWith("/") && !req.endsWithSlash) {
+            twin = pickPrecompressed(filePath, req.headers["accept-encoding"], twinTtl);
+            if (twin) {
+                stat = twin.stat;
+            }
+        }
         try {
-            stat = fs.statSync(statTarget);
+            if (stat === undefined) {
+                stat = fs.statSync(statTarget);
+            }
         } catch (err) {
             // the one to report when nothing is found: send hands each failed attempt to the next
             // one and reports whichever came last, so an extensions option that also missed names
@@ -541,7 +629,8 @@ function serveStatic(root, options) {
             // whatever is served, the answer depended on the header, so a shared cache has to be
             // told. Said before the lookup, because it is true even when there is no variant
             res.vary("Accept-Encoding");
-            const variant = pickPrecompressed(filePath, req.headers["accept-encoding"]);
+            // already found before the stat below, on the ordinary path
+            const variant = twin ?? pickPrecompressed(filePath, req.headers["accept-encoding"], twinTtl);
             if (variant) {
                 _path += variant.suffix;
                 stat = variant.stat;

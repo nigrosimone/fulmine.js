@@ -72,8 +72,12 @@ export interface StaticOptions extends SendFileOptions {
      * Serve `file.br` or `file.gz` in place of `file` when one is on disk and the client takes it.
      * Off by default. Vary: Accept-Encoding is sent whether or not a variant is found, and the
      * content type stays the one the requested name implies.
+     *
+     * Which twins a path has is remembered for a second, since asking the disk costs a stat per
+     * request; `{ cache: false }` asks every time, and a duration sets how long. Only their
+     * presence is cached, never their size or mtime.
      */
-    preCompressed?: boolean;
+    preCompressed?: boolean | { cache?: number | string | false };
 }
 
 /** A body parser's options once its factory has filled in every default it needs. */

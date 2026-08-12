@@ -32,6 +32,10 @@ fs.writeFileSync(path.join(root, "site.css.gz"), zlib.gzipSync(Buffer.from(STYLE
 fs.writeFileSync(path.join(root, "plain.txt"), PLAIN);
 fs.writeFileSync(path.join(root, "index.html"), INDEX);
 fs.writeFileSync(path.join(root, "index.html.br"), zlib.brotliCompressSync(Buffer.from(INDEX)));
+// a type nobody writes a twin for, with a twin anyway
+const IMAGE = Buffer.alloc(4096, 7);
+fs.writeFileSync(path.join(root, "hero.webp"), IMAGE);
+fs.writeFileSync(path.join(root, "hero.webp.br"), zlib.brotliCompressSync(IMAGE));
 
 const app = express();
 app.use(express.static(root, { preCompressed: true }));
@@ -149,6 +153,15 @@ test("a file nobody precompressed is served as it is, and still says Vary", asyn
     assert.strictEqual(res.text, PLAIN);
 });
 
+test("a type that is already compressed is not looked up at all", async () => {
+    // deliberate: the two stats a lookup costs are paid on every request, and a build tool does
+    // not write a .br next to a webp. The twin is there and is still not served
+    const res = await request("/hero.webp", { accept: "br, gzip" });
+    assert.strictEqual(res.headers["content-encoding"], undefined);
+    assert.strictEqual(res.raw.length, 4096);
+    assert.match(res.headers["content-type"], /^image\/webp/);
+});
+
 test("the index of a directory has variants too", async () => {
     const res = await request("/", { accept: "br" });
     assert.strictEqual(res.headers["content-encoding"], "br");
@@ -182,6 +195,41 @@ test("HEAD answers the variant's headers and no body", async () => {
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.headers["content-encoding"], "br");
     assert.strictEqual(res.raw.length, 0);
+});
+
+// what the twin cache is allowed to be wrong about, and for how long
+test("a twin written after the first request is picked up once the cache expires", async () => {
+    const shortLived = express();
+    shortLived.use(express.static(root, { preCompressed: { cache: 60 } }));
+    const server = shortLived.listen(0);
+    const url = `http://127.0.0.1:${shortLived.address().port}/late.css`;
+    const body = "a{b:c}".repeat(300);
+    fs.writeFileSync(path.join(root, "late.css"), body);
+    const ask = () =>
+        new Promise((resolve, reject) => {
+            const req = http.request(url, { headers: { "accept-encoding": "br" } }, (res) => {
+                /** @type {Buffer[]} */
+                const chunks = [];
+                res.on("data", (chunk) => chunks.push(chunk));
+                res.on("end", () => resolve(res.headers["content-encoding"]));
+            });
+            req.on("error", reject);
+            req.end();
+        });
+    try {
+        assert.strictEqual(await ask(), undefined, "no twin yet");
+        fs.writeFileSync(path.join(root, "late.css.br"), zlib.brotliCompressSync(Buffer.from(body)));
+        // still remembered as absent
+        assert.strictEqual(await ask(), undefined, "inside the cache window");
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        assert.strictEqual(await ask(), "br", "once the window has passed");
+        // and the other way: the twin goes, the file is served instead
+        fs.rmSync(path.join(root, "late.css.br"));
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        assert.strictEqual(await ask(), undefined, "the twin is gone");
+    } finally {
+        server.close();
+    }
 });
 
 test("without the option nothing changes", async () => {
