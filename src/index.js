@@ -51,6 +51,7 @@ try {
  *   static: Function,
  *   testing: object,
  *   compression: Function,
+ *   serverTiming: Function,
  *   json: Function,
  *   urlencoded: Function,
  *   text: Function,
@@ -80,6 +81,9 @@ module.exports.testing = require("./testing.js");
 // not one of express's, since express has none: the compression module is what everyone installs
 // instead, and this is that middleware's options and behaviour without the install
 module.exports.compression = require("./compression.js");
+// Server-Timing with the routing verdict in it, which no other framework can report because no
+// other framework has two routes to tell apart. See src/server-timing.js
+module.exports.serverTiming = require("./server-timing.js");
 module.exports.json = middlewares.json;
 module.exports.urlencoded = middlewares.urlencoded;
 module.exports.text = middlewares.text;
