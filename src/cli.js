@@ -34,6 +34,16 @@ const acorn = require("acorn");
 const FROM = "express";
 const TO = "fulmine.js";
 
+// Modules this has a faster version of, spotted while the files are being read anyway. They are
+// reported and not rewritten: the replacement is reached through the express import, which this
+// command cannot know is in scope in the file that requires them, and body-parser is four
+// functions rather than one.
+const BUILT_IN_INSTEAD = {
+    compression: "express.compression(), which takes the same options",
+    "serve-static": "express.static()",
+    "body-parser": "express.json(), express.urlencoded(), express.text(), express.raw()"
+};
+
 const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", "coverage", ".nyc_output", ".next"]);
 const EXTENSIONS = new Set([".js", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".tsx"]);
 const TYPESCRIPT_EXTENSIONS = new Set([".ts", ".mts", ".cts", ".tsx"]);
@@ -139,9 +149,10 @@ function loadTypeScript(target) {
  * @param {string} source
  * @param {string} fileName decides whether JSX is allowed, so a .tsx angle bracket is not a cast
  * @param {any} ts the compiler
+ * @param {Set<string>} [seen] as in findSpecifiers
  * @returns {{start: number, end: number}[]}
  */
-function findSpecifiersTypeScript(source, fileName, ts) {
+function findSpecifiersTypeScript(source, fileName, ts, seen) {
     const sourceFile = ts.createSourceFile(
         fileName,
         source,
@@ -152,7 +163,14 @@ function findSpecifiersTypeScript(source, fileName, ts) {
 
     /** @type {{start: number, end: number}[]} */
     const found = [];
-    const take = (node) => found.push({ start: node.getStart(sourceFile), end: node.getEnd() });
+    /** @param {any} node a string literal naming a module */
+    const take = (node) => {
+        if (node.text === FROM) {
+            found.push({ start: node.getStart(sourceFile), end: node.getEnd() });
+        } else if (seen && BUILT_IN_INSTEAD[node.text]) {
+            seen.add(node.text);
+        }
+    };
 
     const visit = (node) => {
         // import express from "express", import type { Request } from "express", export * from it.
@@ -160,23 +178,21 @@ function findSpecifiersTypeScript(source, fileName, ts) {
         if (
             (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
             node.moduleSpecifier &&
-            ts.isStringLiteral(node.moduleSpecifier) &&
-            node.moduleSpecifier.text === FROM
+            ts.isStringLiteral(node.moduleSpecifier)
         ) {
             take(node.moduleSpecifier);
         } else if (
             // import express = require("express"), which is TypeScript's own spelling
             ts.isImportEqualsDeclaration(node) &&
             ts.isExternalModuleReference(node.moduleReference) &&
-            ts.isStringLiteral(node.moduleReference.expression) &&
-            node.moduleReference.expression.text === FROM
+            ts.isStringLiteral(node.moduleReference.expression)
         ) {
             take(node.moduleReference.expression);
         } else if (ts.isCallExpression(node)) {
             const isRequire = ts.isIdentifier(node.expression) && node.expression.text === "require";
             const isDynamicImport = node.expression.kind === ts.SyntaxKind.ImportKeyword;
             const arg = node.arguments[0];
-            if ((isRequire || isDynamicImport) && arg && ts.isStringLiteral(arg) && arg.text === FROM) {
+            if ((isRequire || isDynamicImport) && arg && ts.isStringLiteral(arg)) {
                 take(arg);
             }
         }
@@ -193,9 +209,11 @@ function findSpecifiersTypeScript(source, fileName, ts) {
  * imports at all, and none of those may be rewritten.
  *
  * @param {string} source
+ * @param {Set<string>} [seen] collects the names of the modules with something built in here,
+ *   which are recognised on the same walk rather than on one of their own
  * @returns {{start: number, end: number}[]|null} null when the file does not parse
  */
-function findSpecifiers(source) {
+function findSpecifiers(source, seen) {
     /** @type {any} */
     let tree;
     // A file is either a module or a script and the parser has to be told which. Try module first,
@@ -220,15 +238,23 @@ function findSpecifiers(source) {
 
     /** @type {{start: number, end: number}[]} */
     const found = [];
+    /** @param {any} node a string literal naming a module */
+    const record = (node) => {
+        if (node.value === FROM) {
+            found.push({ start: node.start, end: node.end });
+        } else if (seen && BUILT_IN_INSTEAD[node.value]) {
+            seen.add(node.value);
+        }
+    };
     walk(tree, (node) => {
         // import express from "express", export * from "express"
         if (
             (node.type === "ImportDeclaration" ||
                 node.type === "ExportNamedDeclaration" ||
                 node.type === "ExportAllDeclaration") &&
-            node.source?.value === FROM
+            typeof node.source?.value === "string"
         ) {
-            found.push({ start: node.source.start, end: node.source.end });
+            record(node.source);
             return;
         }
         // require("express") and import("express"), the second being a node of its own
@@ -237,8 +263,8 @@ function findSpecifiers(source) {
         const isDynamicImport = node.type === "ImportExpression";
         if (isRequire || isDynamicImport) {
             const arg = isDynamicImport ? node.source : node.arguments?.[0];
-            if (arg?.type === "Literal" && arg.value === FROM) {
-                found.push({ start: arg.start, end: arg.end });
+            if (arg?.type === "Literal" && typeof arg.value === "string") {
+                record(arg);
             }
         }
     });
@@ -582,6 +608,8 @@ Options:
     const unparsed = [];
     /** @type {string[]} */
     const needTypeScript = [];
+    /** @type {Set<string>} */
+    const builtInInstead = new Set();
 
     // resolved once, and only if there is anything to use it on
     const hasTypeScriptFiles = files.some((file) => TYPESCRIPT_EXTENSIONS.has(path.extname(file)));
@@ -590,8 +618,8 @@ Options:
     for (const file of files) {
         const source = fs.readFileSync(file, "utf8");
         // reading every file's AST to find nothing is the common case, so skip the ones that
-        // cannot contain the specifier at all
-        if (!source.includes(FROM)) continue;
+        // cannot contain any of the names being looked for
+        if (!source.includes(FROM) && !Object.keys(BUILT_IN_INSTEAD).some((name) => source.includes(name))) continue;
 
         const isTypeScript = TYPESCRIPT_EXTENSIONS.has(path.extname(file));
         if (isTypeScript && !ts) {
@@ -599,7 +627,9 @@ Options:
             continue;
         }
 
-        const specifiers = isTypeScript ? findSpecifiersTypeScript(source, file, ts) : findSpecifiers(source);
+        const specifiers = isTypeScript
+            ? findSpecifiersTypeScript(source, file, ts, builtInInstead)
+            : findSpecifiers(source, builtInInstead);
         if (specifiers === null) {
             unparsed.push(path.relative(target, file));
             continue;
@@ -635,6 +665,18 @@ Options:
     console.log(
         `\n${dryRun ? "would rewrite" : "rewrote"} ${changedImports} import(s) in ${changedFiles} file(s) of ${files.length} scanned`
     );
+
+    // said whether or not anything was rewritten: an application migrated last month still has
+    // these, and they are the difference between running on µWS and running through a middleware
+    // that was written for node streams
+    if (builtInInstead.size) {
+        console.log(`\n${builtInInstead.size} module(s) with a faster one built in here, worth replacing by hand:`);
+        for (const name of builtInInstead) {
+            console.log(`  ${name} -> ${BUILT_IN_INSTEAD[name]}`);
+        }
+        console.log("");
+    }
+
     if (changedFiles) {
         console.log(`Remember to install it: npm install ${TO}`);
         printDifferences();
