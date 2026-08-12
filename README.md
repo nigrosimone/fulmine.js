@@ -18,10 +18,12 @@ import type { Request, Response } from "fulmine.js";
 There is a command that does that replacing for you, across a whole project, and then tells you the handful of things that behave differently:
 
 ```sh
+npx fulmine verify              # can this machine and this image even run it
 npx fulmine migrate --dry-run   # say what it would change, change nothing
 npx fulmine migrate             # do it
 npx fulmine differences         # just the list of what to check by hand
 npx fulmine profile             # what listen() decided about each route
+npx fulmine explain /api/items  # what happens when a request for that route arrives
 ```
 
 See [Migrating](#migrating) for what it handles and what it deliberately does not.
@@ -127,6 +129,23 @@ command whose name ends in `.js` on Windows, where it exits without a word.
 It also names the middlewares it found that have a faster one built in here, `compression`,
 `body-parser` and `serve-static`, and leaves them to you: the replacement is reached through the
 `express` import, and no rewrite can know that it is in scope where they are required.
+
+`npx fulmine verify` is the question that comes before all of that: whether this machine, and the
+image this will be deployed in, can run it at all. There is a µWebSockets.js binary underneath, and
+a binary is built per platform, per architecture and per node ABI, and linked against glibc. An
+Alpine base, a node version the pinned build has no binary for, a `FROM node:20-alpine` written
+years ago: each one fails at require time, in a container, with a message about a missing module.
+This says so in thirty seconds, and exits non-zero when something would stop the start.
+
+```text
+  ok    Node 22.15.0
+  ok    glibc 2.39
+  ok    µWebSockets.js binary for linux x64, node ABI 127
+  NO    Dockerfile: node:20-alpine
+        musl, and there is no musl build: node:22-trixie-slim is the closest swap.
+  note  socket.io needs a different API here
+        attach it with io.attachApp(app.uwsApp), not io.attach(server)
+```
 
 ### Angular SSR
 
@@ -386,6 +405,28 @@ routeReport(app); // the whole list, to assert on however you like
 
 A path is written as it was registered, `"/users/:id"` and not `"/users/7"`, and a trailing `*` names everything under a prefix. A pattern that matches no route throws too, so a misspelled path fails instead of passing quietly. The application does not need to be listening.
 
+`npx fulmine explain /api/items/:id` answers the other question, the one about a single endpoint rather than about the table: how it is matched, what is copied out of the request, what runs and what each layer costs the route.
+
+```text
+GET /api/items/:id
+
+  route      native (µWS matched /api/items/:x and dispatched by method)
+  headers    copied out of µWS (something in the chain reads them)
+  query      parsed when something asks for it
+  chain      2 layer(s), 1 mounted layer(s) in front of it
+    logger                readable at registration, reads the query
+    (anonymous)           readable at registration
+  body       read for POST, PUT, PATCH and QUERY, when one is declared
+```
+
+The same verdict reaches the browser, per request, with `express.serverTiming()`:
+
+```text
+Server-Timing: route;desc="native", hdr;desc="not copied", db;dur=3.62, total;dur=4.66
+```
+
+`route;desc="native"` means µWS matched the path in C++ and the chain was worked out at startup; `route;desc="router"` means this one was matched here, layer by layer. `res.timing(name, ms, desc)` and `res.time(name, fn)` add marks of your own, and `fn` may return a promise. The duration ends where the header does, since Server-Timing goes out with the head. A route compiled into a response never enters JavaScript, so nothing times it: `npx fulmine profile` is where those are counted.
+
 2. Do not use external `serve-static` module. Instead use built-in `express.static()` middleware, which is optimized for Fulmine. If your build already writes `.br` and `.gz` files next to the originals, `express.static(dir, { preCompressed: true })` serves those to the clients that accept them, so nothing is compressed at request time and a fraction of the bytes goes out: on a 4KB script with a brotli twin, 12 times fewer. It costs no more than serving the file itself, one `stat` per request, because the twin is looked for before the file and its own `stat` is the only one the request needs. A type that is already compressed, a woff2 or a webp, is not looked up at all, and which twins a path has is remembered for a second: `{ cache: false }` asks the disk every time, `{ cache: "5s" }` sets the window. Only their presence is remembered, never their size or mtime, so nothing is ever described by a stale number. `Vary: Accept-Encoding` is sent whether or not a twin is found, the content type stays the one the requested name implies, and each variant carries its own ETag.
 
 3. Do not use `body-parser` module. Instead use built-in `express.text()`, `express.json()` etc.
@@ -531,8 +572,15 @@ In general, basically all features and options are supported. Use the [Express 5
 - ✅ express.json()
 - ✅ express.urlencoded()
 - ✅ express.static()
+-   - ✅ options.index, options.redirect, options.fallthrough, options.extensions
+-   - ✅ options.dotfiles, plus `"ignore_files"`, which is Fulmine's own: it hides a dotfile that is the last segment while letting a dotted directory through
+-   - ✅ options.setHeaders, options.headers
+-   - ✅ options.etag, options.lastModified, options.maxAge, options.immutable, options.cacheControl, options.acceptRanges
+-   - ✅ options.preCompressed, Fulmine's own: serve the `.br` or `.gz` twin on disk, described under [Performance tips](#performance-tips)
 - ✅ express.text()
 - ✅ express.raw()
+- ✅ express.serverTiming(). Fulmine's own: Server-Timing carrying how the request was routed, described under [Performance tips](#performance-tips).
+- ✅ express.testing. Fulmine's own: `expectNative`, `expectDeclarative` and `routeReport`, described under [Performance tips](#performance-tips).
 - ✅ express.compression(). Fulmine's own, since Express has none: it is the [compression](https://npmjs.com/package/compression) module's options and behaviour built in, described under [Performance tips](#performance-tips).
 - 🚧 express.request (this is not a constructor but a prototype for replacing methods)
 - 🚧 express.response (this is not a constructor but a prototype for replacing methods)
@@ -565,6 +613,11 @@ In general, basically all features and options are supported. Use the [Express 5
 - ✅ HEAD method
 - ✅ OPTIONS method
 - ✅ QUERY method
+
+What `listen()` hands back is the app, and it answers as an `http.Server` so the shutdown wrappers
+recognise it: `app.close()`, `app.address()`, `app.listening`, `app.getConnections()`, `app.ref()`,
+`app.unref()`, `app.setTimeout()` and the `keepAliveTimeout` family. See
+[Differences from Express](#differences-from-express) for what is behind them and what is not.
 
 ### Application settings
 
