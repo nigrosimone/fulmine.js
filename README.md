@@ -375,13 +375,20 @@ It loads the application with `listen()` replaced by the half that compiles the 
 
 3. Do not use `body-parser` module. Instead use built-in `express.text()`, `express.json()` etc.
 
-4. If a route answers with a JSON shape you know in advance, [express-fast-json-stringify](https://www.npmjs.com/package/express-fast-json-stringify) compiles that shape into a serializer and `res.fastJson()` replaces `res.json()`. `JSON.stringify()` has to walk an object it knows nothing about; a compiled serializer does not.
+4. Do not use the `compression` module. `express.compression()` takes the same options and decides the same way, and it served about 50% more requests per second on an 8KB JSON body here, gzip and brotli alike. A response that arrives whole, which is every `res.send()` and `res.json()`, is compressed in one call rather than through a transform stream and goes out with a `Content-Length` instead of chunked; a response written in pieces still streams. The bytes are the same bytes either way.
 
-5. Do not set `body methods` to read body of requests with GET method or other methods that don't need a body. Reading body makes endpoint about 15% slower.
+```js
+// the compression module's options, unchanged: threshold, filter, level, brotli, enforceEncoding
+app.use(express.compression({ threshold: 1024 }));
+```
 
-6. `app.set("etag", false)` is worth about 8% on small responses, measured on both Fulmine and Express, which pay it almost identically. Know what you are trading: without an ETag a client cannot make a conditional request, so there are no `304 Not Modified` replies and every response is downloaded in full. On anything cacheable the bandwidth a 304 saves is usually worth far more than the 8%. It is left on by default for that reason. Turn it off for an API whose responses are never revalidated.
+5. If a route answers with a JSON shape you know in advance, [express-fast-json-stringify](https://www.npmjs.com/package/express-fast-json-stringify) compiles that shape into a serializer and `res.fastJson()` replaces `res.json()`. `JSON.stringify()` has to walk an object it knows nothing about; a compiled serializer does not.
 
-7. By default, Fulmine creates 1 (or 0 if your CPU has only 1 core) child thread to improve performance of reading files. You can change this number by setting `threads` to a different number in `express()`, or set to 0 to disable thread pool (`express({ threads: 0 })`). Threads are shared between all express() instances, with largest `threads` number being used. Using more threads will not necessarily improve performance. Sometimes not using threads at all is faster, so measure both.
+6. Do not set `body methods` to read body of requests with GET method or other methods that don't need a body. Reading body makes endpoint about 15% slower.
+
+7. `app.set("etag", false)` is worth about 8% on small responses, measured on both Fulmine and Express, which pay it almost identically. Know what you are trading: without an ETag a client cannot make a conditional request, so there are no `304 Not Modified` replies and every response is downloaded in full. On anything cacheable the bandwidth a 304 saves is usually worth far more than the 8%. It is left on by default for that reason. Turn it off for an API whose responses are never revalidated.
+
+8. By default, Fulmine creates 1 (or 0 if your CPU has only 1 core) child thread to improve performance of reading files. You can change this number by setting `threads` to a different number in `express()`, or set to 0 to disable thread pool (`express({ threads: 0 })`). Threads are shared between all express() instances, with largest `threads` number being used. Using more threads will not necessarily improve performance. Sometimes not using threads at all is faster, so measure both.
 
 ## WebSockets
 
@@ -511,6 +518,7 @@ In general, basically all features and options are supported. Use the [Express 5
 - ✅ express.static()
 - ✅ express.text()
 - ✅ express.raw()
+- ✅ express.compression(). Fulmine's own, since Express has none: it is the [compression](https://npmjs.com/package/compression) module's options and behaviour built in, described under [Performance tips](#performance-tips).
 - 🚧 express.request (this is not a constructor but a prototype for replacing methods)
 - 🚧 express.response (this is not a constructor but a prototype for replacing methods)
 - 🚧 express.application (likewise: a method added here is on every app)
@@ -677,7 +685,7 @@ Almost all middlewares that are compatible with Express are compatible with Fulm
 - ✅ [body-parser](https://npmjs.com/package/body-parser) (use `express.text()` etc instead for better performance)
 - ✅ [cookie-parser](https://npmjs.com/package/cookie-parser)
 - ✅ [cookie-session](https://npmjs.com/package/cookie-session)
-- ✅ [compression](https://npmjs.com/package/compression)
+- ✅ [compression](https://npmjs.com/package/compression) (use `express.compression()` instead for better performance)
 - ✅ [serve-static](https://npmjs.com/package/serve-static) (use `express.static()` instead for better performance)
 - ✅ [serve-index](https://npmjs.com/package/serve-index)
 - ✅ [cors](https://npmjs.com/package/cors)

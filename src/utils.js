@@ -788,6 +788,113 @@ function stringify(value, replacer, spaces, escape) {
     return json;
 }
 
+// What negotiateEncoding may answer with, since a caller can only offer what it can produce
+const ENCODING_BR = 1;
+const ENCODING_GZIP = 2;
+const ENCODING_DEFLATE = 4;
+const ENCODING_ANY = ENCODING_BR | ENCODING_GZIP | ENCODING_DEFLATE;
+
+/**
+ * The encoding to answer with, read straight off Accept-Encoding rather than through negotiator:
+ * the header is a short list of names with an optional q, and building a Negotiator per response
+ * to read it costs more than the scan does.
+ *
+ * The tie-break is negotiator's, for the list the compression module hands it: brotli first, then
+ * gzip, then deflate, and identity last.
+ *
+ * Only the encodings named in `allowed` are on offer, since the caller may not be able to
+ * produce all three: express.static offers the two it can have lying on disk. An uncompressed
+ * answer is always on offer, and is what an empty header ends up choosing.
+ *
+ * @param {string} accept the header, or "" when the request carried none
+ * @param {number} allowed ENCODING_BR, ENCODING_GZIP and ENCODING_DEFLATE, or'd together
+ * @returns {string} "br", "gzip", "deflate", "identity", or "" when nothing is acceptable
+ */
+function negotiateEncoding(accept, allowed) {
+    // -1 while a name has not appeared: q=0 is a refusal and has to be told apart from silence
+    let br = -1;
+    let gzip = -1;
+    let deflate = -1;
+    let identity = -1;
+    let star = -1;
+    // the lowest q anything was named with, which is what an unnamed identity is worth, see below
+    let minQuality = 1;
+    let index = 0;
+    while (index < accept.length) {
+        let end = accept.indexOf(",", index);
+        if (end === -1) {
+            end = accept.length;
+        }
+        let semi = accept.indexOf(";", index);
+        if (semi === -1 || semi > end) {
+            semi = end;
+        }
+        const name = accept.slice(index, semi).trim().toLowerCase();
+        let q = 1;
+        if (semi < end) {
+            const params = accept.slice(semi + 1, end);
+            const at = params.indexOf("q=");
+            if (at !== -1) {
+                const parsed = parseFloat(params.slice(at + 2));
+                // a q nobody can read is a refusal, which is how negotiator reads it too
+                q = parsed === parsed ? parsed : 0;
+            }
+        }
+        if (q < minQuality) {
+            minQuality = q;
+        }
+        switch (name) {
+            case "br":
+                br = q;
+                break;
+            case "gzip":
+                gzip = q;
+                break;
+            case "deflate":
+                deflate = q;
+                break;
+            case "identity":
+                identity = q;
+                break;
+            case "*":
+                star = q;
+                break;
+        }
+        index = end + 1;
+    }
+    if (br < 0) br = star;
+    if (gzip < 0) gzip = star;
+    if (deflate < 0) deflate = star;
+    // An uncompressed answer that the request did not name is worth the lowest q it named
+    // anything with, which is negotiator's rule and not the obvious one: "br;q=0.5, gzip;q=0.9"
+    // means gzip, because identity comes in at 0.5 rather than at 1 and does not win the list.
+    // A "*" names identity as much as it names anything else, so its q is identity's.
+    if (identity < 0) identity = star < 0 ? minQuality : star;
+
+    if (!(allowed & ENCODING_BR)) br = -1;
+    if (!(allowed & ENCODING_GZIP)) gzip = -1;
+    if (!(allowed & ENCODING_DEFLATE)) deflate = -1;
+
+    let best = "";
+    let bestQ = 0;
+    if (br > bestQ) {
+        best = "br";
+        bestQ = br;
+    }
+    if (gzip > bestQ) {
+        best = "gzip";
+        bestQ = gzip;
+    }
+    if (deflate > bestQ) {
+        best = "deflate";
+        bestQ = deflate;
+    }
+    if (identity > bestQ) {
+        best = "identity";
+    }
+    return best;
+}
+
 const defaultSettings = {
     "jsonp callback name": "callback",
     env: () => process.env.NODE_ENV ?? "development",
@@ -1305,6 +1412,10 @@ module.exports = {
     entityTag,
     statTag,
     contentTypeFor,
+    negotiateEncoding,
+    ENCODING_BR,
+    ENCODING_GZIP,
+    ENCODING_ANY,
     memoizeByString,
     isRangeFresh,
     findIndexStartingFrom,

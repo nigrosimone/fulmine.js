@@ -43,6 +43,15 @@ every copy:
   IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
   DEALINGS IN THE SOFTWARE.
 
+This product includes test code derived from the compression middleware
+(https://github.com/expressjs/compression), ported in
+tests/unit/compression.test.js and licensed under the MIT License. Its terms
+travel with this repository in COMPRESSION_LICENSE, and the copyright it
+requires to be carried is:
+
+  Copyright (c) 2014 Jonathan Ong <me@jongleberry.com>
+  Copyright (c) 2014-2015 Douglas Christopher Wilson <doug@somethingdoug.com>
+
 As required by section 4(b) of the Apache License, the following are the
 significant changes made to the original work:
 
