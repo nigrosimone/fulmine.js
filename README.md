@@ -125,6 +125,10 @@ npx fulmine differences         # print the list below and change nothing
 The command is installed under both `fulmine` and `fulmine.js`. Use `fulmine`: `npx` cannot run a
 command whose name ends in `.js` on Windows, where it exits without a word.
 
+It also names the middlewares it found that have a faster one built in here, `compression`,
+`body-parser` and `serve-static`, and leaves them to you: the replacement is reached through the
+`express` import, and no rewrite can know that it is in scope where they are required.
+
 ### Angular SSR
 
 The `server.ts` that `ng add @angular/ssr` generates is an ordinary Express application, so the same

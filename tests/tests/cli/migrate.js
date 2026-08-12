@@ -48,7 +48,15 @@ const FIXTURES = {
         "export default [express, el];"
     ].join("\n"),
     "unparsable.js": 'const express = require("express"',
-    "node_modules/dep/index.js": 'const express = require("express");'
+    "node_modules/dep/index.js": 'const express = require("express");',
+    // modules with something built in here. They are reported, never rewritten, and a file that
+    // uses one without naming express has to be read all the same
+    "middlewares.js": [
+        'const compression = require("compression");',
+        'const bodyParser = require("body-parser");',
+        'const notAnImport = "serve-static";',
+        "module.exports = [compression, bodyParser, notAnImport];"
+    ].join("\n")
 };
 
 for (const [name, content] of Object.entries(FIXTURES)) {
@@ -115,6 +123,16 @@ try {
         fs.readFileSync(path.join(root, "node_modules/dep/index.js"), "utf8").includes('require("express")')
     );
 
+    assert(
+        "a module with something built in here is named",
+        migrated.includes("compression -> express.compression()") && migrated.includes("body-parser -> express.json()")
+    );
+    assert(
+        "and a string that only looks like one is not",
+        !migrated.includes("serve-static -> ") &&
+            fs.readFileSync(path.join(root, "middlewares.js"), "utf8").includes('require("compression")')
+    );
+
     const differences = execFileSync(process.execPath, [cli, "differences"]).toString();
     assert("differences names the one that bites first", differences.includes("app.listen() returns the app"));
     assert("a migration that changed something says what to check", migrated.includes("app.listen() returns the app"));
@@ -123,6 +141,8 @@ try {
     const again = execFileSync(process.execPath, [cli, "migrate", root]).toString();
     assert("running it twice rewrites nothing the second time", again.includes("rewrote 0 import(s)"));
     assert("and says nothing about differences", !again.includes("app.listen() returns the app"));
+    // the modules are still installed, so that half is still worth saying
+    assert("but still names the modules to replace", again.includes("compression -> express.compression()"));
     assert("express is still the thing being replaced", typeof express === "function");
 } finally {
     fs.rmSync(root, { recursive: true, force: true });
