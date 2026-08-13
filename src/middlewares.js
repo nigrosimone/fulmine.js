@@ -418,6 +418,8 @@ function serveStatic(root, options) {
         }
     }
     options.root = root;
+    // resolved once here rather than on every request: the root cannot change under a mount
+    const resolvedRoot = path.resolve(root);
     // serve-static decides this for itself and never asks the app, so a static file keeps its
     // ETag under app.set("etag", false) and only { etag: false } here turns it off. res.sendFile
     // takes the app's setting instead, which is why this has to be said out loud.
@@ -469,7 +471,12 @@ function serveStatic(root, options) {
             } else return next();
         }
         let _path = url;
-        const fullpath = path.resolve(path.join(root, url));
+        // Joined against the root and not normalised on its own first, which is the difference
+        // between "/mount/../package.json" being refused and being served: a ".." has to climb
+        // relative to the root so the check below can see it leave, and normalizing the url alone
+        // clamps it at "/" where nothing has left anywhere. Absolute because resolvedRoot is, so
+        // nothing here resolves against the working directory per request either.
+        const fullpath = path.join(resolvedRoot, url);
         // the same file as _path, absolute: the two move together through the index and extension
         // rules below, and only the precompressed lookup needs the absolute one
         let filePath = fullpath;
@@ -483,7 +490,7 @@ function serveStatic(root, options) {
         // is what an error handler prints when fallthrough is off.
         const mountRelative = rawPath === "/" && !req.endsWithSlash ? "" : url;
         const statTarget = mountRelative.endsWith("/") && !fullpath.endsWith(path.sep) ? fullpath + path.sep : fullpath;
-        if (root && !fullpath.startsWith(path.resolve(root))) {
+        if (root && !fullpath.startsWith(resolvedRoot)) {
             if (!options.fallthrough) {
                 res.status(403);
                 return next(httpError(403));
@@ -496,7 +503,10 @@ function serveStatic(root, options) {
         // reaches it only for paths that do exist.
         // normalized first, as send normalizes before it judges: a ".." segment is not a hidden
         // file, and resolving it away is what tells the two apart
-        if (containsDotFile(path.normalize(url).split(/[\\/]/))) {
+        // and these are the segments path.normalize(url) would have produced, taken off the joined
+        // path rather than walked again: the check above has just proved it starts with the root,
+        // so what follows the root is the url in normal form
+        if (containsDotFile(fullpath.slice(resolvedRoot.length).split(/[\\/]/))) {
             const refusal = options.dotfiles === "deny" ? 403 : options.dotfiles === "allow" ? 0 : 404;
             if (refusal !== 0 && !(options.dotfiles === "ignore_files" && !path.basename(url).startsWith("."))) {
                 if (!options.fallthrough) {
