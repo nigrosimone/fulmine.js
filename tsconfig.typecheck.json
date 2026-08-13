@@ -1,5 +1,5 @@
 {
-    // The config the `typecheck` script uses. The editor configs check the tests and the demo
+    // The config the `typecheck` script uses. The editor configs check the tests and the examples
     // too, which is useful while writing them but drowns the source: those two carry well over
     // a thousand findings between them, so a regression in src would never be noticed.
     //

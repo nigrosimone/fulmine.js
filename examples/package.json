@@ -1,0 +1,16 @@
+{
+    "name": "fulmine-examples",
+    "version": "1.0.0",
+    "private": true,
+    "description": "One file per thing Fulmine does that Express does not",
+    "scripts": {
+        "start": "node fast-routes.js"
+    },
+    "engines": {
+        "node": ">=22"
+    },
+    "dependencies": {
+        "fulmine.js": "file:..",
+        "socket.io": "^4.8.3"
+    }
+}

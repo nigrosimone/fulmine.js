@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>preCompressed</title>
+        <link rel="stylesheet" href="/style.css" />
+    </head>
+    <body>
+        <h1>Served from disk</h1>
+        <p>
+            This page and the stylesheet that colours it come from <code>examples/public</code>, and both have a
+            <code>.br</code> and a <code>.gz</code> twin next to them. Your browser asked for one of the twins, and
+            nothing was compressed while it waited.
+        </p>
+        <p><code>curl -sI -H "accept-encoding: br" http://localhost:3000/style.css</code></p>
+    </body>
+</html>

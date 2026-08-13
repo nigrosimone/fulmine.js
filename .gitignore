@@ -14,3 +14,11 @@ benchmark_history.json
 # what a comparison test wrote when the two arms disagreed, kept so a failure that does not
 # happen again can still be read
 test-failures/
+
+# the twins examples/static-precompressed.js writes on startup, which a build tool writes for you
+examples/public/*.br
+examples/public/*.gz
+
+# the examples install fulmine.js from the directory above, so this lockfile is a copy of the
+# root's dependency list and goes stale every time one of them moves
+examples/package-lock.json

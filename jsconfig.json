@@ -11,6 +11,6 @@
             "*": ["./node_modules/*"]
         }
     },
-    "include": ["src/**/*", "tests/**/*", "demo/**/*"],
+    "include": ["src/**/*", "tests/**/*", "examples/**/*"],
     "exclude": ["node_modules", "coverage"]
 }

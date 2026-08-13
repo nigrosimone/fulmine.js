@@ -18,12 +18,12 @@ import type { Request, Response } from "fulmine.js";
 There is a command that does that replacing for you, across a whole project, and then tells you the handful of things that behave differently:
 
 ```sh
-npx fulmine verify              # can this machine and this image even run it
-npx fulmine migrate --dry-run   # say what it would change, change nothing
-npx fulmine migrate             # do it
-npx fulmine differences         # just the list of what to check by hand
-npx fulmine profile             # what listen() decided about each route
-npx fulmine explain /api/items  # what happens when a request for that route arrives
+npx fulmine.js verify              # can this machine and this image even run it
+npx fulmine.js migrate --dry-run   # say what it would change, change nothing
+npx fulmine.js migrate             # do it
+npx fulmine.js differences         # just the list of what to check by hand
+npx fulmine.js profile             # what listen() decided about each route
+npx fulmine.js explain /api/items  # what happens when a request for that route arrives
 ```
 
 See [Migrating](#migrating) for what it handles and what it deliberately does not.
@@ -61,6 +61,7 @@ See [Migrating](#migrating) for what it handles and what it deliberately does no
     - [Router](#router)
 - [Tested middlewares](#tested-middlewares)
 - [Tested view engines](#tested-view-engines)
+- [Examples](./examples/README.md)
 - [Working on Fulmine](./CONTRIBUTING.md)
 
 ## Why this exists
@@ -115,22 +116,19 @@ It is likewise not affiliated with the OpenJS Foundation or the Express.js proje
 
 ## Migrating
 
-In a lot of cases, replacing `require("express")` with `require("fulmine.js")` is the whole migration. `npx fulmine migrate` does that across a project:
+In a lot of cases, replacing `require("express")` with `require("fulmine.js")` is the whole migration. `npx fulmine.js migrate` does that across a project:
 
 ```sh
-npx fulmine migrate [dir]       # defaults to the current directory
-npx fulmine migrate --dry-run   # say what it would rewrite and rewrite nothing
-npx fulmine differences         # print the list below and change nothing
+npx fulmine.js migrate [dir]       # defaults to the current directory
+npx fulmine.js migrate --dry-run   # say what it would rewrite and rewrite nothing
+npx fulmine.js differences         # print the list below and change nothing
 ```
-
-The command is installed under both `fulmine` and `fulmine.js`. Use `fulmine`: `npx` cannot run a
-command whose name ends in `.js` on Windows, where it exits without a word.
 
 It also names the middlewares it found that have a faster one built in here, `compression`,
 `body-parser` and `serve-static`, and leaves them to you: the replacement is reached through the
 `express` import, and no rewrite can know that it is in scope where they are required.
 
-`npx fulmine verify` is the question that comes before all of that: whether this machine, and the
+`npx fulmine.js verify` is the question that comes before all of that: whether this machine, and the
 image this will be deployed in, can run it at all. There is a µWebSockets.js binary underneath, and
 a binary is built per platform, per architecture and per node ABI, and linked against glibc. An
 Alpine base, a node version the pinned build has no binary for, a `FROM node:20-alpine` written
@@ -248,7 +246,7 @@ A single-stage `node:26-trixie-slim` image works too if you `apt-get install -y 
 
 ## Differences from Express
 
-- `app.listen()` returns the app rather than a separate server object, and the app answers as an `http.Server`: `app instanceof http.Server` is true, which is what the graceful shutdown wrappers and the connection trackers look for. There is still no node server underneath, the socket belongs to µWS, so what is answered is the surface and not the plumbing. There: `close()`, `address()`, `listening`, `getConnections()`, `ref()`, `unref()`, `setTimeout()` and the `keepAliveTimeout` family. Not there: nothing emits `connection`, `request` or `upgrade`, `getConnections()` counts the requests in flight rather than sockets, and the timeouts belong to µWS and are set through `uwsOptions.idleTimeout`. Anything that wants to serve its own protocol on the socket, socket.io being the usual case, still wants `app.uwsApp`.
+- `app.listen()` returns the app rather than a separate server object, and the app answers as an `http.Server`: `app instanceof http.Server` is true, which is what the graceful shutdown wrappers and the connection trackers look for. There is still no node server underneath, the socket belongs to µWS, so what is answered is the surface and not the plumbing. There: `close()`, `address()`, `listening`, `getConnections()`, `ref()`, `unref()`, `setTimeout()` and the `keepAliveTimeout` family. Not there: nothing emits `connection`, `request` or `upgrade`, `getConnections()` counts the requests in flight rather than sockets, and the timeouts belong to µWS and are set through `uwsOptions.idleTimeout`. Anything that wants to serve its own protocol on the socket, socket.io being the usual case, still wants `app.uwsApp`. Runnable: [`examples/graceful-shutdown.js`](./examples/graceful-shutdown.js).
 - `x-powered-by` is disabled by default. Express sends `X-Powered-By: Express` unless you turn it off; Fulmine does not send it unless you turn it on with `app.set("x-powered-by", true)`. The header only tells anyone asking which framework is running.
 - request body is only read for POST, PUT, PATCH and QUERY requests by default. You can add additional methods by setting `body methods` to array with uppercased methods.
 - **Informational responses go nowhere.** `res.writeEarlyHints()`, `res.writeContinue()` and `res.writeProcessing()` are all there, take what node's take and throw what node's throw once the head has gone out, but nothing reaches the wire: µWebSockets.js has no API for a `1xx`. They exist so that code written for Express keeps running rather than dying on "is not a function", which is the only thing a drop-in can honestly promise here. `res.addTrailers()` is the same story, and `res.setTimeout()` and `req.setTimeout()` register the listener without changing anything, since µWS runs its own idle timeout through `uwsOptions.idleTimeout`.
@@ -291,6 +289,8 @@ app.listen(3000, () => {
 });
 ```
 
+Runnable: [`examples/https.js`](./examples/https.js).
+
 - This also applies to non-SSL HTTP too. Use `app.listen()` rather than creating a server by hand. `http.createServer(app)` does work, because the app is a request listener like Express's and answers node's requests through a shim, which is what lets `supertest`, `vhost` and anything else that calls an app keep working. But it serves those requests through `node:http` rather than through µWS, so the speed is Express's. It is there for compatibility, not for production.
 - Node.JS max header size is 16384 bytes, while uWebSockets by default is 4096 bytes, so if you need longer headers set the env variable `UWS_HTTP_MAX_HEADERS_SIZE` to max byte count you need.
 - uWebSockets drops a request whose body arrives slower than 16KB/s, and the timeout is not reachable from JavaScript, while Node.JS waits as long as the client needs. Uploads over very slow connections can therefore fail here and succeed on Express. A body stalled for 5 seconds still completes; one stalled for 12 seconds gets its socket reset at around 11.8 seconds.
@@ -325,7 +325,7 @@ arriving at a handler costs no matching at all:
 That is the whole difference on a large route table: the scan grows with the table and the match
 does not, which is why a thousand routes measure 10x and a handful measure 3x.
 
-Two more things happen on the way in, and `npx fulmine profile` will tell you which of them your
+Two more things happen on the way in, and `npx fulmine.js profile` will tell you which of them your
 routes get:
 
 ```text
@@ -362,11 +362,11 @@ On top of that, a handler simple enough to be read at registration time is compi
 
 `app.set("declarative responses", false)` turns the whole thing off if you would rather have Express's exact framing than the speed.
 
-None of that is guesswork you have to do from the outside. `listen()` decides it all, and `npx fulmine profile` prints what it decided:
+None of that is guesswork you have to do from the outside. `listen()` decides it all, and `npx fulmine.js profile` prints what it decided:
 
 ```sh
-npx fulmine profile              # the file package.json's "main" points at
-npx fulmine profile server.js    # or name it
+npx fulmine.js profile              # the file "main" or the start script points at
+npx fulmine.js profile server.js    # or name it
 ```
 
 ```text
@@ -403,9 +403,9 @@ expectDeclarative(app, "/health"); // the step past native: no javascript at all
 routeReport(app); // the whole list, to assert on however you like
 ```
 
-A path is written as it was registered, `"/users/:id"` and not `"/users/7"`, and a trailing `*` names everything under a prefix. A pattern that matches no route throws too, so a misspelled path fails instead of passing quietly. The application does not need to be listening.
+A path is written as it was registered, `"/users/:id"` and not `"/users/7"`, and a trailing `*` names everything under a prefix. A pattern that matches no route throws too, so a misspelled path fails instead of passing quietly. The application does not need to be listening. Runnable: [`examples/fast-routes.js`](./examples/fast-routes.js).
 
-`npx fulmine explain /api/items/:id` answers the other question, the one about a single endpoint rather than about the table: how it is matched, what is copied out of the request, what runs and what each layer costs the route.
+`npx fulmine.js explain /api/items/:id` answers the other question, the one about a single endpoint rather than about the table: how it is matched, what is copied out of the request, what runs and what each layer costs the route.
 
 ```text
 GET /api/items/:id
@@ -425,9 +425,9 @@ The same verdict reaches the browser, per request, with `express.serverTiming()`
 Server-Timing: route;desc="native", hdr;desc="not copied", db;dur=3.62, total;dur=4.66
 ```
 
-`route;desc="native"` means µWS matched the path in C++ and the chain was worked out at startup; `route;desc="router"` means this one was matched here, layer by layer. `res.timing(name, ms, desc)` and `res.time(name, fn)` add marks of your own, and `fn` may return a promise. The duration ends where the header does, since Server-Timing goes out with the head. A route compiled into a response never enters JavaScript, so nothing times it: `npx fulmine profile` is where those are counted.
+`route;desc="native"` means µWS matched the path in C++ and the chain was worked out at startup; `route;desc="router"` means this one was matched here, layer by layer. `res.timing(name, ms, desc)` and `res.time(name, fn)` add marks of your own, and `fn` may return a promise. The duration ends where the header does, since Server-Timing goes out with the head. A route compiled into a response never enters JavaScript, so nothing times it: `npx fulmine.js profile` is where those are counted. Runnable: [`examples/server-timing.js`](./examples/server-timing.js).
 
-2. Do not use external `serve-static` module. Instead use built-in `express.static()` middleware, which is optimized for Fulmine. If your build already writes `.br` and `.gz` files next to the originals, `express.static(dir, { preCompressed: true })` serves those to the clients that accept them, so nothing is compressed at request time and a fraction of the bytes goes out: on a 4KB script with a brotli twin, 12 times fewer. It costs no more than serving the file itself, one `stat` per request, because the twin is looked for before the file and its own `stat` is the only one the request needs. A type that is already compressed, a woff2 or a webp, is not looked up at all, and which twins a path has is remembered for a second: `{ cache: false }` asks the disk every time, `{ cache: "5s" }` sets the window. Only their presence is remembered, never their size or mtime, so nothing is ever described by a stale number. `Vary: Accept-Encoding` is sent whether or not a twin is found, the content type stays the one the requested name implies, and each variant carries its own ETag.
+2. Do not use external `serve-static` module. Instead use built-in `express.static()` middleware, which is optimized for Fulmine. If your build already writes `.br` and `.gz` files next to the originals, `express.static(dir, { preCompressed: true })` serves those to the clients that accept them, so nothing is compressed at request time and a fraction of the bytes goes out: on a 4KB script with a brotli twin, 12 times fewer. It costs no more than serving the file itself, one `stat` per request, because the twin is looked for before the file and its own `stat` is the only one the request needs. A type that is already compressed, a woff2 or a webp, is not looked up at all, and which twins a path has is remembered for a second: `{ cache: false }` asks the disk every time, `{ cache: "5s" }` sets the window. Only their presence is remembered, never their size or mtime, so nothing is ever described by a stale number. `Vary: Accept-Encoding` is sent whether or not a twin is found, the content type stays the one the requested name implies, and each variant carries its own ETag. Runnable: [`examples/static-precompressed.js`](./examples/static-precompressed.js).
 
 3. Do not use `body-parser` module. Instead use built-in `express.text()`, `express.json()` etc.
 
@@ -437,6 +437,8 @@ Server-Timing: route;desc="native", hdr;desc="not copied", db;dur=3.62, total;du
 // the compression module's options, unchanged: threshold, filter, level, brotli, enforceEncoding
 app.use(express.compression({ threshold: 1024 }));
 ```
+
+Runnable: [`examples/compression.js`](./examples/compression.js).
 
 5. If a route answers with a JSON shape you know in advance, [express-fast-json-stringify](https://www.npmjs.com/package/express-fast-json-stringify) compiles that shape into a serializer and `res.fastJson()` replaces `res.json()`. `JSON.stringify()` has to walk an object it knows nothing about; a compiled serializer does not.
 
@@ -461,7 +463,7 @@ app.get("/", (req, res) => res.send("hello"));
 app.listen(3000, () => console.log(`worker ${process.pid} listening`));
 ```
 
-Anything held per process is now held per worker: an in-memory cache, a rate-limit counter, a session store or a `Map` of connected sockets is not shared, and needs Redis or something like it to be. `app.close()` in the primary stops the workers, and a `SIGTERM` or `SIGINT` that reaches only the primary, which is what a container sends, is passed on to them.
+Anything held per process is now held per worker: an in-memory cache, a rate-limit counter, a session store or a `Map` of connected sockets is not shared, and needs Redis or something like it to be. `app.close()` in the primary stops the workers, and a `SIGTERM` or `SIGINT` that reaches only the primary, which is what a container sends, is passed on to them. Runnable: [`examples/cluster.js`](./examples/cluster.js).
 
 ## WebSockets
 
@@ -493,7 +495,7 @@ app.ws("/room/:id", {
 - **Paths are the ones µWS matches**: literal, or with parameters that are a whole segment such as `/room/:id`. Anything else throws where it is written rather than failing to match later.
 - **Broadcasting from outside a socket**: `app.publish(topic, message)` and `app.numSubscribers(topic)`.
 
-A WebSocket route and an ordinary route can share a path: the upgrade goes to the WebSocket route, a plain GET goes through normal routing.
+A WebSocket route and an ordinary route can share a path: the upgrade goes to the WebSocket route, a plain GET goes through normal routing. Runnable, with a page that opens the socket: [`examples/websocket.js`](./examples/websocket.js).
 
 If you would rather use the `ws` module's API, [Ultimate WS](https://github.com/dimdenGD/ultimate-ws) is a drop-in replacement for it written against Ultimate Express, and Fulmine still exposes the mechanism it hooks into, but that combination is not covered by this project's tests. `app.uwsApp` also remains available for anything µWS offers that this does not.
 
@@ -524,7 +526,7 @@ function before it checks for a server, and an app here is callable. That refusa
 answer. Even if it accepted the object, there is no node socket behind it to take an upgrade over,
 so it would have failed later and more quietly. Plain HTTP keeps serving either way. This is covered
 by `tests/tests/middlewares/socket-io.js`, which runs the same file against Express and against
-Fulmine and compares the output.
+Fulmine and compares the output. Runnable: [`examples/socket-io.js`](./examples/socket-io.js).
 
 ## HTTP/3
 
@@ -565,7 +567,9 @@ app.set("trust proxy protocol", true);
 
 `trust proxy` and this can both be on. The preamble decides what the connection's address is, and
 `trust proxy` then peels `X-Forwarded-For` off that, so a proxy that sends both is read the way it
-meant.
+meant. It is the binary v2 preamble that µWS reads, not the v1 text line, so a connection starting
+with `PROXY TCP4 ...` is answered as a malformed request. Runnable, with a client that writes one:
+[`examples/proxy-protocol.js`](./examples/proxy-protocol.js).
 
 ## Versioning
 
@@ -812,6 +816,20 @@ Any Express view engine should work. Here's list of engines we include in our te
 - ✅ [express-art-template](https://npmjs.com/package/express-art-template)
 - ✅ [express-handlebars](https://npmjs.com/package/express-handlebars)
 - ✅ [swig](https://npmjs.com/package/swig)
+
+## Examples
+
+[`examples/`](./examples/README.md) has one runnable file per thing this does that Express does not:
+the cluster option, `app.ws()`, socket.io through `attachApp`, the pre-compressed twins,
+`express.compression()`, `express.serverTiming()`, TLS through `uwsOptions`, the PROXY protocol,
+what `listen()` decided about each route, and the app answering as an `http.Server`. What an
+Express application already does is documented by Express and is not repeated there.
+
+```sh
+cd examples
+npm install
+node websocket.js
+```
 
 ## Working on Fulmine
 

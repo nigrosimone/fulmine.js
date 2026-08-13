@@ -1,0 +1,27 @@
+body {
+    margin: 0 auto;
+    padding: 2rem 1rem;
+    max-width: 42rem;
+    font-family: system-ui, sans-serif;
+    line-height: 1.6;
+    color: #1a1a1a;
+    background: #fbfbfb;
+}
+
+code {
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+    background: #ececec;
+    font-size: 0.9em;
+}
+
+@media (prefers-color-scheme: dark) {
+    body {
+        color: #e8e8e8;
+        background: #16161a;
+    }
+
+    code {
+        background: #26262c;
+    }
+}

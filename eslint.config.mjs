@@ -80,20 +80,6 @@ export default [
             "no-useless-catch": "off"
         }
     },
-    {
-        // the demo's client half runs in a browser, not in node, so its globals are the browser's
-        files: ["demo/public/**/*.js"],
-        languageOptions: {
-            globals: {
-                document: "readonly",
-                window: "readonly",
-                location: "readonly",
-                fetch: "readonly",
-                performance: "readonly",
-                WebSocket: "readonly"
-            }
-        }
-    },
     // formatting is prettier's job; this turns off every rule that would argue with it
     prettier
 ];
