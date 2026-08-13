@@ -1,5 +1,16 @@
 # Changelog
 
+## [5.10.0](https://github.com/nigrosimone/fulmine.js/compare/v5.9.0...v5.10.0) (2026-08-13)
+
+### Features
+
+* **benchmark:** a trophy for a ratio that rose, eyes only for one that fell ([f9747dc](https://github.com/nigrosimone/fulmine.js/commit/f9747dcf9e4d53811656ddb16c571ac0d09a4938))
+* **types:** express.serverTiming, and the timing marks it hangs on the response ([b00ed52](https://github.com/nigrosimone/fulmine.js/commit/b00ed521a485a907e97e42b9b969f2b764f37c9c))
+
+### Bug Fixes
+
+* **cli:** profile stubs every copy of the library the application could load, and reads the start script ([cdb05c7](https://github.com/nigrosimone/fulmine.js/commit/cdb05c7a33929e28745f390126ea76683f38af69))
+
 ## [5.9.0](https://github.com/nigrosimone/fulmine.js/compare/v5.8.0...v5.9.0) (2026-08-13)
 
 ### Features
