@@ -242,8 +242,11 @@ function historyMarkdown(baseline, current) {
 
     for (const row of rows) {
         const percent = `${row.change >= 0 ? "+" : ""}${(row.change * 100).toFixed(1)}%`;
+        // the two are read differently and deserve different marks: one is something to look at
+        // now, the other is something that went right and is worth keeping
+        const mark = row.notable ? (row.change < 0 ? " :eyes:" : " :trophy:") : "";
         lines.push(
-            `| ${row.name}${row.notable ? " :eyes:" : ""} | ${row.before.speedup.toFixed(2)}x | ` +
+            `| ${row.name}${mark} | ${row.before.speedup.toFixed(2)}x | ` +
                 `${row.after.speedup.toFixed(2)}x | ${row.notable ? `**${percent}**` : percent} | ` +
                 `${row.before.express} → ${row.after.express} | ${row.before.fulmine} → ${row.after.fulmine} |`
         );
@@ -253,8 +256,8 @@ function historyMarkdown(baseline, current) {
     lines.push(
         `Only the ratio is comparable across runs: the absolute req/sec are not, and are shown only to say ` +
             `which arm moved. This benchmark's noise floor is about ±${Math.round(NOTABLE * 100)}%, so only the ` +
-            `rows marked :eyes: are worth reading, and even those are worth a second run before they are worth ` +
-            `a bisect.`
+            `marked rows are worth reading, and even those are worth a second run before they are worth a ` +
+            `bisect. :eyes: is a ratio that fell that far, :trophy: one that rose that far.`
     );
 
     if (!baseline.exact) {

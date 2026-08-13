@@ -148,8 +148,9 @@ The raw req/sec of both arms are kept next to the ratio. They are not comparable
 when a ratio does move they say which arm moved, which is the difference between a regression here
 and Express getting faster.
 
-Only rows that clear the ±10% noise floor are marked. Anything under it is weather: a table of a
-dozen ratios always has one that moved a few percent.
+Only rows that clear the ±10% noise floor are marked: :eyes: for a ratio that fell that far,
+:trophy: for one that rose. Anything under it is weather: a table of a dozen ratios always has one
+that moved a few percent.
 
 ## A unix socket instead of a port
 

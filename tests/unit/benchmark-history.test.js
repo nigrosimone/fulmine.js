@@ -130,6 +130,9 @@ test("the section is absent without a baseline, and says so when the baseline is
     assert.match(exact, /`aaaaaaa`/);
     assert.match(exact, /\+10\.0%/);
     assert.doesNotMatch(exact, /different cpu/);
+    // 10% is the noise floor exactly, so this row is marked, and a rise is marked as a rise
+    assert.match(exact, /\| plain :trophy: \|/);
+    assert.doesNotMatch(exact, /plain :eyes:/);
 
     const loose = historyMarkdown({ run: previous, exact: false, key: "linux-x64-4c-node26-something" }, current);
     assert.match(loose, /a machine of the same shape/);
@@ -161,4 +164,23 @@ test("history survives a missing file, and keeps a bounded number of runs per ma
     assert.strictEqual(history[key][19].commit, "c24");
 
     fs.rmSync(path.dirname(file), { recursive: true, force: true });
+});
+
+test("a ratio that fell is marked for a look, one that rose is marked as a win", () => {
+    const previous = runOf({
+        fell: { speedup: 2, express: 100, fulmine: 200 },
+        rose: { speedup: 2, express: 100, fulmine: 200 },
+        weather: { speedup: 2, express: 100, fulmine: 200 }
+    });
+    const current = runOf({
+        fell: { speedup: 1.7, express: 100, fulmine: 170 },
+        rose: { speedup: 2.4, express: 100, fulmine: 240 },
+        weather: { speedup: 2.1, express: 100, fulmine: 210 }
+    });
+
+    const out = historyMarkdown({ run: previous, exact: true, key: "k" }, current);
+    assert.match(out, /\| fell :eyes: \|/);
+    assert.match(out, /\| rose :trophy: \|/);
+    // under the noise floor, so neither: a table of a dozen ratios always has one of these
+    assert.match(out, /\| weather \|/);
 });
