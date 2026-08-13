@@ -248,7 +248,7 @@ A single-stage `node:26-trixie-slim` image works too if you `apt-get install -y 
 
 ## Differences from Express
 
-- `app.listen()` returns the app, not an `http.Server`, because there is no node server underneath: the socket belongs to µWS. The app answers as one anyway, which is what the graceful shutdown wrappers and the connection trackers look for. `app instanceof http.Server` is true, and `close()`, `address()`, `listening`, `getConnections()`, `ref()`, `unref()`, `setTimeout()` and the `keepAliveTimeout` family are all there. What is not there is the plumbing that carries node sockets: nothing emits `connection`, `request` or `upgrade`, `getConnections()` counts the requests in flight rather than sockets, and the timeouts belong to µWS and are set through `uwsOptions.idleTimeout`. Anything that wants to serve its own protocol on the socket, socket.io being the usual case, still wants `app.uwsApp`.
+- `app.listen()` returns the app rather than a separate server object, and the app answers as an `http.Server`: `app instanceof http.Server` is true, which is what the graceful shutdown wrappers and the connection trackers look for. There is still no node server underneath, the socket belongs to µWS, so what is answered is the surface and not the plumbing. There: `close()`, `address()`, `listening`, `getConnections()`, `ref()`, `unref()`, `setTimeout()` and the `keepAliveTimeout` family. Not there: nothing emits `connection`, `request` or `upgrade`, `getConnections()` counts the requests in flight rather than sockets, and the timeouts belong to µWS and are set through `uwsOptions.idleTimeout`. Anything that wants to serve its own protocol on the socket, socket.io being the usual case, still wants `app.uwsApp`.
 - `x-powered-by` is disabled by default. Express sends `X-Powered-By: Express` unless you turn it off; Fulmine does not send it unless you turn it on with `app.set("x-powered-by", true)`. The header only tells anyone asking which framework is running.
 - request body is only read for POST, PUT, PATCH and QUERY requests by default. You can add additional methods by setting `body methods` to array with uppercased methods.
 - **Informational responses go nowhere.** `res.writeEarlyHints()`, `res.writeContinue()` and `res.writeProcessing()` are all there, take what node's take and throw what node's throw once the head has gone out, but nothing reaches the wire: µWebSockets.js has no API for a `1xx`. They exist so that code written for Express keeps running rather than dying on "is not a function", which is the only thing a drop-in can honestly promise here. `res.addTrailers()` is the same story, and `res.setTimeout()` and `req.setTimeout()` register the listener without changing anything, since µWS runs its own idle timeout through `uwsOptions.idleTimeout`.
@@ -448,7 +448,7 @@ app.use(express.compression({ threshold: 1024 }));
 
 ## WebSockets
 
-`app.ws()` registers a WebSocket route, served by µWS itself. There is no `http.Server` underneath, so `http.on("upgrade")` and the libraries built on it do not apply; this is the replacement.
+`app.ws()` registers a WebSocket route, served by µWS itself. The upgrade never reaches node, so `server.on("upgrade")` and the libraries built on it have nothing to hear; this is the replacement.
 
 ```js
 app.ws("/room/:id", {
@@ -482,8 +482,8 @@ If you would rather use the `ws` module's API, [Ultimate WS](https://github.com/
 
 ### socket.io
 
-socket.io normally takes over the upgrade on a node `http.Server`. There isn't one here, so hand it
-the µWS app instead, which socket.io supports natively through `attachApp()`:
+socket.io normally takes over the upgrade on a node `http.Server`. The upgrade here never reaches
+node, so hand it the µWS app instead, which socket.io supports natively through `attachApp()`:
 
 ```js
 const express = require("fulmine.js");
@@ -501,8 +501,9 @@ io.on("connection", (socket) => {
 ```
 
 `attachApp()` works before or after `app.listen()`. What does not work is `new Server(server)` on the
-value `app.listen()` returns: plain HTTP keeps serving, but the WebSocket upgrade fails, because
-that object is not a real `http.Server`. This is covered by `tests/tests/middlewares/socket-io.js`,
+value `app.listen()` returns: plain HTTP keeps serving, but the WebSocket upgrade fails. It is
+recognised as an `http.Server`, and it answers the members a shutdown wrapper wants, but there is no
+node socket behind it for socket.io to take over. This is covered by `tests/tests/middlewares/socket-io.js`,
 which runs the same file against Express and against Fulmine and compares the output.
 
 ## HTTP/3
@@ -795,4 +796,8 @@ Any Express view engine should work. Here's list of engines we include in our te
 ## Working on Fulmine
 
 How to run the suites, what each of them is for, and how to write a comparison test:
-[`CONTRIBUTING.md`](./CONTRIBUTING.md).
+[`CONTRIBUTING.md`](./CONTRIBUTING.md). What is expected of everyone taking part:
+[`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md).
+
+Found something exploitable? Report it privately rather than in an issue, and see
+[`SECURITY.md`](./SECURITY.md) for what is in scope and what to expect.
