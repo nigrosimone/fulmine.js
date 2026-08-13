@@ -77,6 +77,18 @@ declare module "fulmine.js" {
             function expectDeclarative(app: Fulmine, patterns: string | string[]): void;
         }
 
+        // Server-Timing, carrying how the request was routed. Express has no such middleware, so
+        // like compression() there is nothing to re-export
+        interface ServerTimingOptions {
+            /** Whether to report how the request was routed. Default true. */
+            routing?: boolean;
+            /** Whether to report the time up to the head. Default true. */
+            total?: boolean;
+            /** What the total is called. Default "total". */
+            name?: string;
+        }
+        export function serverTiming(options?: ServerTimingOptions): e.RequestHandler;
+
         export function compression(options?: CompressionOptions): e.RequestHandler;
         export namespace compression {
             /** The default filter: any compressible content type. */
@@ -183,4 +195,16 @@ declare module "fulmine.js" {
     function express(settings?: Settings): Fulmine;
 
     export = express;
+}
+
+// What express.serverTiming() hangs on the response. Express's own Response extends this global
+// interface, which is how a middleware adds to it. They are written per request rather than on the
+// prototype, so a route only has them where that middleware ran, which the optional marks say.
+declare namespace Express {
+    interface Response {
+        /** Adds a mark of your own. A mark with only a description is a legal entry. */
+        timing?(name: string, duration?: number, description?: string): this;
+        /** Times a piece of work under a name. A promise is timed to where it settles. */
+        time?<T>(name: string, work: () => T): T;
+    }
 }

@@ -222,3 +222,15 @@ app.ws("/room/:id", {
 expectType<boolean>(app.publish("room", "hello"));
 expectType<number>(app.numSubscribers("room"));
 NamedRouter().ws("/lobby", { open: (ws) => ws.send(ws.req.path) });
+
+// express.serverTiming(), and the two marks it hangs on the response. They are optional, because
+// they are only there on a route the middleware ran in front of
+expectAssignable<RequestHandler>(express.serverTiming());
+expectAssignable<RequestHandler>(express.serverTiming({ routing: false, total: true, name: "app" }));
+app.get("/timed", async (_req, res) => {
+    res.timing?.("cache", undefined, "miss");
+    res.timing?.("db", 3.2);
+    const rows = await res.time?.("query", async () => [1, 2, 3]);
+    expectAssignable<number[] | undefined>(rows);
+    res.json(rows);
+});
