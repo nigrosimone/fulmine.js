@@ -1,5 +1,20 @@
 # Changelog
 
+## [5.9.0](https://github.com/nigrosimone/fulmine.js/compare/v5.8.0...v5.9.0) (2026-08-13)
+
+### Features
+
+* express({ cluster: "auto" }) forks one worker per core on the same port ([edf4037](https://github.com/nigrosimone/fulmine.js/commit/edf4037639cd87f81276a40c9bbd9939a7e970c1))
+
+### Bug Fixes
+
+* **static:** drop the trailing separator join keeps, so a file as root is served on linux ([d19e4ea](https://github.com/nigrosimone/fulmine.js/commit/d19e4eaa45d6a5849e9b773c9dc2a80bfa034e32))
+* **verify:** read the glibc outside checkLibc, so undefined still means musl ([8c5e759](https://github.com/nigrosimone/fulmine.js/commit/8c5e759b2454f8d301a0a0ca0d5b63ca15e40066))
+
+### Performance Improvements
+
+* **static:** resolve the root once and keep the traversal check on the joined path ([dbfe60b](https://github.com/nigrosimone/fulmine.js/commit/dbfe60b7daab2accbd718b486939496cc6075e3d))
+
 ## [5.8.0](https://github.com/nigrosimone/fulmine.js/compare/v5.7.0...v5.8.0) (2026-08-12)
 
 ### Features
