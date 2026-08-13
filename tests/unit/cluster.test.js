@@ -65,6 +65,13 @@ test("the quota caps the machine, and never rounds a fraction up into a process"
     assert.strictEqual(availableCores(cgroup({ "/sys/fs/cgroup/cpu.max": "12800000 100000" }), machine), 64);
 });
 
+test("and this machine answers something it could actually fork", () => {
+    // the one call with nothing injected: whatever it reads here, a worker count has to come out
+    const here = availableCores();
+    assert.ok(Number.isInteger(here) && here >= 1, `not a number of processes: ${here}`);
+    assert.strictEqual(workerCount("auto"), here);
+});
+
 test("what each setting asks for", () => {
     assert.strictEqual(workerCount(undefined), 0, "off by default");
     assert.strictEqual(workerCount(false), 0);

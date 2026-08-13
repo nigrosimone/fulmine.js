@@ -200,7 +200,9 @@ test("HEAD answers the variant's headers and no body", async () => {
 // what the twin cache is allowed to be wrong about, and for how long
 test("a twin written after the first request is picked up once the cache expires", async () => {
     const shortLived = express();
-    shortLived.use(express.static(root, { preCompressed: { cache: 60 } }));
+    // wide enough that the window cannot close between two requests under nyc, which is where 60ms
+    // did close: the first request there took longer than the window it was supposed to open
+    shortLived.use(express.static(root, { preCompressed: { cache: 500 } }));
     const server = shortLived.listen(0);
     const url = `http://127.0.0.1:${shortLived.address().port}/late.css`;
     const body = "a{b:c}".repeat(300);
@@ -221,11 +223,11 @@ test("a twin written after the first request is picked up once the cache expires
         fs.writeFileSync(path.join(root, "late.css.br"), zlib.brotliCompressSync(Buffer.from(body)));
         // still remembered as absent
         assert.strictEqual(await ask(), undefined, "inside the cache window");
-        await new Promise((resolve) => setTimeout(resolve, 80));
+        await new Promise((resolve) => setTimeout(resolve, 600));
         assert.strictEqual(await ask(), "br", "once the window has passed");
         // and the other way: the twin goes, the file is served instead
         fs.rmSync(path.join(root, "late.css.br"));
-        await new Promise((resolve) => setTimeout(resolve, 80));
+        await new Promise((resolve) => setTimeout(resolve, 600));
         assert.strictEqual(await ask(), undefined, "the twin is gone");
     } finally {
         server.close();
