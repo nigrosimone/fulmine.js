@@ -29,6 +29,9 @@ const parser = acorn.Parser;
 
 const allowedResMethods = ["set", "header", "setHeader", "sendStatus", "status", "send", "json", "end", "append"];
 const allowedIdentifiers = ["query", "params", ...allowedResMethods];
+// what one instruction of a declarative response can carry, since uWS writes its length as a u16
+const MAX_INSTRUCTION_LENGTH = 65535;
+
 // the three that write a body, of which only one may appear
 const bodyMethods = new Set(["send", "json", "end"]);
 // and the four that finish the response, after which nothing a handler does is observable
@@ -702,13 +705,21 @@ module.exports = function compileDeclarative(cb, app) {
             }
         }
 
-        // No Content-Length here, and it is not an oversight. uWS writes a DeclarativeResponse
-        // with Transfer-Encoding: chunked and adds that header itself, so setting Content-Length
-        // as well produces a response carrying both, which is invalid and which clients reject
-        // outright. Every declarative response is therefore chunked, where Express always sends
-        // a length. Changing it means changing uWS.
+        // No Content-Length header here: uWS writes the framing itself, and a response carrying
+        // both is invalid. Which framing it writes is decided at the end of this function.
         if (app.get("x-powered-by")) {
             decRes = decRes.writeHeader("x-powered-by", "Fulmine");
+        }
+
+        // A body that is literal all the way through goes out as one end(), which is what makes
+        // uWS frame it with a Content-Length, as Express does. A part interpolated from the
+        // request has no length until the request arrives, so those stay a write each and uWS
+        // chunks them.
+        const literal = body.every((part) => part.type === "text")
+            ? body.map((part) => String(part.value)).join("")
+            : null;
+        if (literal && literal.length <= MAX_INSTRUCTION_LENGTH) {
+            return decRes.end(literal);
         }
 
         for (const bodyPart of body) {

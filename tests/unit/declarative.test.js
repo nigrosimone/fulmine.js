@@ -91,3 +91,74 @@ test("every shape the compiler cannot vouch for is a refusal, never a throw", ()
     }
     assert.equal(compileDeclarative(new Controller().handle, app), false);
 });
+
+// The opcodes uWS interprets, and their operands, so a test can read a compiled response back
+const OPCODES = {
+    0: "END",
+    1: "WRITE_HEADER",
+    2: "WRITE_BODY",
+    3: "QUERY",
+    4: "HEADER",
+    5: "WRITE",
+    6: "PARAM",
+    7: "STATUS"
+};
+
+/** @param {ArrayBuffer} compiled @returns {{op: string, value: string}[]} */
+function decode(compiled) {
+    const bytes = new Uint8Array(compiled);
+    const out = [];
+    let at = 0;
+    const text = (from, length) => Buffer.from(bytes.slice(from, from + length)).toString();
+    while (at < bytes.length) {
+        const op = OPCODES[bytes[at]];
+        if (op === "END" || op === "WRITE") {
+            const length = bytes[at + 1] | (bytes[at + 2] << 8);
+            out.push({ op, value: text(at + 3, length) });
+            at += 3 + length;
+        } else if (op === "WRITE_HEADER") {
+            const keyLength = bytes[at + 1];
+            const valueLength = bytes[at + 2 + keyLength];
+            out.push({ op, value: text(at + 2, keyLength) });
+            at += 3 + keyLength + valueLength;
+        } else if (op === "WRITE_BODY") {
+            out.push({ op, value: "" });
+            at += 1;
+        } else {
+            const keyLength = bytes[at + 1];
+            out.push({ op, value: text(at + 2, keyLength) });
+            at += 2 + keyLength;
+        }
+    }
+    return out;
+}
+
+test("a literal body is one end(), so uWS frames it with a Content-Length", () => {
+    // uWS chunks a response written in pieces and gives a length to one that arrives whole, and
+    // that is the only way either header can be set here: it writes the framing itself
+    const body = decode(compileDeclarative((req, res) => res.send("hello"), app)).filter(
+        (instruction) => instruction.op === "END" || instruction.op === "WRITE"
+    );
+    assert.deepStrictEqual(body, [{ op: "END", value: "hello" }]);
+
+    // json is the same, and so is a body the compiler assembles from more than one literal
+    const json = decode(compileDeclarative((req, res) => res.json({ ok: true }), app)).filter(
+        (instruction) => instruction.op === "END" || instruction.op === "WRITE"
+    );
+    assert.deepStrictEqual(json, [{ op: "END", value: '{"ok":true}' }]);
+});
+
+test("a body with a piece of the request in it stays written in pieces", () => {
+    // its length is not known until the request arrives, so uWS has to chunk it. Only reachable
+    // with etag off: an ETag cannot be computed over a body this side has not seen yet
+    const noEtag = express();
+    noEtag.set("etag", false);
+    const parts = decode(compileDeclarative((req, res) => res.send("id " + req.params.id), noEtag)).filter(
+        (instruction) => ["END", "WRITE", "PARAM", "QUERY"].includes(instruction.op)
+    );
+    assert.deepStrictEqual(parts, [
+        { op: "WRITE", value: "id " },
+        { op: "PARAM", value: "id" },
+        { op: "END", value: "" }
+    ]);
+});

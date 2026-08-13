@@ -13,12 +13,6 @@ app.get("/ordinary", (req, res) => {
     res.send(body);
 });
 
-// The framing differs between them on Fulmine and not on Express, so this asks which server it is
-// running on rather than comparing the two directly. uWS writes a declarative response chunked and
-// sets Transfer-Encoding itself; a Content-Length cannot be added alongside it, since a response
-// carrying both is invalid and clients reject it.
-const isFulmine = !!app.uwsApp;
-
 async function framingOf(path) {
     const response = await fetchTest("http://localhost:13333" + path);
     const body = await response.text();
@@ -35,10 +29,8 @@ app.listen(13333, async () => {
 
     console.log("same body:", compiled.body === "ok" && ordinary.body === "ok");
     console.log("ordinary route carries a length:", ordinary.length === "2" && !ordinary.chunked);
-    console.log(
-        "compiled route framed as this server frames it:",
-        isFulmine ? compiled.chunked && compiled.length === null : compiled.length === "2" && !compiled.chunked
-    );
+    // a literal body is written in one piece, so uWS gives it a length like any other response
+    console.log("compiled route carries a length:", compiled.length === "2" && !compiled.chunked);
 
     process.exit(0);
 });

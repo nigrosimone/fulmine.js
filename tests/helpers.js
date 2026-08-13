@@ -34,11 +34,12 @@ const PRESENCE_ONLY_HEADERS = ["date", "keep-alive"];
 //
 //   x-powered-by                    Express sends it by default and Fulmine does not.
 //   content-length, transfer-encoding
-//                                   uWS frames a declarative response as chunked and writes the
-//                                   Transfer-Encoding header itself, so those routes never carry
-//                                   a Content-Length while Express always does. It cannot be set
-//                                   from here: a response carrying both is invalid and clients
-//                                   reject it outright.
+//                                   uWS writes the framing itself, so neither can be set from
+//                                   here: a response carrying both is invalid. A compiled route
+//                                   now agrees with Express wherever its body is literal, so
+//                                   comparing these two is worth trying again; what still
+//                                   differs is a compiled body with a piece of the request in it,
+//                                   whose length is not known until the request arrives.
 //
 // Both have a test of their own rather than being silently dropped:
 // tests/tests/settings/x-powered-by-default.js and tests/tests/res/res-framing.js.
