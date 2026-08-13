@@ -15,6 +15,11 @@ test("what the compiler accepts compiles into a declarative response", () => {
     const compiled = compileDeclarative((req, res) => res.send("hello"), app);
     assert.ok(compiled && typeof compiled === "object", String(compiled));
     assert.ok(compileDeclarative((req, res) => res.status(201).send("made"), app));
+    // a media type is a lookup on a literal, and set() takes an object as well as a pair
+    assert.ok(compileDeclarative((req, res) => res.type("json").send("{}"), app));
+    assert.ok(compileDeclarative((req, res) => res.set({ server: "fulmine" }).send("ok"), app));
+    // setHeader is node's and throws on an object, so the compiler refuses it there
+    assert.ok(!compileDeclarative((req, res) => res.setHeader({ server: "fulmine" }).send("ok"), app));
     assert.ok(compileDeclarative((req, res) => res.sendStatus(204), app));
     assert.ok(compileDeclarative((req, res) => res.end(), app));
     // return res.send(...) as the last statement describes the same response

@@ -18,7 +18,7 @@ limitations under the License.
 */
 
 const acorn = require("acorn");
-const { stringify, withDefaultCharset, withUtf8Charset } = require("./utils.js");
+const { stringify, withDefaultCharset, withUtf8Charset, contentTypeFor } = require("./utils.js");
 // H3App, DeclarativeResponse and _cfg all exist at runtime but are missing from the
 // declaration file the package ships, so the module is read through a loose alias
 const uWS = require("uWebSockets.js");
@@ -27,8 +27,25 @@ const statuses = require("statuses");
 
 const parser = acorn.Parser;
 
-const allowedResMethods = ["set", "header", "setHeader", "sendStatus", "status", "send", "json", "end", "append"];
+const allowedResMethods = [
+    "set",
+    "header",
+    "setHeader",
+    "type",
+    "contentType",
+    "sendStatus",
+    "status",
+    "send",
+    "json",
+    "end",
+    "append"
+];
+
 const allowedIdentifiers = ["query", "params", ...allowedResMethods];
+
+/** What res.type(x) sets the content type to, which is a lookup on a literal. */
+const typeValueOf = (type) => (type.indexOf("/") === -1 ? contentTypeFor(type) : type);
+
 // what one instruction of a declarative response can carry, since uWS writes its length as a u16
 const MAX_INSTRUCTION_LENGTH = 65535;
 
@@ -85,6 +102,23 @@ function collectNodeTypes(node, types) {
         if (key === "type" || key === "start" || key === "end") continue;
         collectNodeTypes(node[key], types);
     }
+}
+
+/**
+ * The key a property writes, when it is one this can read: a plain name or a literal, never
+ * computed and never a getter or a spread.
+ *
+ * @param {any} property
+ * @returns {string|null} null when the shape is not one of those
+ */
+function literalKeyOf(property) {
+    if (property.type !== "Property" || property.computed || property.kind !== "init") {
+        return null;
+    }
+    if (property.key.type === "Identifier") {
+        return property.key.name;
+    }
+    return property.key.type === "Literal" ? String(property.key.value) : null;
 }
 
 /**
@@ -406,34 +440,62 @@ module.exports = function compileDeclarative(cb, app) {
 
         // get headers
         for (const call of callExprs) {
+            const isType = call.obj.propertyName === "type" || call.obj.propertyName === "contentType";
             if (
                 call.obj.propertyName === "header" ||
                 call.obj.propertyName === "setHeader" ||
-                call.obj.propertyName === "set"
+                call.obj.propertyName === "set" ||
+                isType
             ) {
-                if (call.arguments[0].type !== "Literal" || call.arguments[1].type !== "Literal") {
-                    return false;
-                }
-                // String() at capture: a numeric literal would reach uWS's writeHeader as itself,
-                // and uWS refuses anything that is not a string
-                let [header, value] = [call.arguments[0].value, String(call.arguments[1].value)];
-                const name = String(header).toLowerCase();
-                // res.set charsets a content-type and res.setHeader does not, since the second is
-                // node's and node does not know what a media type is
-                if (call.obj.propertyName !== "setHeader" && name === "content-type") {
-                    value = withDefaultCharset(value);
-                }
-                const index = headers.findIndex((entry) => String(entry[0]).toLowerCase() === name);
-                if (index === -1) {
-                    headers.push([header, value]);
+                // type() is set("content-type", ...) with the media type looked up first, and
+                // set() takes a whole object as well, which is one set() per pair. setHeader is
+                // node's and throws on anything but a string, so it is not offered the object.
+                let pairs;
+                if (isType) {
+                    if (call.arguments[0].type !== "Literal") {
+                        return false;
+                    }
+                    pairs = [["content-type", typeValueOf(String(call.arguments[0].value))]];
+                } else if (call.arguments.length === 1 && call.obj.propertyName !== "setHeader") {
+                    if (call.arguments[0].type !== "ObjectExpression") {
+                        return false;
+                    }
+                    pairs = [];
+                    for (const property of call.arguments[0].properties) {
+                        const key = literalKeyOf(property);
+                        if (key === null || property.value.type !== "Literal") {
+                            return false;
+                        }
+                        pairs.push([key, String(property.value.value)]);
+                    }
                 } else {
-                    // in place, so the header keeps the position it was first given
-                    headers[index][1] = value;
-                    // set replaces the header outright, so any further value append left there
-                    // goes with it. Replacing only the first left the response carrying both.
-                    for (let i = headers.length - 1; i > index; i--) {
-                        if (String(headers[i][0]).toLowerCase() === name) {
-                            headers.splice(i, 1);
+                    if (call.arguments[0].type !== "Literal" || call.arguments[1]?.type !== "Literal") {
+                        return false;
+                    }
+                    // String() at capture: a numeric literal would reach uWS's writeHeader as
+                    // itself, and uWS refuses anything that is not a string
+                    pairs = [[call.arguments[0].value, String(call.arguments[1].value)]];
+                }
+
+                for (let [header, value] of pairs) {
+                    const name = String(header).toLowerCase();
+                    // res.set charsets a content-type and res.setHeader does not, since the second
+                    // is node's and node does not know what a media type is
+                    if (call.obj.propertyName !== "setHeader" && name === "content-type") {
+                        value = withDefaultCharset(value);
+                    }
+                    const index = headers.findIndex((entry) => String(entry[0]).toLowerCase() === name);
+                    if (index === -1) {
+                        headers.push([header, value]);
+                    } else {
+                        // in place, so the header keeps the position it was first given
+                        headers[index][1] = value;
+                        // set replaces the header outright, so any further value append left there
+                        // goes with it. Replacing only the first left the response carrying both.
+                        for (let i = headers.length - 1; i > index; i--) {
+                            if (String(headers[i][0]).toLowerCase() === name) {
+                                headers.splice(i, 1);
+                            }
                         }
                     }
                 }
