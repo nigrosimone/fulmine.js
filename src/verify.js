@@ -103,18 +103,27 @@ function checkNode(running = process.versions.node, required = require("../packa
 }
 
 /**
- * Whether the C library is the one the binaries are linked against. Only linux has two of them,
- * and node reports the glibc it is running against; a musl build reports none, which is what
- * Alpine looks like from in here.
+ * The glibc this process is running against, or undefined when there is none to report, which is
+ * what a musl build looks like from in here.
  *
- * @param {string} [platform]
- * @param {string|undefined} [glibc] the runtime glibc, absent on musl
+ * @returns {string|undefined}
+ */
+function currentGlibc() {
+    return /** @type {any} */ (process.report.getReport()).header.glibcVersionRuntime;
+}
+
+/**
+ * Whether the C library is the one the binaries are linked against. Only linux has two of them.
+ *
+ * Both arguments are required, and deliberately: undefined is the answer that means musl, and a
+ * default parameter fires on an explicit undefined, so a default here would quietly turn the musl
+ * case into whatever this machine happens to run. Reading the machine is the caller's job.
+ *
+ * @param {string} platform
+ * @param {string|undefined} glibc the runtime glibc, absent on musl
  * @returns {ReturnType<typeof result>|undefined} undefined where the question does not arise
  */
-function checkLibc(
-    platform = process.platform,
-    glibc = /** @type {any} */ (process.report.getReport()).header.glibcVersionRuntime
-) {
+function checkLibc(platform, glibc) {
     if (platform !== "linux") {
         return undefined;
     }
@@ -280,7 +289,7 @@ function verify(argv) {
     const dir = path.resolve(argv.find((arg) => !arg.startsWith("--")) ?? ".");
     /** @type {ReturnType<typeof result>[]} */
     const results = [checkNode()];
-    const libc = checkLibc();
+    const libc = checkLibc(process.platform, currentGlibc());
     if (libc) {
         results.push(libc);
     }
@@ -306,4 +315,4 @@ function verify(argv) {
     return blocking === 0 ? 0 : 1;
 }
 
-module.exports = { verify, checkNode, checkLibc, checkBinary, checkDockerfiles, checkDependencies };
+module.exports = { verify, checkNode, checkLibc, currentGlibc, checkBinary, checkDockerfiles, checkDependencies };

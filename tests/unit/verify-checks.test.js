@@ -9,7 +9,14 @@ const assert = require("node:assert");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { checkNode, checkLibc, checkBinary, checkDockerfiles, checkDependencies } = require("../../src/verify.js");
+const {
+    checkNode,
+    checkLibc,
+    currentGlibc,
+    checkBinary,
+    checkDockerfiles,
+    checkDependencies
+} = require("../../src/verify.js");
 
 test("the node version is read against what the package asks for", () => {
     assert.strictEqual(checkNode("22.0.0", ">=22").level, "ok");
@@ -27,7 +34,20 @@ test("the C library question only arises on linux", () => {
     assert.strictEqual(checkLibc("darwin", undefined), undefined);
 });
 
+test("what this machine reports is judged without throwing", () => {
+    // the reading and the judging are separate on purpose: this is the one call that touches the
+    // machine, and it answers differently on the runner and on a laptop
+    const here = checkLibc(process.platform, currentGlibc());
+    if (process.platform === "linux") {
+        assert.ok(here && ["ok", "no"].includes(here.level));
+    } else {
+        assert.strictEqual(here, undefined);
+    }
+});
+
 test("musl is a failure that names the way out", () => {
+    // undefined is the answer that means musl, and it has to survive being passed in: a default
+    // parameter would fire on it and judge this machine's glibc instead. That is what happened.
     const musl = checkLibc("linux", undefined);
     assert.strictEqual(musl.level, "no");
     assert.match(musl.what, /musl libc/);
