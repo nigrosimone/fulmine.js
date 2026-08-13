@@ -476,7 +476,14 @@ function serveStatic(root, options) {
         // relative to the root so the check below can see it leave, and normalizing the url alone
         // clamps it at "/" where nothing has left anywhere. Absolute because resolvedRoot is, so
         // nothing here resolves against the working directory per request either.
-        const fullpath = path.join(resolvedRoot, url);
+        // and without the trailing separator join keeps and resolve does not, because statTarget
+        // below puts it back only where it belongs: linux refuses a file asked for as a directory,
+        // so a mount whose root is a file answers nothing at all if the separator stays here.
+        // Windows stats it either way, which is why only the CI said so.
+        let fullpath = path.join(resolvedRoot, url);
+        if (fullpath.length > resolvedRoot.length && fullpath.endsWith(path.sep)) {
+            fullpath = fullpath.slice(0, -1);
+        }
         // the same file as _path, absolute: the two move together through the index and extension
         // rules below, and only the precompressed lookup needs the absolute one
         let filePath = fullpath;
