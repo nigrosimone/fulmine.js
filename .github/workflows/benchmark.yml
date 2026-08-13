@@ -25,10 +25,10 @@ jobs:
 
         steps:
             - name: Checkout code
-              uses: actions/checkout@v3
+              uses: actions/checkout@v7
 
             - name: Cache Node.js dependencies
-              uses: actions/cache@v3
+              uses: actions/cache@v6
               with:
                   path: ~/.npm
                   key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
@@ -41,7 +41,7 @@ jobs:
               # the jump from 22 to 24 was Express roughly tripling on some scenarios, which read
               # as a regression here and was not one. Compare summaries across runs only when this
               # number is the same in both.
-              uses: actions/setup-node@v3
+              uses: actions/setup-node@v7
               with:
                   node-version: "26"
 
@@ -75,7 +75,7 @@ jobs:
                       ${{ inputs.transport == 'unix-socket' && '--socket 1' || '' }}
 
             - name: Upload benchmark markdown artifact
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: benchmark-summary
                   path: benchmark_summary.md
@@ -83,7 +83,7 @@ jobs:
             # what the next run reads. Keyed by machine and major node inside, so a run only ever
             # compares itself against one that is comparable
             - name: Upload the ratios for the next run
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: benchmark-history
                   path: benchmark_history.json
@@ -92,7 +92,7 @@ jobs:
             - name: Comment on commit
               if: github.event_name == 'push'
               continue-on-error: true
-              uses: peter-evans/commit-comment@v3
+              uses: peter-evans/commit-comment@v4
               with:
                   token: ${{ secrets.GITHUB_TOKEN }}
                   body-path: benchmark_summary.md
@@ -100,7 +100,7 @@ jobs:
             - name: Comment on pull request
               if: github.event_name == 'pull_request'
               continue-on-error: true
-              uses: actions/github-script@v7
+              uses: actions/github-script@v9
               with:
                   script: |
                       const fs = require('fs');

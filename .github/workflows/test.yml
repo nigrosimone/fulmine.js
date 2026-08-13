@@ -13,11 +13,11 @@ jobs:
         if: github.event_name == 'pull_request'
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
               with:
                   fetch-depth: 0
 
-            - uses: actions/setup-node@v4
+            - uses: actions/setup-node@v7
               with:
                   node-version: "22"
 
@@ -34,10 +34,10 @@ jobs:
                 node-version: [22, 24, 26]
         steps:
             - name: Checkout Source Tree
-              uses: actions/checkout@v3
+              uses: actions/checkout@v7
 
             - name: Cache Node.js dependencies
-              uses: actions/cache@v3
+              uses: actions/cache@v6
               with:
                   path: ~/.npm
                   key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
@@ -45,7 +45,7 @@ jobs:
                       ${{ runner.os }}-node-
 
             - name: Setup Node.js environment
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v7
               with:
                   node-version: "${{ matrix.node-version }}"
 
@@ -59,7 +59,7 @@ jobs:
             # platform nobody develops on is diagnosable from these two files and from nothing else
             - name: Keep what the arms wrote when they disagreed
               if: failure()
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: test-failures-node-${{ matrix.node-version }}
                   path: test-failures/
@@ -87,10 +87,10 @@ jobs:
         timeout-minutes: 30
         steps:
             - name: Checkout Source Tree
-              uses: actions/checkout@v3
+              uses: actions/checkout@v7
 
             - name: Cache Node.js dependencies
-              uses: actions/cache@v3
+              uses: actions/cache@v6
               with:
                   path: ~/.npm
                   key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
@@ -98,7 +98,7 @@ jobs:
                       ${{ runner.os }}-node-
 
             - name: Setup Node.js environment
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v7
               with:
                   node-version: "24"
 
@@ -136,10 +136,10 @@ jobs:
         timeout-minutes: 15
         steps:
             - name: Checkout Source Tree
-              uses: actions/checkout@v3
+              uses: actions/checkout@v7
 
             - name: Cache Node.js dependencies
-              uses: actions/cache@v3
+              uses: actions/cache@v6
               with:
                   path: ~/.npm
                   key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
@@ -147,7 +147,7 @@ jobs:
                       ${{ runner.os }}-node-
 
             - name: Setup Node.js environment
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v7
               with:
                   node-version: "24"
 
@@ -165,10 +165,10 @@ jobs:
         timeout-minutes: 15
         steps:
             - name: Checkout Source Tree
-              uses: actions/checkout@v3
+              uses: actions/checkout@v7
 
             - name: Cache Node.js dependencies
-              uses: actions/cache@v3
+              uses: actions/cache@v6
               with:
                   path: ~/.npm
                   key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
@@ -176,7 +176,7 @@ jobs:
                       ${{ runner.os }}-node-
 
             - name: Setup Node.js environment
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v7
               with:
                   node-version: "24"
 
