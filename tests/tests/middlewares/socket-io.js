@@ -18,12 +18,22 @@ sio.on("connection", (socket) => {
 
 const server = app.listen(13333);
 
-// Express hands socket.io a node http.Server and lets it take over the upgrade. There is no
-// http.Server here, so socket.io attaches to the uWS app instead, which it supports natively.
+// Express hands socket.io a node http.Server and lets it take over the upgrade. The upgrade never
+// reaches node here, so socket.io attaches to the uWS app instead, which it supports natively.
 if (app.uwsApp) {
     sio.attachApp(app.uwsApp);
 } else {
     sio.attach(server);
+}
+
+// and the wrong way round, which answers the same on both: an application is a callable, and
+// socket.io looks for a function before it looks for a server. It refuses out loud rather than
+// attaching to something that would never hand it an upgrade.
+try {
+    new Server(app);
+    console.log("attaching to the app: accepted");
+} catch (err) {
+    console.log("attaching to the app:", err.message);
 }
 
 (async () => {

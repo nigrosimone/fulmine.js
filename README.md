@@ -500,11 +500,14 @@ io.on("connection", (socket) => {
 });
 ```
 
-`attachApp()` works before or after `app.listen()`. What does not work is `new Server(server)` on the
-value `app.listen()` returns: plain HTTP keeps serving, but the WebSocket upgrade fails. It is
-recognised as an `http.Server`, and it answers the members a shutdown wrapper wants, but there is no
-node socket behind it for socket.io to take over. This is covered by `tests/tests/middlewares/socket-io.js`,
-which runs the same file against Express and against Fulmine and compares the output.
+`attachApp()` works before or after `app.listen()`. What does not work is `new Server(app)` on the
+app itself, or on what `app.listen()` returns, which is the same object: socket.io refuses it with
+"You are trying to attach socket.io to an express request handler function", because it checks for a
+function before it checks for a server, and an app here is callable. That refusal is the useful
+answer. Even if it accepted the object, there is no node socket behind it to take an upgrade over,
+so it would have failed later and more quietly. Plain HTTP keeps serving either way. This is covered
+by `tests/tests/middlewares/socket-io.js`, which runs the same file against Express and against
+Fulmine and compares the output.
 
 ## HTTP/3
 
