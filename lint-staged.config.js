@@ -14,5 +14,8 @@ module.exports = {
             ? ["eslint --fix .", "prettier --write ."]
             : [`eslint --fix ${quote(files)}`, `prettier --write ${quote(files)}`],
     "*.{json,md,yml,yaml}": (files) =>
-        files.length > MANY_FILES ? ["prettier --write ."] : [`prettier --write ${quote(files)}`]
+        files.length > MANY_FILES ? ["prettier --write ."] : [`prettier --write ${quote(files)}`],
+    // the harness rewrites these while it runs, and a commit made in that window records the
+    // rewritten file, see tools/check-differential-tests.js
+    "tests/tests/**/*.js": (files) => [`node tools/check-differential-tests.js ${quote(files)}`]
 };

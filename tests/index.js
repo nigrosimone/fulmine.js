@@ -84,6 +84,27 @@ const plannedTotal = testCategories.reduce((count, category) => {
 }, 0);
 let planned = 0;
 
+// The file that is on disk with its import swapped for the local source right now, and what it
+// says as written. The run puts it back in a finally, which covers a failing test but not a
+// Ctrl+C: without this, an interrupted run leaves one test comparing fulmine against fulmine.
+/** @type {{path: string, code: string}|null} */
+let swapped = null;
+
+function restoreSwapped() {
+    if (swapped) {
+        fs.writeFileSync(swapped.path, swapped.code);
+        swapped = null;
+    }
+}
+
+process.on("exit", restoreSwapped);
+for (const signal of ["SIGINT", "SIGTERM"]) {
+    process.on(signal, () => {
+        restoreSwapped();
+        process.exit(1);
+    });
+}
+
 for (const testCategory of testCategories) {
     test(testCategory, async () => {
         // some tests write scratch directories next to themselves, and a leftover one
@@ -171,6 +192,7 @@ for (const testCategory of testCategories) {
                         if (newCode === testCode) {
                             throw new Error("Test code does not contain require express");
                         }
+                        swapped = { path: testPath, code: testCode };
                         fs.writeFileSync(testPath, newCode);
                         const fulmineOutput = await execTest("fulmine");
 
@@ -188,6 +210,7 @@ for (const testCategory of testCategories) {
                         assert.strictEqual(fulmineOutput, expressOutput);
                     } finally {
                         fs.writeFileSync(testPath, testCode);
+                        swapped = null;
                         resolve();
                     }
                 });
