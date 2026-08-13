@@ -79,6 +79,33 @@ test("the entry is the one named, or the one package.json points at, or a usual 
     }
 });
 
+test("the start script names the entry when main does not, or names one nobody built", (t) => {
+    const dir = scratch(t, {
+        // a TypeScript project before its build, and a service whose entry is where only the
+        // start script knows to look: neither is covered by main or by the usual names
+        "package.json": JSON.stringify({
+            main: "dist/server.js",
+            scripts: { start: "node --env-file=.env src/api/server.js" }
+        }),
+        "src/api/server.js": "",
+        "bin/www": ""
+    });
+    const cwd = process.cwd();
+    process.chdir(dir);
+    try {
+        assert.strictEqual(findEntry(undefined), path.resolve(dir, "src", "api", "server.js"));
+
+        // what the start script runs has to be a file node runs: a wrapper runs something else
+        fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ scripts: { start: "nodemon bin/www" } }));
+        assert.strictEqual(findEntry(undefined), null);
+
+        fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ scripts: { start: "node ./bin/www" } }));
+        assert.strictEqual(findEntry(undefined), path.resolve(dir, "bin", "www"));
+    } finally {
+        process.chdir(cwd);
+    }
+});
+
 test("every route is collected, through the routers mounted under it", () => {
     const app = express();
     const api = express.Router();
@@ -140,4 +167,38 @@ test("a file that builds nothing, or will not load, says so and fails", (t) => {
     const missing = run([path.join(dir, "nowhere.js")]);
     assert.strictEqual(missing.code, 1);
     assert.match(missing.out, /Nothing to profile/);
+});
+
+test("an application on a second copy of the library is stubbed too, rather than left to listen", (t) => {
+    // The command runs from its own copy and the application loads whichever one resolves from its
+    // own directory. A global install, an npx of a pinned version or a hoisted workspace leaves two
+    // on disk, and stubbing only this one lets the application's real listen() bind the port, after
+    // which the command reports that the file built nothing. The copy is made inside the repository
+    // so that its own dependencies still resolve upward.
+    const root = fs.mkdtempSync(path.join(path.resolve(__dirname, ".."), ".copy-"));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const copy = path.join(root, "node_modules", "fulmine.js");
+    fs.mkdirSync(copy, { recursive: true });
+    fs.cpSync(path.resolve(__dirname, "..", "..", "src"), path.join(copy, "src"), { recursive: true });
+    fs.writeFileSync(path.join(copy, "package.json"), JSON.stringify({ name: "fulmine.js", main: "src/index.js" }));
+
+    fs.writeFileSync(
+        path.join(root, "server.js"),
+        `const express = require("fulmine.js");
+const app = express();
+app.get("/health", (req, res) => res.send("ok"));
+const server = app.listen(0);
+// the stub returns the app without binding, so this is the regression guard: without it a
+// failure leaves a listening socket behind and hangs the run rather than failing it
+if (server.listening) {
+    console.log("REALLY LISTENED");
+    server.close();
+}
+`
+    );
+
+    const { code, out } = run([path.join(root, "server.js")]);
+    assert.doesNotMatch(out, /REALLY LISTENED/, "the application's own listen must not have bound a port");
+    assert.strictEqual(code, 0);
+    assert.match(out, /GET\s+\/health\s+µWS/);
 });

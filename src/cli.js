@@ -304,7 +304,40 @@ function walk(node, visit) {
 const DEFAULT_ENTRIES = ["server.js", "app.js", "index.js", "src/server.js", "src/app.js", "src/index.js"];
 
 /**
- * The file to load, from the argument, or from package.json's main, or from the usual names.
+ * The file a start script runs, when it runs node on one.
+ *
+ * "main" is about what a package exports, and a service usually exports nothing: the entry of a
+ * deployed application is far more often the one written here, which is also the only place that
+ * knows about a src/ or a bin/ the usual names do not cover.
+ *
+ * @param {unknown} script the "start" script, as package.json wrote it
+ * @returns {string|null}
+ */
+function entryFromScript(script) {
+    if (typeof script !== "string") {
+        return null;
+    }
+    const words = script.split(/\s+/).filter(Boolean);
+    if (!/^(node|nodejs)$/.test(path.basename(words[0] ?? "", ".exe"))) {
+        // ts-node, nodemon, a shell pipeline: what that runs is not a file this can load
+        return null;
+    }
+    for (const word of words.slice(1)) {
+        if (word.startsWith("-")) {
+            continue; // --env-file=.env, --watch, and the rest of node's own flags
+        }
+        const candidate = path.resolve(word);
+        if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+            return candidate;
+        }
+        break; // the first thing that is not a flag is the file, and it is not there
+    }
+    return null;
+}
+
+/**
+ * The file to load, from the argument, from package.json's main or start script, or from the
+ * usual names.
  *
  * @param {string|undefined} given
  * @returns {string|null}
@@ -319,6 +352,12 @@ function findEntry(given) {
         if (pkg.main && fs.existsSync(path.resolve(pkg.main))) {
             return path.resolve(pkg.main);
         }
+        // a main that names a file nobody built, dist/server.js in a TypeScript project, is worth
+        // no more than no main at all
+        const started = entryFromScript(pkg.scripts?.start);
+        if (started) {
+            return started;
+        }
     } catch {
         // no package.json, or one that will not parse: the usual names are still worth trying
     }
@@ -329,6 +368,57 @@ function findEntry(given) {
         }
     }
     return null;
+}
+
+/**
+ * Every build of this library the application could load, as the prototype that owns listen().
+ *
+ * The command runs from its own copy, and the application loads whichever one resolves from its
+ * own directory. That is usually the same file and sometimes is not: a global install, an
+ * `npx fulmine.js@version`, a workspace that hoisted a second copy, or the `express` name pointing
+ * here through an override. Patching only this command's copy leaves the application's own listen()
+ * to bind the port, and the command then reports that the file built nothing.
+ *
+ * An app is a callable, so its own prototype is not the one that carries the methods: walk up to
+ * whichever link owns listen.
+ *
+ * @param {string} entry
+ * @returns {any[]} the prototypes to stub, this command's copy first
+ */
+function listenOwners(entry) {
+    const builds = new Set([require("./index.js")]);
+    for (const specifier of [TO, FROM]) {
+        try {
+            builds.add(require(require.resolve(specifier, { paths: [path.dirname(entry), process.cwd()] })));
+        } catch {
+            // not installed next to the application, or not resolvable from there
+        }
+    }
+
+    const owners = [];
+    for (const build of builds) {
+        if (typeof build !== "function") {
+            continue;
+        }
+        let app;
+        try {
+            app = build();
+        } catch {
+            continue; // not an application factory, or one that will not build without arguments
+        }
+        // real express resolves under the same two names, and has none of this to stub
+        if (typeof app._compileOptimizedRoutes !== "function") {
+            continue;
+        }
+        let proto = Object.getPrototypeOf(app);
+        while (proto && !Object.prototype.hasOwnProperty.call(proto, "listen")) {
+            proto = Object.getPrototypeOf(proto);
+        }
+        if (proto && !owners.includes(proto)) {
+            owners.push(proto);
+        }
+    }
+    return owners;
 }
 
 /**
@@ -348,42 +438,38 @@ function loadApps(argv, command) {
     if (!entry) {
         console.error(
             `Nothing to ${command}: name the file that builds the application, or run this from a
-` + "directory whose package.json main points at it."
+` + "directory whose package.json main or start script points at it."
         );
         return null;
     }
 
-    // the same module instance the application will load, so patching this prototype patches the
-    // application it builds. An app is a callable, so its own prototype is not the one that carries
-    // the methods: walk up to whichever link owns listen
-    const express = require("./index.js");
-    let proto = Object.getPrototypeOf(express());
-    while (proto && !Object.prototype.hasOwnProperty.call(proto, "listen")) {
-        proto = Object.getPrototypeOf(proto);
-    }
-    if (!proto) {
+    const owners = listenOwners(entry);
+    if (owners.length === 0) {
         console.error("This build of fulmine has no listen() to stand in for, which should not happen.");
         return null;
     }
 
     const listened = [];
-    const realListen = proto.listen;
-    proto.listen = function stubbedListen() {
-        this._compileOptimizedRoutes();
-        listened.push(this);
-        return this;
-    };
+    const real = owners.map((proto) => proto.listen);
+    for (const proto of owners) {
+        proto.listen = function stubbedListen() {
+            this._compileOptimizedRoutes();
+            listened.push(this);
+            return this;
+        };
+    }
+    const restore = () => owners.forEach((proto, i) => (proto.listen = real[i]));
 
     try {
         require(entry);
     } catch (e) {
         const error = /** @type {any} */ (e);
-        proto.listen = realListen;
+        restore();
         console.error(`${path.relative(process.cwd(), entry)} could not be loaded:
 ${error.stack ?? error}`);
         return null;
     }
-    proto.listen = realListen;
+    restore();
 
     let apps = listened;
     if (apps.length === 0) {
@@ -400,7 +486,10 @@ ${error.stack ?? error}`);
     if (apps.length === 0) {
         console.error(
             `${path.relative(process.cwd(), entry)} built no application: it neither called listen() nor
-` + "exported one. Point this at the file that does."
+` +
+                `exported one. Point this at the file that does. A listen() that runs after an await is
+` +
+                "not seen either, since this loads the file rather than waiting on what it started."
         );
         return null;
     }
