@@ -37,6 +37,7 @@ const { Worker } = require("worker_threads");
 const cluster = require("cluster");
 const { registerWebSocketRoutes } = require("./websocket.js");
 const { addServerMembers } = require("./server-shape.js");
+const { workerCount, forkWorkers, isSupervising, becomeSupervisor } = require("./cluster.js");
 
 const cpuCount = os.cpus().length;
 
@@ -103,8 +104,9 @@ class Application extends Router {
     /**
      * @param {object} [settings] the options express() takes. uwsOptions goes to uWS and decides
      *   between an HTTP, an HTTPS and an HTTP/3 server; threads sizes the file-reading pool, and 0
-     *   turns it off; uwsApp adopts an existing uWS app instead of making one. Everything else is
-     *   an application setting and lands next to the defaults.
+     *   turns it off; cluster forks one process per core over the same port; uwsApp adopts an
+     *   existing uWS app instead of making one. Everything else is an application setting and
+     *   lands next to the defaults.
      */
     constructor(settings = new NullObject()) {
         super(settings);
@@ -113,6 +115,13 @@ class Application extends Router {
         }
         if (typeof settings.threads !== "number") {
             settings.threads = cpuCount > 1 ? 1 : 0;
+        }
+        // how many processes listen() should fork, counted here so a setting nobody can read is a
+        // throw where the application is written and not where it is started. Saying it here also
+        // settles it for the whole process before any app has listened, see becomeSupervisor
+        this._clusterWorkers = workerCount(settings.cluster);
+        if (this._clusterWorkers > 0 && cluster.isPrimary) {
+            becomeSupervisor();
         }
         if (settings.uwsApp) {
             this.uwsApp = settings.uwsApp;
@@ -220,6 +229,9 @@ class Application extends Router {
         // the uWS listen socket, and the responses being served right now: close() stops the
         // first and waits for the second, the way node's server.close() does
         this._listenSocket = undefined;
+        // the fork supervisor, in the primary of a clustered app and nowhere else
+        /** @type {{stop: () => void}|undefined} */
+        this._clusterHandle = undefined;
         // readSmallFile's cache and its in-flight reads, see the method
         this._fileCache = new Map();
         this._fileCacheBytes = 0;
@@ -529,6 +541,21 @@ class Application extends Router {
      * @returns {this} the app, which doubles as the server handle
      */
     listen(port, host, backlog, callback) {
+        // With { cluster } the primary has nothing to bind. Each worker binds this same port with
+        // µWS's shared flag, which is SO_REUSEPORT, so the kernel hands each connection to one of
+        // them and the primary is not in the path at all: it forks, replaces a worker that dies,
+        // and nothing else. Everything below this runs in the workers, listen callback included,
+        // so it runs once per worker rather than once.
+        //
+        // The test is the process and not this app: a second app on a TLS port, one without a
+        // cluster setting of its own, would otherwise take that port here, exclusively, and every
+        // worker would fail on it.
+        if (cluster.isPrimary && isSupervising()) {
+            if (this._clusterWorkers > 0 && !this._clusterHandle) {
+                this._clusterHandle = forkWorkers(this._clusterWorkers);
+            }
+            return this;
+        }
         this._compileOptimizedRoutes();
         // before the catch-all: µWS sends an upgrade to the websocket route even when a
         // catch-all covers the same path, so the two coexist and the order is only tidiness
@@ -799,6 +826,18 @@ class Application extends Router {
      * @returns {this} the app, for chaining
      */
     close(callback) {
+        // the primary of a clustered app never bound anything, so closing it means stopping the
+        // workers. They are killed rather than drained: each one holds its own listening socket
+        // and drains itself when the signal reaches it
+        if (this._clusterHandle) {
+            this._clusterHandle.stop();
+            this._clusterHandle = undefined;
+            if (callback) {
+                this.once("close", () => callback());
+            }
+            process.nextTick(() => this.emit("close"));
+            return this;
+        }
         const wasListening = this.listening;
         this.listening = false;
         // in Express the close callback is nothing more than the first 'close' listener, and a

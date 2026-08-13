@@ -22,6 +22,7 @@ declare module "fulmine.js" {
     type Settings = {
         uwsOptions?: uWS.AppOptions;
         threads?: number;
+        cluster?: boolean | number | "auto";
         http3?: boolean;
         uwsApp?: uWS.TemplatedApp;
     };

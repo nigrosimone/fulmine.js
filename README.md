@@ -446,6 +446,23 @@ app.use(express.compression({ threshold: 1024 }));
 
 8. By default, Fulmine creates 1 (or 0 if your CPU has only 1 core) child thread to improve performance of reading files. You can change this number by setting `threads` to a different number in `express()`, or set to 0 to disable thread pool (`express({ threads: 0 })`). Threads are shared between all express() instances, with largest `threads` number being used. Using more threads will not necessarily improve performance. Sometimes not using threads at all is faster, so measure both.
 
+9. One node process uses one core, and this is the setting that changes it. `express({ cluster: "auto" })` forks one process per core and each of them binds the same port with µWS's shared flag, which is `SO_REUSEPORT`: every process has its own listening socket and the kernel decides which one gets each connection. Node's own `cluster` cannot do that with an `http.Server`, so the primary holds the socket and passes each accepted connection to a worker over IPC; here the primary is not in the path at all. On a 16-core machine that is close to 16 times the throughput, and no other setting comes near it.
+
+```js
+// "auto" is one worker per usable core: the cgroup quota is read first, so a 2-core container
+// on a 64-core host forks 2 and not 64. A number instead of "auto" says how many.
+const app = express({ cluster: "auto" });
+
+app.get("/", (req, res) => res.send("hello"));
+
+// The whole file runs again in every worker, which is how cluster works: the code above this
+// line runs once per process. The primary only forks, so the callback runs once per worker too,
+// and a worker that dies is replaced.
+app.listen(3000, () => console.log(`worker ${process.pid} listening`));
+```
+
+Anything held per process is now held per worker: an in-memory cache, a rate-limit counter, a session store or a `Map` of connected sockets is not shared, and needs Redis or something like it to be. `app.close()` in the primary stops the workers, and a `SIGTERM` or `SIGINT` that reaches only the primary, which is what a container sends, is passed on to them.
+
 ## WebSockets
 
 `app.ws()` registers a WebSocket route, served by µWS itself. The upgrade never reaches node, so `server.on("upgrade")` and the libraries built on it have nothing to hear; this is the replacement.
