@@ -349,7 +349,7 @@ routes get:
 
 1. Fulmine tries to optimize routing as much as possible, but it's only possible if:
 
-- the path is a plain string, or its parameters are whole segments: `/users/:id` and `/a/:b/c/:d` qualify, `/flights/:from-:to` does not, and neither does a `*splat` or a `{}` group. Routing is case-insensitive by default, as in Express; a request in the registered case is still served natively, any other case takes the ordinary path, and a route whose overlap with an earlier one leans on a cased literal goes the ordinary way for every request.
+- the path is a plain string, or its parameters are whole segments: `/users/:id` and `/a/:b/c/:d` qualify, `/flights/:from-:to` does not, and neither does a `*splat` or a `{}` group. Routing is case-insensitive by default, as in Express; a request in the registered case is still served natively, any other case takes the ordinary path, and a route whose overlap with an earlier one leans on a cased literal goes the ordinary way for every request. That last one is worth knowing about: `app.set("case sensitive routing", true)` is Express's own setting, and with it `/Users/list` no longer overlaps `/users/:id`, so both are matched by µWS instead of one of them falling back.
 - inside a mounted router, nothing registered after the route in that router could match the same path. `/orders/:id`, `/orders/:id/items` and `/invoices/:id` are all optimized together, since no request reaches two of them. `/users/:id` followed by `/users/me` is not: Express answers `/users/me` with the first of the two and the native router would answer it with the second, so both go the ordinary way.
 
 Optimized routes can be up to 10 times faster than normal routes, as they're using native uWS router and have pre-calculated path.
@@ -667,11 +667,12 @@ Two of these keep a compiled form alongside the value, which you can also set di
 - `etag fn`, the function that produces an ETag. Setting `etag` compiles one; setting this replaces it.
 - `query parser fn`, likewise for `query parser`.
 
-Fulmine adds four of its own:
+Fulmine adds five of its own:
 
 - `declarative responses`, on by default. Lets a simple enough handler be compiled into a native uWS response, described under [Performance tips](#performance-tips).
 - `connection headers`, on by default. Express sends `Connection: keep-alive` and `Keep-Alive` on every response, and so does this. Turn it off and neither goes out, while a connection the client asked to close still answers `Connection: close`: it is the advertisement that goes, not the truth. Worth 2% to 3.5% here on a route that is not compiled, plus the bytes.
 - `file cache`, on by default. Small files served by `res.sendFile` come from a bounded in-process cache, checked against the file's `stat` on every request, so an edited file is never served stale. Turn it off where every request has to reach the disk, which is what a public benchmark asks of a standard entry: it was worth about 4% on a 4KB file here, so the cost of turning it off is small.
+- `stat cache`, off by default. Takes a duration, `app.set("stat cache", "1s")`. The size and mtime of a file served by `res.sendFile` or `express.static` are remembered for that long, so a file that is asked for again inside the window costs no syscall at all. It was worth 15% on a 3KB file and 3% on a 200KB one, where the bytes are the work. What it costs is the one promise the `file cache` keeps: inside the window an edited file is served as it was, so keep the window shorter than you would notice.
 - `trust proxy protocol`, off by default. Takes `req.ip` from a PROXY protocol preamble, described under [Behind a proxy](#behind-a-proxy). Read the warning there before turning it on.
 
 ### Request

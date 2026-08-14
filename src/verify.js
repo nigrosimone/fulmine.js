@@ -38,6 +38,12 @@ const path = require("path");
 // file and then fails on a symbol, which is a worse error than not finding it at all.
 const MIN_GLIBC = "2.38";
 
+// The oldest node this package runs on, and the image to name when something older is found. Both
+// follow engines rather than being written out here, so raising it moves every message with it.
+const MIN_NODE = require("../package.json").engines.node.replace(/[^0-9.]/g, "");
+const MIN_NODE_MAJOR = MIN_NODE.split(".")[0];
+const SWAP_IMAGE = `node:${MIN_NODE_MAJOR}-trixie-slim`;
+
 // What a project may carry that needs a different API here rather than none. Everything that just
 // works, and everything that only wants a faster built-in, is `npx fulmine migrate`'s business.
 const NEEDS_A_LOOK = {
@@ -139,7 +145,7 @@ function checkLibc(platform, glibc) {
         return result(
             "no",
             `glibc ${glibc}`,
-            `the binaries need ${MIN_GLIBC} or newer. A newer base image is the fix: node:22-trixie-slim.`
+            `the binaries need ${MIN_GLIBC} or newer. A newer base image is the fix: ${SWAP_IMAGE}.`
         );
     }
     return result("ok", `glibc ${glibc}`);
@@ -238,13 +244,13 @@ function checkDockerfiles(dir) {
             const where = `${name}: ${image}`;
             if (/alpine|musl/i.test(image)) {
                 results.push(
-                    result("no", where, "musl, and there is no musl build: node:22-trixie-slim is the closest swap.")
+                    result("no", where, `musl, and there is no musl build: ${SWAP_IMAGE} is the closest swap.`)
                 );
                 continue;
             }
             const node = /^node:(\d+)/.exec(image);
-            if (node && Number(node[1]) < 22) {
-                results.push(result("no", where, `this package needs node 22 or newer: node:22-trixie-slim.`));
+            if (node && Number(node[1]) < Number(MIN_NODE_MAJOR)) {
+                results.push(result("no", where, `this package needs node ${MIN_NODE_MAJOR} or newer: ${SWAP_IMAGE}.`));
                 continue;
             }
             results.push(result("ok", where));

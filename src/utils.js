@@ -24,6 +24,8 @@ const qs = require("qs");
 const parseQuery = require("./parse-query.js");
 const crypto = require("crypto");
 const statuses = require("statuses");
+const ms = require("ms");
+const fs = require("fs");
 const { Stats } = require("fs");
 
 const EMPTY_REGEX = new RegExp(``);
@@ -945,6 +947,11 @@ const defaultSettings = {
     // The native µWS router matches bytes, so the compiler in _compileOptimizedRoutes only hands
     // it routes whose earlier siblings it can prove agree under either case rule.
     "declarative responses": true,
+    // off: with a window set, the size and mtime of a file served by sendFile are remembered for
+    // it, which is one syscall less per request and a file that can be served as it was a moment
+    // ago. "stat cache ms" is the window in milliseconds, compiled from it by set()
+    "stat cache": false,
+    "stat cache ms": 0,
     // off, and it is a security setting rather than a compatibility one: with it on, req.ip is the
     // address a PROXY protocol preamble declared. µWS reads that preamble from any client, so this
     // belongs only to a server nothing can reach except the proxy in front of it. See Request#_readRawIp
@@ -953,6 +960,57 @@ const defaultSettings = {
     // connection that is closing says so, which is fewer bytes and one header write less
     "connection headers": true
 };
+
+// What a file's stat was, for as long as "stat cache" says it stays good. Size and mtime only,
+// never a body, and only when a window was asked for: nginx's open_file_cache makes the same
+// trade, and the worst a stale entry does is answer with the file as it was a moment ago.
+const statCache = new Map();
+const STAT_CACHE_LIMIT = 4096;
+
+/**
+ * The stat of a path, from the cache when a window was asked for and it is still good.
+ *
+ * A failure is never remembered: a file that is not there is not the hot path, and a file that
+ * appears has to be seen at once.
+ *
+ * @param {string} file
+ * @param {number} ttl milliseconds an answer stays good, 0 to ask the disk every time
+ * @returns {import("fs").Stats}
+ */
+function cachedStat(file, ttl) {
+    if (ttl <= 0) {
+        return fs.statSync(file);
+    }
+    const now = Date.now();
+    const known = statCache.get(file);
+    if (known !== undefined && known.until > now) {
+        return known.stat;
+    }
+    const stat = fs.statSync(file);
+    // cleared rather than evicted one by one, as twinsOf does: a directory big enough to reach
+    // the limit is being served by something other than an application server anyway
+    if (statCache.size >= STAT_CACHE_LIMIT) {
+        statCache.clear();
+    }
+    statCache.set(file, { stat, until: now + ttl });
+    return stat;
+}
+
+/**
+ * A duration setting as milliseconds: false is off, a string is read by ms, a number is itself.
+ *
+ * @param {any} value
+ * @param {string} name for the error, which names the setting the application wrote
+ * @returns {number}
+ */
+function durationSetting(value, name) {
+    const parsed =
+        value === false || value === undefined ? 0 : typeof value === "string" ? ms(/** @type {any} */ (value)) : value;
+    if (typeof parsed !== "number" || !(parsed >= 0)) {
+        throw new TypeError(`${name} must be a duration`);
+    }
+    return parsed;
+}
 
 /**
  * Turns whatever "trust proxy" was set to into the function proxy-addr wants: a predicate saying
@@ -1420,6 +1478,8 @@ const NullObject = /** @type {any} */ (function () {});
 NullObject.prototype = Object.create(null);
 
 module.exports = {
+    cachedStat,
+    durationSetting,
     removeDuplicateSlashes,
     patternToRegex,
     escapePathLiteral,

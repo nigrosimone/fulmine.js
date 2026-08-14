@@ -37,6 +37,7 @@ const {
     memoizeByString,
     containsDotFile,
     negotiateEncoding,
+    cachedStat,
     ENCODING_BR,
     ENCODING_GZIP
 } = require("./utils.js");
@@ -329,9 +330,10 @@ function twinsOf(filePath, ttl) {
  * @param {string} filePath absolute path of the file that was asked for
  * @param {string|undefined} accept the request's Accept-Encoding
  * @param {number} ttl how long the twin cache holds an answer, 0 to ask the disk every time
+ * @param {number} statTtl how long the twin's own stat stays good, from the "stat cache" setting
  * @returns {{suffix: string, encoding: string, stat: import("fs").Stats}|undefined}
  */
-function pickPrecompressed(filePath, accept, ttl) {
+function pickPrecompressed(filePath, accept, ttl, statTtl) {
     if (!accept || !hasTwins(filePath.slice(filePath.lastIndexOf(".")))) {
         return undefined;
     }
@@ -346,7 +348,7 @@ function pickPrecompressed(filePath, accept, ttl) {
         }
         if (known === undefined || known[variant.encoding === "br" ? "br" : "gz"] !== false) {
             try {
-                const stat = fs.statSync(filePath + variant.suffix);
+                const stat = cachedStat(filePath + variant.suffix, statTtl);
                 if (!stat.isDirectory()) {
                     if (known !== undefined) known[variant.encoding === "br" ? "br" : "gz"] = true;
                     return { suffix: variant.suffix, encoding: variant.encoding, stat };
@@ -532,14 +534,19 @@ function serveStatic(root, options) {
         // decides those is the stat of the thing that was asked for.
         let twin;
         if (options.preCompressed && !rawPath.endsWith("/") && !req.endsWithSlash) {
-            twin = pickPrecompressed(filePath, req.headers["accept-encoding"], twinTtl);
+            twin = pickPrecompressed(
+                filePath,
+                req.headers["accept-encoding"],
+                twinTtl,
+                req.app.settings["stat cache ms"]
+            );
             if (twin) {
                 stat = twin.stat;
             }
         }
         try {
             if (stat === undefined) {
-                stat = fs.statSync(statTarget);
+                stat = cachedStat(statTarget, req.app.settings["stat cache ms"]);
             }
         } catch (err) {
             // the one to report when nothing is found: send hands each failed attempt to the next
@@ -647,7 +654,9 @@ function serveStatic(root, options) {
             // told. Said before the lookup, because it is true even when there is no variant
             res.vary("Accept-Encoding");
             // already found before the stat below, on the ordinary path
-            const variant = twin ?? pickPrecompressed(filePath, req.headers["accept-encoding"], twinTtl);
+            const variant =
+                twin ??
+                pickPrecompressed(filePath, req.headers["accept-encoding"], twinTtl, req.app.settings["stat cache ms"]);
             if (variant) {
                 _path += variant.suffix;
                 stat = variant.stat;

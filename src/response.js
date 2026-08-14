@@ -37,6 +37,7 @@ const {
     httpError,
     contentTypeFor,
     statTag,
+    cachedStat,
     NullObject
 } = require("./utils.js");
 const { Writable } = require("stream");
@@ -1048,7 +1049,7 @@ module.exports = class Response extends LazyWritable {
         let stat = options._stat;
         if (!stat) {
             try {
-                stat = fs.statSync(fullpath);
+                stat = cachedStat(fullpath, this.app.settings["stat cache ms"]);
             } catch (err) {
                 // the fs error itself, carrying its errno and path, with send's status written on
                 // it: a missing file is the request's 404, an unreadable one is the server's 500

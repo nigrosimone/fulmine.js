@@ -25,6 +25,7 @@ const {
     compileTrust,
     createETagGenerator,
     fastQueryParse,
+    durationSetting,
     NullObject
 } = require("./utils.js");
 const parseQuery = require("./parse-query.js");
@@ -379,6 +380,9 @@ class Application extends Router {
                 configurable: true,
                 value: false
             });
+        } else if (key === "stat cache") {
+            // compiled here so the read path is a number and not a duration to parse per request
+            this.settings["stat cache ms"] = durationSetting(value, "stat cache");
         } else if (key === "query parser") {
             if (value === "extended") {
                 this.settings["query parser fn"] = fastQueryParse;
