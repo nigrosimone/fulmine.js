@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.11.1](https://github.com/nigrosimone/fulmine.js/compare/v5.11.0...v5.11.1) (2026-08-14)
+
+### Bug Fixes
+
+* **cli:** one bin named fulmine, so npx runs the command on windows too ([50816ce](https://github.com/nigrosimone/fulmine.js/commit/50816ce3d147f1411fdb218a43a99a1ea2105383))
+
 ## [5.11.0](https://github.com/nigrosimone/fulmine.js/compare/v5.10.0...v5.11.0) (2026-08-14)
 
 ### Features
