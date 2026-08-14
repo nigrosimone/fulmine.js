@@ -43,6 +43,7 @@ See [Migrating](#migrating) for what it handles and what it deliberately does no
 - [Difference from similar projects](#difference-from-similar-projects)
 - [Migrating](#migrating)
     - [Angular SSR](#angular-ssr)
+    - [NestJS](#nestjs)
     - [When Express is somebody else's dependency](#when-express-is-somebody-elses-dependency)
 - [Docker](#docker)
 - [Differences from Express](#differences-from-express)
@@ -171,6 +172,38 @@ that runs on Express and here alike, and the same measurement says a page costs 
 1.9ms to serve from it. It is worth knowing why it keeps the ETag beside the bytes: a cache that
 stores only the body makes the server hash the whole document again on every hit, and measures level
 with no cache at all on the serving side.
+
+### NestJS
+
+`@nestjs/platform-express` takes an Express instance, so it takes this one, and everything in a Nest
+application keeps working. One line stands between that and the speed: the adapter wraps whatever
+instance it is given in `http.createServer()` and listens on that, which is the shim, so every
+request goes through `node:http` and the application runs at Express's pace. The app here already
+answers as an `http.Server`, so it can be the server rather than being wrapped in one:
+
+```ts
+import { NestFactory } from "@nestjs/core";
+import { ExpressAdapter } from "@nestjs/platform-express";
+import fulmine from "fulmine.js";
+
+class FulmineAdapter extends ExpressAdapter {
+    initHttpServer() {
+        // instead of http.createServer(instance): listen() and close() are then µWS's
+        (this as any).httpServer = this.getInstance();
+    }
+}
+
+const app = await NestFactory.create(AppModule, new FulmineAdapter(fulmine()));
+await app.listen(3000);
+```
+
+Measured on the same Nest application, controllers, pipes and body parsing unchanged: **1.2x on a
+route answering text and 1.9x on one answering JSON with a route parameter**. `app.close()` closes
+the port, as it does on the shim.
+
+Two things to know. `forceCloseConnections` has nothing to destroy, since the sockets belong to µWS
+and nothing emits `connection`, and Nest looks at `app.router.stack` to decide whether it has
+already added its body parsers, which is not there, so it adds them once more than it would.
 
 ### When Express is somebody else's dependency
 
