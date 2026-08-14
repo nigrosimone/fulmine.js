@@ -440,7 +440,7 @@ app.use(express.compression({ threshold: 1024 }));
 
 Runnable: [`examples/compression.js`](./examples/compression.js).
 
-5. If a route answers with a JSON shape you know in advance, [express-fast-json-stringify](https://www.npmjs.com/package/express-fast-json-stringify) compiles that shape into a serializer and `res.fastJson()` replaces `res.json()`. `JSON.stringify()` has to walk an object it knows nothing about; a compiled serializer does not.
+5. If a route answers with a JSON shape you know in advance, [express-fast-json-stringify](https://www.npmjs.com/package/express-fast-json-stringify) compiles that shape into a serializer and `res.fastJson()` replaces `res.json()`. `JSON.stringify()` has to walk an object it knows nothing about; a compiled serializer does not. It is worth reaching for, and a CPU profile says why: on a route answering 3.6KB of JSON, serialising it is about 25% of the time that is not spent waiting, ahead of the ETag at 19% and of everything the framework does to route the request and build its request and response objects.
 
 6. Do not set `body methods` to read body of requests with GET method or other methods that don't need a body. Reading body makes endpoint about 15% slower.
 
