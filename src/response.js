@@ -289,12 +289,15 @@ module.exports = class Response extends LazyWritable {
         this.writingChunk = false;
         // timeout=10 is uWS's idle timeout. On the node shim the hosting server enforces its own
         // keepAliveTimeout, so node is left to write the truthful Connection and Keep-Alive itself.
-        this.headers = res._nodeRes
-            ? {}
-            : {
-                  connection: "keep-alive",
-                  "keep-alive": "timeout=10"
-              };
+        // "connection headers" off advertises neither, which Express always does: see below for
+        // the one this still writes.
+        this.headers =
+            res._nodeRes || app.settings["connection headers"] === false
+                ? {}
+                : {
+                      connection: "keep-alive",
+                      "keep-alive": "timeout=10"
+                  };
         // the client asked for the connection to be closed, and uWS closes it, so saying otherwise
         // would be telling the client something the transport contradicts. A declarative response
         // cannot do this, being written once and not per request.

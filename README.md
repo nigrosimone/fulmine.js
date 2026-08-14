@@ -667,9 +667,10 @@ Two of these keep a compiled form alongside the value, which you can also set di
 - `etag fn`, the function that produces an ETag. Setting `etag` compiles one; setting this replaces it.
 - `query parser fn`, likewise for `query parser`.
 
-Fulmine adds three of its own:
+Fulmine adds four of its own:
 
 - `declarative responses`, on by default. Lets a simple enough handler be compiled into a native uWS response, described under [Performance tips](#performance-tips).
+- `connection headers`, on by default. Express sends `Connection: keep-alive` and `Keep-Alive` on every response, and so does this. Turn it off and neither goes out, while a connection the client asked to close still answers `Connection: close`: it is the advertisement that goes, not the truth. Worth 2% to 3.5% here on a route that is not compiled, plus the bytes.
 - `file cache`, on by default. Small files served by `res.sendFile` come from a bounded in-process cache, checked against the file's `stat` on every request, so an edited file is never served stale. Turn it off where every request has to reach the disk, which is what a public benchmark asks of a standard entry: it was worth about 4% on a 4KB file here, so the cost of turning it off is small.
 - `trust proxy protocol`, off by default. Takes `req.ip` from a PROXY protocol preamble, described under [Behind a proxy](#behind-a-proxy). Read the warning there before turning it on.
 

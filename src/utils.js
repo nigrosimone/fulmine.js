@@ -948,7 +948,10 @@ const defaultSettings = {
     // off, and it is a security setting rather than a compatibility one: with it on, req.ip is the
     // address a PROXY protocol preamble declared. µWS reads that preamble from any client, so this
     // belongs only to a server nothing can reach except the proxy in front of it. See Request#_readRawIp
-    "trust proxy protocol": false
+    "trust proxy protocol": false,
+    // on, because Express sends both on every response. Off, nothing is advertised and only a
+    // connection that is closing says so, which is fewer bytes and one header write less
+    "connection headers": true
 };
 
 /**
