@@ -1,5 +1,17 @@
 # Changelog
 
+## [5.11.0](https://github.com/nigrosimone/fulmine.js/compare/v5.10.0...v5.11.0) (2026-08-14)
+
+### Features
+
+* **settings:** connection headers, off it advertises neither and only a closing connection says so ([185bb8c](https://github.com/nigrosimone/fulmine.js/commit/185bb8c273b140f36d420a96bcca5d21106fb869))
+* **settings:** stat cache, a window in which a file's size and mtime are remembered ([73b0b40](https://github.com/nigrosimone/fulmine.js/commit/73b0b4082698532c12e052a0bd59d999351e5847))
+
+### Performance Improvements
+
+* **declarative:** a literal body goes out in one end(), so a compiled route carries a Content-Length ([ac81a4d](https://github.com/nigrosimone/fulmine.js/commit/ac81a4d5ef3d12bbbb0ac52d701c45fec5fbb696))
+* **declarative:** res.type() and res.set(object) compile, so a handler that names its media type stays native ([5240612](https://github.com/nigrosimone/fulmine.js/commit/52406120508f6c7d9e930a8a16e713e3d284cba2))
+
 ## [5.10.0](https://github.com/nigrosimone/fulmine.js/compare/v5.9.0...v5.10.0) (2026-08-13)
 
 ### Features
