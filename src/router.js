@@ -226,8 +226,9 @@ class Walk {
             // express matches a layer's path before it looks at the method, and decodes the
             // parameters there, so a malformed escape answers 400 even when no route of this
             // method exists. Only a path carrying a percent can produce one, and that check keeps
-            // every other request from matching routes it could never run
-            const mayFailDecode = req._originalPath.indexOf("%") !== -1;
+            // every other request from matching routes it could never run. Scanned once per
+            // rewrite and kept on the request: a middleware-heavy chain scanned it per hop
+            const mayFailDecode = (req._mayFailDecode ??= req._originalPath.indexOf("%") !== -1);
             // written out rather than through a predicate handed to findIndexStartingFrom, which
             // was one closure per hop of every request not on a compiled chain
             for (; routeIndex < routes.length; routeIndex++) {
@@ -656,6 +657,7 @@ function mountPrefixLength(route, req) {
  */
 function setMountedPath(req) {
     req._opPath = req._consumed === 0 ? req._originalPath : req._originalPath.slice(req._consumed);
+    req._opPathLower = null;
     req.url = req._opPath === "" ? "/" + req.urlQuery : req._opPath + req.urlQuery;
     req.path = req._opPath === "" ? "/" : req._opPath;
     req._lastUrl = req.url;
@@ -773,6 +775,8 @@ function adoptPlainRequest(req, router) {
     req._originalPath = path;
     req.endsWithSlash = path.charCodeAt(path.length - 1) === 0x2f;
     req._opPath = path;
+    req._opPathLower = null;
+    req._mayFailDecode = null;
     req._lastUrl = req.url;
     req._isOptions = req.method === "OPTIONS";
     req._isHead = req.method === "HEAD";
@@ -1531,9 +1535,14 @@ module.exports = class Router extends EventEmitter {
             if (pattern === "/*") {
                 return true;
             }
-            if (!this._caseSensitive()) {
-                path = path.toLowerCase();
-                pattern = pattern.toLowerCase();
+            // read as fields after one freeze, because this runs per route per hop and the two
+            // method calls were a call each per route of every scan
+            this._freezeRoutingFlags();
+            if (!this._caseFlag) {
+                // the pattern was folded at registration. The path is folded once per rewrite and
+                // kept on the request, not folded again per route: every _opPath write drops it
+                pattern = /** @type {string} */ (route.patternLower);
+                path = req._opPathLower ??= path.toLowerCase();
             }
             if (pattern === path) {
                 return true;
@@ -1542,7 +1551,7 @@ module.exports = class Router extends EventEmitter {
             // pattern would have carried as "/?" is allowed here instead. The registered path has
             // had its own taken off already, unless it is the root
             return (
-                !this._strictRouting() &&
+                !this._strictFlag &&
                 path.length === pattern.length + 1 &&
                 path.charCodeAt(path.length - 1) === 0x2f &&
                 path.startsWith(pattern)
@@ -1599,13 +1608,17 @@ module.exports = class Router extends EventEmitter {
             if (path === "*") {
                 path = "/{*splat}";
             }
+            const pattern =
+                method === "USE" || needsConversionToRegex(path)
+                    ? patternToRegex(path, method === "USE", this._caseSensitive(), this._strictRouting())
+                    : path;
             const route = {
                 method: method === "USE" ? "ALL" : method,
                 path,
-                pattern:
-                    method === "USE" || needsConversionToRegex(path)
-                        ? patternToRegex(path, method === "USE", this._caseSensitive(), this._strictRouting())
-                        : path,
+                pattern,
+                // folded here once: _pathMatches compares insensitively per route per hop, and
+                // the registered text never changes. null for a compiled pattern
+                patternLower: typeof pattern === "string" ? pattern.toLowerCase() : null,
                 callbacks,
                 // instanceof walks a prototype chain and length is a property load, and both used
                 // to run for every callback of every hop

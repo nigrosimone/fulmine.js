@@ -592,6 +592,10 @@ module.exports = class Request extends LazyReadable {
             this._isOptions = this.method === "OPTIONS";
             this._isHead = this.method === "HEAD";
         }
+        // the folded _opPath and the percent scan of _originalPath, built on the hop that first
+        // wants them and dropped by every rewrite, see _pathMatches and Walk#dispatch
+        this._opPathLower = null;
+        this._mayFailDecode = null;
         this.params = {};
 
         // Two Sets per request, for two things almost no request needs.
@@ -956,6 +960,8 @@ module.exports = class Request extends LazyReadable {
         this.path = newPath;
         this.endsWithSlash = newPath.charCodeAt(newPath.length - 1) === 0x2f;
         this._opPath = newPath;
+        this._opPathLower = null;
+        this._mayFailDecode = null;
         this._lastUrl = newUrl;
     }
 
