@@ -643,15 +643,6 @@ function setMountedPath(req) {
 }
 
 /**
- * The route's own params merged with those of the mounts it sits under, in express's order: an
- * outer mount first, the route's own last. Numbered captures do not overwrite each other, they
- * shift, so a RegExp mount capturing one group leaves the route's own group numbered from one.
- *
- * @param {Record<string, any>} own what this route's own pattern captured
- * @param {Record<string, any>[]} stack the mounts, outermost first
- * @returns {Record<string, any>}
- */
-/**
  * Whether this route reads the parameters of the mounts above it, which is its own router asking
  * for them. The stack holds what a mergeParams router captured on the way in, and a plain router
  * mounted inside one must not read it: express asks each router in turn, not the outermost.
@@ -779,13 +770,6 @@ function adoptPlainRequest(req, router) {
 }
 
 /**
- * Refuses a handler that could never be called, where it was written rather than on the first
- * request that reaches it. Express words both of these and applications match on the text.
- *
- * @param {any[]} handlers
- * @param {string} [emptyMessage] app.use() says it its own way
- */
-/**
  * The uWS onAborted handler, bound to the response: a closure here captured two locals and cost
  * a context plus a function per request, for a path that only ever runs on a client abort.
  * @this {any} the response, with the request linked as this.req
@@ -875,13 +859,6 @@ const CALLBACK_PLAIN = 0;
 const CALLBACK_ERROR = 1;
 const CALLBACK_ROUTER = 2;
 
-/**
- * Hands the request and the response to the app about to handle them, so that a mounted sub-app's
- * settings decide what its responses do. Express re-parents both objects for the same reason.
- *
- * @param {any} req
- * @param {any} app
- */
 /**
  * Reports a parameter that will not decode, unless something is already being reported.
  *
@@ -1083,6 +1060,7 @@ function restoreApp(route, req) {
 }
 
 /**
+ * useApp
  * @param {any} req
  * @param {any} app
  */
