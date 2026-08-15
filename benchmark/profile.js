@@ -29,6 +29,13 @@
 // The servers stay up across rounds and the profiler is cut at the end of each one, so a round is
 // measured on a warm server rather than on one still being compiled.
 //
+// Since 2026-08-15 every sample is weighted by the profile's own timeDelta instead of a flat
+// 100us, see issue #8: the profiler is asked for 100us and delivers about 1600Hz on this machine,
+// a median delta of 600us, so the flat billing read about 6x too low. Numbers printed before that
+// date are not comparable with new runs. The idle share is printed too rather than dropped
+// silently, because uWS's own C++ is what V8 tags as idle: a change that moves work into or out
+// of uWS shows up there and nowhere else.
+//
 // The settings are benchmark/server.js's, which turns off ETags, x-powered-by and the declarative
 // compiler so that what is measured is the framework doing the work rather than uWS answering from
 // a response written at startup. An application running the defaults pays for the ETag as well.
@@ -43,9 +50,9 @@ const BASELINE = { id: "fulmine", label: "baseline", port: 3120 };
 const CANDIDATE = { id: "fulmine", label: "candidate", port: 3121 };
 // frames costing less than this are left out: a profile has a long tail of one-sample frames and
 // printing it hides the handful of lines worth reading. In microseconds per thousand requests.
-const MIN_COST = 20;
-// what benchmark/server.js asks the profiler for, and what a sample therefore stands for
-const SAMPLE_INTERVAL_US = 100;
+// 120 where it was 20: the reweighting multiplied every number by about six, and this keeps the
+// same frames in the table
+const MIN_COST = 120;
 // Idle is not work. Counting it would make every other number depend on how hard the load generator
 // managed to push, which is not what any of this is about.
 const IDLE_FRAME = "(idle)";
@@ -92,7 +99,9 @@ function median(values) {
 }
 
 /**
- * Self time by function, in microseconds of CPU per thousand requests served.
+ * Self time by function, in microseconds of CPU per thousand requests served, each sample billed
+ * at its own timeDelta rather than at the interval the profiler was asked for, which it does not
+ * honour, see the header.
  *
  * Not a share of the profile, which is what this reported first and had to stop reporting: shares
  * add up to a hundred, so one function falling pushes every other one up and the table fills with
@@ -107,32 +116,56 @@ function median(values) {
  *
  * @param {any} profile
  * @param {number} requests how many requests the load generator counted during this profile
- * @param {number} intervalMicroseconds how long one sample stands for
+ * @returns {{costs: Map<string, number>, idleShare: number}} costs per function, and the share of
+ *   the profile's time spent idle, where V8 books uWS's own C++
  */
-function costPerThousandRequests(profile, requests, intervalMicroseconds) {
-    const totals = new Map();
-
+function costPerThousandRequests(profile, requests) {
+    // node id -> printable frame, null for the idle node
+    const frames = new Map();
     for (const node of profile.nodes) {
-        const count = node.hitCount || 0;
-        if (!count || node.callFrame.functionName === IDLE_FRAME) {
+        const frame = node.callFrame;
+        if (frame.functionName === IDLE_FRAME) {
+            frames.set(node.id, null);
             continue;
         }
-        const frame = node.callFrame;
         const url = (frame.url || "").replace(/^file:\/\/\//, "");
         // a node_modules path is only worth the package name, and everything else its last two
         // segments: the machine's directory layout is not information
         const where = url.includes("node_modules")
             ? "node_modules/" + url.split("node_modules/").pop().split(/[\\/]/)[0]
             : url.split(/[\\/]/).slice(-2).join("/");
-        const key = `${frame.functionName || "(anonymous)"} @ ${where || "(native)"}`;
-        totals.set(key, (totals.get(key) || 0) + count);
+        frames.set(node.id, `${frame.functionName || "(anonymous)"} @ ${where || "(native)"}`);
+    }
+
+    const totals = new Map();
+    const samples = profile.samples;
+    const deltas = profile.timeDeltas;
+    let idleTime = 0;
+    let wallTime = 0;
+    for (let i = 1; i < samples.length; i++) {
+        const delta = deltas[i];
+        // the clock is not monotonic sample to sample, v8 emits the odd negative delta
+        if (!(delta > 0)) {
+            continue;
+        }
+        const key = frames.get(samples[i]);
+        if (key === undefined) {
+            // a sample of a node the profile did not describe, seen in truncated profiles
+            continue;
+        }
+        wallTime += delta;
+        if (key === null) {
+            idleTime += delta;
+            continue;
+        }
+        totals.set(key, (totals.get(key) || 0) + delta);
     }
 
     const out = new Map();
-    for (const [key, count] of totals) {
-        out.set(key, (count * intervalMicroseconds * 1000) / requests);
+    for (const [key, time] of totals) {
+        out.set(key, (time * 1000) / requests);
     }
-    return out;
+    return { costs: out, idleShare: wallTime > 0 ? idleTime / wallTime : 0 };
 }
 
 class Arm {
@@ -148,6 +181,8 @@ class Arm {
         this.handle = null;
         this.rounds = [];
         this.requestsPerSecond = [];
+        // one entry per recorded round: how much of that round's profile was idle
+        this.idleShares = [];
     }
 
     async start(scenarioName) {
@@ -195,7 +230,9 @@ class Arm {
                     const profile = JSON.parse(fs.readFileSync(out, "utf8"));
                     fs.rmSync(out, { force: true });
                     if (record) {
-                        this.rounds.push(costPerThousandRequests(profile, this.lastRequests, SAMPLE_INTERVAL_US));
+                        const { costs, idleShare } = costPerThousandRequests(profile, this.lastRequests);
+                        this.rounds.push(costs);
+                        this.idleShares.push(idleShare);
                     }
                     resolve();
                 } catch (error) {
@@ -242,7 +279,8 @@ function printSingle(arm) {
     const total = [...summary.values()].reduce((sum, s) => sum + s.median, 0);
     process.stdout.write(
         `\n${median(arm.requestsPerSecond)} req/s, ${(total / 1000).toFixed(1)} us of CPU per request, ` +
-            `median of ${arm.rounds.length} rounds\n\n` +
+            `median of ${arm.rounds.length} rounds\n` +
+            `${(median(arm.idleShares) * 100).toFixed(0)}% of the profile is idle, which is where uWS's own C++ is booked\n\n` +
             `microseconds per thousand requests, self time, idle excluded\n\n`
     );
     for (const [key, s] of rows) {
@@ -287,6 +325,8 @@ function printComparison(baseline, candidate) {
         `\nbaseline ${median(baseline.requestsPerSecond)} req/s, candidate ${median(candidate.requestsPerSecond)} req/s\n` +
             `CPU per request: ${(beforeTotal / 1000).toFixed(1)} us -> ${(afterTotal / 1000).toFixed(1)} us ` +
             `(${(((afterTotal - beforeTotal) / beforeTotal) * 100).toFixed(1)}%)\n` +
+            `idle share: ${(median(baseline.idleShares) * 100).toFixed(0)}% -> ${(median(candidate.idleShares) * 100).toFixed(0)}%, ` +
+            `which is where uWS's own C++ is booked\n` +
             `microseconds per thousand requests, median of ${baseline.rounds.length} rounds\n` +
             `a ~ marks a move smaller than that function's own spread between rounds, which is to say not a move\n`
     );
