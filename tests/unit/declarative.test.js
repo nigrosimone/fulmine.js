@@ -8,7 +8,11 @@ const assert = require("node:assert");
 const compileDeclarative = require("../../src/declarative.js");
 const express = require("../../src/index.js");
 
+// etag off, because a response that would carry one is not compiled at all: µWS cannot read the
+// request, so it could never answer the conditional GET the validator invites. The test below
+// pins that, and every other test here is about a different refusal.
 const app = express();
+app.set("etag", false);
 
 test("what the compiler accepts compiles into a declarative response", () => {
     // a compiled route is uWS's DeclarativeResponse, an object handed to the registration
@@ -67,8 +71,9 @@ test("every shape the compiler cannot vouch for is a refusal, never a throw", ()
             // eslint-disable-next-line no-unreachable
             res.end();
         },
-        // dynamic values are not literals
-        (req, res) => res.send(req.query.a),
+        // req.body is read from the socket, which a compiled response never waits for. req.query
+        // and req.params are not here: µWS interpolates those itself, see the test below
+        (req, res) => res.send(req.body.a),
         (req, res) => res.send("a" + Math.random()),
         // methods outside the declarative surface
         (req, res) => res.jsonp({ a: 1 }),
@@ -166,4 +171,36 @@ test("a body with a piece of the request in it stays written in pieces", () => {
         { op: "PARAM", value: "id" },
         { op: "END", value: "" }
     ]);
+});
+
+test("a response that would carry a validator is not compiled, since it could never honour one", () => {
+    // µWS answers a compiled response without reading the request, so a conditional GET carrying
+    // the tag is answered 200 with the whole body where Express answers 304. This used to compile
+    // and write an ETag computed over the body at listen, which was then ignored on every
+    // revalidation. Refusing keeps Express's answer; `etag` false is how a route stays compiled.
+    const withEtag = express();
+    assert.strictEqual(withEtag.get("etag"), "weak");
+    assert.ok(!compileDeclarative((req, res) => res.send("hello"), withEtag));
+    assert.ok(!compileDeclarative((req, res) => res.json({ ok: true }), withEtag));
+    // Express computes the tag over the body it was about to send and keeps it on a status that
+    // carries none, so these are refused too rather than treated as bodiless
+    assert.ok(!compileDeclarative((req, res) => res.sendStatus(204), withEtag));
+    assert.ok(!compileDeclarative((req, res) => res.status(201).send("made"), withEtag));
+    // nothing to lose: no body, so no validator on either path
+    assert.ok(compileDeclarative((req, res) => res.end(), withEtag));
+
+    // with etag off the same handlers compile, and nothing writes a validator into them
+    const headers = decode(compileDeclarative((req, res) => res.send("hello"), app))
+        .filter((instruction) => instruction.op === "WRITE_HEADER")
+        .map((instruction) => instruction.value.toLowerCase());
+    assert.ok(!headers.includes("etag"), headers.join(", "));
+    assert.ok(!headers.includes("last-modified"), headers.join(", "));
+
+    // and a handler that sets one itself is refused even then, since writing it through would
+    // advertise the same thing this side cannot answer
+    assert.ok(!compileDeclarative((req, res) => res.set("ETag", '"abc"').send("hi"), app));
+    assert.ok(!compileDeclarative((req, res) => res.set("etag", '"abc"').send("hi"), app));
+    assert.ok(!compileDeclarative((req, res) => res.set("Last-Modified", "x").send("hi"), app));
+    // the same handler without the validator still compiles, so the refusal is the header's doing
+    assert.ok(compileDeclarative((req, res) => res.set("x-other", "abc").send("hi"), app));
 });

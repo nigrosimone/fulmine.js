@@ -11,6 +11,9 @@ const { expectNative, expectDeclarative, routeReport } = require("../../src/inde
 /** An application with one of each: compiled, native, and fallen back to the router. */
 function build() {
     const app = express();
+    // etag off, or nothing here would be compiled at all: a response that would carry a validator
+    // stays on the ordinary path, because µWS cannot read the request to answer a conditional GET
+    app.set("etag", false);
     // simple enough to be read at registration time
     app.get("/health", (req, res) => res.send("ok"));
     // native, but the handler is not compilable

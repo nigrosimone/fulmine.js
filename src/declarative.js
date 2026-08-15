@@ -50,6 +50,10 @@ const typeValueOf = (type) => (type.indexOf("/") === -1 ? contentTypeFor(type) :
 const MAX_INSTRUCTION_LENGTH = 65535;
 
 // the three that write a body, of which only one may appear
+// The headers a conditional request is answered from. A compiled response cannot read the request,
+// so it cannot honour one, and a handler that sets one has to stay on the ordinary path.
+const VALIDATOR_HEADERS = new Set(["etag", "last-modified"]);
+
 const bodyMethods = new Set(["send", "json", "end"]);
 // and the four that finish the response, after which nothing a handler does is observable
 const terminalMethods = new Set(["send", "json", "end", "sendStatus"]);
@@ -748,24 +752,22 @@ module.exports = function compileDeclarative(cb, app) {
             body.push({ type: "text", value: statuses.message[statusCode] || String(statusCode) });
         }
 
-        // an empty body gets no ETag, which is what Express does and what the ordinary path here
-        // already did
-        if (
-            body.length &&
-            (bodyFromSend || sendStatusUsed) &&
-            app.get("etag") &&
-            !headers.some((header) => header[0].toLowerCase() === "etag")
-        ) {
-            if (body.some((part) => part.type !== "text")) {
-                return false;
-            } else {
-                const etag = app.get("etag fn")(body.map((part) => part.value.toString()).join(""));
-                // an application's own etag function is allowed to decline, and a declarative
-                // response cannot answer with a header whose value is nothing
-                if (etag) {
-                    decRes = decRes.writeHeader("ETag", etag);
-                }
-            }
+        // A response that would carry a validator is not compiled at all.
+        //
+        // µWS answers a declarative response without reading the request, so it cannot answer a
+        // conditional GET: it used to write an ETag computed over the compiled body at listen and
+        // then ignore it, so every revalidation got 200 and the whole body where Express answers
+        // 304 with none. Dropping the ETag instead would have kept the route compiled, at the
+        // price of no validator at all on the simplest routes of every application. Refusing
+        // keeps Express's answer, and `etag` false is how a route that does not need one stays
+        // compiled, which is what both benchmarks here already set.
+        if (headers.some((header) => VALIDATOR_HEADERS.has(header[0].toLowerCase()))) {
+            return false;
+        }
+        // an empty body gets no ETag, in Express and on the ordinary path here, so it has nothing
+        // to lose by being compiled
+        if (body.length && (bodyFromSend || sendStatusUsed) && app.get("etag")) {
+            return false;
         }
 
         // No Content-Length header here: uWS writes the framing itself, and a response carrying
