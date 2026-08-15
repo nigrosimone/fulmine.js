@@ -104,9 +104,10 @@ function collectRoutes(router, prefix, out, seen) {
  * @param {any} app the application whose request and response classes serve this route
  * @param {string} path the composed path, whose parameters are read back by index
  * @param {any} behavior what the caller registered
+ * @param {any} rootApp the application whose uwsApp carries the socket, and so the connection set
  * @returns {(res: any, req: any, context: any) => void}
  */
-function makeUpgradeHandler(app, path, behavior) {
+function makeUpgradeHandler(app, path, behavior, rootApp) {
     const paramNames = [...path.matchAll(PARAM)].map((match) => match[1]);
     const userUpgrade = behavior.upgrade;
 
@@ -133,6 +134,10 @@ function makeUpgradeHandler(app, path, behavior) {
             if (aborted || request.res?.finished) {
                 return;
             }
+            // the socket stops being HTTP here: the connection filter never reports an upgraded
+            // socket closing, and a close() reaching one through the held HTTP wrapper is a
+            // native crash, so the connection set forgets it now
+            rootApp._releaseConnection?.(res);
             // the socket outlives the response, so what only the response can answer is read
             // while it is still alive: reading it later would be a use after free
             request._detachFromResponse();
@@ -204,7 +209,7 @@ function registerWebSocketRoutes(app) {
         delete uwsBehavior.upgrade;
         // bound to the owner's classes, so a mounted sub-app's request layer is the one its own
         // handlers expect
-        uwsBehavior.upgrade = makeUpgradeHandler(route.owner ?? app, route.path, route.behavior);
+        uwsBehavior.upgrade = makeUpgradeHandler(route.owner ?? app, route.path, route.behavior, app);
         app.uwsApp.ws(route.path, uwsBehavior);
     }
 }
