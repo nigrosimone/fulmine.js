@@ -91,7 +91,6 @@
         "vary": "^1.1.2"
     },
     "devDependencies": {
-        "@codechecks/client": "^0.1.12",
         "@commitlint/cli": "^21.2.1",
         "@commitlint/config-conventional": "^21.2.0",
         "@eslint/js": "^10.0.1",
