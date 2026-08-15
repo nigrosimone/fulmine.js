@@ -169,7 +169,7 @@ test("a file that builds nothing, or will not load, says so and fails", (t) => {
     assert.match(missing.out, /Nothing to profile/);
 });
 
-test("an application on a second copy of the library is stubbed too, rather than left to listen", (t) => {
+test("an application on a second copy of the library is stubbed too, rather than left to listen", async (t) => {
     // The command runs from its own copy and the application loads whichever one resolves from its
     // own directory. A global install, an npx of a pinned version or a hoisted workspace leaves two
     // on disk, and stubbing only this one lets the application's real listen() bind the port, after
@@ -201,4 +201,13 @@ if (server.listening) {
     assert.doesNotMatch(out, /REALLY LISTENED/, "the application's own listen must not have bound a port");
     assert.strictEqual(code, 0);
     assert.match(out, /GET\s+\/health\s+µWS/);
+
+    // Removed here rather than only in the after hook, and then waited on: building an application
+    // starts a file-reading thread per `threads`, and a thread loads its own module after the
+    // constructor returns. Left running, it came back once the directory was gone with "Cannot
+    // find module .../src/worker.js", after this test had ended, so node's runner reported it as
+    // an uncaught exception against the whole file rather than against anything in particular.
+    // That is the flake. Waiting here means a thread this command failed to stop fails this test.
+    fs.rmSync(root, { recursive: true, force: true });
+    await new Promise((resolve) => setTimeout(resolve, 250));
 });

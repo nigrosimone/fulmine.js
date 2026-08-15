@@ -493,7 +493,41 @@ ${error.stack ?? error}`);
         );
         return null;
     }
+    stopFileWorkers(apps);
     return { apps, entry };
+}
+
+/**
+ * Ends the file-reading threads that building an application started.
+ *
+ * An Application starts one per `threads` in its constructor, and these commands only ever read
+ * what compiling the routes decided: nothing here serves a file, so nothing here needs a thread.
+ * They are unref'd, so leaving them would not hang the process, but they are threads holding the
+ * library the application loaded, and this command is often not the whole process. It also stops
+ * them outliving the directory they were loaded from, which is how a test that profiles a copy and
+ * then removes it saw "Cannot find module .../src/worker.js" arrive after it had finished.
+ *
+ * Best effort throughout: a build with no workers, or a worker already gone, is not an error here.
+ *
+ * @param {any[]} apps
+ * @returns {void}
+ */
+function stopFileWorkers(apps) {
+    const seen = new Set();
+    for (const app of apps) {
+        for (const holder of app?.workers ?? []) {
+            const worker = holder?.worker;
+            if (!worker || seen.has(worker)) {
+                continue;
+            }
+            seen.add(worker);
+            try {
+                worker.terminate();
+            } catch {
+                // a thread that never started, or already ended, needs nothing
+            }
+        }
+    }
 }
 
 /**
