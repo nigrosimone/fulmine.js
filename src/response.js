@@ -1460,7 +1460,7 @@ module.exports = class Response extends LazyWritable {
     }
 
     /**
-     * node's `assignSocket` and `detachSocket`, which the http server uses when a response is
+     * node's `assignSocket`, which the http server uses when a response is
      * handed a raw socket. There is no such socket here.
      *
      * @param {any} [socket]
@@ -1469,6 +1469,8 @@ module.exports = class Response extends LazyWritable {
     assignSocket(socket) {}
 
     /**
+     * node's `detachSocket`, which the http server uses when a response is
+     * handed a raw socket. There is no such socket here.
      * @param {any} [socket]
      * @returns {void}
      */
