@@ -2,7 +2,7 @@
 
 # Fulmine.js
 
-A drop-in replacement for Express 5, running on [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js) instead of `node:http`. Your existing middleware keeps working.
+Fulmine - means lightning ⚡ in Italian - is a drop-in replacement for Express 5, running on [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js) instead of `node:http`. Your existing middleware keeps working.
 
 ```js
 const express = require("fulmine.js"); // instead of require("express")
@@ -32,6 +32,7 @@ See [Migrating](#migrating) for what it handles and what it deliberately does no
 [![Node.js >= 22.0.0](https://img.shields.io/badge/Node.js-%3E=22.0.0-green)](https://nodejs.org)
 [![Coverage Status](https://coveralls.io/repos/github/nigrosimone/fulmine.js/badge.svg?branch=main)](https://coveralls.io/github/nigrosimone/fulmine.js?branch=main)
 [![CodeQL](https://github.com/nigrosimone/fulmine.js/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/nigrosimone/fulmine.js/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/nigrosimone/fulmine.js/badge)](https://scorecard.dev/viewer/?uri=github.com/nigrosimone/fulmine.js)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](./LICENSE)
 
 ## Table of contents
