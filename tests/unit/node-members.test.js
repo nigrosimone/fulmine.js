@@ -14,14 +14,20 @@ const express = require("../../src/index.js");
  * Starts an app and answers a fetch helper bound to it.
  *
  * @param {(app: any) => void} setup
- * @returns {Promise<{url: string, close: () => void}>}
+ * @returns {Promise<{url: string, close: () => Promise<void>}>}
  */
 function serve(setup) {
     return new Promise((resolve) => {
         const app = express();
         setup(app);
         app.listen(0, () => {
-            resolve({ url: `http://localhost:${app.address().port}`, close: () => app.close() });
+            resolve({
+                url: `http://localhost:${app.address().port}`,
+                // awaited, and not fired and forgotten: close() drains the responses still in
+                // flight, so a test that returned without waiting left that drain running under
+                // whatever ran next, and the file's process kept the event loop alive
+                close: () => new Promise((closed) => app.close(() => closed(undefined)))
+            });
         });
     });
 }
@@ -48,7 +54,7 @@ test("the informational responses are accepted, send nothing, and call back as n
     const body = await fetch(server.url).then((r) => r.json());
     assert.strictEqual(calledSynchronously, false, "the callback must not run synchronously");
     assert.strictEqual(body.calledByThen, true, "and it must have run by the next turn");
-    server.close();
+    await server.close();
 });
 
 test("an informational response after the head has gone out throws, as node's does", async () => {
@@ -74,7 +80,7 @@ test("an informational response after the head has gone out throws, as node's do
         "body;writeEarlyHints: ERR_HTTP_HEADERS_SENT, writeContinue: ERR_HTTP_HEADERS_SENT, " +
             "writeProcessing: ERR_HTTP_HEADERS_SENT"
     );
-    server.close();
+    await server.close();
 });
 
 test("the header members node has answer as node's do", async () => {
@@ -110,7 +116,7 @@ test("the header members node has answer as node's do", async () => {
         hasNot: false,
         raw: ["x-four", "x-one", "x-three", "x-two"]
     });
-    server.close();
+    await server.close();
 });
 
 test("setTimeout registers the listener and changes nothing else", async () => {
@@ -138,11 +144,15 @@ test("setTimeout registers the listener and changes nothing else", async () => {
         responseHeard: true,
         requestHeard: true
     });
-    server.close();
+    await server.close();
 });
 
 test("req.signal is one object, and aborts when the client goes away", async () => {
     let signalOfAGoneClient = null;
+    // the answer nobody is waiting for any more, kept so this test can put it down rather than
+    // leave it to fire under whatever runs next: it holds a response µWS has not finished, which
+    // is exactly what close() below waits for
+    let tooLate = null;
     const server = await serve((app) => {
         app.get("/stays", (req, res) => {
             assert.strictEqual(req.signal, req.signal, "asked twice, the same signal");
@@ -153,7 +163,7 @@ test("req.signal is one object, and aborts when the client goes away", async () 
         });
         app.get("/leaves", (req, res) => {
             signalOfAGoneClient = req.signal;
-            setTimeout(() => res.end("too late"), 2000);
+            tooLate = setTimeout(() => res.end("too late"), 2000);
         });
     });
 
@@ -167,5 +177,6 @@ test("req.signal is one object, and aborts when the client goes away", async () 
     await new Promise((resolve) => setTimeout(resolve, 200));
 
     assert.strictEqual(signalOfAGoneClient?.aborted, true, "the render should learn it was for nobody");
-    server.close();
+    clearTimeout(tooLate);
+    await server.close();
 });
