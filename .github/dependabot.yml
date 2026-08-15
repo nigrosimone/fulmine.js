@@ -26,3 +26,11 @@ updates:
           # by hand: it is a git dependency on a tag, and the native binaries it carries have to be
           # checked against the node versions this supports before it moves
           - dependency-name: uWebSockets.js
+          # Held on 1.x and 0.x/1.x, which is what Express 5.2 itself depends on. Their 2.0 is ESM
+          # only and renamed the API, so `cookie.serialize` and the callable `contentDisposition`
+          # both stop existing here, and taking it would put this ahead of the framework it
+          # replaces on a header both of them write. Reopen the question when Express moves.
+          - dependency-name: cookie
+            update-types: ["version-update:semver-major"]
+          - dependency-name: content-disposition
+            update-types: ["version-update:semver-major"]

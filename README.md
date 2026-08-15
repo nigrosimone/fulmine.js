@@ -33,6 +33,7 @@ See [Migrating](#migrating) for what it handles and what it deliberately does no
 [![Coverage Status](https://coveralls.io/repos/github/nigrosimone/fulmine.js/badge.svg?branch=main)](https://coveralls.io/github/nigrosimone/fulmine.js?branch=main)
 [![CodeQL](https://github.com/nigrosimone/fulmine.js/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/nigrosimone/fulmine.js/actions/workflows/codeql.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/nigrosimone/fulmine.js/badge)](https://scorecard.dev/viewer/?uri=github.com/nigrosimone/fulmine.js)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14089/badge)](https://www.bestpractices.dev/projects/14089)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](./LICENSE)
 
 ## Table of contents
