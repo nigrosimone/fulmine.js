@@ -35,6 +35,15 @@ try {
     // older uWS builds do not expose _cfg; there is nothing to fall back to
 }
 
+try {
+    // the compile cache, in node since 22.8: the next boot of the same code skips compiling it.
+    // Asked for here because in practice the framework is the entry point of the application
+    // using it. Respects NODE_DISABLE_COMPILE_CACHE, and booting without a cache is not an error
+    require("node:module").enableCompileCache?.();
+} catch (error) {
+    // node below 22.8, or a disk the cache cannot be written to
+}
+
 // The factory doubles as a namespace, as in Express: Router, static and the body parsers hang off
 // the function that creates an app.
 //
