@@ -738,10 +738,13 @@ module.exports = function compileDeclarative(cb, app) {
         }
 
         for (const header of headers) {
-            if (header[0].toLowerCase() === "content-length") {
+            const name = header[0].toLowerCase();
+            if (name === "content-length") {
                 return false;
             }
-            decRes = decRes.writeHeader(header[0], header[1]);
+            // lowercased as the ordinary path stores every name, so the two paths answer the
+            // same bytes whatever casing the handler wrote, see issue #7
+            decRes = decRes.writeHeader(name, header[1]);
         }
 
         // sendStatus sends the status message as its body. It has to join `body` here, before the
