@@ -29,7 +29,7 @@ npx fulmine.js explain /api/items  # what happens when a request for that route 
 See [Migrating](#migrating) for what it handles and what it deliberately does not.
 
 [![npm version](https://img.shields.io/npm/v/fulmine.js)](https://www.npmjs.com/package/fulmine.js)
-[![Node.js >= 22.0.0](https://img.shields.io/badge/Node.js-%3E=22.0.0-green)](https://nodejs.org)
+[![Node.js 22 | 24 | 26](https://img.shields.io/badge/Node.js-22%20%7C%2024%20%7C%2026-green)](https://nodejs.org)
 [![HTTP Arena](https://img.shields.io/endpoint?url=https://www.http-arena.com/badge/fulmine/h1.json)](https://www.http-arena.com/#tuned=0)
 [![Coverage Status](https://coveralls.io/repos/github/nigrosimone/fulmine.js/badge.svg?branch=main)](https://coveralls.io/github/nigrosimone/fulmine.js?branch=main)
 [![CodeQL](https://github.com/nigrosimone/fulmine.js/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/nigrosimone/fulmine.js/actions/workflows/codeql.yml)
@@ -329,6 +329,7 @@ app.listen(3000, () => {
 Runnable: [`examples/https.js`](./examples/https.js).
 
 - This also applies to non-SSL HTTP too. Use `app.listen()` rather than creating a server by hand. `http.createServer(app)` does work, because the app is a request listener like Express's and answers node's requests through a shim, which is what lets `supertest`, `vhost` and anything else that calls an app keep working. But it serves those requests through `node:http` rather than through µWS, so the speed is Express's. It is there for compatibility, not for production.
+- **Node 22, 24 and 26, not every version above 22.** µWebSockets.js ships one prebuilt binary per Node ABI and skips the odd lines, so Node 23 and 25 have no binary to load and fail at `require`. `npx fulmine.js verify` says which binary this machine wants and whether it is there. The odd/even model ends with Node 26, so the gap closes on its own.
 - Node.JS max header size is 16384 bytes, while uWebSockets by default is 4096 bytes, so if you need longer headers set the env variable `UWS_HTTP_MAX_HEADERS_SIZE` to max byte count you need.
 - uWebSockets drops a request whose body arrives slower than 16KB/s, and the timeout is not reachable from JavaScript, while Node.JS waits as long as the client needs. Uploads over very slow connections can therefore fail here and succeed on Express. A body stalled for 5 seconds still completes; one stalled for 12 seconds gets its socket reset at around 11.8 seconds.
 
