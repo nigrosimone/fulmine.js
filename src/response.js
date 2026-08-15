@@ -888,11 +888,18 @@ module.exports = class Response extends LazyWritable {
         // req.fresh, which compares If-None-Match against it.
         // body is defined by the time it gets here, so an empty one still earns an ETag. Testing
         // its truthiness instead meant send("") and send(null) came back without one.
-        // Every method, not only GET and HEAD: gating it looked safe, freshness being defined
-        // over those two alone, and express's own suite failed on it, "should send ETag in
-        // response to <METHOD> request" exists per method. See issue #10.
-        const etagFn = this.app._hot().etagFn;
-        if (etagFn && !this.headers["etag"] && !this.req.noEtag) {
+        // Every method by default, not only GET and HEAD: gating it looked safe, freshness being
+        // defined over those two alone, and express's own suite failed on it, "should send ETag
+        // in response to <METHOD> request" exists per method. The "etag methods" setting is that
+        // gate as an opt-in, see issue #10.
+        const hot = this.app._hot();
+        const etagFn = hot.etagFn;
+        if (
+            etagFn &&
+            !this.headers["etag"] &&
+            !this.req.noEtag &&
+            (hot.etagMethods === null || hot.etagMethods.has(this.req.method))
+        ) {
             const etag = etagFn(body);
             // an application's own etag function is allowed to decline: returning nothing means no
             // header, rather than a header saying "undefined"

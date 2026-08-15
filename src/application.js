@@ -397,6 +397,15 @@ class Application extends Router {
                 // express's wording, which applications match on
                 throw new TypeError("unknown value for query parser function: " + value);
             }
+        } else if (key === "etag methods") {
+            // fulmine's own: the methods whose send() computes a generated ETag. Unset means all
+            // of them, which is express's behaviour and what its suite asserts per method; naming
+            // ["GET", "HEAD"] skips the digest everywhere a validator can never match, which
+            // measured +21% on a 4KB POST answer. See issue #10.
+            if (value != null && (!Array.isArray(value) || value.some((m) => typeof m !== "string"))) {
+                throw new TypeError('"etag methods" wants an array of method names, or null for all of them');
+            }
+            value = value == null ? undefined : value.map((m) => m.toUpperCase());
         } else if (key === "etag") {
             // The skips are not taken back here. They used to be, because send consults freshness
             // and the skip branch looked like it had not copied the headers for it, but that

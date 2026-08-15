@@ -704,8 +704,9 @@ Two of these keep a compiled form alongside the value, which you can also set di
 - `etag fn`, the function that produces an ETag. Setting `etag` compiles one; setting this replaces it.
 - `query parser fn`, likewise for `query parser`.
 
-Fulmine adds five of its own:
+Fulmine adds six of its own:
 
+- `etag methods`, unset by default. Express computes the generated ETag for every method, and so does this until told otherwise. `app.set("etag methods", ["GET", "HEAD"])` skips the digest on every other method, where freshness is not defined and the validator can never match: worth 21% here on a 4KB POST answer. An ETag set by hand still goes out whatever the method.
 - `declarative responses`, on by default. Lets a simple enough handler be compiled into a native uWS response, described under [Performance tips](#performance-tips).
 - `connection headers`, on by default. Express sends `Connection: keep-alive` and `Keep-Alive` on every response, and so does this. Turn it off and neither goes out, while a connection the client asked to close still answers `Connection: close`: it is the advertisement that goes, not the truth. Worth 2% to 3.5% here on a route that is not compiled, plus the bytes.
 - `file cache`, on by default. Small files served by `res.sendFile` come from a bounded in-process cache, checked against the file's `stat` on every request, so an edited file is never served stale. Turn it off where every request has to reach the disk, which is what a public benchmark asks of a standard entry: it was worth about 4% on a 4KB file here, so the cost of turning it off is small.

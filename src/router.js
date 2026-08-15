@@ -57,6 +57,8 @@ class HotSettings {
         this.epoch = 0;
         this.xPoweredBy = false;
         this.etagFn = undefined;
+        // null means every method, which is express's behaviour and the default
+        this.etagMethods = null;
         this.queryParserFn = undefined;
         this.trustProxyFn = undefined;
         this.trustProxyProtocol = false;
@@ -1415,6 +1417,9 @@ module.exports = class Router extends EventEmitter {
         }
         hot.xPoweredBy = !!this.get("x-powered-by");
         hot.etagFn = this.get("etag fn");
+        // a Set here, an array in the settings: send() asks per response, set() runs once
+        const etagMethods = this.get("etag methods");
+        hot.etagMethods = etagMethods == null ? null : new Set(etagMethods);
         hot.queryParserFn = this.get("query parser fn");
         hot.trustProxyFn = this.get("trust proxy fn");
         hot.trustProxyProtocol = !!this.get("trust proxy protocol");
