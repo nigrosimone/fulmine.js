@@ -1387,10 +1387,6 @@ module.exports = class Response extends LazyWritable {
      * @param {() => void} [callback]
      * @returns {void}
      */
-
-    /**
-     *
-     */
     writeEarlyHints(hints, callback) {
         this.#refuseInformationAfterHead();
         // node writes the hints first and calls back after, so a caller that sequences work on it
