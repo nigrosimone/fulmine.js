@@ -397,15 +397,12 @@ class Application extends Router {
                 throw new TypeError("unknown value for query parser function: " + value);
             }
         } else if (key === "etag") {
-            // an etag arriving after listen would make send consult freshness headers the
-            // header-skip routes never copied, so those skips are taken back
-            if (value !== false && this._skipPresets?.size) {
-                for (const preset of this._skipPresets) {
-                    preset.skipHeaders = false;
-                    preset.skipQuery = false;
-                }
-                this._skipPresets.clear();
-            }
+            // The skips are not taken back here. They used to be, because send consults freshness
+            // and the skip branch looked like it had not copied the headers for it, but that
+            // branch reads if-none-match, if-modified-since and cache-control by name whatever
+            // this setting says, see request.js:527, and req.fresh reads nothing else off the
+            // request. Registering a route or a middleware after listen still takes them back,
+            // see router.js:1615: that is a different question, about code the analysis never saw.
             if (typeof value === "function") {
                 this.settings["etag fn"] = value;
             } else {

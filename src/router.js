@@ -2086,14 +2086,20 @@ module.exports = class Router extends EventEmitter {
         const strictHere = (route.owner ?? this)._strictRouting();
 
         // Whether requests served by this registration may skip the header copy: GET and its
-        // HEAD twins only, the app must not compute etags (send would consult freshness
-        // headers), no error middleware may exist anywhere (a throw hands the request to code
-        // the analysis never saw), and every callback in the chain has to pass the source
+        // HEAD twins only, no error middleware may exist anywhere (a throw hands the request to
+        // code the analysis never saw), and every callback in the chain has to pass the source
         // analysis in usage.js, whose default answer is no.
+        //
+        // The etag setting is not one of the conditions. It used to be, on the grounds that send
+        // consults freshness, but the skip branch reads if-none-match, if-modified-since and
+        // cache-control by name whatever the setting, see the comment at request.js:527, and
+        // req.fresh reads nothing else off the request. Requiring etag off as well cost the copy
+        // to every application that left it on, which is every application that did not go
+        // looking for the setting.
         const NO_SKIPS = { skipHeaders: false, skipQuery: false };
         let getSkips = NO_SKIPS;
         let headSkips = NO_SKIPS;
-        if (route.method === "GET" && this.get("etag") === false) {
+        if (route.method === "GET") {
             let hasErr = this._hasErrMwCache;
             if (hasErr === undefined) {
                 hasErr = this._hasErrMwCache = hasErrorMiddleware(this);

@@ -214,12 +214,14 @@ function granted(setup) {
     });
 }
 
-test("the app grants skips only with etag off and takes them back on late registrations", async () => {
-    // etag defaults on, so send would consult freshness headers: nothing may skip
+test("the app grants skips whatever the etag setting, and takes them back on late registrations", async () => {
+    // etag defaults on, and that no longer forbids the skip: the branch reads the conditional
+    // trio by name, and tests/tests/res/freshness-with-skips.js answers every shape of a
+    // conditional request on a route that has one
     const def = await granted((app) => {
-        app.get("/a", (req, res) => res.send("a"));
+        app.get("/a", (req, res) => res.send("a" + req.path));
     });
-    assert.equal(def.granted, 0);
+    assert.equal(def.granted, 4);
     def.close();
 
     const off = await granted((app) => {
@@ -259,14 +261,15 @@ test("the app grants skips only with etag off and takes them back on late regist
     assert.equal(withErr.granted, 0);
     withErr.close();
 
-    // turning etags on after listen takes the skips back too
+    // turning etags on after listen leaves them alone: freshness is answered from headers the
+    // skip branch reads by name, so nothing the skip dropped is needed for it
     const late = await granted((app) => {
         app.set("etag", false);
         app.get("/a", (req, res) => res.send("a" + req.path));
     });
     assert.equal(late.granted, 4);
     late.app.set("etag", true);
-    assert.equal(late.app._skipPresets.size, 0);
+    assert.equal(late.app._skipPresets.size, 4);
     late.close();
 
     // a parameterised native route has no preset, so the skip rides a holder of its own:
