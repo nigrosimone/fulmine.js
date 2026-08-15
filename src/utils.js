@@ -1424,6 +1424,70 @@ function withUtf8Charset(value) {
     return CHARSET_PARAM.test(value) ? value.replace(CHARSET_PARAM, UTF8_CHARSET) : `${value}${UTF8_CHARSET}`;
 }
 
+// What node lets a header name and a header value hold. Express gets these checks from node's own
+// setHeader, and uWS makes them load bearing rather than cosmetic: it writes `key: value\r\n` with
+// no validation of its own, so a CR or an LF that reaches it ends the header early and everything
+// after it is read by the client as a header of its own, or as a whole second response.
+const HEADER_TOKEN = /^[\^_`a-zA-Z\-0-9!#$%&'*+.|~]+$/;
+const HEADER_VALUE = /[^\t\x20-\x7e\x80-\xff]/;
+
+/**
+ * Refuses a header name that is not an HTTP token, the way node's setHeader does and with its
+ * error, so an application catching ERR_INVALID_HTTP_TOKEN behind Express catches it here.
+ *
+ * @param {any} name
+ * @returns {void}
+ * @throws {TypeError} if the name is not a token, which includes not being a string
+ */
+function validateHeaderName(name) {
+    if (typeof name !== "string" || !HEADER_TOKEN.test(name)) {
+        /** @type {NodeJS.ErrnoException} */
+        const err = new TypeError(`Header name must be a valid HTTP token ["${name}"]`);
+        err.code = "ERR_INVALID_HTTP_TOKEN";
+        throw err;
+    }
+}
+
+/**
+ * Refuses a header value holding a character that cannot go on the wire, with node's error. An
+ * array is sent as one header per entry, so each entry is checked on its own rather than as the
+ * comma joined string node happens to test.
+ *
+ * @param {string} name the header being set, which is what node names in the message
+ * @param {string|string[]} value already coerced to text
+ * @returns {void}
+ * @throws {TypeError} if a character is not allowed in a header value
+ */
+function validateHeaderValue(name, value) {
+    if (Array.isArray(value)) {
+        for (const one of value) {
+            validateHeaderValue(name, one);
+        }
+        return;
+    }
+    if (HEADER_VALUE.test(value)) {
+        /** @type {NodeJS.ErrnoException} */
+        const err = new TypeError(`Invalid character in header content ["${name}"]`);
+        err.code = "ERR_INVALID_CHAR";
+        throw err;
+    }
+}
+
+/**
+ * Whether this pair could be written to the wire at all. Used on the error path, where throwing
+ * again is what turns one bad header into a dead process.
+ *
+ * @param {string} name
+ * @param {any} value
+ * @returns {boolean}
+ */
+function headerIsWritable(name, value) {
+    if (!HEADER_TOKEN.test(name)) {
+        return false;
+    }
+    return Array.isArray(value) ? value.every((one) => !HEADER_VALUE.test(one)) : !HEADER_VALUE.test(value);
+}
+
 // The status send picks for a failed stat. Anything else is the file being there but unreadable,
 // which is the server's problem and not the request's.
 const STAT_ERROR_STATUS = { ENAMETOOLONG: 404, ENOTDIR: 404, ENOENT: 404 };
@@ -1517,6 +1581,9 @@ module.exports = {
     uwsPrefersEarlier,
     regexpGroupKeys,
     escapeHtml,
+    validateHeaderName,
+    validateHeaderValue,
+    headerIsWritable,
     withDefaultCharset,
     withUtf8Charset,
     asStatError,

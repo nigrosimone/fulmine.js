@@ -2651,6 +2651,9 @@ module.exports = class Router extends EventEmitter {
     _sendErrorPage(request, response, err, checkEnv = false) {
         err = this._generateErrorPage(err, response.statusCode, checkEnv);
         request.noEtag = true;
+        // a header that cannot be written is what brought the request here in the first place when
+        // the throw came out of the flush, and writing it again would throw with nobody left
+        response._dropUnwritableHeaders();
         response.setHeader("Content-Type", "text/html; charset=utf-8");
         response.setHeader("X-Content-Type-Options", "nosniff");
         response.setHeader("Content-Security-Policy", "default-src 'none'");

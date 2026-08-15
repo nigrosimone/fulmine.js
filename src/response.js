@@ -31,6 +31,9 @@ const {
     isPreconditionFailure,
     isRangeFresh,
     escapeHtml,
+    validateHeaderName,
+    validateHeaderValue,
+    headerIsWritable,
     withDefaultCharset,
     withUtf8Charset,
     asStatError,
@@ -1318,25 +1321,49 @@ module.exports = class Response extends LazyWritable {
      * @param {any} value an array sends the header once per entry
      * @returns {this}
      * @throws {Error} once the headers have gone out
-     * @throws {TypeError} if the name is not a string
+     * @throws {TypeError} if the name is not a token, the value is undefined, or the value holds a
+     *   character that cannot go on the wire
      */
     setHeader(field, value) {
         if (this.headersSent) {
             throw new Error("Cannot set headers after they are sent to the client");
         }
-        if (typeof field !== "string") {
-            throw new TypeError("Header name must be a valid HTTP token");
-        } else {
-            field = field.toLowerCase();
-            if (Array.isArray(value)) {
-                // each entry as text, as node serialises them: a raw number reaching uWS's
-                // writeHeader would throw mid-response
-                this.headers[field] = value.map(String);
-                return this;
-            }
-            this.headers[field] = String(value);
+        validateHeaderName(field);
+        if (value === undefined) {
+            /** @type {NodeJS.ErrnoException} */
+            const err = new TypeError(`Invalid value "undefined" for header "${field}"`);
+            err.code = "ERR_HTTP_INVALID_HEADER_VALUE";
+            throw err;
         }
+        // each entry as text, as node serialises them: a raw number reaching uWS's writeHeader
+        // would throw mid-response. Coerced before it is checked, since that is the string the
+        // wire gets, and checked before it is stored: a value that got in here would be written by
+        // whatever flushes next, and on the error path that is a second throw with nobody left to
+        // catch it
+        const out = Array.isArray(value) ? value.map(String) : String(value);
+        validateHeaderValue(field, out);
+        this.headers[field.toLowerCase()] = out;
         return this;
+    }
+
+    /**
+     * Throws away any header that could not be written, so that flushing this response cannot fail
+     * on one. setHeader refuses these on the way in, but `res.getHeaders()` hands out the live
+     * object, so writing into that still gets a value in here.
+     *
+     * Only the error page calls it. A throw out of the flush there is not recoverable: the error
+     * page is what runs after a throw, so it would be the second one, with nobody left to catch
+     * it, and on the node shim that is the process. Everything writable is left alone, since a
+     * middleware's own headers belong on the error response too.
+     *
+     * @returns {void}
+     */
+    _dropUnwritableHeaders() {
+        for (const header in this.headers) {
+            if (!headerIsWritable(header, this.headers[header])) {
+                delete this.headers[header];
+            }
+        }
     }
 
     /**
@@ -1593,11 +1620,11 @@ module.exports = class Response extends LazyWritable {
                 this.set(header, field[header]);
             }
         } else {
-            field = field.toLowerCase();
+            const name = field.toLowerCase();
             // a header is text on the wire whatever it was here, and Express coerces at this point,
             // so res.get answers what was sent rather than the number or object it was given
             let out = Array.isArray(value) ? value.map(String) : String(value);
-            if (field === "content-type") {
+            if (name === "content-type") {
                 if (Array.isArray(out)) {
                     throw new TypeError("Content-Type cannot be set to an Array");
                 }
@@ -1605,6 +1632,9 @@ module.exports = class Response extends LazyWritable {
                 // missing application/manifest+json among others, which Express does charset.
                 out = withDefaultCharset(out);
             }
+            // the name as it was written, not the lowercased one: setHeader lowercases it itself,
+            // and it is the name that a refused header is reported by, which Express takes from
+            // what the caller passed
             this.setHeader(field, out);
         }
         return this;
@@ -2000,7 +2030,8 @@ module.exports = class Response extends LazyWritable {
     type(type) {
         const ct = type.indexOf("/") === -1 ? contentTypeFor(type) : type;
 
-        return this.set("content-type", ct);
+        // the name Express passes, since a refused value is reported by the name it was set under
+        return this.set("Content-Type", ct);
     }
 
     /**
