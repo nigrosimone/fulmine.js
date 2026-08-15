@@ -520,13 +520,18 @@ class Application extends Router {
     _serveGeneric(res, req) {
         const request = this.handleRequest(res, req);
         const response = request.res;
-        // armed up front here: this handler can outlive the callback on every path through it
-        this._armAbort(res, response);
-
-        this._routeRequestDirect(request, response);
-        // the synchronous stretch has run under the cork uWS holds for this callback, and
-        // whatever comes after it is outside
-        response._corkNeeded = true;
+        try {
+            this._routeRequestDirect(request, response);
+        } finally {
+            // the synchronous stretch has run under the cork uWS holds for this callback, and
+            // whatever comes after it is outside
+            response._corkNeeded = true;
+            // an abort can only arrive after this callback returns, as the native handler's
+            // finally says: a response that finished inside it never needs uWS told at all
+            if (!response.finished) {
+                this._armAbort(res, response);
+            }
+        }
     }
 
     /**

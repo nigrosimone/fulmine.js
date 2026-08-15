@@ -229,6 +229,9 @@ class Walk {
             // every other request from matching routes it could never run. Scanned once per
             // rewrite and kept on the request: a middleware-heavy chain scanned it per hop
             const mayFailDecode = (req._mayFailDecode ??= req._originalPath.indexOf("%") !== -1);
+            // frozen here, once per scan: _pathMatches reads the two flags as bare fields, and
+            // calling this per route measured 0.45us of a scan of four hundred
+            router._freezeRoutingFlags();
             // written out rather than through a predicate handed to findIndexStartingFrom, which
             // was one closure per hop of every request not on a compiled chain
             for (; routeIndex < routes.length; routeIndex++) {
@@ -1535,9 +1538,8 @@ module.exports = class Router extends EventEmitter {
             if (pattern === "/*") {
                 return true;
             }
-            // read as fields after one freeze, because this runs per route per hop and the two
-            // method calls were a call each per route of every scan
-            this._freezeRoutingFlags();
+            // bare fields, frozen by dispatch once per scan: even the freeze's own undefined
+            // check measured 0.45us per request on a scan of four hundred routes
             if (!this._caseFlag) {
                 // the pattern was folded at registration. The path is folded once per rewrite and
                 // kept on the request, not folded again per route: every _opPath write drops it
