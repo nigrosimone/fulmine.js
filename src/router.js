@@ -1840,11 +1840,17 @@ module.exports = class Router extends EventEmitter {
                     // computed for whichever route µWS lands on runs everything that could have
                     // matched before it
                 } else if (
-                    (canBeOptimized(route.path) ||
-                        // parameters that are whole segments are matched by µWS the same way
-                        (canBeOptimizedWithParams(route.path) &&
-                            // inside a mounted router, only when nothing after it could match
-                            (!pathPrefix || !router._isFollowedByAnOverlap(route, router._routes)))) &&
+                    // parameters that are whole segments are matched by µWS the same way
+                    (canBeOptimized(route.path) || canBeOptimizedWithParams(route.path)) &&
+                    // Inside a mounted router, only when nothing after it could answer the same
+                    // path. This used to be asked of parameter routes alone, and a literal one
+                    // needs it just as much: µWS picks by specificity where Express picks by
+                    // registration order, and a chain carries only what runs in front of its
+                    // route, so `router.get("/a", (req, res, next) => next())` followed by
+                    // `router.get("/:x", ...)` left the mount instead of reaching the second
+                    // route, and answered 404 where Express answers it. Found by the fuzzer,
+                    // replay with --seed 221940161 --rounds 1.
+                    (!pathPrefix || !router._isFollowedByAnOverlap(route, router._routes)) &&
                     supportedUwsMethods.has(route.method)
                 ) {
                     // something outside this router, written before the mount it is in, that could
@@ -1907,7 +1913,7 @@ module.exports = class Router extends EventEmitter {
                     }
                 } else if (!supportedUwsMethods.has(route.method)) {
                     route._whyGeneric = `µWS does not serve ${route.method}`;
-                } else if (canBeOptimizedWithParams(route.path)) {
+                } else if (canBeOptimized(route.path) || canBeOptimizedWithParams(route.path)) {
                     // eligible but for the overlap test, which only applies inside a mount
                     route._whyGeneric = "a route after it in the same mounted router could answer the same paths";
                 } else {
