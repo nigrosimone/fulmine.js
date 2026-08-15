@@ -135,3 +135,30 @@ test("setHeader refuses a sent response and a name that is not a string", async 
     assert.match(typeError.message, /Header name must be a valid HTTP token/);
     close();
 });
+
+test("getHeaders() answers a copy on a null prototype, so a write into it goes nowhere", async () => {
+    /** @type {any} */
+    let seen;
+    const { url, close } = await serve((app) => {
+        app.get("/x", (req, res) => {
+            res.set("x-live", "a");
+            const headers = res.getHeaders();
+            seen = { value: headers["x-live"], proto: Object.getPrototypeOf(headers) };
+            // node returns a copy, so this must not reach the wire, and it is also the hole a
+            // CRLF would have used to skip setHeader's validation, see issue #6
+            headers["x-injected"] = "yes";
+            res.send("ok");
+        });
+    });
+
+    try {
+        const res = await fetch(`${url}/x`);
+        assert.equal(res.status, 200);
+        assert.strictEqual(res.headers.get("x-live"), "a");
+        assert.strictEqual(seen.value, "a");
+        assert.strictEqual(seen.proto, null);
+        assert.strictEqual(res.headers.get("x-injected"), null);
+    } finally {
+        close();
+    }
+});

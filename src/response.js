@@ -888,6 +888,9 @@ module.exports = class Response extends LazyWritable {
         // req.fresh, which compares If-None-Match against it.
         // body is defined by the time it gets here, so an empty one still earns an ETag. Testing
         // its truthiness instead meant send("") and send(null) came back without one.
+        // Every method, not only GET and HEAD: gating it looked safe, freshness being defined
+        // over those two alone, and express's own suite failed on it, "should send ETag in
+        // response to <METHOD> request" exists per method. See issue #10.
         const etagFn = this.app._hot().etagFn;
         if (etagFn && !this.headers["etag"] && !this.req.noEtag) {
             const etag = etagFn(body);
@@ -1352,8 +1355,8 @@ module.exports = class Response extends LazyWritable {
 
     /**
      * Throws away any header that could not be written, so that flushing this response cannot fail
-     * on one. setHeader refuses these on the way in, but `res.getHeaders()` hands out the live
-     * object, so writing into that still gets a value in here.
+     * on one. setHeader refuses these on the way in, but `res.headers` is the live object, so an
+     * assignment into that still gets a value in here.
      *
      * Only the error page calls it. A throw out of the flush there is not recoverable: the error
      * page is what runs after a throw, so it would be the second one, with nobody left to catch
@@ -1675,12 +1678,15 @@ module.exports = class Response extends LazyWritable {
     }
 
     /**
-     * Every header set so far, as the object they are kept in rather than a copy, so writing to
-     * it writes to the response.
+     * Every header set so far, as a shallow copy on a null prototype, which is what node's
+     * OutgoingMessage answers. It used to hand out the live object, and a write into that
+     * reached the wire without setHeader's validation, see issue #6; nothing in here or in the
+     * middleware that was checked relies on the live one, so the copy costs an allocation on a
+     * method the framework itself never calls.
      * @returns {Record<string, any>}
      */
     getHeaders() {
-        return this.headers;
+        return Object.assign({ __proto__: null }, this.headers);
     }
 
     /**
