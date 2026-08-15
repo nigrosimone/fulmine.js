@@ -1,0 +1,51 @@
+name: OpenSSF Scorecard
+
+# The badge in the README reads the published result, and nothing is published until this runs:
+# the API answers 404 for a repository that has never uploaded one.
+on:
+    branch_protection_rule:
+    schedule:
+        # weekly, which is as often as the score can meaningfully move
+        - cron: "23 5 * * 1"
+    push:
+        branches: ["main"]
+    workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+    analysis:
+        name: Scorecard analysis
+        runs-on: ubuntu-latest
+        permissions:
+            # to upload the result to the code scanning tab
+            security-events: write
+            # to publish the result, which is what the badge and the API read
+            id-token: write
+            contents: read
+            actions: read
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v7
+              with:
+                  persist-credentials: false
+
+            - name: Run analysis
+              uses: ossf/scorecard-action@v2.4.4
+              with:
+                  results_file: results.sarif
+                  results_format: sarif
+                  publish_results: true
+
+            - name: Upload the result as an artifact
+              uses: actions/upload-artifact@v7
+              with:
+                  name: SARIF file
+                  path: results.sarif
+                  retention-days: 5
+
+            - name: Upload the result to code scanning
+              uses: github/codeql-action/upload-sarif@v4
+              with:
+                  sarif_file: results.sarif

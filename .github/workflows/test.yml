@@ -6,6 +6,10 @@ on:
     pull_request:
         branches: ["main"]
 
+# nothing here writes to the repository: the coverage upload posts to Coveralls, not to GitHub
+permissions:
+    contents: read
+
 jobs:
     # the commit-msg hook catches this locally, but a hook can be skipped and the changelog and
     # the version bump are both derived from these messages

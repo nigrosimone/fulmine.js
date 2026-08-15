@@ -17,11 +17,18 @@ on:
                 options: [tcp, unix-socket]
                 default: tcp
 
-permissions: write-all
+# read by default, and the job below asks for the two writes it really makes
+permissions:
+    contents: read
 
 jobs:
     benchmark:
         runs-on: ubuntu-latest
+        permissions:
+            # the commit comment on a push
+            contents: write
+            # and the one on a pull request, which is an issue comment
+            pull-requests: write
 
         steps:
             - name: Checkout code

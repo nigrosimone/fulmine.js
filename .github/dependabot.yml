@@ -1,0 +1,28 @@
+version: 2
+
+updates:
+    - package-ecosystem: github-actions
+      directory: /
+      schedule:
+          interval: monthly
+      commit-message:
+          prefix: "chore(deps)"
+
+    - package-ecosystem: npm
+      directory: /
+      schedule:
+          interval: monthly
+      commit-message:
+          prefix: "chore(deps)"
+          prefix-development: "chore(deps-dev)"
+      # grouped, so a month is two pull requests rather than thirty. The runtime dependencies stay
+      # apart from the rest: those ship to whoever installs this.
+      groups:
+          production:
+              dependency-type: production
+          development:
+              dependency-type: development
+      ignore:
+          # by hand: it is a git dependency on a tag, and the native binaries it carries have to be
+          # checked against the node versions this supports before it moves
+          - dependency-name: uWebSockets.js

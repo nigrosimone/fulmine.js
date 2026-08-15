@@ -16,6 +16,10 @@ on:
         # a weekly run, because the queries improve even when the code does not
         - cron: "37 4 * * 1"
 
+# nothing here writes to the repository; codeql asks for what it needs on its own job
+permissions:
+    contents: read
+
 jobs:
     analyze:
         name: Analyze JavaScript
