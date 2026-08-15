@@ -35,7 +35,9 @@ function fakeUws() {
         set: () => {},
         enabled: () => false,
         settings: {},
-        _router: null
+        _router: null,
+        // what Router#_hot answers when nothing is set, since this stub has no settings at all
+        _hot: () => ({ trustProxyFn: undefined, trustProxyProtocol: false, queryParserFn: undefined })
     };
     return [req, res, app];
 }

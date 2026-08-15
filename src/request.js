@@ -812,7 +812,7 @@ module.exports = class Request extends LazyReadable {
      * meant to carry one value, but nothing stops a proxy from appending.
      */
     get #authority() {
-        const trust = this.app.get("trust proxy fn");
+        const trust = this.app._hot().trustProxyFn;
         // parsedIp is what connection.remoteAddress carries, without building the socket stand-in
         const isTrusted = !!(trust && trust(this.parsedIp, 0));
         const rawHeader = (isTrusted && this.headers["x-forwarded-host"]) || this.headers["host"];
@@ -886,7 +886,7 @@ module.exports = class Request extends LazyReadable {
      * @returns {string|undefined} undefined on a unix socket, which has no address
      */
     get ip() {
-        const trust = this.app.get("trust proxy fn");
+        const trust = this.app._hot().trustProxyFn;
         if (!trust) {
             return this.parsedIp;
         }
@@ -899,7 +899,7 @@ module.exports = class Request extends LazyReadable {
      * @returns {string[]}
      */
     get ips() {
-        const trust = this.app.get("trust proxy fn");
+        const trust = this.app._hot().trustProxyFn;
         if (!trust) {
             return [];
         }
@@ -918,7 +918,7 @@ module.exports = class Request extends LazyReadable {
         // own ssl flag answers when nothing has built the stand-in yet
         const conn = this.#cachedConnection;
         const proto = (conn ? conn.encrypted : this.app.ssl) ? "https" : "http";
-        const trust = this.app.get("trust proxy fn");
+        const trust = this.app._hot().trustProxyFn;
         if (!trust) {
             return proto;
         }
@@ -985,7 +985,7 @@ module.exports = class Request extends LazyReadable {
      * @returns {Record<string, any>}
      */
     get query() {
-        const qp = this.app.get("query parser fn");
+        const qp = this.app._hot().queryParserFn;
         // the vendored default already answers on a bare null prototype, so it goes out as is;
         // any other parser is copied onto one, which is what kept fast-querystring's result from
         // inspecting as "Empty <[Object: null prototype] {}>" where Express shows the bare form
@@ -1053,7 +1053,7 @@ module.exports = class Request extends LazyReadable {
      */
     _readRawIp() {
         const uwsRes = this._res;
-        if (this.app.get("trust proxy protocol")) {
+        if (this.app._hot().trustProxyProtocol) {
             const proxied = uwsRes.getProxiedRemoteAddress();
             // empty unless a preamble arrived, which is the only thing that tells the two apart
             if (proxied.byteLength !== 0) {

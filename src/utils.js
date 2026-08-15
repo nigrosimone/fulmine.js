@@ -961,6 +961,11 @@ const defaultSettings = {
     "connection headers": true
 };
 
+// Moved by Application#set and by a mount, whichever app they happen on: a router cannot know
+// which mounted children resolve a setting through it, so instead of walking them the resolved
+// copies everywhere go stale at once and are re-read on their next use, see Router#_hot
+const settingsEpoch = { n: 1 };
+
 // What a file's stat was, for as long as "stat cache" says it stays good. Size and mtime only,
 // never a body, and only when a window was asked for: nginx's open_file_cache makes the same
 // trade, and the worst a stale entry does is answer with the file as it was a moment ago.
@@ -1588,5 +1593,6 @@ module.exports = {
     withUtf8Charset,
     asStatError,
     httpError,
-    EMPTY_REGEX
+    EMPTY_REGEX,
+    settingsEpoch
 };

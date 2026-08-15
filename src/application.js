@@ -26,7 +26,8 @@ const {
     createETagGenerator,
     fastQueryParse,
     durationSetting,
-    NullObject
+    NullObject,
+    settingsEpoch
 } = require("./utils.js");
 const parseQuery = require("./parse-query.js");
 const Request = require("./request.js");
@@ -425,6 +426,8 @@ class Application extends Router {
         }
 
         this.settings[key] = value;
+        // any app's hot-settings copy may resolve through this one, see Router#_hot
+        settingsEpoch.n++;
         return this;
     }
 

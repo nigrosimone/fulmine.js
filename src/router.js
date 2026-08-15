@@ -28,7 +28,8 @@ const {
     uwsPrefersEarlier,
     regexpGroupKeys,
     NullObject,
-    EMPTY_REGEX
+    EMPTY_REGEX,
+    settingsEpoch
 } = require("./utils.js");
 const Response = require("./response.js");
 const Request = require("./request.js");
@@ -46,6 +47,24 @@ const HAS_LETTER = /[a-zA-Z]/;
 
 // hands out one number per app.route(), so the routes it creates know they belong together
 let routeGroups = 0;
+
+// The settings the request and response hot paths read, resolved to plain fields: each read was a
+// variadic get() whose rest array escapes into createRoute, plus a dictionary miss per mount level
+// for the json keys, which have no default. One shape for every router, stale when the epoch moves.
+class HotSettings {
+    /** Every field declared up front, one hidden class for every router's copy. */
+    constructor() {
+        this.epoch = 0;
+        this.xPoweredBy = false;
+        this.etagFn = undefined;
+        this.queryParserFn = undefined;
+        this.trustProxyFn = undefined;
+        this.trustProxyProtocol = false;
+        this.jsonEscape = undefined;
+        this.jsonReplacer = undefined;
+        this.jsonSpaces = undefined;
+    }
+}
 
 /**
  * Whether an earlier route would have answered this path had case not mattered. A guard is a
@@ -1238,6 +1257,12 @@ module.exports = class Router extends EventEmitter {
     _caseFlag;
 
     /**
+     * The hot-path settings resolved to fields, good while the epoch stands, see _hot().
+     * @type {HotSettings}
+     */
+    _hotSettings = new HotSettings();
+
+    /**
      * @param {object} [settings] router options. caseSensitive and strict are accepted under the
      *   names Express's Router takes, and stored under the setting names the rest of the code reads
      */
@@ -1367,6 +1392,30 @@ module.exports = class Router extends EventEmitter {
             }
         }
         return this.createRoute("GET", path, this, ...callbacks);
+    }
+
+    /**
+     * The settings the hot path reads, as fields on one object rather than a get() per read.
+     * Refreshed through get(), parent fallback and all, when the epoch says a set() or a mount
+     * happened anywhere since they were resolved; until then a read is a monomorphic field load.
+     *
+     * @returns {HotSettings}
+     */
+    _hot() {
+        const hot = this._hotSettings;
+        if (hot.epoch === settingsEpoch.n) {
+            return hot;
+        }
+        hot.xPoweredBy = !!this.get("x-powered-by");
+        hot.etagFn = this.get("etag fn");
+        hot.queryParserFn = this.get("query parser fn");
+        hot.trustProxyFn = this.get("trust proxy fn");
+        hot.trustProxyProtocol = !!this.get("trust proxy protocol");
+        hot.jsonEscape = this.get("json escape");
+        hot.jsonReplacer = this.get("json replacer");
+        hot.jsonSpaces = this.get("json spaces");
+        hot.epoch = settingsEpoch.n;
+        return hot;
     }
 
     /**
@@ -2584,6 +2633,9 @@ module.exports = class Router extends EventEmitter {
                 callback.mountpath = /** @type {string|string[]} */ (path === "" ? "/" : path);
                 callback.parent = this;
                 callback.emit("mount", this);
+                // what the child resolves through its parent just changed, so every kept
+                // resolution is stale
+                settingsEpoch.n++;
             }
         }
         this.createRoute("USE", path, this, ...callbacks);

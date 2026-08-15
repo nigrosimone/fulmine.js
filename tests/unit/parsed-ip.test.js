@@ -59,7 +59,15 @@ function ipOf(bytes) {
         getRemoteAddress: () => bytes.buffer,
         getProxiedRemoteAddress: () => Buffer.alloc(0)
     };
-    const app = { get: () => undefined, set: () => {}, enabled: () => false, settings: {}, _router: null };
+    const app = {
+        get: () => undefined,
+        set: () => {},
+        enabled: () => false,
+        settings: {},
+        _router: null,
+        // what Router#_hot answers when nothing is set, since this stub has no settings at all
+        _hot: () => ({ trustProxyFn: undefined, trustProxyProtocol: false, queryParserFn: undefined })
+    };
     const request = new Request(req, res, app);
     request.res = { finished: false };
     return request.parsedIp;

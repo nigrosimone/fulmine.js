@@ -308,7 +308,7 @@ module.exports = class Response extends LazyWritable {
         if (req._connectionClose) {
             this.headers.connection = "close";
         }
-        if (this.app.get("x-powered-by")) {
+        if (app._hot().xPoweredBy) {
             this.headers["x-powered-by"] = "Fulmine";
         }
 
@@ -512,12 +512,6 @@ module.exports = class Response extends LazyWritable {
         this._res.cork(() => {
             if (!this.headersSent) {
                 this.writeHead(this.statusCode);
-                // "unknown" and not the bare number: node writes that reason phrase for a code it
-                // has no message for, so the raw status lines match. The default 200 with no
-                // phrase is uWS's own head, byte for byte, so it is not written at all
-                if (this.statusCode !== 200 || this.statusText !== undefined) {
-                    this._res.writeStatus(statusLine(this.statusCode, this.statusText));
-                }
                 this.writeHeaders(typeof chunk === "string");
             }
 
@@ -612,9 +606,15 @@ module.exports = class Response extends LazyWritable {
     }
 
     /**
-     * Writes every header set so far to uWS, which is the point of no return. Content-Length is
-     * not one of them: uWS wants the length through tryEnd or endWithoutBody, so it is taken out
-     * here and kept on totalSize, where it also turns chunked framing off.
+     * Writes the status line and every header set so far to uWS, which is the point of no return.
+     * Content-Length is not one of them: uWS wants the length through tryEnd or endWithoutBody, so
+     * it is taken out here and kept on totalSize, where it also turns chunked framing off.
+     *
+     * One crossing for the whole head: uWS's writeStatus appends its argument raw between
+     * "HTTP/1.1 " and its own CRLF, so the headers ride along as "\r\nname: value" pairs and pay
+     * one call where a writeHeader each paid three or four. Safe only because setHeader refuses
+     * CR and LF in names and values, see validateHeaderName in utils.js. The default 200 with no
+     * headers is still not written at all: uWS emits the identical head on its own.
      *
      * @param {boolean} utf8 unused, kept because node's equivalent takes it and the two callers
      *   differ on what they know about the body
@@ -631,6 +631,18 @@ module.exports = class Response extends LazyWritable {
         // the value here is nearly always the 10-char "keep-alive", which paid a scan per response
         const closing =
             typeof connection === "string" && connection.length === 5 && connection.toLowerCase() === "close";
+        // "unknown" for a code without a message, as node's status line has it. null stands for
+        // the bare 200 head uWS writes itself when nothing else needs writing
+        let head =
+            this.statusCode !== 200 || this.statusText !== undefined
+                ? statusLine(this.statusCode, this.statusText)
+                : null;
+        // the node shim parses writeStatus back into statusCode and statusMessage, so the head
+        // cannot carry headers there and each is handed over on its own, as uWS itself once was
+        const shim = res._nodeRes !== undefined;
+        if (shim && head !== null) {
+            res.writeStatus(head);
+        }
         // for..in over an object some responses delete from, which is the shape the request side
         // was taken off for #rawHeadersEntries. It stays here, and the difference is where the
         // deletes are: a 200 with a body performs none. Only 204, 304, 205, the freshness branch of
@@ -650,11 +662,20 @@ module.exports = class Response extends LazyWritable {
             }
             if (Array.isArray(value)) {
                 for (const val of value) {
-                    res.writeHeader(header, val);
+                    if (shim) {
+                        res.writeHeader(header, val);
+                    } else {
+                        head = (head === null ? "200 OK" : head) + "\r\n" + header + ": " + val;
+                    }
                 }
-            } else {
+            } else if (shim) {
                 res.writeHeader(header, value);
+            } else {
+                head = (head === null ? "200 OK" : head) + "\r\n" + header + ": " + value;
             }
+        }
+        if (!shim && head !== null) {
+            res.writeStatus(head);
         }
         this.headersSent = true;
     }
@@ -756,12 +777,6 @@ module.exports = class Response extends LazyWritable {
             // requests, and Express answers 304 from send() and from sendFile(), each of
             // which strips the entity headers first. Deciding it here meant res.end("body")
             // answered 304 and dropped the body that the caller had just written.
-            // "unknown" for a code without a message, as node's status line has it.
-            // The default 200 with no phrase is not written at all: uWS emits the identical
-            // "HTTP/1.1 200 OK" head on its own, and the crossing costs more than it says
-            if (this.statusCode !== 200 || this.statusText !== undefined) {
-                this._res.writeStatus(statusLine(this.statusCode, this.statusText));
-            }
             this.writeHeaders(true);
         }
         const contentLength = this.headers["content-length"];
@@ -884,7 +899,7 @@ module.exports = class Response extends LazyWritable {
         // req.fresh, which compares If-None-Match against it.
         // body is defined by the time it gets here, so an empty one still earns an ETag. Testing
         // its truthiness instead meant send("") and send(null) came back without one.
-        const etagFn = this.app.get("etag fn");
+        const etagFn = this.app._hot().etagFn;
         if (etagFn && !this.headers["etag"] && !this.req.noEtag) {
             const etag = etagFn(body);
             // an application's own etag function is allowed to decline: returning nothing means no
@@ -1388,11 +1403,6 @@ module.exports = class Response extends LazyWritable {
         }
         this._res.cork(() => {
             this.writeHead(this.statusCode);
-            // the same rule the chunked write path follows: uWS emits the 200 head itself, byte for
-            // byte, so writing it again would only cost a crossing
-            if (this.statusCode !== 200 || this.statusText !== undefined) {
-                this._res.writeStatus(statusLine(this.statusCode, this.statusText));
-            }
             // true, as the chunked path passes for a string chunk: what follows a flush is a body
             // written in pieces, and the framing has to be the one that allows them
             this.writeHeaders(true);
@@ -1865,10 +1875,8 @@ module.exports = class Response extends LazyWritable {
         if (!this.headers["content-type"]) {
             this.headers["content-type"] = "application/json; charset=utf-8";
         }
-        const escape = this.app.get("json escape");
-        const replacer = this.app.get("json replacer");
-        const spaces = this.app.get("json spaces");
-        return this.send(stringify(body, replacer, spaces, escape));
+        const hot = this.app._hot();
+        return this.send(stringify(body, hot.jsonReplacer, hot.jsonSpaces, hot.jsonEscape));
     }
 
     /**
