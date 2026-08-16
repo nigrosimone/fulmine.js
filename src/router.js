@@ -241,7 +241,18 @@ class Walk {
             // was one closure per hop of every request not on a compiled chain
             for (; routeIndex < routes.length; routeIndex++) {
                 const r = routes[routeIndex];
-                if (!(r.all || r.method === req.method || req._isOptions || (r.gettable && req._isHead))) {
+                // A HEAD request enters a route whose path matched even when its verb cannot serve
+                // one: express exempts HEAD from the method check ("if (!hasMethod && method !==
+                // 'HEAD')" in router/index.js), so the layer's parameters are captured and its
+                // param() callbacks run before the route is dropped. Only asked when the router has
+                // callbacks to run, since entering a route to step straight back out of it is
+                // otherwise pure cost with nothing to show for it. runRoute steps over it.
+                if (!(
+                    r.all ||
+                    r.method === req.method ||
+                    req._isOptions ||
+                    (req._isHead && (r.gettable || r.paramCallbacks.size > 0))
+                )) {
                     // taken only to fail: _preprocessRequest decodes again and turns it into the
                     // error, so the handlers of a route this request cannot run never see it
                     if (mayFailDecode && router._pathMatches(r, req) && router._paramsFailToDecode(r, req)) {
@@ -514,20 +525,20 @@ class Walk {
                     if (parentMethods !== null) {
                         req._matchedMethods = parentMethods;
                     }
-                    if (req._isOptions && childMethods.size) {
+                    if (req._isOptions && childMethods.size && !req._error) {
                         // OPTIONS routing is different, it stops in the router if matched.
                         // Express answers as the router hands back, so a throw while answering,
                         // a head already written being the way, walks on to later error handlers
-                        if (!req._error) {
-                            try {
-                                router._sendOptionsReply(req, res, childMethods);
-                                return this.resolve(true);
-                            } catch (err) {
-                                return this.step(err);
-                            }
+                        try {
+                            router._sendOptionsReply(req, res, childMethods);
+                            return this.resolve(true);
+                        } catch (err) {
+                            return this.step(err);
                         }
-                        return this.resolve(false);
                     }
+                    // An error carried out of the mount is not answered by the automatic reply, and
+                    // stopping here handed it to the default page: express walks on to the error
+                    // handlers written after the mount, for OPTIONS as for any other method.
                     this.step(undefined);
                 })
                 // a rejection out of the nested walk, or a throw above, must reject this one
@@ -548,6 +559,11 @@ class Walk {
                     if (route.gettable) {
                         req._matchedMethods.add("HEAD");
                     }
+                    return this.step(undefined);
+                }
+                // entered only so its param callbacks could run, see the scan in dispatch: the verb
+                // cannot serve a HEAD, so nothing here answers it
+                if (req._isHead && !route.all && !route.gettable && route.method !== "HEAD") {
                     return this.step(undefined);
                 }
 
