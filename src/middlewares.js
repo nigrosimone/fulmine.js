@@ -935,13 +935,16 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             // upstream middleware's AsyncLocalStorage must still be there when next runs
             next = AsyncResource.bind(next);
 
-            // with a known content-length and nothing to decompress, uWS can collect the whole
-            // body in native code: one callback instead of one per chunk, the limit enforced
-            // before any byte reaches JS, and no copy at all - the parsers turn the bytes into
-            // req.body before the callback returns, so a view over uWS's own memory is enough
-            if (!req.receivedData && !inflate && !isNaN(length) && Number(length) > 0 && req._res.collectBody) {
+            // with nothing to decompress, uWS can collect the whole body in native code: one
+            // callback instead of one per chunk, the limit enforced before any byte reaches JS,
+            // and no copy at all - the parsers turn the bytes into req.body before the callback
+            // returns, so a view over uWS's own memory is enough. A declared length was the
+            // original case; a chunked body accumulates in the same native vector and only loses
+            // the length check, since there is no declaration to hold it to
+            const declared = Number(length);
+            const declaresLength = !isNaN(declared) && declared > 0;
+            if (!req.receivedData && !inflate && req._res.collectBody && (declaresLength || isNaN(declared))) {
                 req.bodyRead = true;
-                const declared = Number(length);
                 req._res.collectBody(limit, (body) => {
                     if (body === null) {
                         // over maxSize: uWS refused it natively
@@ -952,7 +955,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                             })
                         );
                     }
-                    if (body.byteLength !== declared) {
+                    if (declaresLength && body.byteLength !== declared) {
                         return next(
                             bodyError("request size did not match content length", 400, "request.size.invalid", {
                                 expected: declared,
