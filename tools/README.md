@@ -1,7 +1,7 @@
 # tools
 
-Three programs that are not the library and not its tests. Two of them look for compatibility bugs
-from the outside; the third publishes.
+Five programs that are not the library and not its tests. Four of them look for compatibility bugs
+from the outside; the fifth publishes.
 
 Each file's own header carries the detail, including what it got wrong before it was fixed. This is
 the map.
@@ -9,6 +9,8 @@ the map.
 |                                        | what it is                                    | run it                  |
 | -------------------------------------- | --------------------------------------------- | ----------------------- |
 | [`fuzz.js`](fuzz.js)                   | random applications, compared against Express | `npm run fuzz`          |
+| [`wire-fuzz.js`](wire-fuzz.js)         | raw bytes, compared against node's parser     | `npm run fuzz:wire`     |
+| [`header-fuzz.js`](header-fuzz.js)     | hostile values through the response API       | `npm run fuzz:headers`  |
 | [`express-suite.js`](express-suite.js) | Express's own test suite, run against this    | `npm run test:express`  |
 | [`release-local.js`](release-local.js) | publishing by hand, when the workflow cannot  | `npm run release:local` |
 
@@ -89,6 +91,33 @@ drown in the third case, since µWS is a different parser and is allowed to be s
 
 Checked by putting a known bug back: with the framing refusal reverted, `--seed 5000 --rounds 120`
 reports the appended request being served where node reads one message.
+
+## header-fuzz.js
+
+Hands every value that breaks a header block to every response method that computes one, and
+compares the bytes against Express.
+
+```bash
+npm run fuzz:headers                        # every value against every writer
+npm run fuzz:headers -- --filter cookie     # only the writers whose name contains this
+npm run fuzz:headers -- --verbose           # every case, not only the disagreements
+```
+
+`res.set()` refuses a value that would split the response, and tests cover it. The other door is the
+methods that write a header nobody typed: `res.cookie`, `res.location`, `res.redirect`,
+`res.attachment`, `res.download`, `res.vary`, `res.links`, `res.type` and the jsonp callback name
+all compute one out of something the request carried. A CRLF getting through any of them ends the
+header and writes what follows as a header of its own.
+
+Raw sockets on both sides, because `fetch` parses the answer and an injected line is a header to
+undici rather than a finding. The cross product is a few hundred cases, so it sweeps rather than
+samples: no seed, no shrinking, every case is already one line. Every value is ASCII, for the reason
+`fuzz.js` gives above.
+
+Checked by putting a known bug back: with the value check and the unwritable-header drop both taken
+off for one header name, `--filter set` reports `INJECTED` and prints the `x-injected` header on the
+wire. It found the cookie package's 1.x wording reaching an application where Express's 0.7 wording
+would, which is what pinned that dependency to the version Express uses.
 
 ## express-suite.js
 

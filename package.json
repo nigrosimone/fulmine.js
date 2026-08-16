@@ -29,7 +29,8 @@
         "cover:full": "nyc --silent npm run test && nyc --silent --no-clean npm run test:unit && nyc --silent --no-clean npm run test:express && nyc report",
         "cover:check": "nyc check-coverage --statements 94.5 --branches 90 --functions 94 --lines 94.5",
         "examples:install": "npm --prefix examples install",
-        "fuzz:wire": "node tools/wire-fuzz.js"
+        "fuzz:wire": "node tools/wire-fuzz.js",
+        "fuzz:headers": "node tools/header-fuzz.js"
     },
     "engines": {
         "node": ">=22"
@@ -73,7 +74,7 @@
         "bytes": "^3.1.2",
         "compressible": "^2.0.18",
         "content-disposition": "^1.1.0",
-        "cookie": "^1.1.1",
+        "cookie": "^0.7.2",
         "cookie-signature": "^1.2.2",
         "encodeurl": "^2.0.0",
         "fast-decode-uri-component": "^1.0.1",
