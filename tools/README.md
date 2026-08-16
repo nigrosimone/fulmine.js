@@ -37,8 +37,21 @@ bug or something the fuzzer needs taught. Every divergence it has reported so fa
 What it draws from: route shapes including the 161 patterns lifted from `path-to-regexp`'s own test
 cases, mounted routers three deep, sub-apps, `app.route()`, settings, body parsers, static mounts,
 view engines, ranges, proxies, declarative-compiled routes, and the routes the usage analysis can
-grant skips to. What it deliberately does not: aborted requests, TLS, and pipelined connection
-reuse.
+grant skips to. Every round asks `GET` and `HEAD` plus one drawn verb, `QUERY` and `PATCH` included,
+since those two are the ones whose body handling is least like the rest. A round that puts a body
+parser in front draws one body from several shapes per parser, the empty one, the one that cannot be
+parsed, a charset nobody can decode and a type the parser must leave alone among them. Handlers
+cover the response methods as well as the routing: `append`, `attachment`, cookies with options,
+`clearCookie`, arrays through `res.set`, buffers, `204`, and a body written in chunks.
+
+What it deliberately does not: aborted requests, TLS, and pipelined connection reuse.
+
+One difference must stay out of the comparison, because matching it would mean copying a fault.
+**A non-ascii header value.** Express hands the string to node, whose header block turns the
+character into `U+FFFD` and writes it as latin1, so `res.attachment("caffè.txt")` leaves Express as
+one corrupt byte while µWS writes proper utf-8. Both compute the same value; only the wire differs.
+Keep generated filenames and header values ASCII. The rest of what is not compared is in
+`tests/helpers.js`: `x-powered-by`, `content-length` and `transfer-encoding`.
 
 ## express-suite.js
 

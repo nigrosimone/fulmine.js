@@ -45,8 +45,14 @@ middleware, so a route behind it stops being compiled into a declarative respons
 the ordinary path instead: a file whose routes do compile would quietly stop covering the compiled
 one. And Express builds its router at the first `use()`, freezing `strict routing` and
 `case sensitive routing` as they are at that moment, so a file that sets either one afterwards must
-not ask for it. Everywhere else it is worth having: it is what caught a pathless mount dropping the
-middleware in front of it.
+not ask for it. Nor may a file that fetches concurrently: the `[req]` line is printed when the
+request arrives, and `Promise.all` lets the arrivals race, while `fetchTest` orders its own lines by
+taking an index at call time, which nothing running server side can do. Use `sequential()` there.
+Everywhere else it is worth having: it is what caught a pathless mount dropping the middleware in
+front of it.
+
+The marker is read from the comment block at the top of the file, so it can sit under a description
+that runs to a paragraph rather than only on the second line.
 
 `npm run test:express` is the other kind of test: it clones Express at the version in
 `devDependencies`, points its entry at this source and runs its suite against it. Locally it is a
