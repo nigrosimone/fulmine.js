@@ -1,5 +1,37 @@
 # Changelog
 
+## [5.12.0](https://github.com/nigrosimone/fulmine.js/compare/v5.11.1...v5.12.0) (2026-08-16)
+
+### Features
+
+* an etag methods setting limits the generated ETag to the methods it names, closes [#10](https://github.com/nigrosimone/fulmine.js/issues/10) ([5d2ed7a](https://github.com/nigrosimone/fulmine.js/commit/5d2ed7a53277a11d37a0ab492f938d4538b16279))
+
+### Bug Fixes
+
+* **application:** close() drops idle keep-alive connections, so a drain cannot be held open by them ([f6bf911](https://github.com/nigrosimone/fulmine.js/commit/f6bf9114e31d705f2efab80dbc7aa8dc4e85c360))
+* **benchmark:** a canary request before the load, a stray server can share the port on Windows ([f5b91fc](https://github.com/nigrosimone/fulmine.js/commit/f5b91fcbbb361bf54f5e7b18b02f0e6a7194300a))
+* **benchmark:** weigh samples by their own timeDeltas and print the idle share, closes [#8](https://github.com/nigrosimone/fulmine.js/issues/8) ([d54e533](https://github.com/nigrosimone/fulmine.js/commit/d54e533cccfd8e8c62008619cba53dfe050ea987))
+* **cli:** end the file reading threads that loading an application started, so profile leaves none behind ([389e68a](https://github.com/nigrosimone/fulmine.js/commit/389e68a67950b286aca60be1aaf5cb78617776fe))
+* **declarative:** do not compile a response carrying a validator uWS could never honour ([50a0976](https://github.com/nigrosimone/fulmine.js/commit/50a09761c5720e8205ded5a7302224d4952eda83))
+* **declarative:** lowercase compiled header names and document the Connection divergence, closes [#7](https://github.com/nigrosimone/fulmine.js/issues/7) ([e2ef278](https://github.com/nigrosimone/fulmine.js/commit/e2ef27852eabc6dbb1c32c9d925bb90d705684b4))
+* **response:** getHeaders() answers a shallow copy on a null prototype, as node does, closes [#6](https://github.com/nigrosimone/fulmine.js/issues/6) ([8ed53c6](https://github.com/nigrosimone/fulmine.js/commit/8ed53c62c53b12de22204f1805d0ddbcdd4fa46b))
+* **response:** refuse a header name or value that would split the response, as node does ([d3fd6a7](https://github.com/nigrosimone/fulmine.js/commit/d3fd6a70a720e3758fef96738edafe08a32a9feb))
+* **router:** a literal route in a mounted router must not take the native path when a later route could answer it ([2d60954](https://github.com/nigrosimone/fulmine.js/commit/2d60954b01fea558adb3782533977eac3b916113))
+
+### Performance Improvements
+
+* ask node for the compile cache at startup ([c523d68](https://github.com/nigrosimone/fulmine.js/commit/c523d6817253e3542206a287bc54acbf70801a7a))
+* **middlewares:** a chunked body is collected natively too, one crossing instead of one per chunk ([0dbc422](https://github.com/nigrosimone/fulmine.js/commit/0dbc422c9567db6876ba1cadd9f2fd32e7bbdedb))
+* read the hot-path settings as fields, and hand uWS the whole response head in one call ([6ae877c](https://github.com/nigrosimone/fulmine.js/commit/6ae877cbeab294e6b35667c81d4206ce3ed54d7f))
+* **router:** fold patterns at registration and the path once per rewrite in the fallback scan ([9eb962b](https://github.com/nigrosimone/fulmine.js/commit/9eb962b65ff577eca239dc0f569da55935d56e8a))
+* **router:** freeze flags once per scan, arm onAborted on the generic path only when pending ([5edb701](https://github.com/nigrosimone/fulmine.js/commit/5edb7011e9c2acdc9669c1dda728cbede5503e71))
+* **router:** the header skip no longer asks for etag to be off ([5df606b](https://github.com/nigrosimone/fulmine.js/commit/5df606b6ec01531605ed989ed55b2b9b57f0ad9f))
+
+### Reverts
+
+* **application:** drop the idle close, a held uWS wrapper is a use after free once its socket went ([1f1d9b5](https://github.com/nigrosimone/fulmine.js/commit/1f1d9b55ada83420b4719bc05b90f84e0a597834))
+* **response:** one writeHeader per header again, packing measured no better ([#11](https://github.com/nigrosimone/fulmine.js/issues/11)) ([02c7a8d](https://github.com/nigrosimone/fulmine.js/commit/02c7a8d19ccc5752f4779e0a3bb0d91ffe651e83))
+
 ## [5.11.1](https://github.com/nigrosimone/fulmine.js/compare/v5.11.0...v5.11.1) (2026-08-14)
 
 ### Bug Fixes
