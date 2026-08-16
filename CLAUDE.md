@@ -57,6 +57,13 @@ CI runs it on a **random seed**, so it explores a different application on every
 usually a real, pre-existing bug that this push merely exposed. Read the shrunk case before assuming
 the last commit caused it.
 
+If you touched the optimizer — the overlap analysis, the guards, the granted skips, anything in
+`_compileOptimizedRoutes` — run `npm test -- --self` and `npm run fuzz -- --self`. Those serve the
+same application twice with this framework, the reference arm with `native routes` off, so a
+divergence is the optimizer disagreeing with the chain it stands in for rather than a compatibility
+question. `CONTRIBUTING.md` explains it. Before trusting a clean run of any oracle you add, put a
+known bug back and check it is caught: a self-check that cannot fail is worse than no check.
+
 Two differences must never be compared, because matching them would mean copying a fault:
 
 - **A non-ascii header value.** Express hands the string to node, whose header block turns the
