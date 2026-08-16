@@ -1,7 +1,7 @@
 # tools
 
-Five programs that are not the library and not its tests. Four of them look for compatibility bugs
-from the outside; the fifth publishes.
+Six programs that are not the library and not its tests. Five of them look for compatibility bugs
+from the outside; the sixth publishes.
 
 Each file's own header carries the detail, including what it got wrong before it was fixed. This is
 the map.
@@ -11,6 +11,7 @@ the map.
 | [`fuzz.js`](fuzz.js)                   | random applications, compared against Express | `npm run fuzz`          |
 | [`wire-fuzz.js`](wire-fuzz.js)         | raw bytes, compared against node's parser     | `npm run fuzz:wire`     |
 | [`header-fuzz.js`](header-fuzz.js)     | hostile values through the response API       | `npm run fuzz:headers`  |
+| [`session-fuzz.js`](session-fuzz.js)   | several requests down one connection          | `npm run fuzz:session`  |
 | [`express-suite.js`](express-suite.js) | Express's own test suite, run against this    | `npm run test:express`  |
 | [`release-local.js`](release-local.js) | publishing by hand, when the workflow cannot  | `npm run release:local` |
 
@@ -118,6 +119,32 @@ Checked by putting a known bug back: with the value check and the unwritable-hea
 off for one header name, `--filter set` reports `INJECTED` and prints the `x-injected` header on the
 wire. It found the cookie package's 1.x wording reaching an application where Express's 0.7 wording
 would, which is what pinned that dependency to the version Express uses.
+
+## session-fuzz.js
+
+Several requests down one connection, which is the thing every other tool here throws away.
+
+```bash
+npm run fuzz:session                          # a few hundred sequences on a seed nobody chose
+npm run fuzz:session -- --rounds 500          # longer
+npm run fuzz:session -- --seed 12345 --rounds 1   # replay
+npm run fuzz:session -- --keep-going          # do not stop at the first finding
+```
+
+Each round draws a small application and a sequence of requests, and asks them twice: once down one
+keep-alive connection in order, once a connection each. That gives two verdicts, and they are not
+the same question. `express.shared[i]` against `fulmine.shared[i]` is an ordinary compatibility bug.
+`fulmine.shared[i]` against `fulmine.fresh[i]`, where express agrees with itself, is **state**: an
+answer that changed for having followed another request, which is a header map, a parsed query, a
+set of matched verbs or a response's locals kept one request too long.
+
+The connection really is one: an agent with `maxSockets: 1` and keep-alive on, and the sockets are
+counted, so a round that quietly opened a second one is reported rather than passed.
+
+Checked by putting a known bug back: with `res.locals` made one object for the whole process,
+`--rounds 20` reports STATE in three of them. It found `res.sendStatus(204)` answering with a
+body and a Content-Length of ten on a compiled route, which a client frames as bodiless: those ten
+bytes were read as the start of the next answer on the connection.
 
 ## express-suite.js
 

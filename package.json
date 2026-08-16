@@ -30,7 +30,8 @@
         "cover:check": "nyc check-coverage --statements 94.5 --branches 90 --functions 94 --lines 94.5",
         "examples:install": "npm --prefix examples install",
         "fuzz:wire": "node tools/wire-fuzz.js",
-        "fuzz:headers": "node tools/header-fuzz.js"
+        "fuzz:headers": "node tools/header-fuzz.js",
+        "fuzz:session": "node tools/session-fuzz.js"
     },
     "engines": {
         "node": ">=22"

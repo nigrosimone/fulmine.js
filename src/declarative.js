@@ -54,6 +54,11 @@ const MAX_INSTRUCTION_LENGTH = 65535;
 // so it cannot honour one, and a handler that sets one has to stay on the ordinary path.
 const VALIDATOR_HEADERS = new Set(["etag", "last-modified"]);
 
+// The statuses whose message carries no content. 205 is here for node's reason rather than
+// express's: express strips the body for 204 and 304, and node answers a 205 with a lone
+// Content-Length of zero, so all three come out of the ordinary path with no body at all.
+const BODILESS_STATUSES = new Set([204, 205, 304]);
+
 const bodyMethods = new Set(["send", "json", "end"]);
 // and the four that finish the response, after which nothing a handler does is observable
 const terminalMethods = new Set(["send", "json", "end", "sendStatus"]);
@@ -707,6 +712,17 @@ module.exports = function compileDeclarative(cb, app) {
         // compiling the empty shape would answer a bare 200 where the ordinary path answers
         // nothing at all. It has to fall back instead.
         if (!sendUsed && !sendStatusUsed) {
+            return false;
+        }
+
+        // A status that carries no content, which is a rule about the message and not about the
+        // application: express drops the body and the framing headers for 204 and 304, and node
+        // writes a lone Content-Length: 0 for 205. Compiled, the body went out anyway, so
+        // res.sendStatus(204) answered "No Content" with a Content-Length of ten. A client frames
+        // a 204 as bodiless whatever the headers say, so those ten bytes were read as the start of
+        // the next answer on the connection, which is a desync on any keep-alive client. The
+        // ordinary path already writes all three the way express does: this hands them back to it.
+        if (BODILESS_STATUSES.has(statusCode) || statusCode < 200) {
             return false;
         }
 

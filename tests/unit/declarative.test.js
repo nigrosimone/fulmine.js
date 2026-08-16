@@ -24,7 +24,7 @@ test("what the compiler accepts compiles into a declarative response", () => {
     assert.ok(compileDeclarative((req, res) => res.set({ server: "fulmine" }).send("ok"), app));
     // setHeader is node's and throws on an object, so the compiler refuses it there
     assert.ok(!compileDeclarative((req, res) => res.setHeader({ server: "fulmine" }).send("ok"), app));
-    assert.ok(compileDeclarative((req, res) => res.sendStatus(204), app));
+    assert.ok(compileDeclarative((req, res) => res.sendStatus(201), app));
     assert.ok(compileDeclarative((req, res) => res.end(), app));
     // return res.send(...) as the last statement describes the same response
     assert.ok(
@@ -84,7 +84,15 @@ test("every shape the compiler cannot vouch for is a refusal, never a throw", ()
         // to an empty 200 was a live divergence until 2026-08-05
         (req, res) => {},
         // headers without a send are still not a response
-        (req, res) => res.set("x-a", "b")
+        (req, res) => res.set("x-a", "b"),
+        // a status that carries no content. Compiled, the body went out with it, and a client
+        // frames a 204 as bodiless whatever the headers say, so those bytes were read as the start
+        // of the next answer on the connection. The ordinary path drops them the way express does
+        (req, res) => res.sendStatus(204),
+        (req, res) => res.sendStatus(304),
+        (req, res) => res.sendStatus(205),
+        (req, res) => res.status(204).send("body"),
+        (req, res) => res.status(304).json({ a: 1 })
     ];
     for (const fn of refused) {
         assert.equal(compileDeclarative(fn, app), false, fn.toString());
