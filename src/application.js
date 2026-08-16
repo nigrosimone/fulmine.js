@@ -208,11 +208,11 @@ class Application extends Router {
             // a "trust proxy" this app never set is inherited from the parent, as express does:
             // the defaults are deleted so get() falls through to the parent's value
             if (
-                this.settings[trustProxyDefaultSymbol] === true &&
-                typeof parent.settings["trust proxy fn"] === "function"
+                this._settings[trustProxyDefaultSymbol] === true &&
+                typeof parent._settings["trust proxy fn"] === "function"
             ) {
-                delete this.settings["trust proxy"];
-                delete this.settings["trust proxy fn"];
+                delete this._settings["trust proxy"];
+                delete this._settings["trust proxy fn"];
             }
         });
         this.listenCalled = false;
@@ -248,20 +248,20 @@ class Application extends Router {
         this._draining = false;
         // read here, at construction, the way express does; an empty NODE_ENV means development,
         // which the ?? in the shared default would miss
-        if (typeof this.settings.env === "undefined") {
-            this.settings.env = process.env.NODE_ENV || "development";
+        if (typeof this._settings.env === "undefined") {
+            this._settings.env = process.env.NODE_ENV || "development";
         }
         for (const key in defaultSettings) {
-            if (typeof this.settings[key] === "undefined") {
+            if (typeof this._settings[key] === "undefined") {
                 if (typeof defaultSettings[key] === "function") {
-                    this.settings[key] = defaultSettings[key](this);
+                    this._settings[key] = defaultSettings[key](this);
                 } else {
-                    this.settings[key] = defaultSettings[key];
+                    this._settings[key] = defaultSettings[key];
                 }
             }
         }
         // non-enumerable, so the marker never shows up walking the settings
-        Object.defineProperty(this.settings, trustProxyDefaultSymbol, {
+        Object.defineProperty(this._settings, trustProxyDefaultSymbol, {
             configurable: true,
             value: true
         });
@@ -372,27 +372,27 @@ class Application extends Router {
             if (!value) {
                 // compiled, not deleted: an explicit false must shadow a parent's setting when
                 // this app is mounted, and a deleted key would read straight through to it
-                this.settings["trust proxy fn"] = compileTrust(false);
+                this._settings["trust proxy fn"] = compileTrust(false);
             } else {
-                this.settings["trust proxy fn"] = compileTrust(value);
+                this._settings["trust proxy fn"] = compileTrust(value);
             }
             // set explicitly, so a mount no longer inherits the parent's
-            Object.defineProperty(this.settings, trustProxyDefaultSymbol, {
+            Object.defineProperty(this._settings, trustProxyDefaultSymbol, {
                 configurable: true,
                 value: false
             });
         } else if (key === "stat cache") {
             // compiled here so the read path is a number and not a duration to parse per request
-            this.settings["stat cache ms"] = durationSetting(value, "stat cache");
+            this._settings["stat cache ms"] = durationSetting(value, "stat cache");
         } else if (key === "query parser") {
             if (value === "extended") {
-                this.settings["query parser fn"] = fastQueryParse;
+                this._settings["query parser fn"] = fastQueryParse;
             } else if (value === "simple" || value === true) {
-                this.settings["query parser fn"] = parseQuery;
+                this._settings["query parser fn"] = parseQuery;
             } else if (typeof value === "function") {
-                this.settings["query parser fn"] = value;
+                this._settings["query parser fn"] = value;
             } else if (value === false) {
-                this.settings["query parser fn"] = undefined;
+                this._settings["query parser fn"] = undefined;
             } else {
                 // express's wording, which applications match on
                 throw new TypeError("unknown value for query parser function: " + value);
@@ -414,18 +414,18 @@ class Application extends Router {
             // request. Registering a route or a middleware after listen still takes them back,
             // see router.js:1615: that is a different question, about code the analysis never saw.
             if (typeof value === "function") {
-                this.settings["etag fn"] = value;
+                this._settings["etag fn"] = value;
             } else {
                 switch (value) {
                     case true:
                     case "weak":
-                        this.settings["etag fn"] = createETagGenerator({ weak: true });
+                        this._settings["etag fn"] = createETagGenerator({ weak: true });
                         break;
                     case "strong":
-                        this.settings["etag fn"] = createETagGenerator({ weak: false });
+                        this._settings["etag fn"] = createETagGenerator({ weak: false });
                         break;
                     case false:
-                        delete this.settings["etag fn"];
+                        delete this._settings["etag fn"];
                         break;
                     default:
                         // express's wording, which applications match on
@@ -434,7 +434,7 @@ class Application extends Router {
             }
         }
 
-        this.settings[key] = value;
+        this._settings[key] = value;
         // any app's hot-settings copy may resolve through this one, see Router#_hot
         settingsEpoch.n++;
         return this;
@@ -529,6 +529,9 @@ class Application extends Router {
     _serveGeneric(res, req) {
         const request = this.handleRequest(res, req);
         const response = request.res;
+        if (request._badFraming === true) {
+            return this._refuseFraming(response);
+        }
         try {
             this._routeRequestDirect(request, response);
         } finally {

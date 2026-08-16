@@ -296,7 +296,7 @@ module.exports = class Response extends LazyWritable {
         // "connection headers" off advertises neither, which Express always does: see below for
         // the one this still writes.
         this.headers =
-            res._nodeRes || app.settings["connection headers"] === false
+            res._nodeRes || app._settings["connection headers"] === false
                 ? {}
                 : {
                       connection: "keep-alive",
@@ -1066,7 +1066,7 @@ module.exports = class Response extends LazyWritable {
         let stat = options._stat;
         if (!stat) {
             try {
-                stat = cachedStat(fullpath, this.app.settings["stat cache ms"]);
+                stat = cachedStat(fullpath, this.app._settings["stat cache ms"]);
             } catch (err) {
                 // the fs error itself, carrying its errno and path, with send's status written on
                 // it: a missing file is the request's 404, an unreadable one is the server's 500

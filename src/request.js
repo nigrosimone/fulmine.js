@@ -152,6 +152,30 @@ const discardedDuplicates = new Set([
 // 128 KB of body buffered before uWS is asked to pause
 const READABLE_OPTIONS = { highWaterMark: 128 * 1024 };
 
+/**
+ * Whether a content-length is a plain count of bytes, which is the only thing RFC 9112 allows.
+ *
+ * uWS trims the spaces around the value and then takes whatever is left, so "", "abc", "+1", "-1",
+ * "0x10" and "1e2" all arrive here. Every one of them makes uWS frame the request as carrying no
+ * body, and what the client sent as a body is then read as the next request on the connection.
+ * Node's parser refuses all of them outright, and so does this.
+ *
+ * @param {string} value as uWS hands it over
+ * @returns {boolean}
+ */
+function isByteCount(value) {
+    if (value.length === 0) {
+        return false;
+    }
+    for (let i = 0; i < value.length; i++) {
+        const code = value.charCodeAt(i);
+        if (code < 0x30 || code > 0x39) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Whose headers the shared collector below is filling. uWS's forEach is synchronous and runs no
 // user code, so the handoff cannot interleave; module-level so the callback exists once instead
 // of once per request.
@@ -336,6 +360,15 @@ module.exports = class Request extends LazyReadable {
             (headerKey.length === 14 && headerKey === "content-length") ||
             (headerKey.length === 17 && headerKey === "transfer-encoding")
         ) {
+            if (headerKey.length === 14) {
+                // a second content-length whatever it says, and one that is not a count of bytes:
+                // both make uWS frame the request differently from what is on the wire, see
+                // _badFraming and isByteCount
+                if (r._sawContentLength || !isByteCount(value)) {
+                    r._badFraming = true;
+                }
+                r._sawContentLength = true;
+            }
             // saying anything about framing at all, "0" included. A parser that can see a
             // content-length answers about the body it describes, even an empty one: a zero length
             // with a charset nobody can decode is a 415 in express and here, so a chain may only
@@ -440,6 +473,33 @@ module.exports = class Request extends LazyReadable {
     _hasBodyHeaders;
 
     /**
+     * Whether a content-length has already been copied, so a second one is spotted. Declared for
+     * the same reason as rawIp.
+     * @type {boolean|undefined}
+     */
+    _sawContentLength;
+
+    /**
+     * Whether the request said two different things about how long its body is, so uWS may have
+     * framed it differently from the client that sent it and the proxy that forwarded it. Two
+     * shapes reach this, and node's parser refuses both outright:
+     *
+     *   a repeated content-length     uWS frames on the first and drops the rest, so a proxy in
+     *                                 front reading the last one instead forwards bytes uWS then
+     *                                 answers as a second, pipelined request
+     *   one that is not a byte count  uWS keeps whatever is left after trimming, an empty value
+     *                                 included, and frames the request as carrying no body at all,
+     *                                 which turns the body the client sent into that same second
+     *                                 request. See isByteCount
+     *
+     * Either way it is request smuggling, and the request is refused rather than routed. Declared
+     * for the same reason as rawIp.
+     *
+     * @type {boolean|undefined}
+     */
+    _badFraming;
+
+    /**
      * Whether the client asked for the connection to be closed. Declared for the same reason.
      * @type {boolean|undefined}
      */
@@ -504,10 +564,18 @@ module.exports = class Request extends LazyReadable {
             // which is 0.2us on a request that is about to read a body.
             const length = req.getHeader("content-length");
             const transferEncoding = req.getHeader("transfer-encoding");
+            // A content-length of "0" declares no body and used to stay on the cheap side, but
+            // getHeader only ever returns the first of a repeated header, so a duplicate cannot be
+            // seen from here, and a duplicate has to be refused rather than routed: see
+            // _badFraming. Anything that says a word about framing takes the full copy instead.
+            //
+            // One shape stays invisible here, a content-length present with an empty value: uWS
+            // answers "" for that and for a header that was never sent, and nothing in its API
+            // tells them apart. It frames both as carrying no body, which is the right reading of
+            // the second, so this server stays consistent with itself either way. The full copy
+            // below does refuse it, which is every request except a GET whose whole chain provably
+            // reads no header at all.
             if (length !== "" || transferEncoding !== "") {
-                this._hasBodyHeaders = true;
-            }
-            if ((length !== "" && length !== "0") || transferEncoding !== "") {
                 currentRequest = this;
                 this._req.forEach(Request.#collectHeader);
                 currentRequest = null;

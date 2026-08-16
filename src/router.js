@@ -178,7 +178,10 @@ class Walk {
         // inside the route. req.next itself is left alone: making it mean this everywhere is what
         // express does, and it breaks express own res.format and app.routes.error tests here, so
         // that stays open rather than half done.
-        this.leaveRoute = this.stepOutOfRoute.bind(this);
+        //
+        // Null here and bound on the first route that has more than one callback, which is the
+        // only shape that ever reads it: a request that never meets one paid a bind for nothing
+        this.leaveRoute = null;
     }
 
     /**
@@ -362,7 +365,7 @@ class Walk {
         // express hands res.format's handlers the next its own layer received, and its test asserts
         // that identity. With more than one callback the two differ for real, and what express
         // hands over is the one that leaves the route
-        req._leaveRoute = route.callbacks.length > 1 ? this.leaveRoute : this.next;
+        req._leaveRoute = route.callbacks.length > 1 ? (this.leaveRoute ??= this.stepOutOfRoute.bind(this)) : this.next;
         if (continueRoute === "route") {
             this.step("route");
         } else if (continueRoute) {
@@ -475,7 +478,7 @@ class Walk {
                 rememberApp(this, route, req);
                 useApp(req, callback);
             }
-            const pushedParams = callback.settings.mergeParams;
+            const pushedParams = callback._settings.mergeParams;
             if (pushedParams) {
                 (req._paramStack ??= []).push(req.params);
             }
@@ -679,7 +682,7 @@ function setMountedPath(req) {
  */
 function mergesParams(route, fallback) {
     const owner = route.owner ?? fallback;
-    return Boolean(owner?.settings?.mergeParams);
+    return Boolean(owner?._settings?.mergeParams);
 }
 
 /**
@@ -818,6 +821,46 @@ function onNativeAborted() {
     request.destroy(request.listenerCount("error") > 0 ? err : undefined);
     response.socket?.emit("error", err);
 }
+
+/**
+ * What app.settings is wrapped in, so a write that never went through set() still tells the hot
+ * copies they are out of date. Only writes are trapped: a missing trap is the plain operation on
+ * the object itself, so reads through here behave exactly as they did.
+ *
+ * defineProperty is here for the trust proxy default marker, which set() writes that way, and for
+ * anything else reaching for Object.defineProperty rather than an assignment.
+ */
+const settingsWriteTraps = {
+    /**
+     * @param {any} target
+     * @param {string|symbol} key
+     * @param {any} value
+     */
+    set(target, key, value) {
+        target[key] = value;
+        settingsEpoch.n++;
+        return true;
+    },
+    /**
+     * @param {any} target
+     * @param {string|symbol} key
+     */
+    deleteProperty(target, key) {
+        delete target[key];
+        settingsEpoch.n++;
+        return true;
+    },
+    /**
+     * @param {any} target
+     * @param {string|symbol} key
+     * @param {any} descriptor
+     */
+    defineProperty(target, key, descriptor) {
+        Object.defineProperty(target, key, descriptor);
+        settingsEpoch.n++;
+        return true;
+    }
+};
 
 /**
  * The per-request constants of a fully literal native registration. µWS matched the URL byte for
@@ -1294,19 +1337,26 @@ module.exports = class Router extends EventEmitter {
         // an array when mounted on several paths at once, as Express allows
         /** @type {string|string[]} */
         this.mountpath = "/";
-        this.settings = settings;
+        // The settings twice: the plain object everything inside here reads, and the Proxy the
+        // outside gets. Express lets an application write app.settings["x"] straight, which set()
+        // never sees, so the hot copies in _hot() would keep answering the old value until an
+        // unrelated set() happened to bump the epoch and the change landed by surprise. The trap
+        // bumps it on the spot. Reading through a Proxy costs about 20ns, which is why the inside
+        // never does: _settings is the same object without the wrapper.
+        this._settings = settings;
+        this.settings = new Proxy(settings, settingsWriteTraps);
         // the base classes; an Application replaces these with its own per-app subclasses, and a
         // plain router has no request/response prototype layer, as in Express
         this._request = Request;
         this._response = Response;
 
         if (typeof settings.caseSensitive !== "undefined") {
-            this.settings["case sensitive routing"] = settings.caseSensitive;
-            delete this.settings.caseSensitive;
+            settings["case sensitive routing"] = settings.caseSensitive;
+            delete settings.caseSensitive;
         }
         if (typeof settings.strict !== "undefined") {
-            this.settings["strict routing"] = settings.strict;
-            delete this.settings.strict;
+            settings["strict routing"] = settings.strict;
+            delete settings.strict;
         }
     }
 
@@ -1393,7 +1443,8 @@ module.exports = class Router extends EventEmitter {
     get(path, ...callbacks) {
         if (typeof path === "string" && callbacks.length === 0) {
             const key = path;
-            const res = this.settings[key];
+            // the raw object, not the Proxy: see the constructor
+            const res = this._settings[key];
             if (typeof res === "undefined" && this.parent) {
                 return this.parent.get(key);
             } else {
@@ -1441,7 +1492,7 @@ module.exports = class Router extends EventEmitter {
      * @returns {boolean}
      */
     _routingFlag(key) {
-        const own = this.settings[key];
+        const own = this._settings[key];
         if (typeof own !== "undefined") {
             return Boolean(own);
         }
@@ -2015,6 +2066,30 @@ module.exports = class Router extends EventEmitter {
     }
 
     /**
+     * Refuses a request whose framing cannot be trusted and hangs up without answering. No route
+     * runs, so nothing downstream can be reached by one.
+     *
+     * Hanging up is the whole point: uWS has already read what followed the body it believed in as
+     * a second, pipelined request, and it dispatches that one unless the socket goes. Node answers
+     * 400 and then closes, and this cannot do both: uWS only skips the queued request when the
+     * response is closed rather than completed, and any of writeStatus, end or endWithoutBody
+     * completes it. Measured every combination, and delivering the 400 always let the smuggled
+     * request through, so the close wins and the client gets nothing. Nothing legitimate sends two
+     * content-lengths, so there is no well-behaved client to explain it to.
+     *
+     * Called once handleRequest has fully returned, never from inside it: an Application links the
+     * response into its pending list after the base call, and the 'close' emitted here is what
+     * takes it back out again.
+     *
+     * @param {any} response
+     */
+    _refuseFraming(response) {
+        response.finished = true;
+        response._res.close();
+        response.emit("close");
+    }
+
+    /**
      * Tells uWS whom to call on a client abort. Out of handleRequest, because uWS only needs it
      * for a response that outlives its handler callback: the native handler arms it in its
      * finally when the answer is still pending, which on a synchronous route it never is.
@@ -2120,6 +2195,9 @@ module.exports = class Router extends EventEmitter {
                 }
                 const request = this.handleRequest(res, req, preset, skipHolder);
                 const response = request.res;
+                if (request._badFraming === true) {
+                    return this._refuseFraming(response);
+                }
                 if (optimizedParams) {
                     request.optimizedParams = new NullObject();
                     for (let i = 0; i < optimizedParams.length; i++) {

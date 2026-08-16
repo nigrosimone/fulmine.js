@@ -538,7 +538,7 @@ function serveStatic(root, options) {
                 filePath,
                 req.headers["accept-encoding"],
                 twinTtl,
-                req.app.settings["stat cache ms"]
+                req.app._settings["stat cache ms"]
             );
             if (twin) {
                 stat = twin.stat;
@@ -546,7 +546,7 @@ function serveStatic(root, options) {
         }
         try {
             if (stat === undefined) {
-                stat = cachedStat(statTarget, req.app.settings["stat cache ms"]);
+                stat = cachedStat(statTarget, req.app._settings["stat cache ms"]);
             }
         } catch (err) {
             // the one to report when nothing is found: send hands each failed attempt to the next
@@ -656,7 +656,12 @@ function serveStatic(root, options) {
             // already found before the stat below, on the ordinary path
             const variant =
                 twin ??
-                pickPrecompressed(filePath, req.headers["accept-encoding"], twinTtl, req.app.settings["stat cache ms"]);
+                pickPrecompressed(
+                    filePath,
+                    req.headers["accept-encoding"],
+                    twinTtl,
+                    req.app._settings["stat cache ms"]
+                );
             if (variant) {
                 _path += variant.suffix;
                 stat = variant.stat;
