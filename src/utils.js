@@ -961,6 +961,13 @@ const defaultSettings = {
     // The native µWS router matches bytes, so the compiler in _compileOptimizedRoutes only hands
     // it routes whose earlier siblings it can prove agree under either case rule.
     "declarative responses": true,
+    // on. Off hands every request to the ordinary chain instead of letting µWS match what it can,
+    // which is slower and answers the same. Not a tuning knob: it exists so one application can be
+    // served both ways and the two sets of answers compared, which tests the optimizer against the
+    // rest of the framework without a second framework to compare with. See
+    // `npm run fuzz -- --self`. A compiled response needs a native registration to hang on, so this
+    // takes "declarative responses" with it.
+    "native routes": true,
     // off: with a window set, the size and mtime of a file served by sendFile are remembered for
     // it, which is one syscall less per request and a file that can be served as it was a moment
     // ago. "stat cache ms" is the window in milliseconds, compiled from it by set()

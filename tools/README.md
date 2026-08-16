@@ -23,7 +23,18 @@ npm run fuzz                        # a few hundred rounds on a seed nobody chos
 npm run fuzz -- --rounds 500        # longer
 npm run fuzz -- --seed 12345 --rounds 1   # replay exactly what a past run did
 npm run fuzz -- --keep-going        # do not stop at the first divergence
+npm run fuzz -- --self              # against itself with the optimizer off, not against Express
 ```
+
+`--self` swaps the Express arm for a second copy of this framework with `native routes` off, so
+every request there walks the ordinary chain. Every native registration, compiled response and
+granted skip is a claim that µWS answering by itself gives the answer the chain would have given,
+and that claim is where the bugs have been: an analysis reading a pattern as narrower than it is, a
+route that never gets its turn, a guard that does not fire. A divergence in this mode is a bug by
+construction — the same code answered the same request two ways — and it needs no oracle, so it
+also reaches the shapes Express has no opinion about. Checked by putting a known bug back and
+confirming it is caught: with the wildcard fix reverted, `--self --seed 220496 --rounds 1` reports
+the mounted route answering where the earlier one should have.
 
 Two things make it a tool rather than a lucky script. Every round is drawn from a seeded generator,
 so a failure prints the seed that reproduces it. And the failure is then **shrunk**: routes and

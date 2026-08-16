@@ -1951,6 +1951,13 @@ module.exports = class Router extends EventEmitter {
         if (!this.uwsApp) {
             return;
         }
+        // Everything below is what makes this framework fast, and every one of its decisions is a
+        // claim that µWS answering by itself is the same answer the chain would have given. Turned
+        // off, the claim is not made and the chain answers everything. Serving one application both
+        // ways and comparing the answers is what tests those claims: `npm run fuzz -- --self`.
+        if (this.get("native routes") === false) {
+            return;
+        }
 
         // pathPrefix/chainPrefix accumulate across nested sole-callback mounts, and outerGuards
         // carries what was written before them and answers only part of what is under them

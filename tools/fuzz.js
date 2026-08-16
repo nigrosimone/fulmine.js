@@ -9,6 +9,8 @@
 //   node tools/fuzz.js --rounds 500        longer
 //   node tools/fuzz.js --seed 12345        replay exactly what a past run did
 //   node tools/fuzz.js --keep-going        do not stop at the first divergence
+//   node tools/fuzz.js --self             compare this framework against itself with the
+//                                          optimizer off, instead of against express
 //
 // Two things make it a tool rather than a lucky script. Every round is drawn from a seeded
 // generator, so a failure prints the seed that reproduces it. And a failure is then shrunk: routes
@@ -24,6 +26,19 @@ const { COMPARED_HEADERS, PRESENCE_ONLY_HEADERS } = require(path.join(__dirname,
 
 // x-powered-by, content-length and transfer-encoding stay out for the reasons tests/helpers.js
 // gives: the two servers differ there by design rather than by fault.
+
+// --self compares this framework against itself with the optimizer off instead of against Express.
+//
+// Every native registration, compiled response and granted skip is a claim that µWS answering by
+// itself gives the answer the ordinary chain would have given. That claim is what this project is,
+// and it is where the bugs have been: the analysis reading a pattern as narrower than it is, a
+// route that never gets its turn, a guard that does not fire. Comparing the two arms tests it
+// directly, with no second framework in the way, so it also reaches the shapes Express has no
+// opinion about. A divergence here is a bug by construction: the same code answered the same
+// request two different ways.
+const SELF = process.argv.includes("--self");
+const LEFT = SELF ? "generic" : "express";
+const RIGHT = SELF ? "native " : "fulmine";
 
 /** @param {number} seed @returns {() => number} the same sequence for the same seed */
 function mulberry32(seed) {
@@ -885,8 +900,15 @@ function express_bodyParser(factory, kind) {
 }
 
 /** Registers a plan on a framework and starts it. Returns the app and how to stop it. */
-async function instantiate(plan, factory, port) {
+async function instantiate(plan, factory, port, generic) {
     const app = factory();
+    // The reference arm of a --self run: the same framework with its optimizer off, so every
+    // request walks the ordinary chain. One setting is enough, a compiled response needs a native
+    // registration to hang on and goes with it. Set before the plan's own, which never name it, so
+    // a plan cannot turn the optimizer back on for the arm that is meant to be without it.
+    if (generic) {
+        app.set("native routes", false);
+    }
     for (const [key, value] of Object.entries(plan.settings)) app.set(key, value);
     // registered on every plan: an engine costs nothing until something renders, and a mounted
     // application inherits it, which is part of what this is here to compare
@@ -1053,7 +1075,9 @@ async function runPlan(plan, stopAtFirst) {
     const portB = nextPort++;
     let a, b;
     try {
-        a = await instantiate(plan, realExpress, portA);
+        // in a --self run the reference is this framework with its optimizer off, so what a
+        // divergence reports is the optimizer disagreeing with the chain it is meant to stand in for
+        a = SELF ? await instantiate(plan, fulmine, portA, true) : await instantiate(plan, realExpress, portA, false);
     } catch (err) {
         // a path express itself refuses is not a bug in ours
         return { divergences: [], checked: 0, skipped: String(err.message) };
@@ -1282,8 +1306,8 @@ async function main() {
         const target = result.divergences[0];
         console.log(`\n=== divergence in round ${round}, seed ${seed} (replay: --seed ${seed} --rounds 1)`);
         console.log(`${target.method} ${target.url}${target.conditional ? " asked again with if-none-match" : ""}`);
-        console.log(`  express: ${target.express}`);
-        console.log(`  fulmine: ${target.fulmine}`);
+        console.log(`  ${LEFT}: ${target.express}`);
+        console.log(`  ${RIGHT}: ${target.fulmine}`);
         if (result.divergences.length > 1)
             console.log(`  (${result.divergences.length} requests disagree in this round)`);
 
@@ -1294,8 +1318,8 @@ async function main() {
         // round: a reader comparing them against this source would be reading two applications
         const confirmed = await runPlan(small, true);
         if (confirmed.divergences.length) {
-            console.log(`  express: ${confirmed.divergences[0].express}`);
-            console.log(`  fulmine: ${confirmed.divergences[0].fulmine}`);
+            console.log(`  ${LEFT}: ${confirmed.divergences[0].express}`);
+            console.log(`  ${RIGHT}: ${confirmed.divergences[0].fulmine}`);
         } else {
             console.log("  (this shrunk plan does not disagree on its own: it needs the round around it)");
         }
