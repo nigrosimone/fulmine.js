@@ -596,13 +596,23 @@ function canBeOptimizedWithParams(pattern) {
     return true;
 }
 
+// What makes a segment something other than the text it is written as: a parameter, a wildcard, an
+// optional group, or an escape. Only two plain literals can prove that two paths never meet, so
+// anything carrying one of these has to be read as "could be anything".
+const NOT_A_LITERAL = /[:*{}\\]/;
+
 /**
  * Whether two paths could both match the same request.
  *
- * Only asked about paths µWS could match itself, so the answer is structural: the same number of
- * segments, and no position where two different literals meet. `/orders/:id` and `/invoices/:id`
- * cannot both match, `/users/:id` and `/users/me` can. Anything else is not asked, and the caller
- * reads "do not know" as yes.
+ * The answer is structural: no position where two different literals meet, and, when neither path
+ * can change length, the same number of segments. `/orders/:id` and `/invoices/:id` cannot both
+ * match, `/users/:id` and `/users/me` can. The caller reads "do not know" as yes, so every doubt
+ * answers true: saying two paths overlap only costs a native registration, while missing one lets
+ * µWS answer a request that belonged to an earlier route.
+ *
+ * A parameter is not the only shape that matches more than itself. A wildcard and an optional group
+ * do too, and reading `{:opt}` or `*splat` as the literal text it is written as reported "cannot
+ * overlap" for a route that plainly could, which took the earlier route's turn away.
  *
  * @param {string} a
  * @param {string} b
@@ -612,15 +622,19 @@ function canBeOptimizedWithParams(pattern) {
 function pathsCanOverlap(a, b, aIsPrefix = false) {
     const left = a.split("/");
     const right = b.split("/");
-    if (aIsPrefix ? left.length > right.length : left.length !== right.length) {
+    // An optional group matches its segment or nothing at all and a wildcard matches several, so a
+    // path carrying either one matches more than one length and the count settles nothing.
+    const fixedLength =
+        a.indexOf("{") === -1 && b.indexOf("{") === -1 && a.indexOf("*") === -1 && b.indexOf("*") === -1;
+    if (fixedLength && (aIsPrefix ? left.length > right.length : left.length !== right.length)) {
         return false;
     }
-    for (let i = 0; i < left.length; i++) {
+    const shared = left.length < right.length ? left.length : right.length;
+    for (let i = 0; i < shared; i++) {
         if (left[i] === right[i]) {
             continue;
         }
-        // a parameter matches whatever is in that segment, so only two different literals settle it
-        if (left[i].charCodeAt(0) === 0x3a || right[i].charCodeAt(0) === 0x3a) {
+        if (NOT_A_LITERAL.test(left[i]) || NOT_A_LITERAL.test(right[i])) {
             continue;
         }
         return false;
