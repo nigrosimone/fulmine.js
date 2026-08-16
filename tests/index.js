@@ -57,11 +57,19 @@ async function waitForFreePorts(ports) {
 const NODE_ARGS = process.platform === "win32" ? `--require "${path.join(__dirname, "win-exit-delay.cjs")}" ` : "";
 // what a file asking for it gets, see tests/inspect-preload.cjs
 const INSPECT_ARG = `--require "${path.join(__dirname, "inspect-preload.cjs")}" `;
+// the reference arm of a --self run, see tests/generic-preload.cjs
+const GENERIC_ARG = `--require "${path.join(__dirname, "generic-preload.cjs")}" `;
+
+// --self replaces the Express arm with a second run of this framework, with the optimizer off.
+// Every file then answers the question the corpus was not written for: does µWS answering by itself
+// give what the ordinary chain gives. A divergence is a bug by construction rather than a
+// compatibility question, so nothing about Express bounds what it can catch.
+const SELF = process.argv.includes("--self");
 
 const testPath = path.join(__dirname, "tests");
 
 let testCategories = fs.readdirSync(testPath).sort((a, b) => parseInt(a) - parseInt(b));
-const filterPath = process.argv[2];
+const filterPath = process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : undefined;
 
 if (filterPath) {
     if (!filterPath.endsWith(".js")) {
@@ -161,7 +169,8 @@ for (const testCategory of testCategories) {
                     const ports = portsOf(testCode);
                     const execTest = async (module) => {
                         await waitForFreePorts(ports);
-                        const command = `node ${NODE_ARGS}${marker === "INSPECT" ? INSPECT_ARG : ""}"${testPath}"`;
+                        const generic = module === "generic" ? GENERIC_ARG : "";
+                        const command = `node ${NODE_ARGS}${marker === "INSPECT" ? INSPECT_ARG : ""}${generic}"${testPath}"`;
                         const options = { maxBuffer: 1024 * 1024 * 100, timeout: TEST_TIMEOUT, killSignal: "SIGKILL" };
                         for (let attempt = 1; ; attempt++) {
                             try {
@@ -191,11 +200,6 @@ for (const testCategory of testCategories) {
                     };
 
                     try {
-                        // Express 5 is the reference. The package named "express" is v5, so the
-                        // test file runs as written.
-                        const expressOutput = await execTest("express");
-
-                        // Run the same file against fulmine
                         const newCode = testCode.replace(
                             `const express = require("express");`,
                             `const express = require("../../../src/index.js");`
@@ -203,8 +207,21 @@ for (const testCategory of testCategories) {
                         if (newCode === testCode) {
                             throw new Error("Test code does not contain require express");
                         }
-                        swapped = { path: testPath, code: testCode };
-                        fs.writeFileSync(testPath, newCode);
+
+                        // Express 5 is the reference. The package named "express" is v5, so the
+                        // test file runs as written. Under --self the reference is this framework
+                        // with its optimizer off, so the file points at the source for both arms
+                        // and only the preload differs.
+                        let expressOutput;
+                        if (SELF) {
+                            swapped = { path: testPath, code: testCode };
+                            fs.writeFileSync(testPath, newCode);
+                            expressOutput = await execTest("generic");
+                        } else {
+                            expressOutput = await execTest("express");
+                            swapped = { path: testPath, code: testCode };
+                            fs.writeFileSync(testPath, newCode);
+                        }
                         const fulmineOutput = await execTest("fulmine");
 
                         if (fulmineOutput !== expressOutput) {

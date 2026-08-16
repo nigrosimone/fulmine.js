@@ -7,6 +7,8 @@ npm test                  # the comparison suite: every test runs against Expres
                           # Fulmine, and the two outputs have to match byte for byte
 npm test middlewares      # one category
 npm test tests/tests/res/res-send.js   # one file
+npm test -- --self        # every file twice against this framework, the reference arm with its
+                          # optimizer off, so a difference is the optimizer and not Express
 
 npm run test:unit         # the pure functions, which the comparison cannot reach
 npm run test:types        # the TypeScript declarations, through tsd
@@ -64,6 +66,16 @@ clone still has, and some is internals used as public API.
 `npm run fuzz` is the third kind: it builds random applications, registers them on Express and on
 this, and compares the answers. A divergence prints the seed that reproduces it and the case shrunk
 to the few lines worth keeping. Twenty rounds on a random seed run on every push.
+
+`--self` is the fourth, and it is the only one with no oracle in it. Both `npm test -- --self` and
+`npm run fuzz -- --self` serve the same application twice with this framework, the reference arm
+with `native routes` off so every request walks the ordinary chain. Each native registration,
+compiled response and granted skip is a claim that µWS answering by itself gives what the chain
+would have given, and that claim is where the bugs have been. A divergence there is a bug by
+construction: the same code answered the same request two ways. Nothing about Express bounds it,
+which is why it is worth running over the whole comparison corpus and not only over generated
+applications — the corpus already holds the view engines, sessions, uploads and real middleware
+nobody would think to generate.
 
 [`tools/README.md`](./tools/README.md) covers those two and the release script.
 [`benchmark/README.md`](./benchmark/README.md) covers measuring, including why the A/B runs
