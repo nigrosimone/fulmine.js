@@ -1860,6 +1860,16 @@ module.exports = class Router extends EventEmitter {
                 }
             }
 
+            // The same rule as the one just above, which a route of another method reaches by
+            // another road. A mount's chain is inherited by every path under it, and a route that
+            // is not itself a mount answers the mount point rather than the subtree: in the chain
+            // it ran for the whole of it, so router.all("/:p1") answered the /posts/a-b that
+            // belongs to the router mounted at /posts. guardsInside is written for this: only
+            // layers with more segments than the mount path are asked about a leaf.
+            if (route.use && !r.use && typeof route.path === "string" && couldAnswer(r, route.path)) {
+                return false;
+            }
+
             // a RegExp mount runs only where its match starts the path and breaks on a separator,
             // which is decidable here against a literal path and not against one with a parameter
             if (r.regexMount) {
