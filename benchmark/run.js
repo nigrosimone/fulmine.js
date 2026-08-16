@@ -280,6 +280,11 @@ function buildMarkdown(results, historySection) {
     lines.push("<!-- benchmark-comment -->");
     lines.push("## Benchmark Comparison");
     lines.push("");
+    // the runner pool holds several cpu models and the ratios are machine dependent, in both
+    // directions: two consecutive comments are usually two different machines, and without this
+    // line the reader has no way to see that
+    lines.push(`Runner: \`${machineKey()}\``);
+    lines.push("");
     lines.push(
         "| Test | Express req/sec | Fulmine req/sec | Express p99 | Fulmine p99 | Express throughput | Fulmine throughput | Fulmine speedup |"
     );

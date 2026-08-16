@@ -184,3 +184,60 @@ test("a ratio that fell is marked for a look, one that rose is marked as a win",
     // under the noise floor, so neither: a table of a dozen ratios always has one of these
     assert.match(out, /\| weather \|/);
 });
+
+test("with a window, a move the recent runs have already seen is not marked", () => {
+    // five runs that wandered between 1.8 and 2.3 on the same code: that band is this row's own
+    // weather, and a sixth run inside it is not news however far it sits from the fifth
+    const wander = [1.8, 2.3, 2.0, 2.2, 1.9];
+    const windowRuns = wander.map((speedup, index) =>
+        runOf({ jumpy: { speedup, express: 100, fulmine: speedup * 100 } }, `2026-08-0${index + 1}T00:00:00.000Z`)
+    );
+    const previous = windowRuns[windowRuns.length - 1];
+
+    // +15.8% against the last run, and inside the band: the flat floor used to flag this
+    const inside = runOf({ jumpy: { speedup: 2.2, express: 100, fulmine: 220 } });
+    let { rows } = compareRuns(previous, inside, windowRuns);
+    assert.strictEqual(rows[0].notable, false);
+
+    // outside the band and past the floor from the median: real news
+    const outside = runOf({ jumpy: { speedup: 2.6, express: 100, fulmine: 260 } });
+    ({ rows } = compareRuns(previous, outside, windowRuns));
+    assert.strictEqual(rows[0].notable, true);
+
+    // outside the band but within the floor of the median: a band this tight proves nothing
+    const tightWindow = [2.0, 2.01, 2.02].map((speedup, index) =>
+        runOf({ jumpy: { speedup, express: 100, fulmine: speedup * 100 } }, `2026-08-0${index + 1}T00:00:00.000Z`)
+    );
+    const nudge = runOf({ jumpy: { speedup: 2.1, express: 100, fulmine: 210 } });
+    ({ rows } = compareRuns(tightWindow[2], nudge, tightWindow));
+    assert.strictEqual(rows[0].notable, false);
+});
+
+test("a bound row is never marked, its ratio cannot really move", () => {
+    const previous = runOf({ ceiling: { speedup: 1.09, express: 1000, fulmine: 1090, bound: true } });
+    const current = runOf({ ceiling: { speedup: 0.92, express: 1000, fulmine: 920, bound: true } });
+
+    const { rows } = compareRuns(previous, current);
+    assert.strictEqual(rows[0].notable, false);
+    assert.strictEqual(rows[0].bound, true);
+});
+
+test("the record carries the bound mark, and the baseline carries the recent window", () => {
+    const record = runRecordOf([
+        { ...row("free", 100, 200) },
+        { ...row("capped", 1000, 1020), bound: { by: "utf8+JSON.parse", ceiling: 1.02 } }
+    ]);
+    assert.strictEqual(record.scenarios.free.bound, undefined);
+    assert.strictEqual(record.scenarios.capped.bound, true);
+
+    const key = "linux-x64-4c-node26-cpu";
+    const history = {
+        [key]: Array.from({ length: 8 }, (unused, index) =>
+            runOf({}, `2026-08-0${index + 1}T00:00:00.000Z`, `c${index}`)
+        )
+    };
+    const baseline = baselineFor(history, key, "linux-x64-4c-node26");
+    // the window is the tail of the kept runs, and the run column stays the very last one
+    assert.strictEqual(baseline.runs.length, 5);
+    assert.strictEqual(baseline.runs[4], baseline.run);
+});

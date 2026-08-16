@@ -28,6 +28,13 @@ const KEEP = 20;
 // of twelve ratios always has one that moved a few percent
 const NOTABLE = 0.1;
 
+// how many recent runs the band is learned from. Against a single run the flat floor fired on one
+// to three rows of nearly every recorded section, measured over 45 of them: a single 20s pass per
+// arm has a p90 wobble of 13 to 19% on the routing rows, so one bad window flags twice, once going
+// in and once on the recovery. Five runs is enough to hold the band and short enough to follow a
+// real step
+const WINDOW = 5;
+
 /**
  * The shape of this machine without the cpu model: same platform, same width, same major node.
  * A hosted runner pool holds more than one cpu, so this is often the only key two runs share.
@@ -103,6 +110,11 @@ function runRecordOf(results) {
                 express: Math.round(row.express.requestsPerSec),
                 fulmine: Math.round(row.ultimate.requestsPerSec)
             };
+            // carried so the comparison can leave the row unmarked: a bound ratio cannot really
+            // move, so a flag on it is weather by construction. The summary's own footnote says so
+            if (row.bound) {
+                scenarios[row.name].bound = true;
+            }
         }
     }
     return {
@@ -138,7 +150,9 @@ function lastRunFor(history, key) {
 function baselineFor(history, exact, loose) {
     const here = lastRunFor(history, exact);
     if (here) {
-        return { run: here, exact: true, key: exact };
+        // the recent window rides along: the band a row is judged against is learned from it,
+        // rather than from the single last run, whose own bad 20s window would flag twice
+        return { run: here, runs: history[exact].slice(-WINDOW), exact: true, key: exact };
     }
 
     let best = null;
@@ -148,7 +162,7 @@ function baselineFor(history, exact, loose) {
         }
         const run = lastRunFor(history, key);
         if (run && (!best || String(run.at) > String(best.run.at))) {
-            best = { run, exact: false, key };
+            best = { run, runs: history[key].slice(-WINDOW), exact: false, key };
         }
     }
     return best;
@@ -172,13 +186,24 @@ function appendRun(file, history, key, run) {
 /**
  * Scenario by scenario, what moved between two runs on the same machine.
  *
+ * The change shown is against the last run, which is what a reader wants to see. Whether it is
+ * marked is decided against the recent window instead, when there is one: a row is notable only
+ * when it left the whole range those runs stayed in AND sits at least the noise floor away from
+ * their median. Retro-tested over the 45 recorded sections this halves the flags while every
+ * step that showed on more than one machine still gets marked. A bound row is never marked: its
+ * ratio cannot really move, the main table's own footnote says so, and its twelve recorded flags
+ * were all weather.
+ *
  * @param {any} previous
  * @param {any} current
+ * @param {any[]} [windowRuns] recent runs under the same key, oldest first; absent means only the
+ *   previous run is known and the flat floor decides alone
  * @returns {{rows: any[], added: string[], missing: string[]}}
  */
-function compareRuns(previous, current) {
+function compareRuns(previous, current, windowRuns) {
     const before = previous.scenarios || {};
     const after = current.scenarios || {};
+    const runs = Array.isArray(windowRuns) && windowRuns.length > 0 ? windowRuns : [previous];
     const rows = [];
 
     for (const name of Object.keys(after)) {
@@ -186,12 +211,26 @@ function compareRuns(previous, current) {
             continue;
         }
         const change = after[name].speedup / before[name].speedup - 1;
+        const bound = Boolean(after[name].bound || before[name].bound);
+        const seen = runs.map((run) => run.scenarios?.[name]?.speedup).filter((speedup) => typeof speedup === "number");
+        let notable;
+        if (bound) {
+            notable = false;
+        } else if (seen.length > 1) {
+            const sorted = [...seen].sort((a, b) => a - b);
+            const median = sorted[Math.floor(sorted.length / 2)];
+            const now = after[name].speedup;
+            notable = (now < sorted[0] || now > sorted[sorted.length - 1]) && Math.abs(now / median - 1) >= NOTABLE;
+        } else {
+            notable = Math.abs(change) >= NOTABLE;
+        }
         rows.push({
             name,
             before: before[name],
             after: after[name],
             change,
-            notable: Math.abs(change) >= NOTABLE
+            bound,
+            notable
         });
     }
 
@@ -219,7 +258,7 @@ function historyMarkdown(baseline, current) {
     }
 
     const previous = baseline.run;
-    const { rows, added, missing } = compareRuns(previous, current);
+    const { rows, added, missing } = compareRuns(previous, current, baseline.runs);
     if (rows.length === 0) {
         return null;
     }
@@ -252,12 +291,16 @@ function historyMarkdown(baseline, current) {
         );
     }
 
+    const windowSize = Array.isArray(baseline.runs) ? baseline.runs.length : 1;
     lines.push("");
     lines.push(
         `Only the ratio is comparable across runs: the absolute req/sec are not, and are shown only to say ` +
-            `which arm moved. This benchmark's noise floor is about ±${Math.round(NOTABLE * 100)}%, so only the ` +
-            `marked rows are worth reading, and even those are worth a second run before they are worth a ` +
-            `bisect. :eyes: is a ratio that fell that far, :trophy: one that rose that far.`
+            `which arm moved. A row is marked when it left the whole range of the last ` +
+            `${windowSize} run${windowSize === 1 ? "" : "s"} on this machine and sits at least ` +
+            `±${Math.round(NOTABLE * 100)}% from their median; a single 20s pass wobbles up to that much on its ` +
+            `own, so even a marked row is worth a second run before it is worth a bisect. Rows the main table ` +
+            `marks as bound are never flagged, their ratio cannot really move. ` +
+            `:eyes: is a ratio that fell out of the range, :trophy: one that rose out of it.`
     );
 
     if (!baseline.exact) {
