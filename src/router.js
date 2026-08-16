@@ -1886,13 +1886,9 @@ module.exports = class Router extends EventEmitter {
 
             // check if the paths match. A route with parameters is excluded from the text test:
             // its literal ":name" text would let an earlier regex in on requests it never matches.
-            // Both spellings of this route's path are tried, because without strict routing it
-            // answers "/x/" as well as "/x", and an earlier pattern that matches only the first is
-            // still an earlier pattern that answers a request this registration would take.
+            const regexCanMatch = r.pattern instanceof RegExp && (!withParams || r.use);
             if (
-                (r.pattern instanceof RegExp &&
-                    (!withParams || r.use) &&
-                    (r.pattern.test(route.path) || (!strictHere && r.pattern.test(route.path + "/")))) ||
+                (regexCanMatch && r.pattern.test(route.path)) ||
                 (typeof r.pattern === "string" &&
                     (r.pattern === route.path ||
                         (!caseSensitive && r.pattern.toLowerCase() === routePathFolded) ||
@@ -1903,6 +1899,15 @@ module.exports = class Router extends EventEmitter {
                 }
                 optimizedPath.push(r);
                 continue;
+            }
+            // Without strict routing this registration answers "/x/" as well as "/x". An earlier
+            // pattern matching only the second answers part of what the registration takes and not
+            // the rest, which the chain has no way to say: it runs what is in it without matching
+            // again. Both spellings used to put the route in whole, so app.all("/:p0/{:o1}/{:o2}")
+            // answered a GET /list/Mixed that belonged to the route written after it. An ordinary
+            // pattern answers both spellings, so only an optional group or a wildcard reaches here.
+            if (regexCanMatch && !strictHere && r.pattern.test(route.path + "/")) {
+                return false;
             }
             if (!withParams) {
                 continue;
