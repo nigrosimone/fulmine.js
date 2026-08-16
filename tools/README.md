@@ -64,6 +64,32 @@ one corrupt byte while µWS writes proper utf-8. Both compute the same value; on
 Keep generated filenames and header values ASCII. The rest of what is not compared is in
 `tests/helpers.js`: `x-powered-by`, `content-length` and `transfer-encoding`.
 
+## wire-fuzz.js
+
+Fuzzes the bytes rather than the API. Every other tool here speaks through `fetch`, and undici will
+not send a malformed request: it normalises the header block, refuses two Content-Lengths, writes
+its own chunked framing. Nothing generated could reach the HTTP parser at all, which is why the
+framing bug of 2026-08-16 had to be found by writing sockets by hand.
+
+```bash
+npm run fuzz:wire                        # a few hundred cases on a seed nobody chose
+npm run fuzz:wire -- --rounds 2000       # longer
+npm run fuzz:wire -- --seed 12345 --rounds 1   # replay
+npm run fuzz:wire -- --verbose           # every case, not only the findings
+```
+
+The oracle is node's own parser rather than Express: the question is framing, and llhttp is the
+reference this project is a drop-in for. Both servers get the same routes and record what they were
+asked to serve, then the same bytes go to each.
+
+The verdict is asymmetric on purpose. Serving **more** requests out of the same bytes than node, or
+serving a request node refused, is reported: that is the desync smuggling is made of. Serving fewer
+is µWS refusing something, which is safe, and is only listed under `--verbose`. A blind diff would
+drown in the third case, since µWS is a different parser and is allowed to be stricter.
+
+Checked by putting a known bug back: with the framing refusal reverted, `--seed 5000 --rounds 120`
+reports the appended request being served where node reads one message.
+
 ## express-suite.js
 
 Clones `expressjs/express` at the tag matching the installed `express` devDependency, swaps its
