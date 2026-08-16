@@ -2366,6 +2366,10 @@ module.exports = class Router extends EventEmitter {
             route.callbacks.length === 1 && // must not have multiple callbacks
             typeof route.callbacks[0] === "function" && // must be a function
             route.paramCallbacks.size === 0 && // a param callback has to run, and this answers without running anything
+            // a captured value is decoded when the route runs, and one that cannot be decoded is a
+            // 400 in express and on the ordinary path here. Nothing runs to raise it on a
+            // declarative response, so GET /a-b%5Ec@d%e came back 200 from app.get("/:p12")
+            route.optimizedParams === undefined &&
             // a declarative response is answered by µWS itself, so no javascript runs and the case
             // guard could not: a route that needs one has to stay an ordinary handler
             caseGuards === null &&
