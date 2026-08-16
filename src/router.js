@@ -699,6 +699,14 @@ function setMountedPath(req) {
     req._lastUrl = req.url;
 }
 
+// req.path as the request class declares it, taken off the prototype rather than written out a
+// second time. A request the router adopts is a plain object and gets it defined on itself, see
+// adoptPlainRequest. Enumerable, as express's own is.
+const PATH_PROPERTY = {
+    .../** @type {PropertyDescriptor} */ (Object.getOwnPropertyDescriptor(Request.prototype, "path")),
+    enumerable: true
+};
+
 const NO_PARAM_NAMES = [];
 
 /**
@@ -843,15 +851,9 @@ function adoptPlainRequest(req, router) {
     req.urlQuery = queryIndex === -1 ? "" : raw.slice(queryIndex);
     req._rawQuery = req.urlQuery.slice(1);
     req._path = path;
-    // an adopted request is a plain node one, so it carries no prototype of ours: it gets the same
-    // getter, for the same reason. See currentPath
-    Object.defineProperty(req, "path", {
-        configurable: true,
-        enumerable: true,
-        get() {
-            return /** @type {any} */ (Request).currentPath(this);
-        }
-    });
+    // an adopted request is a plain object, so it carries no prototype of ours and reads its path
+    // off a property of its own. The class's getter itself, so there is one of it
+    Object.defineProperty(req, "path", PATH_PROPERTY);
     req.originalUrl = req.originalUrl ?? arrived;
     req._originalPath = path;
     req.endsWithSlash = path.charCodeAt(path.length - 1) === 0x2f;

@@ -268,6 +268,79 @@ test("a client vanishing mid-response reaches the shim's abort path without woun
     await close();
 });
 
+test("req.path through the shim follows a url a middleware assigned", async () => {
+    // a request arriving through node's own server reads its path the way one arriving through µWS
+    // does: off req.url, at once, and not one hop later
+    const app = express();
+    app.get("/plain", (req, res) => res.json({ path: req.path }));
+    app.get(
+        "/rewrite/*rest",
+        (req, res, next) => {
+            req.url = "/taken?q=1";
+            next();
+        },
+        (req, res) => res.json({ path: req.path, url: req.url })
+    );
+
+    // the callable form, so what arrives is a plain node request the router adopts rather than one
+    // of ours
+    const { url, close } = await serve((req, res) =>
+        app(req, res, () => {
+            res.statusCode = 404;
+            res.end("no route");
+        })
+    );
+
+    assert.deepEqual(await (await fetch(`${url}/plain`)).json(), { path: "/plain" });
+    assert.deepEqual(await (await fetch(`${url}/rewrite/a/b`)).json(), { path: "/taken", url: "/taken?q=1" });
+
+    await close();
+});
+
+test("a router driven with a plain object reads its path the same way", async () => {
+    // the other shape a request arrives in: a plain object handed to router.handle, which is how
+    // express's own tests drive a router. It carries no prototype of ours, so the path property is
+    // defined on it as it goes in
+    const router = express.Router();
+    const seen = [];
+    router.get(
+        "/x",
+        (req, res, next) => {
+            seen.push(req.path);
+            req.url = "/y";
+            next();
+        },
+        (req, res) => {
+            seen.push(req.path);
+            res.end();
+        }
+    );
+
+    const noop = () => {};
+    // the answer is what says the walk is over: handle() waits on a response this stand-in never
+    // finishes, so awaiting it would hang
+    const answered = new Promise((resolve) => {
+        router.handle(
+            /** @type {any} */ ({ url: "/x", method: "GET", headers: {} }),
+            /** @type {any} */ ({
+                end: resolve,
+                setHeader: noop,
+                getHeader: () => undefined,
+                writeHead: noop,
+                write: noop,
+                on: noop,
+                once: noop,
+                removeListener: noop,
+                emit: noop
+            }),
+            noop
+        );
+    });
+    await answered;
+
+    assert.deepEqual(seen, ["/x", "/y"]);
+});
+
 test("the callable app hands an unmatched request to its next callback", async () => {
     const app = express();
     app.get("/known", (req, res) => res.send("known"));

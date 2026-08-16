@@ -1618,7 +1618,3 @@ module.exports = class Request extends LazyReadable {
 // req.header is req.get under Express's other name. On the prototype rather than an instance
 // field, which wrote one own property per request in the constructor.
 /** @type {any} */ (module.exports.prototype).header = module.exports.prototype.get;
-
-// hung off the class because the module exports the class itself. The router needs it for a plain
-// node request, which gets the same getter defined on it by hand
-/** @type {any} */ (module.exports).currentPath = currentPath;
