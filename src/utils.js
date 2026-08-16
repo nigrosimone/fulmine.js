@@ -1437,6 +1437,32 @@ const HEADER_TOKEN = /^[\^_`a-zA-Z\-0-9!#$%&'*+.|~]+$/;
 const HEADER_VALUE = /[^\t\x20-\x7e\x80-\xff]/;
 
 /**
+ * One of node's header errors, built the way node builds it.
+ *
+ * Assigning the code is not the whole of it. Node also puts the code in the first line of the
+ * stack, by naming the error "TypeError [THE_CODE]" while V8 formats that line and then taking
+ * the name back off. Whatever prints a stack therefore says which code it was, and the default
+ * error page prints exactly that: without this, the same refusal reads "TypeError:" here and
+ * "TypeError [ERR_INVALID_CHAR]:" behind Express. Found by fuzzing against express.
+ *
+ * @param {string} message
+ * @param {string} code
+ * @returns {NodeJS.ErrnoException}
+ */
+function headerError(message, code) {
+    /** @type {NodeJS.ErrnoException} */
+    const err = new TypeError(message);
+    err.name = `TypeError [${code}]`;
+    // reading it is what makes V8 format the line, and it formats it from the name above
+    void err.stack;
+    // back to the prototype's "TypeError", which is what node leaves behind. Cast because Error
+    // declares name as always present, and this deletes the own property to uncover it again
+    delete (/** @type {any} */ (err).name);
+    err.code = code;
+    return err;
+}
+
+/**
  * Refuses a header name that is not an HTTP token, the way node's setHeader does and with its
  * error, so an application catching ERR_INVALID_HTTP_TOKEN behind Express catches it here.
  *
@@ -1446,10 +1472,7 @@ const HEADER_VALUE = /[^\t\x20-\x7e\x80-\xff]/;
  */
 function validateHeaderName(name) {
     if (typeof name !== "string" || !HEADER_TOKEN.test(name)) {
-        /** @type {NodeJS.ErrnoException} */
-        const err = new TypeError(`Header name must be a valid HTTP token ["${name}"]`);
-        err.code = "ERR_INVALID_HTTP_TOKEN";
-        throw err;
+        throw headerError(`Header name must be a valid HTTP token ["${name}"]`, "ERR_INVALID_HTTP_TOKEN");
     }
 }
 
@@ -1471,10 +1494,7 @@ function validateHeaderValue(name, value) {
         return;
     }
     if (HEADER_VALUE.test(value)) {
-        /** @type {NodeJS.ErrnoException} */
-        const err = new TypeError(`Invalid character in header content ["${name}"]`);
-        err.code = "ERR_INVALID_CHAR";
-        throw err;
+        throw headerError(`Invalid character in header content ["${name}"]`, "ERR_INVALID_CHAR");
     }
 }
 
