@@ -1,4 +1,5 @@
 // an error handler written inside a route catches what that route raised, and nothing else
+// INSPECT
 //
 // Express skips a route layer while an error is in flight, so an error from a middleware before it,
 // or out of a mount, walks past to the router's own error handlers. Everything hung off one

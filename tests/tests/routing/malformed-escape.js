@@ -1,4 +1,5 @@
 // a percent escape that will not decode is a 400, and it is decided by the path alone
+// INSPECT
 //
 // Express matches a layer's path and decodes its parameters before it looks at the method, so a
 // request whose verb no route answers still gets the 400 rather than a 404. A literal path is

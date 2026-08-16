@@ -9,6 +9,20 @@
 // turns the whole app off rather than the routes behind one middleware.
 //
 // Both arms load it, so express and fulmine print the same lines and the comparison stays fair.
+//
+// Three kinds of file must not ask for it, and each of them fails quietly rather than loudly:
+//
+//   a file testing the compiled path    the middleware is what stops a route being compiled, so
+//                                       the file would still pass while testing the other path
+//   a file setting a routing flag       this mounts before the file's own app.set() runs, and both
+//                                       frameworks freeze "strict routing" and "case sensitive
+//                                       routing" the first time a route is registered. The two
+//                                       arms still agree, so the file passes, but it is now
+//                                       testing loose routing while its name says strict
+//   a file fetching concurrently        the [req] line is printed when the request arrives, and
+//                                       Promise.all lets the arrivals race. fetchTest orders its
+//                                       own lines by taking an index at call time, which nothing
+//                                       running server side can do
 
 const Module = require("module");
 const { inspectRequest } = require("./helpers.js");

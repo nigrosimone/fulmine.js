@@ -129,11 +129,22 @@ for (const testCategory of testCategories) {
             fs.writeFileSync(testPath, testCode);
             const testDescription = testCode.split("\n")[0].slice(2).trim();
 
-            const secondLine = (testCode.split("\n")[1] || "").trim();
+            // The marker lives in the comment block at the top, and not always on the second line:
+            // a file whose description runs to a paragraph writes it under that instead, and seven
+            // of them did while this only ever read line two, so those seven were never inspected.
+            // Only the leading block is read, so the word further down in a test cannot switch a
+            // file's inspection on by accident.
             let marker = null;
-            const markerMatch = secondLine.match(/^\/\/\s*(OFF|INSPECT)(?::\s*(.*))?$/);
-            if (markerMatch) {
-                marker = markerMatch[1];
+            for (const line of testCode.split("\n").slice(1)) {
+                const trimmed = line.trim();
+                if (trimmed !== "" && !trimmed.startsWith("//")) {
+                    break;
+                }
+                const markerMatch = trimmed.match(/^\/\/\s*(OFF|INSPECT)(?::\s*(.*))?$/);
+                if (markerMatch) {
+                    marker = markerMatch[1];
+                    break;
+                }
             }
 
             await new Promise((resolve) => {

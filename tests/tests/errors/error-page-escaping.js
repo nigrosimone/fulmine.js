@@ -1,4 +1,5 @@
 // the default error page escapes what it prints
+// INSPECT
 //
 // An error message carries whatever raised it, and what raised it often carries something the
 // client sent: a path, a header, a filename. Writing that into the page unescaped put markup from

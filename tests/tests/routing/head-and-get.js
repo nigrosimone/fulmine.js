@@ -1,4 +1,5 @@
 // a HEAD route before a GET route on the same path: GET must not run the HEAD handler
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

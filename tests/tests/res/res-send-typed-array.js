@@ -1,4 +1,5 @@
 // res.send() of a typed array is bytes, and an etag function is allowed to decline
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

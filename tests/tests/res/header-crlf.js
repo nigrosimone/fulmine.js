@@ -1,4 +1,5 @@
 // must refuse a header name or value that would break the response apart, as node does
+// INSPECT
 
 // A CR or an LF in a header value ends the header early on the wire, and everything after it is
 // read by the client as another header, or as another response entirely. Node refuses them from

@@ -1,4 +1,5 @@
 // the extended parser answers what qs answers, including the shapes the shortcut used to guess at
+// INSPECT
 //
 // The extended parser sends short queries with no bracket and no dot to a faster parser, which is
 // only sound where the two agree. They disagree on two shapes: an empty name, which fast parsing

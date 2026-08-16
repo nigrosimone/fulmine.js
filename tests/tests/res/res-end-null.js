@@ -1,4 +1,5 @@
 // must answer res.end(null) the way it answers res.end()
+// INSPECT
 //
 // uWS given a null body writes a response the client never sees the end of, so this hung until
 // _finish started handing it the empty string instead. Node and Express both send an empty 200.

@@ -1,4 +1,5 @@
 // mergeParams reaches the router that asked for it, and stops at one that did not
+// INSPECT
 //
 // Express asks each router in turn whether it wants the parameters of the mounts above it. A plain
 // router mounted inside a mergeParams one does not, and its routes see only what their own pattern

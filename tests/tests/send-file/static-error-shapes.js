@@ -1,4 +1,5 @@
 // what express.static answers when it will not serve the file, and what it names
+// INSPECT
 //
 // Three things the fuzzer caught here, all of them about order. send judges a path before it looks
 // at the disk, so a hidden segment anywhere in a path that does not exist answers the dotfiles rule

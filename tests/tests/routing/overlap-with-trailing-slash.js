@@ -1,4 +1,5 @@
 // a request with a trailing slash goes to the first route that answers it, native or not
+// INSPECT
 //
 // Without strict routing a route answers both spellings of its path, so an earlier pattern that
 // matches only the slashed one still comes first. Deciding whether a later literal could be

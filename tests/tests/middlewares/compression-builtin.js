@@ -1,4 +1,5 @@
 // must compress the same way the compression module does
+// INSPECT
 //
 // express.compression() answers what the compression module answers, so this file runs the
 // built-in one against fulmine and the module against express and compares the two. Everything

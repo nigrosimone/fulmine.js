@@ -1,4 +1,5 @@
 // a lone "?" belongs to req.url, and tells "/a?" from "/a"
+// INSPECT
 //
 // uWS reports no query string as undefined and an empty one as "", which is the distinction
 // express keeps in req.url and req.originalUrl. Collapsing them was invisible in routing and in

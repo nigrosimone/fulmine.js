@@ -1,4 +1,5 @@
 // must answer a conditional request the same way on a route whose chain skips the header copy
+// INSPECT
 
 // The header copy is skipped when the chain provably reads no header, and that used to require
 // etag off as well. It does not: send consults freshness whatever the setting, and the skip branch

@@ -1,4 +1,5 @@
 // test that listen(port, host, backlog, callback) calls the callback, node's four-argument shape
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

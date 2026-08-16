@@ -1,4 +1,5 @@
 // the automatic OPTIONS reply lists the verbs of the router that answers, not of the whole request
+// INSPECT
 //
 // Express keeps that list per router: a mounted router that reaches the end of its own stack
 // answers with what it knows, and what the router above it declared for the same path never

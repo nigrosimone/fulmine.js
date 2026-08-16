@@ -1,4 +1,5 @@
 // must support express.static() options
+// INSPECT
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

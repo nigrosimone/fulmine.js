@@ -1,4 +1,5 @@
 // a literal route wins over a later parameter route even when the request arrives in another case
+// INSPECT
 //
 // Routing is insensitive by default, so express answers /POSTS with the /posts handler. The native
 // µWS router matches bytes: /POSTS reaches no registration of /posts, so it would land on the

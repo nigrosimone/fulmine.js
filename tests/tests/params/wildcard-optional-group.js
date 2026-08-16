@@ -1,4 +1,5 @@
 // must split a wildcard and the optional group after it the way express does
+// INSPECT
 //
 // `/*path{.:ext}` is two tokens that both want the end of the path. path-to-regexp writes them out
 // as an alternation, the branch with the group first and the wildcard greedy in both, so the

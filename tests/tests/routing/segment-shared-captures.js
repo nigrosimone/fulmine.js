@@ -1,4 +1,5 @@
 // how a segment is divided when more than one capture shares it
+// INSPECT
 //
 // path-to-regexp gives a parameter the whole segment only when it is alone in it. Beside another
 // parameter it may also be exactly the text that separates them; before a wildcard in the same

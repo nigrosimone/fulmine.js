@@ -1,4 +1,5 @@
 // when a body parser may be stepped over, and when it may not
+// INSPECT
 //
 // A parser reached by a request that said nothing about a body answers next() at the end of a hop
 // that cost ten times what its prologue did, so the chain steps over the layer instead of entering
