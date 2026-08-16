@@ -671,6 +671,42 @@ function setMountedPath(req) {
     req._lastUrl = req.url;
 }
 
+const NO_PARAM_NAMES = [];
+
+/**
+ * The parameter names a route captures with its own pattern.
+ *
+ * This is the set express runs param callbacks for. A name that reached req.params from a mount
+ * above, through mergeParams, belongs to that mount's router and not to this one, and express does
+ * not call this router's param() for it: it walks the keys the layer itself matched. Reading
+ * req.params instead ran a callback for every inherited name too, which is visible whenever such a
+ * callback does anything, and turned a 200 into a 500 when one of them refused the value.
+ *
+ * Worked out once per route and kept, since it follows from the pattern and never changes.
+ *
+ * @param {any} route
+ * @returns {string[]}
+ */
+function ownParamNames(route) {
+    let names = route._ownParamNames;
+    if (names !== undefined) {
+        return names;
+    }
+    if (route.optimizedParams) {
+        // µWS matched the pattern and hands the values back by position, under these names
+        names = route.optimizedParams;
+    } else if (route.pattern instanceof RegExp) {
+        const meta = getPatternMeta(route.pattern);
+        // outputNames is what _extractParams writes into params; a RegExp the application wrote
+        // itself was never compiled here, so its capture groups are the names
+        names = meta ? meta.outputNames : regexpGroupKeys(route.pattern);
+    } else {
+        names = NO_PARAM_NAMES;
+    }
+    route._ownParamNames = names;
+    return names;
+}
+
 /**
  * Whether this route reads the parameters of the mounts above it, which is its own router asking
  * for them. The stack holds what a mergeParams router captured on the way in, and a plain router
@@ -2564,9 +2600,14 @@ module.exports = class Router extends EventEmitter {
      * @returns {Promise<true|"route">|true}
      */
     _runParamCallbacks(req, res, route, paramCallbacks) {
+        // the names this route captured itself, not everything in req.params: a merged-in name
+        // belongs to the mount that captured it, see ownParamNames
         let names;
-        for (const name in req.params) {
-            if (paramCallbacks.has(name)) {
+        const own = ownParamNames(route);
+        for (let i = 0; i < own.length; i++) {
+            const name = own[i];
+            // an optional group that did not match leaves no parameter to call anything for
+            if (paramCallbacks.has(name) && req.params[name] !== undefined) {
                 (names ??= []).push(name);
             }
         }
