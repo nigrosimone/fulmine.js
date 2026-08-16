@@ -2514,8 +2514,14 @@ module.exports = class Router extends EventEmitter {
 
         // the route's own router's callbacks: an optimized chain is walked by the app even when it
         // ends in a mounted router's route
+        //
+        // A route an OPTIONS request reaches only to have its verb counted for the automatic reply
+        // is not a route this request runs, and express does not run its app.param() callbacks for
+        // it. The same condition runRoute counts the verb under, see the OPTIONS branch there. The
+        // decoding above still happens either way, because express decodes a layer whose path
+        // matched whatever its method is, which is what answers 400 for a malformed escape.
         const paramCallbacks = route.paramCallbacks;
-        if (paramCallbacks.size > 0) {
+        if (paramCallbacks.size > 0 && !(req._isOptions && !route.all && route.method !== "OPTIONS")) {
             return this._runParamCallbacks(req, res, route, paramCallbacks);
         }
         return true;
