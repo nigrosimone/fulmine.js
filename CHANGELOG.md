@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.12.1](https://github.com/nigrosimone/fulmine.js/compare/v5.12.0...v5.12.1) (2026-08-16)
+
+### Bug Fixes
+
+* **benchmark:** judge a row against its recent band, not the single last run, and never flag a bound row ([d114f20](https://github.com/nigrosimone/fulmine.js/commit/d114f20b3b417269dd196fa5568bfdc7b117d0a8))
+* **request:** refuse a request whose content-length uWS and the wire disagree on ([b687427](https://github.com/nigrosimone/fulmine.js/commit/b68742711c1f03571b2a3271c4a91846ccd5669f))
+
 ## [5.12.0](https://github.com/nigrosimone/fulmine.js/compare/v5.11.1...v5.12.0) (2026-08-16)
 
 ### Features
