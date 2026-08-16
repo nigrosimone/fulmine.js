@@ -6,6 +6,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const http = require("http");
 const { spawn, execFileSync } = require("child_process");
 
 const REPO_ROOT = path.join(__dirname, "..");
@@ -138,4 +139,62 @@ async function stopScenarioServer(server, stderrRef) {
     }
 }
 
-module.exports = { startScenarioServer, waitForReady, stopScenarioServer, addWorktree, removeWorktree };
+/**
+ * One canary request before any load. The ready line proves the new server is up, and it cannot
+ * prove the port is its alone: Windows lets a second listener bind a port an orphaned server
+ * still holds, without an error, and the OS then routes connections to whichever it likes. A
+ * whole run of 404s from a server of another scenario is what that looked like; one request
+ * answering the wrong thing before the load starts is what catches it.
+ *
+ * @param {{id: string, label?: string, port: number, socketPath?: string}} framework
+ * @param {{method: string, path: string, headers: Record<string, string>, body: any}} request
+ */
+function assertScenarioAnswers(framework, request) {
+    return new Promise((resolve, reject) => {
+        const body = request.body ?? null;
+        const req = http.request(
+            {
+                ...(framework.socketPath
+                    ? { socketPath: framework.socketPath }
+                    : { host: "127.0.0.1", port: framework.port }),
+                path: request.path,
+                method: request.method,
+                headers: {
+                    ...request.headers,
+                    ...(body ? { "content-length": String(Buffer.byteLength(body)) } : {})
+                },
+                timeout: 5000
+            },
+            (res) => {
+                res.resume();
+                if (res.statusCode >= 300) {
+                    reject(
+                        new Error(
+                            `the ${framework.label ?? framework.id} server answered ${res.statusCode} to ` +
+                                `${request.path} before any load was applied: most likely another process ` +
+                                `still holds port ${framework.port}, which Windows shares without an error. ` +
+                                `Kill the strays and check the port is free.`
+                        )
+                    );
+                    return;
+                }
+                resolve();
+            }
+        );
+        req.on("error", reject);
+        req.on("timeout", () => {
+            req.destroy();
+            reject(new Error(`the ${framework.label ?? framework.id} server did not answer the canary request`));
+        });
+        req.end(body ?? undefined);
+    });
+}
+
+module.exports = {
+    startScenarioServer,
+    waitForReady,
+    stopScenarioServer,
+    addWorktree,
+    removeWorktree,
+    assertScenarioAnswers
+};

@@ -44,7 +44,14 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const autocannon = require("autocannon");
-const { startScenarioServer, waitForReady, stopScenarioServer, addWorktree, removeWorktree } = require("./harness.js");
+const {
+    startScenarioServer,
+    waitForReady,
+    stopScenarioServer,
+    addWorktree,
+    removeWorktree,
+    assertScenarioAnswers
+} = require("./harness.js");
 
 const BASELINE = { id: "fulmine", label: "baseline", port: 3120 };
 const CANDIDATE = { id: "fulmine", label: "candidate", port: 3121 };
@@ -367,6 +374,9 @@ async function main() {
     try {
         for (const arm of arms) {
             await arm.start(scenarioName);
+            // one request that must answer the scenario before any load does: a stray server
+            // sharing the port answers something else, and the whole profile would be of it
+            await assertScenarioAnswers(arm.framework, request);
         }
 
         // A round nobody records. Whichever server is hit first is hit cold, and the difference is
