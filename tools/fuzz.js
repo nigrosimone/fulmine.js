@@ -383,7 +383,9 @@ const HANDLER_KINDS = [
     "no-content",
     "type-odd",
     "location-encoded",
-    "redirect-permanent"
+    "redirect-permanent",
+    "write-chunks",
+    "write-then-status"
 ];
 
 /**
@@ -606,9 +608,11 @@ function drawPlan(rng) {
     // printed case says which body produced the divergence
     const body = bodyParser ? pick(BODIES_FOR[bodyParser]) : null;
 
-    // GET always, since most routes are GET, plus two other verbs: one was never going to reach
-    // QUERY and PATCH often, and those are the two whose body handling is least like the rest
-    const methods = ["GET", pick(METHODS), pick(METHODS)];
+    // GET always, since most routes are GET. HEAD always too: it is answered by the GET route with
+    // the body dropped, and what a server keeps of the head while dropping it - the length, the
+    // etag, the type - is decided somewhere else than the GET path. Drawing it at random meant most
+    // rounds never asked. Plus one more verb, so the rest of the table is reached over a run.
+    const methods = ["GET", "HEAD", pick(METHODS)];
 
     return {
         settings,
@@ -758,8 +762,15 @@ function makeHandler(route) {
         case "attachment":
             return (req, res) => res.attachment("report.json").send(id);
         case "attachment-odd-name":
-            // a name needing both the quoted form and the RFC 5987 one, plus a quote to escape
-            return (req, res) => res.attachment('caffè "eè".txt').send(id);
+            // a name that has to be quoted and has a quote and a backslash to escape inside it.
+            //
+            // Deliberately ASCII. A non-ascii one is not comparable: express hands the value to
+            // node, whose header block turns the character into U+FFFD and then writes it as
+            // latin1, so a filename with an accent leaves express as one corrupt byte. µWS writes
+            // the string as utf-8, so the same filename leaves this one intact. Comparing them
+            // reported a divergence on every round and the only way to match would be to corrupt
+            // the name too, which is not worth being bug-compatible about.
+            return (req, res) => res.attachment('re"port\\v1.json').send(id);
         case "clear-cookie":
             return (req, res) => res.cookie("a", id).clearCookie("b", { path: "/x" }).send(id);
         case "cookie-options":
@@ -791,6 +802,26 @@ function makeHandler(route) {
         case "no-content":
             // a status that must carry no body, whatever was handed to send
             return (req, res) => res.status(204).send(id);
+        case "write-chunks":
+            // written in pieces rather than handed over whole, which is the chunked framing path
+            // and the one place a length is not known when the head goes out
+            return (req, res) => {
+                res.type("txt");
+                res.write("first ");
+                res.write(id);
+                res.end(" last");
+            };
+        case "write-then-status":
+            // a status set after the first write is too late, and both must agree on what happens
+            return (req, res) => {
+                res.write("out");
+                try {
+                    res.status(503);
+                } catch {
+                    // whichever refuses it, the answer is what is compared
+                }
+                res.end();
+            };
         case "type-odd":
             return (req, res) => res.type(".html").send(id);
         case "location-encoded":
