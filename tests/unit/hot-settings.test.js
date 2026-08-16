@@ -59,6 +59,53 @@ test("a query parser switched after a request was served parses the next one", a
     close();
 });
 
+test("a setting written straight into app.settings reaches the next response", async () => {
+    let app;
+    const { url, close } = await serve((a) => {
+        app = a;
+        a.enable("x-powered-by");
+        a.get("/", (req, res) => res.send("x"));
+    });
+
+    let res = await fetch(url);
+    assert.strictEqual(res.headers.get("x-powered-by"), "Fulmine");
+
+    // express allows this and set() never sees it, so the kept copy used to answer the old value
+    // until some unrelated set() happened to move the epoch and the change landed by surprise
+    app.settings["x-powered-by"] = false;
+    res = await fetch(url);
+    assert.strictEqual(res.headers.get("x-powered-by"), null, "the direct write must take effect at once");
+
+    app.settings["x-powered-by"] = true;
+    res = await fetch(url);
+    assert.strictEqual(res.headers.get("x-powered-by"), "Fulmine", "and so must the one putting it back");
+
+    close();
+});
+
+test("deleting a setting straight out of app.settings reaches the next read too", () => {
+    const app = express();
+    app.set("json escape", true);
+    assert.strictEqual(app._hot().jsonEscape, true);
+
+    delete app.settings["json escape"];
+    assert.strictEqual(app._hot().jsonEscape, undefined, "a delete must move the epoch as a set() does");
+});
+
+test("app.settings still reads and enumerates as a plain object", () => {
+    const app = express();
+    app.set("view engine", "html");
+
+    // it is a Proxy now, and everything an application does with it has to be unchanged
+    assert.strictEqual(app.settings["view engine"], "html");
+    assert.strictEqual(app.get("view engine"), "html");
+    assert.ok(Object.keys(app.settings).includes("view engine"));
+    assert.ok("view engine" in app.settings);
+    assert.strictEqual(JSON.parse(JSON.stringify(app.settings))["view engine"], "html");
+    // what the app hands to a template, which express exposes as settings
+    assert.strictEqual(app.locals.settings["view engine"], "html");
+});
+
 test("a mount refreshes what the child resolves through its parent", () => {
     const parent = express();
     const child = express.Router();
