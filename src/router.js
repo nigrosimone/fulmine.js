@@ -2142,7 +2142,7 @@ module.exports = class Router extends EventEmitter {
      *
      * @param {any} response
      */
-    _refuseFraming(response) {
+    _refuseRequest(response) {
         response.finished = true;
         response._res.close();
         response.emit("close");
@@ -2254,8 +2254,8 @@ module.exports = class Router extends EventEmitter {
                 }
                 const request = this.handleRequest(res, req, preset, skipHolder);
                 const response = request.res;
-                if (request._badFraming === true) {
-                    return this._refuseFraming(response);
+                if (request._mustRefuse === true) {
+                    return this._refuseRequest(response);
                 }
                 if (optimizedParams) {
                     request.optimizedParams = new NullObject();

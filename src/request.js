@@ -152,6 +152,31 @@ const discardedDuplicates = new Set([
 // 128 KB of body buffered before uWS is asked to pause
 const READABLE_OPTIONS = { highWaterMark: 128 * 1024 };
 
+// The methods node's parser accepts, which is the set a request can arrive with behind Express and
+// the set a route can be registered for here. µWS accepts any token, so without this a line like
+// `{"a":1}GET /path HTTP/1.1` is a request to it, with `{"A":1}GET` as the method. See _mustRefuse.
+const KNOWN_METHODS = new Set(require("http").METHODS);
+
+/**
+ * Whether a transfer-encoding leaves the body's length knowable, which is RFC 9112's rule that
+ * `chunked` comes last. `gzip, chunked` is fine and `chunked, gzip` is not: with a coding applied
+ * after the framing one, nothing can say where the body ends, and node answers 400 rather than
+ * guess. µWS guesses, and what it guesses wrong becomes the next request on the connection.
+ *
+ * Read per header rather than over the joined value, so a request splitting the list across two
+ * transfer-encoding headers is refused even when the codings would be legal joined up. That is
+ * stricter than node by a hair, on a shape nothing sends, and stricter is the safe direction here.
+ *
+ * @param {string} value one transfer-encoding header, as uWS hands it over
+ * @returns {boolean}
+ */
+function endsWithChunked(value) {
+    const last = value.slice(value.lastIndexOf(",") + 1).trim();
+    // a coding may carry parameters, which are not part of its name
+    const semicolon = last.indexOf(";");
+    return (semicolon === -1 ? last : last.slice(0, semicolon)).trim().toLowerCase() === "chunked";
+}
+
 /**
  * Whether a content-length is a plain count of bytes, which is the only thing RFC 9112 allows.
  *
@@ -172,6 +197,12 @@ function isByteCount(value) {
         if (code < 0x30 || code > 0x39) {
             return false;
         }
+    }
+    // A count nothing can represent is not a count. Node refuses one that overflows, and µWS framed
+    // the request as if it had said something else, which put the bytes after it in a request of
+    // their own. The length test first, so an ordinary value never parses.
+    if (value.length > 15 && Number(value) > Number.MAX_SAFE_INTEGER) {
+        return false;
     }
     return true;
 }
@@ -363,11 +394,15 @@ module.exports = class Request extends LazyReadable {
             if (headerKey.length === 14) {
                 // a second content-length whatever it says, and one that is not a count of bytes:
                 // both make uWS frame the request differently from what is on the wire, see
-                // _badFraming and isByteCount
+                // _mustRefuse and isByteCount
                 if (r._sawContentLength || !isByteCount(value)) {
-                    r._badFraming = true;
+                    r._mustRefuse = true;
                 }
                 r._sawContentLength = true;
+            } else if (!endsWithChunked(value)) {
+                // chunked has to be the last coding: anything after it and the length of the body
+                // is not knowable, which node answers 400 to and µWS served. See endsWithChunked
+                r._mustRefuse = true;
             }
             // saying anything about framing at all, "0" included. A parser that can see a
             // content-length answers about the body it describes, even an empty one: a zero length
@@ -480,9 +515,9 @@ module.exports = class Request extends LazyReadable {
     _sawContentLength;
 
     /**
-     * Whether the request said two different things about how long its body is, so uWS may have
-     * framed it differently from the client that sent it and the proxy that forwarded it. Two
-     * shapes reach this, and node's parser refuses both outright:
+     * Whether this request must not be routed at all. Node's parser refuses each of these outright
+     * and answers 400; every one of them is a way for bytes the client did not send as a request to
+     * be served as one, which is request smuggling.
      *
      *   a repeated content-length     uWS frames on the first and drops the rest, so a proxy in
      *                                 front reading the last one instead forwards bytes uWS then
@@ -491,13 +526,17 @@ module.exports = class Request extends LazyReadable {
      *                                 included, and frames the request as carrying no body at all,
      *                                 which turns the body the client sent into that same second
      *                                 request. See isByteCount
+     *   a method nobody defines       uWS takes any token as the method, so anything at all
+     *                                 followed by a space and a path is a request line to it. A
+     *                                 request with no content-length and no transfer-encoding has
+     *                                 no body, so the bytes after it are the next request: node
+     *                                 reads them and answers 400, uWS served them. See KNOWN_METHODS
      *
-     * Either way it is request smuggling, and the request is refused rather than routed. Declared
-     * for the same reason as rawIp.
+     * Declared for the same reason as rawIp.
      *
      * @type {boolean|undefined}
      */
-    _badFraming;
+    _mustRefuse;
 
     /**
      * Whether the client asked for the connection to be closed. Declared for the same reason.
@@ -567,7 +606,7 @@ module.exports = class Request extends LazyReadable {
             // A content-length of "0" declares no body and used to stay on the cheap side, but
             // getHeader only ever returns the first of a repeated header, so a duplicate cannot be
             // seen from here, and a duplicate has to be refused rather than routed: see
-            // _badFraming. Anything that says a word about framing takes the full copy instead.
+            // _mustRefuse. Anything that says a word about framing takes the full copy instead.
             //
             // One shape stays invisible here, a content-length present with an empty value: uWS
             // answers "" for that and for a header that was never sent, and nothing in its API
@@ -656,7 +695,17 @@ module.exports = class Request extends LazyReadable {
             this.endsWithSlash = this.path.charCodeAt(this.path.length - 1) === 0x2f;
             this._opPath = this.path;
             this._originalPath = this.path;
-            this.method = req.getCaseSensitiveMethod().toUpperCase();
+            const rawMethod = req.getCaseSensitiveMethod();
+            this.method = rawMethod.toUpperCase();
+            // node's parser knows a fixed set and refuses everything else; µWS takes the token as
+            // it finds it, so a request line is anything with a space in it. Compared before the
+            // uppercasing on purpose: a method is case sensitive, node refuses "post", and µWS
+            // folds it to POST and serves it. Only asked of a method the framework cannot route
+            // anyway, since a route can only be registered for one of these, see the loop that
+            // builds the verb methods at the end of router.js
+            if (!KNOWN_METHODS.has(rawMethod)) {
+                this._mustRefuse = true;
+            }
             this._isOptions = this.method === "OPTIONS";
             this._isHead = this.method === "HEAD";
         }

@@ -222,6 +222,56 @@ test("a content-length alongside a transfer-encoding never reaches a route", asy
     close();
 });
 
+test("a method nobody defines never reaches a route", async () => {
+    const { port, close, served } = await serve();
+
+    // µWS takes any token as the method, so anything followed by a space and a path is a request
+    // line to it. A request with no content-length and no transfer-encoding carries no body, so
+    // the bytes after it are the next request: that is how a body becomes a served request.
+    for (const line of ["GARBAGE$$$ /pwned", '{"ok":true}GET /pwned', "post /pwned", "Get /pwned"]) {
+        const answer = await raw(port, `${line} HTTP/1.1\r\nHost: x\r\n\r\n`);
+        assert.strictEqual(answer, "", `"${line}" must be refused without an answer`);
+    }
+    assert.deepStrictEqual(served, [], "no route may run for any of them");
+
+    close();
+});
+
+test("a transfer-encoding whose last coding is not chunked is refused", async () => {
+    const { port, close, served } = await serve();
+
+    // with a coding applied after the framing one, nothing can say where the body ends
+    for (const te of ["chunked, gzip", "chunked, identity"]) {
+        const answer = await raw(
+            port,
+            `POST / HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nTransfer-Encoding: ${te}\r\n\r\n` +
+                `b\r\n${BODY}\r\n0\r\n\r\n`
+        );
+        assert.ok(!answer.includes("200"), `a transfer-encoding of "${te}" must not be answered 200`);
+    }
+    assert.deepStrictEqual(served, [], "no route may run");
+
+    close();
+});
+
+test("chunked last is still served, however the list is written", async () => {
+    const { port, close } = await serve();
+
+    for (const te of ["chunked", "gzip, chunked", "identity, chunked", "chunked;a=b"]) {
+        const answer = await raw(
+            port,
+            `POST / HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nTransfer-Encoding: ${te}\r\n\r\n` +
+                `b\r\n${BODY}\r\n0\r\n\r\n`
+        );
+        // gzip over the framing is a body this app does not decode, so only the framing is pinned:
+        // the request has to be routed rather than refused
+        assert.match(answer, /^HTTP\/1\.1 \d\d\d /, `a transfer-encoding of "${te}" must be answered`);
+        assert.ok(!answer.includes("400 Bad Request"), `"${te}" must not be refused outright`);
+    }
+
+    close();
+});
+
 test("a chunked body with no content-length is still read", async () => {
     const { port, close } = await serve();
 

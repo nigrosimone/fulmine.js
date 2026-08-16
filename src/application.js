@@ -529,8 +529,8 @@ class Application extends Router {
     _serveGeneric(res, req) {
         const request = this.handleRequest(res, req);
         const response = request.res;
-        if (request._badFraming === true) {
-            return this._refuseFraming(response);
+        if (request._mustRefuse === true) {
+            return this._refuseRequest(response);
         }
         try {
             this._routeRequestDirect(request, response);
