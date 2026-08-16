@@ -409,8 +409,21 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true, strict 
             // splits /a.b.c against /:file{.:ext} as file=a.b, ext=c, which only works if ext
             // cannot contain a dot. After static text there is nothing to give ground, so the
             // parameter takes everything: /file{.:ext} against /file.tar.gz gives ext=tar.gz.
-            const separator = lastTokenWasParam && groupContent[0] && groupContent[0] !== ":" ? groupContent[0] : "";
-            const groupParamClass = `[^/${separator.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}]+`;
+            // The whole of it, not its first character: /:foo{abc:bar} against /123abcabc splits as
+            // foo=123 and bar=abc on express, and reading the separator as "a" left bar unable to
+            // match its own text, so the group never matched and foo took the segment whole. More
+            // than one character cannot go in a class, so it is written as a lookahead, and either
+            // way the parameter is still allowed to be exactly the separator, as path-to-regexp
+            // writes it.
+            const colon = groupContent.indexOf(":");
+            const separator = lastTokenWasParam && colon > 0 ? groupContent.slice(0, colon) : "";
+            const escapedSeparator = separator.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const groupParamClass =
+                separator === ""
+                    ? "[^/]+"
+                    : separator.length === 1
+                      ? `[^/${escapedSeparator}]+|${escapedSeparator}`
+                      : `(?:(?!${escapedSeparator})[^/])+|${escapedSeparator}`;
 
             let groupRegex = "";
             let gi = 0;
