@@ -43,28 +43,6 @@ const { workerCount, forkWorkers, isSupervising, becomeSupervisor } = require(".
 
 const cpuCount = os.cpus().length;
 
-// what getRemotePort answers through a wrapper whose socket is already gone
-const DEAD_PORT = 4294967295;
-
-/** @param {any} res a held uWS response wrapper */
-function connectionIsDead(res) {
-    try {
-        return res.getRemotePort() === DEAD_PORT;
-    } catch {
-        // invalidated outright, which some paths do instead of answering the dead port
-        return true;
-    }
-}
-
-/**
- * The one identity two different wrappers of the same socket share: its peer, address and port.
- * @param {any} res
- * @returns {string}
- */
-function connectionKey(res) {
-    return Buffer.from(res.getRemoteAddress()).toString("hex") + ":" + res.getRemotePort();
-}
-
 // marks a "trust proxy" that was never set by the application, under the key express uses, so a
 // mounted sub-app knows it may inherit the parent's
 const trustProxyDefaultSymbol = "@@symbol:trust_proxy_default";
@@ -162,30 +140,6 @@ class Application extends Router {
             this.uwsApp = uWS.SSLApp(settings.uwsOptions);
         } else {
             this.uwsApp = uWS.App(settings.uwsOptions);
-        }
-        // every open connection, held from the filter's +1 so close() can drop the idle ones:
-        // without this a kept-alive socket goes on being served while close() drains, and under
-        // steady traffic the drain never ends, see _closeIdleConnections. The -1 arrives on a
-        // different wrapper with the port already gone, so removal is a sweep over what the +1
-        // left behind, paid when the dead outnumber a threshold rather than per close
-        this._connections = new Set();
-        this._liveConnections = 0;
-        if (typeof this.uwsApp.filter === "function") {
-            this.uwsApp.filter((res, count) => {
-                if (count === 1) {
-                    this._connections.add(res);
-                    this._liveConnections++;
-                    return;
-                }
-                this._liveConnections--;
-                if (this._connections.size - this._liveConnections > 64) {
-                    for (const held of this._connections) {
-                        if (connectionIsDead(held)) {
-                            this._connections.delete(held);
-                        }
-                    }
-                }
-            });
         }
         this.ssl = settings.uwsOptions.key_file_name && settings.uwsOptions.cert_file_name;
         this.cache = new NullObject();
@@ -929,9 +883,6 @@ class Application extends Router {
             uWS.us_listen_socket_close(this._listenSocket);
             this._listenSocket = undefined;
         }
-        // the idle ones now, not at the end of the drain: a kept-alive socket left open keeps
-        // feeding requests to a server that stopped listening, and holds the drain open with them
-        this._closeIdleConnections();
         this._draining = true;
         const finish = () => {
             this._draining = false;
@@ -957,86 +908,9 @@ class Application extends Router {
             if (this._pending.head === null) {
                 clearInterval(sweep);
                 finish();
-                return;
             }
-            // a response that finished during the drain leaves its connection idle, and an idle
-            // connection does not outlive close()
-            this._closeIdleConnections();
         }, 10);
         return this;
-    }
-
-    /**
-     * Forgets a connection the moment its socket stops being HTTP, which an upgrade does: the
-     * filter never reports an upgraded socket closing, and a close() reaching one through the
-     * held HTTP wrapper is a native crash, not an error.
-     *
-     * @param {any} res any wrapper of the socket, whose peer names the held one
-     */
-    _releaseConnection(res) {
-        if (this._connections.size === 0) {
-            return;
-        }
-        let key;
-        try {
-            key = connectionKey(res);
-        } catch {
-            return;
-        }
-        for (const held of this._connections) {
-            try {
-                if (!connectionIsDead(held) && connectionKey(held) === key) {
-                    this._connections.delete(held);
-                    this._liveConnections--;
-                    return;
-                }
-            } catch {
-                // a wrapper that cannot say who it is cannot be the one being released
-            }
-        }
-    }
-
-    /**
-     * Closes every open connection not serving a response right now, which is what node's own
-     * close() has done since 19. A busy connection is recognised by peer address and port, the
-     * one identity a held wrapper and a response's wrapper share. On a unix socket there is no
-     * peer to read, every key throws, and nothing is closed, which only means the drain behaves
-     * as it did before this existed.
-     */
-    _closeIdleConnections() {
-        if (this._connections.size === 0) {
-            return;
-        }
-        const busy = new Set();
-        for (let response = this._pending.head; response !== null; response = response._pendingNext) {
-            if (!response.finished && !response.aborted) {
-                try {
-                    busy.add(connectionKey(response._res));
-                } catch {
-                    // the socket behind it is already gone, so there is nothing to spare
-                }
-            }
-        }
-        for (const held of this._connections) {
-            let key = null;
-            try {
-                key = connectionIsDead(held) ? null : connectionKey(held);
-            } catch {
-                // unreadable is as good as dead
-            }
-            if (key === null) {
-                this._connections.delete(held);
-                continue;
-            }
-            if (!busy.has(key)) {
-                try {
-                    held.close();
-                } catch {
-                    // invalidated between the probe and the close, equally gone
-                }
-                this._connections.delete(held);
-            }
-        }
     }
 }
 
