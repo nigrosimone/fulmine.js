@@ -354,6 +354,13 @@ class Walk {
     runRoute(continueRoute) {
         const req = this.req;
         const route = this.route;
+        // A compiled chain walks into a mount rather than entering it, so the rule above needs
+        // saying here as well: everything after this marker is inside the mount, and a mount is
+        // stepped over while an error is in flight. Leaving the chain is what running out of it
+        // already means, and ordinary routing takes over after the mount.
+        if (route.keepMount === true && req._error) {
+            return this.dispatch(this.routes.length);
+        }
         if (route.use) {
             if (route.mountApp) {
                 // optimized chain: normal dispatch swaps req.app when it enters a mounted
@@ -484,7 +491,12 @@ class Walk {
         if (!this.skipCheck && this.skipUntil && this.skipUntil.routeKey >= route.routeKey) {
             return this.step(undefined);
         }
-        if (kind === CALLBACK_ROUTER) {
+        // A mounted router or application is stepped over while an error is in flight. Its handle
+        // takes three arguments, so express's Layer#handleError hands the error straight on without
+        // entering it: what a mount catches is what it raised itself. Entering it ran the error
+        // handlers written inside the mount, and left req.app pointing at a mounted application,
+        // whose settings then answered. A 500 carried an ETag under app.set("etag", false).
+        if (kind === CALLBACK_ROUTER && !req._error) {
             if (callback._isApplication) {
                 rememberApp(this, route, req);
                 useApp(req, callback);
