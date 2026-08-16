@@ -2,6 +2,7 @@ node_modules/
 tmp/
 processed.txt
 /.idea/
+/.claude/
 /.nyc_output
 /coverage
 .DS_Store
