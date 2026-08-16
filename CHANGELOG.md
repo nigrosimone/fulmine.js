@@ -1,5 +1,15 @@
 # Changelog
 
+## [5.12.2](https://github.com/nigrosimone/fulmine.js/compare/v5.12.1...v5.12.2) (2026-08-16)
+
+### Bug Fixes
+
+* **response:** put node's error code in the stack line of a refused header, as node does ([f984da0](https://github.com/nigrosimone/fulmine.js/commit/f984da0186baf1d1378276e7b013461ecf4988be))
+* **router:** an automatic OPTIONS reply no longer runs the param callbacks of the routes it counted ([2f7f2ae](https://github.com/nigrosimone/fulmine.js/commit/2f7f2ae1707a3b82f972ce38d1ac78070f52aa15))
+* **router:** carry an OPTIONS error to the handlers, and enter a route on HEAD for its param callbacks ([fa1700f](https://github.com/nigrosimone/fulmine.js/commit/fa1700f4d11d699436e93fcaff4b7c73bffa85d8))
+* **router:** read a wildcard or an optional group as more than its text when judging overlap ([43c010e](https://github.com/nigrosimone/fulmine.js/commit/43c010e253eefc451ce6f21462e087ebb56bf413))
+* **router:** run a router's param callbacks only for the parameters its own pattern captured ([e82976e](https://github.com/nigrosimone/fulmine.js/commit/e82976e4e1d6ce4f22a0d39d89a5f37034e1a81a))
+
 ## [5.12.1](https://github.com/nigrosimone/fulmine.js/compare/v5.12.0...v5.12.1) (2026-08-16)
 
 ### Bug Fixes
