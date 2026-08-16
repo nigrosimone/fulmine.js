@@ -52,14 +52,58 @@ const SUFFIXES = [
     "?cb=fn",
     "?callback=not a name"
 ];
-const METHODS = ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"];
+// QUERY is one of the four this project reads a body for, so leaving it out meant the verb whose
+// body handling is least like the others was never asked for. PATCH is here for the same reason.
+const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "QUERY"];
 
-// what a request carries when the plan put a body parser in front, one shape per parser
-const BODY_FOR = {
-    json: { type: "application/json", text: '{"a":1,"b":[2,3],"c":{"d":"e"}}' },
-    urlencoded: { type: "application/x-www-form-urlencoded", text: "a=1&b[]=2&b[]=3&c[d]=e" },
-    text: { type: "text/plain", text: "a body of plain text" },
-    raw: { type: "application/octet-stream", text: "bytes" }
+// What a request carries when the plan put a body parser in front. Several shapes per parser, not
+// one: the body that parses is the least interesting of them, and the answers to an empty body, to
+// one that cannot be parsed, to a charset nobody can decode and to a type the parser must leave
+// alone are each decided somewhere else in the middleware. One is drawn per round.
+const BODIES_FOR = {
+    json: [
+        { type: "application/json", text: '{"a":1,"b":[2,3],"c":{"d":"e"}}' },
+        // each parser turns an empty body into its own empty value rather than leaving req.body set
+        { type: "application/json", text: "" },
+        // 400 entity.parse.failed, and the message carries the offending text
+        { type: "application/json", text: '{"a":' },
+        { type: "application/json", text: "{'a':1}" },
+        // strict mode: a bare value is not an object, which body-parser refuses by default
+        { type: "application/json", text: '"a string"' },
+        { type: "application/json", text: "123" },
+        { type: "application/json", text: "null" },
+        { type: "application/json; charset=utf-8", text: '{"a":"caffè"}' },
+        { type: "application/json; charset=iso-8859-1", text: '{"a":"caffe"}' },
+        // 415, and before the verify hook rather than after it
+        { type: "application/json; charset=nonsense", text: '{"a":1}' },
+        // the wrong type for this parser, which must leave the request alone
+        { type: "text/plain", text: '{"a":1}' }
+    ],
+    urlencoded: [
+        { type: "application/x-www-form-urlencoded", text: "a=1&b[]=2&b[]=3&c[d]=e" },
+        { type: "application/x-www-form-urlencoded", text: "" },
+        { type: "application/x-www-form-urlencoded", text: "a" },
+        { type: "application/x-www-form-urlencoded", text: "a=&b=" },
+        { type: "application/x-www-form-urlencoded", text: "a=1&a=2&a=3" },
+        { type: "application/x-www-form-urlencoded", text: "a%5Bb%5D%5Bc%5D=deep" },
+        { type: "application/x-www-form-urlencoded", text: "%C3%A9=%C3%A8" },
+        { type: "application/x-www-form-urlencoded", text: "a=%ZZ" },
+        { type: "application/json", text: "a=1" }
+    ],
+    text: [
+        { type: "text/plain", text: "a body of plain text" },
+        { type: "text/plain", text: "" },
+        { type: "text/plain; charset=utf-8", text: "caffè" },
+        { type: "text/plain; charset=iso-8859-1", text: "caffe" },
+        { type: "text/plain; charset=nonsense", text: "text" },
+        { type: "text/html", text: "<p>markup</p>" }
+    ],
+    raw: [
+        { type: "application/octet-stream", text: "bytes" },
+        { type: "application/octet-stream", text: "" },
+        { type: "application/octet-stream", text: "\u0000\u0001binary\u00ff" },
+        { type: "text/plain", text: "bytes" }
+    ]
 };
 
 // Every path written in the case corpus of path-to-regexp, the library express matches with. It
@@ -277,7 +321,17 @@ const LITERAL_KINDS = ["lit-send", "lit-json", "lit-status", "lit-header", "lit-
 
 // the kinds that raise, which the skip-friendly mode leaves out: with no error handler of ours
 // the answer is express own error page, and its stack is its own frames
-const RAISES = new Set(["throw", "next-error", "send-file", "download", "render-missing", "render-callback"]);
+// cookie-signed is here because a signed cookie without cookieParser's secret raises, which is
+// exactly what it is for: both must refuse it, and say the same thing about it
+const RAISES = new Set([
+    "throw",
+    "next-error",
+    "send-file",
+    "download",
+    "render-missing",
+    "render-callback",
+    "cookie-signed"
+]);
 
 const HANDLER_KINDS = [
     ...LITERAL_KINDS,
@@ -312,7 +366,24 @@ const HANDLER_KINDS = [
     "render",
     "render-ext",
     "render-missing",
-    "render-callback"
+    "render-callback",
+    // the response methods nothing here reached before. Each one writes a header the comparison
+    // already looks at, so a disagreement shows up rather than being invisible
+    "append",
+    "attachment",
+    "attachment-odd-name",
+    "clear-cookie",
+    "cookie-options",
+    "cookie-signed",
+    "set-array",
+    "json-scalar",
+    "json-array",
+    "send-buffer",
+    "send-number",
+    "no-content",
+    "type-odd",
+    "location-encoded",
+    "redirect-permanent"
 ];
 
 /**
@@ -493,6 +564,18 @@ function drawPlan(rng) {
     if (chance(0.35)) headers["x-forwarded-for"] = pick(["203.0.113.9", "203.0.113.9, 198.51.100.2", "::1"]);
     if (chance(0.25)) headers["x-forwarded-proto"] = pick(["https", "http", "https, http"]);
     if (chance(0.2)) headers["x-forwarded-host"] = pick(["example.com", "a.b.example.com:8080"]);
+    // the rest of the conditional family. if-none-match has its own pass below, made from the etag
+    // the answer just carried, but these are asked cold: a fixed date so the two runs send the same
+    // one, one far in the past and one far ahead, which land on opposite sides of every mtime here
+    if (chance(0.25)) {
+        headers["if-modified-since"] = pick(["Thu, 01 Jan 1970 00:00:00 GMT", "Tue, 01 Jan 2999 00:00:00 GMT"]);
+    }
+    if (chance(0.15)) {
+        headers["if-unmodified-since"] = pick(["Thu, 01 Jan 1970 00:00:00 GMT", "Tue, 01 Jan 2999 00:00:00 GMT"]);
+    }
+    if (chance(0.15)) headers["if-match"] = pick(['"nonsense"', "*", 'W/"weak"']);
+    if (chance(0.2)) headers["accept-encoding"] = pick(["gzip", "identity", "gzip, deflate, br", "*"]);
+    if (chance(0.15)) headers["accept-charset"] = pick(["utf-8", "iso-8859-1, utf-8;q=0.8"]);
 
     // GET always, since most routes are GET, plus one other verb so the method side is exercised
     // the paths a static mount can answer, asked for whether or not one is mounted: half the
@@ -519,6 +602,14 @@ function drawPlan(rng) {
         headers.range = pick(["bytes=0-4", "bytes=5-", "bytes=-3", "bytes=0-", "bytes=900-999", "bytes=x-y"]);
     }
 
+    // drawn here rather than looked up when the request goes out, so the shrinker keeps it and the
+    // printed case says which body produced the divergence
+    const body = bodyParser ? pick(BODIES_FOR[bodyParser]) : null;
+
+    // GET always, since most routes are GET, plus two other verbs: one was never going to reach
+    // QUERY and PATCH often, and those are the two whose body handling is least like the rest
+    const methods = ["GET", pick(METHODS), pick(METHODS)];
+
     return {
         settings,
         routers,
@@ -527,9 +618,10 @@ function drawPlan(rng) {
         urls,
         headers,
         bodyParser,
+        body,
         staticMount,
         skipFriendly,
-        methods: ["GET", pick(METHODS)]
+        methods: [...new Set(methods)]
     };
 }
 
@@ -660,6 +752,53 @@ function makeHandler(route) {
             return (req, res, next) => next("router");
         case "cookie":
             return (req, res) => res.cookie("fuzz", id, { path: "/", sameSite: "lax" }).send(id);
+        case "append":
+            // two values under one name, which is a different code path from setting it once
+            return (req, res) => res.append("Vary", "Accept").append("Vary", "Accept-Language").send(id);
+        case "attachment":
+            return (req, res) => res.attachment("report.json").send(id);
+        case "attachment-odd-name":
+            // a name needing both the quoted form and the RFC 5987 one, plus a quote to escape
+            return (req, res) => res.attachment('caffè "eè".txt').send(id);
+        case "clear-cookie":
+            return (req, res) => res.cookie("a", id).clearCookie("b", { path: "/x" }).send(id);
+        case "cookie-options":
+            return (req, res) =>
+                res
+                    .cookie("opt", id, {
+                        maxAge: 3600000,
+                        httpOnly: true,
+                        secure: true,
+                        sameSite: "strict",
+                        path: "/x",
+                        domain: "example.com"
+                    })
+                    .send(id);
+        case "cookie-signed":
+            // express needs a secret for this, and without one both must fail the same way
+            return (req, res) => res.cookie("s", id, { signed: true }).send(id);
+        case "set-array":
+            return (req, res) => res.set("Vary", ["Accept", "Accept-Language"]).send(id);
+        case "json-scalar":
+            return (req, res) => res.json(null);
+        case "json-array":
+            return (req, res) => res.json([1, "two", null, { three: true }]);
+        case "send-buffer":
+            return (req, res) => res.send(Buffer.from("raw bytes " + id));
+        case "send-number":
+            // a number is a status code in express 4 and a body in express 5, so this pins which
+            return (req, res) => res.send(204);
+        case "no-content":
+            // a status that must carry no body, whatever was handed to send
+            return (req, res) => res.status(204).send(id);
+        case "type-odd":
+            return (req, res) => res.type(".html").send(id);
+        case "location-encoded":
+            // the encoding rules for a Location are their own, and these are the characters they
+            // disagree about
+            return (req, res) => res.location("/a b/caffè?q=1&r=2#f").send(id);
+        case "redirect-permanent":
+            return (req, res) => res.redirect(301, "/moved/" + id);
         case "vary":
             return (req, res) => res.vary("Accept-Language").vary("X-Fuzz").send(id);
         case "links":
@@ -906,7 +1045,7 @@ async function runPlan(plan, stopAtFirst) {
         for (const method of plan.methods) {
             let ra, rb;
             try {
-                const body = BODY_FOR[plan.bodyParser] ?? null;
+                const body = plan.body ?? null;
                 [ra, rb] = await Promise.all([
                     answerOf(portA, url, method, plan.headers, undefined, body),
                     answerOf(portB, url, method, plan.headers, undefined, body)
@@ -1008,6 +1147,7 @@ function planToSource(plan, target) {
     // what is registered before any route, and what the request carries: leaving these out made a
     // case look smaller than it was, since the answer often comes from here rather than from a route
     if (plan.bodyParser) lines.push(`app.use(express.${plan.bodyParser}());`);
+    if (plan.body) lines.push(`// request body: ${JSON.stringify(plan.body)}`);
     if (plan.staticMount) {
         const options = JSON.stringify(plan.staticMount.options);
         lines.push(`app.use(${JSON.stringify(plan.staticMount.mount)}, express.static(dir, ${options}));`);
