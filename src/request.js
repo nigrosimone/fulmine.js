@@ -178,6 +178,27 @@ function endsWithChunked(value) {
 }
 
 /**
+ * The path of the url a request carries right now, without the query.
+ *
+ * Express reads it off req.url on every access, so a middleware that assigns req.url is seen by
+ * whatever runs next, the callback after it in the same route included: the router takes a rewrite
+ * over at its next hop, and until then the field is a hop behind. `req.url = req.url.replace(/^\/+/,
+ * "/")` reported "//" for the rest of its own route where express reports "/". The field answers
+ * while the two agree, which is every read of a request nobody rewrote.
+ *
+ * @param {any} req
+ * @returns {string}
+ */
+function currentPath(req) {
+    const url = req.url;
+    if (url === req._lastUrl) {
+        return req._path;
+    }
+    const query = url.indexOf("?");
+    return query === -1 ? url : url.slice(0, query);
+}
+
+/**
  * Whether a content-length is a plain count of bytes, which is the only thing RFC 9112 allows.
  *
  * uWS trims the spaces around the value and then takes whatever is left, so "", "abc", "+1", "-1",
@@ -671,7 +692,7 @@ module.exports = class Request extends LazyReadable {
         }
         if (preset) {
             // the registration's constants: two native crossings and their strings not asked for
-            this.path = preset.path;
+            this._path = preset.path;
             this.originalUrl = preset.path + this.urlQuery;
             this.url = this.originalUrl;
             this._lastUrl = this.originalUrl;
@@ -685,16 +706,16 @@ module.exports = class Request extends LazyReadable {
             // getUrl() is the path already, so the query is joined on and then not split off
             // again. Building originalUrl and picking the path back out of it with indexOf and
             // substring was a search and a second string for something uWS had just handed over.
-            this.path = req.getUrl();
-            this.originalUrl = this.path + this.urlQuery;
+            this._path = req.getUrl();
+            this.originalUrl = this._path + this.urlQuery;
             this.url = this.originalUrl;
             // what the router last wrote to req.url. A middleware assigning something else is a
             // rewrite, which express honours, and dispatch compares against this to notice it
             this._lastUrl = this.originalUrl;
             // charCodeAt rather than indexing: s[i] builds a one character string to throw away
-            this.endsWithSlash = this.path.charCodeAt(this.path.length - 1) === 0x2f;
-            this._opPath = this.path;
-            this._originalPath = this.path;
+            this.endsWithSlash = this._path.charCodeAt(this._path.length - 1) === 0x2f;
+            this._opPath = this._path;
+            this._originalPath = this._path;
             const rawMethod = req.getCaseSensitiveMethod();
             this.method = rawMethod.toUpperCase();
             // node's parser knows a fixed set and refuses everything else; µWS takes the token as
@@ -1054,6 +1075,17 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
+     * The path of the current url, without the query and relative to the mount the request is in.
+     * A getter rather than a field, because express recomputes it from req.url on every read, see
+     * currentPath.
+     *
+     * @returns {string}
+     */
+    get path() {
+        return currentPath(this);
+    }
+
+    /**
      * Takes over what a middleware assigned to req.url: the remaining routing matches the new
      * path, and req.query reflects the new query string. The assigned url is relative to the
      * mount the request is currently in, as it is in express, so the absolute path is rebuilt
@@ -1074,7 +1106,7 @@ module.exports = class Request extends LazyReadable {
         // a rewrite to "/a?" keeps its "?", as one arriving that way does
         this.urlQuery = queryIndex === -1 ? "" : "?" + this._rawQuery;
         this._originalPath = prefix + newPath;
-        this.path = newPath;
+        this._path = newPath;
         this.endsWithSlash = newPath.charCodeAt(newPath.length - 1) === 0x2f;
         this._opPath = newPath;
         this._opPathLower = null;
@@ -1586,3 +1618,7 @@ module.exports = class Request extends LazyReadable {
 // req.header is req.get under Express's other name. On the prototype rather than an instance
 // field, which wrote one own property per request in the constructor.
 /** @type {any} */ (module.exports.prototype).header = module.exports.prototype.get;
+
+// hung off the class because the module exports the class itself. The router needs it for a plain
+// node request, which gets the same getter defined on it by hand
+/** @type {any} */ (module.exports).currentPath = currentPath;

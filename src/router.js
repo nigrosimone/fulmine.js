@@ -695,7 +695,7 @@ function setMountedPath(req) {
     req._opPath = req._consumed === 0 ? req._originalPath : req._originalPath.slice(req._consumed);
     req._opPathLower = null;
     req.url = req._opPath === "" ? "/" + req.urlQuery : req._opPath + req.urlQuery;
-    req.path = req._opPath === "" ? "/" : req._opPath;
+    req._path = req._opPath === "" ? "/" : req._opPath;
     req._lastUrl = req.url;
 }
 
@@ -842,7 +842,16 @@ function adoptPlainRequest(req, router) {
     const path = queryIndex === -1 ? raw : raw.slice(0, queryIndex);
     req.urlQuery = queryIndex === -1 ? "" : raw.slice(queryIndex);
     req._rawQuery = req.urlQuery.slice(1);
-    req.path = path;
+    req._path = path;
+    // an adopted request is a plain node one, so it carries no prototype of ours: it gets the same
+    // getter, for the same reason. See currentPath
+    Object.defineProperty(req, "path", {
+        configurable: true,
+        enumerable: true,
+        get() {
+            return /** @type {any} */ (Request).currentPath(this);
+        }
+    });
     req.originalUrl = req.originalUrl ?? arrived;
     req._originalPath = path;
     req.endsWithSlash = path.charCodeAt(path.length - 1) === 0x2f;
