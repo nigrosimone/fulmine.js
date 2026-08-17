@@ -11,6 +11,11 @@ const { expectNative, expectDeclarative, routeReport } = require("fulmine.js").t
 
 const app = express();
 
+// a response that would carry an ETag is never compiled: uWS answers it without reading the
+// request, so it could not turn a conditional request into a 304. This setting is what puts an
+// ordinary route on the compiled path, and nothing below would be compiled without it
+app.set("etag", false);
+
 // literal arguments and nothing in front of it: compiled into a response written once, at
 // startup, and answered by uWS without entering JavaScript at all
 app.get("/health", (req, res) => res.json({ ok: true }));

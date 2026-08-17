@@ -172,6 +172,32 @@ function expectNative(app, patterns) {
 }
 
 /**
+ * Why a route µWS already matches is still not compiled into a response.
+ *
+ * The handler is the last answer, not the first: three refusals come before it, and blaming the
+ * handler for one of those sends the reader to rewrite something that was already simple enough.
+ *
+ * @param {any} app
+ * @param {{path: string}} entry
+ * @returns {string}
+ */
+function whyNotCompiled(app, entry) {
+    if (!app.get("declarative responses")) {
+        return "answered by µWS, but declarative responses are turned off";
+    }
+    if (entry.path.includes(":")) {
+        return "answered by µWS, but the route captures, and nothing runs to decode the value";
+    }
+    if (app.get("etag")) {
+        return (
+            "answered by µWS, but a response carrying an ETag could never answer the conditional " +
+            'request it invites: app.set("etag", false) is what puts a route here'
+        );
+    }
+    return "answered by µWS, but the handler is not simple enough to compile";
+}
+
+/**
  * Throws unless every route named is answered from a response written at startup, which is the
  * step past native: µWS answers it without entering javascript at all.
  *
@@ -189,9 +215,7 @@ function expectDeclarative(app, patterns) {
                 .map(
                     (entry) =>
                         `  ${entry.method} ${entry.path}\n    ` +
-                        (entry.native
-                            ? "answered by µWS, but the handler is no longer simple enough to compile"
-                            : entry.reason)
+                        (entry.native ? whyNotCompiled(app, entry) : entry.reason)
                 )
                 .join("\n") +
             `\n\nRun \`npx fulmine profile\` to see the whole picture.`

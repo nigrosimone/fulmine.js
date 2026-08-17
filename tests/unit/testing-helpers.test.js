@@ -104,10 +104,30 @@ test("expectDeclarative is the step past native", () => {
         () => expectDeclarative(app, "/users/:id"),
         (err) => {
             assert.match(err.message, /no longer compiled into a response/);
-            assert.match(err.message, /answered by µWS, but the handler is no longer simple enough/);
+            assert.match(err.message, /the route captures/);
             return true;
         }
     );
+});
+
+test("the reason names the refusal that applies, not the handler", () => {
+    // an application on the default settings: the handler is compilable, the ETag is what refuses
+    // it, and saying "the handler" here sent the reader to rewrite something already simple enough
+    const withEtag = express();
+    withEtag.get("/health", (req, res) => res.send("ok"));
+    assert.throws(() => expectDeclarative(withEtag, "/health"), /etag/);
+
+    const off = express();
+    off.set("etag", false);
+    off.set("declarative responses", false);
+    off.get("/health", (req, res) => res.send("ok"));
+    assert.throws(() => expectDeclarative(off, "/health"), /declarative responses are turned off/);
+
+    // and the handler is still the answer when nothing above it applies
+    const real = express();
+    real.set("etag", false);
+    real.get("/health", (req, res) => res.send(String(Date.now())));
+    assert.throws(() => expectDeclarative(real, "/health"), /the handler is not simple enough/);
 });
 
 test("a listening application is read without being compiled twice", async () => {
