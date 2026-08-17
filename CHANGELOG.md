@@ -1,5 +1,23 @@
 # Changelog
 
+## [5.13.0](https://github.com/nigrosimone/fulmine.js/compare/v5.12.3...v5.13.0) (2026-08-17)
+
+### Features
+
+* **nest:** the express adapter ships as fulmine.js/nest, so a Nest application needs no adapter of its own ([#13](https://github.com/nigrosimone/fulmine.js/pull/13))
+* **cli:** override writes the package manager substitution for a framework that requires express in its own code ([#13](https://github.com/nigrosimone/fulmine.js/pull/13))
+* **cli:** angular declares this package external in angular.json's server build ([#13](https://github.com/nigrosimone/fulmine.js/pull/13))
+
+### Bug Fixes
+
+* **body:** req.body reaches a request only once a parser has run, as it does on express ([#13](https://github.com/nigrosimone/fulmine.js/pull/13))
+* **response:** writeHead sets headers node's way, without the charset res.set adds ([#13](https://github.com/nigrosimone/fulmine.js/pull/13))
+
+Both fixes were found by a new comparison suite that serves the same application on Express and on
+this through Nest, Next, Astro, SvelteKit, React Router, Apollo and tRPC. `req.body` being on every
+request broke every tRPC mutation, and missing where Express has one is a 500 from Apollo;
+`writeHead` adding a charset changed every page Astro and SvelteKit rendered.
+
 ## [5.12.3](https://github.com/nigrosimone/fulmine.js/compare/v5.12.2...v5.12.3) (2026-08-17)
 
 ### Bug Fixes
