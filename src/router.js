@@ -1079,7 +1079,17 @@ function stepsOver(route, req) {
     if (route.bodyMethods === undefined) {
         route.bodyMethods = req.app.get("body methods") ?? null;
     }
-    return route.bodyMethods === null || !route.bodyMethods.includes(req.method);
+    if (route.bodyMethods !== null && route.bodyMethods.includes(req.method)) {
+        return false;
+    }
+    // The layer is not entered, so it leaves the one mark it would have left: the parser puts
+    // `body` on the request before it works out that there is nothing to read. A library asks
+    // `"body" in req` to tell "a parser has run" from "none has", and a skip that did not leave
+    // it would answer a GET differently from express. See the same seeding in middlewares.js
+    if (!("body" in req)) {
+        req.body = undefined;
+    }
+    return true;
 }
 
 /**
