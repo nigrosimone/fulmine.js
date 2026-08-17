@@ -203,9 +203,26 @@ test("angular says so when every build target is a browser bundle", () => {
     assert.match(out, /no server build in angular\.json/);
 });
 
+test("angular takes the file itself as well as the directory holding it", () => {
+    const dir = fixture({ "angular.json": JSON.stringify(SSR_CONFIG, null, 2) + "\n" });
+    const { code, out } = run(["angular", path.join(dir, "angular.json")]);
+    assert.strictEqual(code, 0);
+    assert.match(out, /demo: declared/);
+    assert.deepStrictEqual(readJson(dir, "angular.json").projects.demo.architect.build.options.externalDependencies, [
+        "fulmine.js",
+        "uWebSockets.js"
+    ]);
+});
+
 test("angular reports a directory with no angular.json in it", () => {
     const dir = fixture({});
     const { code, out } = run(["angular", dir]);
+    assert.strictEqual(code, 1);
+    assert.match(out, /no angular\.json at/);
+});
+
+test("angular reports a path that is not there at all", () => {
+    const { code, out } = run(["angular", path.join(fixture({}), "nowhere")]);
     assert.strictEqual(code, 1);
     assert.match(out, /no angular\.json at/);
 });

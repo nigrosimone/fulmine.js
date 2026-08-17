@@ -266,12 +266,18 @@ function serverBuilds(config) {
 function angular(argv) {
     const dryRun = argv.includes("--dry-run");
     const given = path.resolve(argv.find((arg) => !arg.startsWith("--")) ?? ".");
-    // one stat and not an existence check followed by one: the argument may be the file itself or
-    // the directory holding it, and nothing is missing if it is neither
-    const stat = fs.statSync(given, { throwIfNoEntry: false });
-    const file = stat?.isFile() ? given : path.join(given, "angular.json");
 
-    const read = readJson(file);
+    // The argument is either the file or the directory holding it, and which one comes out of
+    // reading it rather than out of a stat: a directory reads as EISDIR and a missing path as
+    // ENOENT, and in both cases the file to look for is angular.json inside it. Asked this way
+    // round because this function goes on to write the file it read, and a check on a path followed
+    // by a write to the same path is the shape of a race whatever the odds of losing it.
+    let file = given;
+    let read = readJson(file);
+    if ("error" in read && (read.code === "EISDIR" || read.code === "ENOENT")) {
+        file = path.join(given, "angular.json");
+        read = readJson(file);
+    }
     if ("error" in read) {
         console.error(read.code === "ENOENT" ? `no angular.json at ${file}` : read.error);
         return 1;
