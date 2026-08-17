@@ -1,5 +1,19 @@
 # Changelog
 
+## [5.12.3](https://github.com/nigrosimone/fulmine.js/compare/v5.12.2...v5.12.3) (2026-08-17)
+
+### Bug Fixes
+
+* **declarative:** a status that carries no content is not compiled, its body desynced the connection ([dd501ba](https://github.com/nigrosimone/fulmine.js/commit/dd501ba4852b0b26e2b44d2ec5e8a63971fa06f3))
+* **deps:** the cookie package express depends on, whose message for an invalid name has no value in it ([f0634c0](https://github.com/nigrosimone/fulmine.js/commit/f0634c052aacf59b2f71ea05e874b53b2720e49a))
+* **request:** refuse a method nobody defines, an overflowing length and a transfer-encoding not ending in chunked ([b23ab32](https://github.com/nigrosimone/fulmine.js/commit/b23ab32c41bc5025dc6a1e4de2641787988241bd))
+* **request:** req.path follows a req.url a middleware assigned, as express reads it ([af29105](https://github.com/nigrosimone/fulmine.js/commit/af29105a86b2c35a813ef28b8086765eaa060184))
+* **router:** a route answering the mount point itself keeps the mount off the native path ([9d77c95](https://github.com/nigrosimone/fulmine.js/commit/9d77c95c0742cf5e1ece2d207f5b19538faf3714))
+* **router:** a route that captures cannot answer declaratively, nothing decodes its value ([713ab85](https://github.com/nigrosimone/fulmine.js/commit/713ab8536914bb8474163f0400775079b4ebd1a8))
+* **router:** an earlier route matching only the trailing slash keeps its leaf off the native path ([b835ee2](https://github.com/nigrosimone/fulmine.js/commit/b835ee2904f863101c67c916b15480d35f53fbfa))
+* **router:** step over a mount while an error is in flight, as express does ([20ba0e6](https://github.com/nigrosimone/fulmine.js/commit/20ba0e61b7f6a69b52d3d78f0752ae4485229644))
+* **router:** the whole text between a parameter and the one in the group after it is the separator ([9596f3e](https://github.com/nigrosimone/fulmine.js/commit/9596f3e4898f6171ab4209e73933b7ef14a01922))
+
 ## [5.12.2](https://github.com/nigrosimone/fulmine.js/compare/v5.12.1...v5.12.2) (2026-08-16)
 
 ### Bug Fixes
