@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.13.1](https://github.com/nigrosimone/fulmine.js/compare/v5.13.0...v5.13.1) (2026-08-17)
+
+### Bug Fixes
+
+* **response:** the response is destroyed when the client hangs up, so res.on(close) runs ([#15](https://github.com/nigrosimone/fulmine.js/issues/15)) ([5f5fc98](https://github.com/nigrosimone/fulmine.js/commit/5f5fc98a36aae3e7b3ba7cb4a852619a10c6ddbe))
+
 ## [5.13.0](https://github.com/nigrosimone/fulmine.js/compare/v5.12.3...v5.13.0) (2026-08-17)
 
 ### Features
