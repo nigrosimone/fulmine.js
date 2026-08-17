@@ -5,6 +5,9 @@ const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
+// etag off, or none of this is compiled: a response that would carry a validator is refused
+app.set("etag", false);
+
 // res.json and a returned res.send are two of the most common handler shapes there are, and both
 // used to fall back to ordinary routing: json was not a method the compiler read, and the word
 // "return" anywhere in the source stopped it. Everything here is compiled, so this compares the
@@ -74,6 +77,10 @@ const PATHS = [
 ];
 
 app.listen(13333, async () => {
+    // pins the compiled path: express has no testing namespace, so this runs on our side only.
+    // The falls-back ones are the other half of the comparison and are left out on purpose
+    if (express.testing) express.testing.expectDeclarative(app, ["/json-*", "/return-*"]);
+
     for (const path of PATHS) {
         const response = await fetchTest("http://localhost:13333" + path);
         console.log(

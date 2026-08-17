@@ -5,6 +5,9 @@ const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
+// etag off, or none of this is compiled: a response that would carry a validator is refused
+app.set("etag", false);
+
 // Every handler here is simple enough to be compiled into a native response, which means the
 // compiler reads the calls out of the source instead of running them. Two things about that are
 // easy to get wrong, and both were: a chain is walked outermost first, so res.status(a).status(b)
@@ -62,6 +65,9 @@ const PATHS = [
 ];
 
 app.listen(13333, async () => {
+    // pins the compiled path: express has no testing namespace, so this runs on our side only
+    if (express.testing) express.testing.expectDeclarative(app, "*");
+
     for (const path of PATHS) {
         const response = await fetchTest("http://localhost:13333" + path);
         console.log(path, JSON.stringify(await response.text()), response.headers.get("x-a"));

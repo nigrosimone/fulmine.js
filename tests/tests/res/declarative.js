@@ -91,6 +91,12 @@ app2.get("/test12/:id", (req, res) => {
 
 app.listen(13333, async () => {
     app2.listen(13334, async () => {
+        // app2 is the compiled arm, app the ordinary one, and only app2 can be pinned: express has
+        // no testing namespace, so this runs on our side only
+        if (express.testing) {
+            express.testing.expectDeclarative(app2, ["/test", "/test2", "/test4", "/test5", "/test6", "/test8"]);
+        }
+
         console.log("Server is running on port 13333");
         console.log("Server is running on port 13334");
 

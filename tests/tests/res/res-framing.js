@@ -5,6 +5,9 @@ const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
+// etag off, or neither is compiled: a response that would carry a validator is refused
+app.set("etag", false);
+
 // Two routes with the same body. The first compiles to a declarative response; the second cannot,
 // because the handler calls something the compiler does not follow.
 app.get("/compiled", (req, res) => res.send("ok"));
@@ -24,6 +27,10 @@ async function framingOf(path) {
 }
 
 app.listen(13333, async () => {
+    // pins the compiled path: express has no testing namespace, so this runs on our side only.
+    // Without it the two rows below would agree by both being ordinary, which proves nothing
+    if (express.testing) express.testing.expectDeclarative(app, "/compiled");
+
     const compiled = await framingOf("/compiled");
     const ordinary = await framingOf("/ordinary");
 

@@ -5,6 +5,10 @@ const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
+// etag off, or the compiled routes below are not compiled: a response that would carry a validator
+// is refused, since uWS answers it without reading the request
+app.set("etag", false);
+
 // Two different rules, and both of them bite:
 //   res.set   adds the charset the media type implies, for every type the mime database gives one
 //             and not only for text/*
@@ -64,6 +68,9 @@ app.get("/compiled-object-bare", (req, res) => res.send({ a: 1 }));
 app.get("/compiled-null-bare", (req, res) => res.send(null));
 
 app.listen(13333, async () => {
+    // pins the compiled path: express has no testing namespace, so this runs on our side only
+    if (express.testing) express.testing.expectDeclarative(app, "/compiled-*");
+
     for (let i = 0; i < TYPES.length; i++) {
         const viaEnd = await fetchTest(`http://localhost:13333/set${i}`);
         await viaEnd.text();

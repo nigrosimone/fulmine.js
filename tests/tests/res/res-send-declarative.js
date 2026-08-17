@@ -6,6 +6,8 @@ const { fetchTest } = require("../../helpers.js");
 const app = express();
 
 app.set("declarative responses", true);
+// and etag off, or none of this is compiled: a response that would carry a validator is refused
+app.set("etag", false);
 
 app.get("/test", (req, res) => {
     res.send("Hello World");
@@ -49,6 +51,10 @@ app.get("/arraybuffer", (req, res) => {
 });
 
 app.listen(13333, async () => {
+    // pins the compiled path: express has no testing namespace, so this runs on our side only. The
+    // rest of the routes send a shape the compiler does not follow and are the fallback half
+    if (express.testing) express.testing.expectDeclarative(app, ["/test", "/json", "/null", "/boolean"]);
+
     console.log("Server is running on port 13333");
 
     const responses = [

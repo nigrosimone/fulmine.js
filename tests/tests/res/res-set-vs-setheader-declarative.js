@@ -65,6 +65,9 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(13333, async () => {
+    // pins the compiled path: express has no testing namespace, so this runs on our side only
+    if (express.testing) express.testing.expectDeclarative(app, ["/set", "/set2", "/setheader", "/header", "/header2"]);
+
     const responses = await sequential([
         () => fetchTest("http://localhost:13333/set"),
         () => fetchTest("http://localhost:13333/set2"),

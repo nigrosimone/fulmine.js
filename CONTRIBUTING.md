@@ -18,8 +18,15 @@ npm run lint              # eslint, including the rule that every function in sr
 npm run format            # prettier
 npm run cover             # the comparison suite under nyc, then an HTML report
 
+npm run fuzz              # random applications, compared against Express
+npm run fuzz -- --self    # the same, against itself with the optimizer off
+npm run fuzz:wire         # the request bytes written by hand, compared against node's parser
+npm run fuzz:headers      # every value that breaks a header block, through the methods that write one
+npm run fuzz:session      # a sequence down one keep-alive connection, and down one connection each
+
 npm run benchmark:compare -- --duration 20      # against Express, scenario by scenario
 npm run benchmark:ab -- --against main          # this working tree against another revision
+npm run benchmark:profile -- --scenario api-endpoint   # where the time goes, for a change ab cannot see
 
 npm run test:express                            # Express's own test suite, run against this
 npm run test:express -- res.sendFile --verbose  # one area of it, with mocha's output
@@ -35,12 +42,12 @@ both the server and the client at once is a bug: the two orderings are a race.
 A test file is an ordinary script. The first line is its description, the second may carry a marker,
 and the rest sets up an app, makes requests and prints. `tests/helpers.js` has what to print with:
 
-|                         |                                                                                                                                                                                                                                                             |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fetchTest(url, init)`  | `fetch`, plus a line with the status and the headers worth comparing. Returns the response untouched, so the test goes on to read the body as it would have. Lines come out in call order, never in arrival order.                                          |
-| `sequential([() => …])` | Runs requests one at a time. `Promise.all` starts them together and the two servers then answer in whatever order they scheduled, which is a difference the runner would report as a failure.                                                               |
-| `// INSPECT`            | On the second line. The runner then mounts `inspectRequest` in front of every app the file makes, and each request prints its `method`, `url`, `originalUrl`, `baseUrl`, `path`, `protocol`, `secure`, `hostname`, `host`, `xhr`, `subdomains` and `query`. |
-| `// OFF: reason`        | Skips the file.                                                                                                                                                                                                                                             |
+|                           |                                                                                                                                                                                                                                                             |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fetchTest(url, init)`    | `fetch`, plus a line with the status and the headers worth comparing. Returns the response untouched, so the test goes on to read the body as it would have. Lines come out in call order, never in arrival order.                                          |
+| `sequential([() => ...])` | Runs requests one at a time. `Promise.all` starts them together and the two servers then answer in whatever order they scheduled, which is a difference the runner would report as a failure.                                                               |
+| `// INSPECT`              | On the second line. The runner then mounts `inspectRequest` in front of every app the file makes, and each request prints its `method`, `url`, `originalUrl`, `baseUrl`, `path`, `protocol`, `secure`, `hostname`, `host`, `xhr`, `subdomains` and `query`. |
+| `// OFF: reason`          | Skips the file.                                                                                                                                                                                                                                             |
 
 `// INSPECT` is not free everywhere, which is why it is asked for rather than always on. It is a
 middleware, so a route behind it stops being compiled into a declarative response and is served by
@@ -55,6 +62,16 @@ front of it.
 
 The marker is read from the comment block at the top of the file, so it can sit under a description
 that runs to a paragraph rather than only on the second line.
+
+A file written for the compiled path has to pin it, or it stops covering it without ever failing:
+`etag` is on by default and a response that would carry one is never compiled, which had quietly
+turned six of those files into ordinary-path tests. Set `app.set("etag", false)` and name the routes
+with `expectDeclarative`, guarded by `if (express.testing)` so the Express arm skips it and both arms
+still print the same thing.
+
+```js
+if (express.testing) express.testing.expectDeclarative(app, ["/compiled", "/also-compiled"]);
+```
 
 `npm run test:express` is the other kind of test: it clones Express at the version in
 `devDependencies`, points its entry at this source and runs its suite against it. Locally it is a
@@ -74,10 +91,19 @@ compiled response and granted skip is a claim that µWS answering by itself give
 would have given, and that claim is where the bugs have been. A divergence there is a bug by
 construction: the same code answered the same request two ways. Nothing about Express bounds it,
 which is why it is worth running over the whole comparison corpus and not only over generated
-applications — the corpus already holds the view engines, sessions, uploads and real middleware
+applications, the corpus already holds the view engines, sessions, uploads and real middleware
 nobody would think to generate.
 
-[`tools/README.md`](./tools/README.md) covers those two and the release script.
+Three more fuzzers take the surfaces `fuzz.js` cannot reach through `fetch`. `fuzz:wire` writes the
+request bytes by hand, since undici will not send a malformed one, and its oracle is node's parser
+rather than Express: serving more requests out of the same bytes than node is the desync smuggling
+is made of. `fuzz:headers` puts every value that breaks a header block through the methods that
+compute one, `res.cookie` and `res.location` and the rest, since `res.set` is the only door that is
+already guarded. `fuzz:session` asks the same sequence twice, down one keep-alive connection and
+down one connection each, so an answer that changed for having followed another request is a finding
+of its own rather than a difference from Express.
+
+[`tools/README.md`](./tools/README.md) covers all five and the release script.
 [`benchmark/README.md`](./benchmark/README.md) covers measuring, including why the A/B runs
 pipelined by default, why a null control matters, and how a run is compared against the last one on
 the same machine.

@@ -20,6 +20,10 @@ app.get("/arraybuffer", (req, res) => {
 });
 
 app.listen(13333, async () => {
+    // pins the compiled path: express has no testing namespace, so this runs on our side only. A
+    // buffer is not a literal the compiler can read, so only the string one is compiled
+    if (express.testing) express.testing.expectDeclarative(app, "/text");
+
     console.log("Server is running on port 13333");
 
     const responses = await sequential([

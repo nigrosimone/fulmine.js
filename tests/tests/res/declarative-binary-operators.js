@@ -12,12 +12,17 @@ app.get("/sub", (req, res) => res.send(req.query.n - 1));
 app.get("/eq", (req, res) => res.send(req.query.a == "x"));
 app.get("/concat", (req, res) => res.send("x" + req.query.n + "y"));
 
-// pure defaults, so the literal case rides the compiled path too
+// pure defaults, which means the same handler is served by the ordinary path: a response that
+// would carry an ETag is never compiled, and the two paths have to agree on the value
 const app2 = express();
 app2.get("/literal", (req, res) => res.send("a" - 1));
 
 app.listen(13333, () => {
     app2.listen(13334, async () => {
+        // pins the compiled path: express has no testing namespace, so this runs on our side only.
+        // The other two are the operators the compiler refuses, which is what this file compares
+        if (express.testing) express.testing.expectDeclarative(app, "/concat");
+
         for (const url of [
             "http://localhost:13333/sub?n=5",
             "http://localhost:13333/eq?a=x",
