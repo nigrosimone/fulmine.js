@@ -34,7 +34,7 @@ every request there walks the ordinary chain. Every native registration, compile
 granted skip is a claim that µWS answering by itself gives the answer the chain would have given,
 and that claim is where the bugs have been: an analysis reading a pattern as narrower than it is, a
 route that never gets its turn, a guard that does not fire. A divergence in this mode is a bug by
-construction — the same code answered the same request two ways — and it needs no oracle, so it
+construction, the same code answered the same request two ways, and it needs no oracle, so it
 also reaches the shapes Express has no opinion about. Checked by putting a known bug back and
 confirming it is caught: with the wildcard fix reverted, `--self --seed 220496 --rounds 1` reports
 the mounted route answering where the earlier one should have.

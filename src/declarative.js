@@ -715,13 +715,10 @@ module.exports = function compileDeclarative(cb, app) {
             return false;
         }
 
-        // A status that carries no content, which is a rule about the message and not about the
-        // application: express drops the body and the framing headers for 204 and 304, and node
-        // writes a lone Content-Length: 0 for 205. Compiled, the body went out anyway, so
-        // res.sendStatus(204) answered "No Content" with a Content-Length of ten. A client frames
-        // a 204 as bodiless whatever the headers say, so those ten bytes were read as the start of
-        // the next answer on the connection, which is a desync on any keep-alive client. The
-        // ordinary path already writes all three the way express does: this hands them back to it.
+        // A status that carries no content. Compiled, the body went out with it, and a client
+        // frames these as bodiless whatever the headers say, so those bytes were read as the start
+        // of the next answer on the connection. The ordinary path already writes all three the way
+        // express does.
         if (BODILESS_STATUSES.has(statusCode) || statusCode < 200) {
             return false;
         }
@@ -771,15 +768,10 @@ module.exports = function compileDeclarative(cb, app) {
             body.push({ type: "text", value: statuses.message[statusCode] || String(statusCode) });
         }
 
-        // A response that would carry a validator is not compiled at all.
-        //
-        // µWS answers a declarative response without reading the request, so it cannot answer a
-        // conditional GET: it used to write an ETag computed over the compiled body at listen and
-        // then ignore it, so every revalidation got 200 and the whole body where Express answers
-        // 304 with none. Dropping the ETag instead would have kept the route compiled, at the
-        // price of no validator at all on the simplest routes of every application. Refusing
-        // keeps Express's answer, and `etag` false is how a route that does not need one stays
-        // compiled, which is what both benchmarks here already set.
+        // A response that would carry a validator is not compiled at all: µWS answers it without
+        // reading the request, so it could never turn a conditional GET into the 304 the validator
+        // invites. Dropping the ETag instead would leave the simplest routes of an application
+        // without one, so `etag` false is how a route stays compiled.
         if (headers.some((header) => VALIDATOR_HEADERS.has(header[0].toLowerCase()))) {
             return false;
         }

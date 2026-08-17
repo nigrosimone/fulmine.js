@@ -362,7 +362,7 @@ function buildMarkdown(results, historySection) {
         );
         lines.push("");
         for (const entry of bounded) {
-            lines.push(`- \`${entry.scenario}\`: ${entry.by}${entry.ceiling ? ` — ceiling ${entry.ceiling}` : ""}`);
+            lines.push(`- \`${entry.scenario}\`: ${entry.by}${entry.ceiling ? `, ceiling ${entry.ceiling}` : ""}`);
         }
     }
 

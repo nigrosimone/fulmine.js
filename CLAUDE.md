@@ -5,7 +5,7 @@ product, so "Express does X" settles almost every design argument.
 
 Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) first: it explains the three test suites and how to
 write a comparison test. [`benchmark/README.md`](./benchmark/README.md) explains measuring.
-[`tools/README.md`](./tools/README.md) covers the fuzzer, the Express suite and releasing. This
+[`tools/README.md`](./tools/README.md) covers the fuzzers, the Express suite and releasing. This
 file only adds what those do not say.
 
 ## Before you commit
@@ -47,18 +47,22 @@ against a request budget of tens of microseconds.
 Never run anything else on the machine while a benchmark measures. If the Express column moved
 between two runs, the machine moved and the run is void.
 
-## The fuzzer
+## The fuzzers
 
 `npm run fuzz` compares random applications against Express. It is the highest-yield bug finder
 here. Triage a run by grouping the divergences by which fields differ: one root cause usually
 accounts for most of them. Replay with `--seed <n> --rounds 1` and read the shrunk case it prints.
 
+`fuzz:wire`, `fuzz:headers` and `fuzz:session` take what it cannot reach through `fetch`: the
+request bytes, the methods that compute a header value, and a sequence down one keep-alive
+connection. Run the one that sits under what you changed. `tools/README.md` has each of them.
+
 CI runs it on a **random seed**, so it explores a different application on every push. Red there is
 usually a real, pre-existing bug that this push merely exposed. Read the shrunk case before assuming
 the last commit caused it.
 
-If you touched the optimizer — the overlap analysis, the guards, the granted skips, anything in
-`_compileOptimizedRoutes` — run `npm test -- --self` and `npm run fuzz -- --self`. Those serve the
+If you touched the optimizer, the overlap analysis, the guards, the granted skips, anything in
+`_compileOptimizedRoutes`, then run `npm test -- --self` and `npm run fuzz -- --self`. Those serve the
 same application twice with this framework, the reference arm with `native routes` off, so a
 divergence is the optimizer disagreeing with the chain it stands in for rather than a compatibility
 question. `CONTRIBUTING.md` explains it. Before trusting a clean run of any oracle you add, put a

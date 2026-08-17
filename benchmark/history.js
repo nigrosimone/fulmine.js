@@ -276,7 +276,7 @@ function historyMarkdown(baseline, current) {
         `### Against the last run on ${baseline.exact ? "this machine" : "a machine of the same shape"}${label ? ` (${label})` : ""}`
     );
     lines.push("");
-    lines.push("| Test | Speedup then | Speedup now | Change | Express then → now | Fulmine then → now |");
+    lines.push("| Test | Speedup then | Speedup now | Change | Express then to now | Fulmine then to now |");
     lines.push("| --- | ---: | ---: | ---: | ---: | ---: |");
 
     for (const row of rows) {
@@ -287,7 +287,7 @@ function historyMarkdown(baseline, current) {
         lines.push(
             `| ${row.name}${mark} | ${row.before.speedup.toFixed(2)}x | ` +
                 `${row.after.speedup.toFixed(2)}x | ${row.notable ? `**${percent}**` : percent} | ` +
-                `${row.before.express} → ${row.after.express} | ${row.before.fulmine} → ${row.after.fulmine} |`
+                `${row.before.express} to ${row.after.express} | ${row.before.fulmine} to ${row.after.fulmine} |`
         );
     }
 

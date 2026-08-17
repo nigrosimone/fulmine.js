@@ -181,10 +181,9 @@ function endsWithChunked(value) {
  * The path of the url a request carries right now, without the query.
  *
  * Express reads it off req.url on every access, so a middleware that assigns req.url is seen by
- * whatever runs next, the callback after it in the same route included: the router takes a rewrite
- * over at its next hop, and until then the field is a hop behind. `req.url = req.url.replace(/^\/+/,
- * "/")` reported "//" for the rest of its own route where express reports "/". The field answers
- * while the two agree, which is every read of a request nobody rewrote.
+ * whatever runs next, the callback after it in the same route included: the router only takes a
+ * rewrite over at its next hop. The cached field answers while the two agree, which is every read
+ * of a request nobody rewrote.
  *
  * @param {any} req
  * @returns {string}

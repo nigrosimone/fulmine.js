@@ -85,11 +85,12 @@ const DIFFERENCES = [
         'Express sends X-Powered-By: Express unless told not to. Set app.set("x-powered-by", true) to send it.'
     ],
     [
-        "a compiled route is framed differently and keeps its connection header",
-        "A handler simple enough to be read at registration time is answered natively: chunked framing\n" +
-            "with no Content-Length, and a client that sent Connection: close is still told keep-alive,\n" +
-            "though the socket does close. A response that would carry a validator is never compiled, so\n" +
-            'conditional requests behave as on Express. app.set("declarative responses", false) turns it off.'
+        "a compiled route keeps its connection header",
+        "A handler simple enough to be read at registration time is answered natively, and a client\n" +
+            "that sent Connection: close is still told keep-alive, though the socket does close. A body\n" +
+            "with a piece of the query in it is framed chunked, since its length is not known until the\n" +
+            "request arrives. A response that would carry a validator is never compiled, so conditional\n" +
+            'requests behave as on Express. app.set("declarative responses", false) turns it off.'
     ],
     [
         "headers are capped at 4096 bytes by default",

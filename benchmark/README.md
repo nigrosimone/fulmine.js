@@ -69,6 +69,29 @@ CPU microseconds the server spends per request, and a noisy neighbour stealing c
 throughput without changing how much work a request costs, so it survives conditions that make this
 harness useless.
 
+## Where the time goes
+
+```bash
+npm run benchmark:profile -- --scenario api-endpoint
+npm run benchmark:profile -- --scenario api-endpoint --against main --rounds 5
+```
+
+Self time by function, in microseconds of CPU per thousand requests, for one revision or for two side
+by side. Work that stops happening shows up here as a number falling even where `ab.js` reads the
+change as noise, which is what the ETag change of 2026-08-02 did: 0.9871 through `ab.js`, and the
+hashing path visibly smaller here.
+
+Idle is left out of the total, since a change that removes work leaves the server idle for longer and
+every untouched function would otherwise look as though it had got faster with it. What is reported
+is the median of several rounds, with the spread beside it: between two runs of the same code,
+functions nobody had touched moved on their own, so anything smaller than that spread is not a
+result. Samples have been weighted by the profiler's own timeDelta since 2026-08-15, and a number
+printed before that date does not compare with a new one.
+
+The settings are `benchmark/server.js`'s, the same ones `run.js` measures under: the ETag,
+`x-powered-by` and the declarative compiler are off on both arms, so what is measured is the
+framework doing the work rather than what a default application would pay.
+
 ## Writing a scenario
 
 A scenario module exports the route setup and, when the request is anything other than a plain GET,

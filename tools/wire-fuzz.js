@@ -8,8 +8,8 @@
 // Every other tool here speaks through `fetch`, and undici will not send a malformed request: it
 // normalises the header block, refuses two Content-Lengths, writes its own chunked framing. So no
 // generated test in this repo can reach the HTTP parser at all, and the one serious bug found on
-// 2026-08-16 — a repeated or unparseable Content-Length framing the request differently from what
-// the client sent, which is request smuggling — was only found by writing sockets by hand. This
+// 2026-08-16, a repeated or unparseable Content-Length framing the request differently from what
+// the client sent, which is request smuggling, was only found by writing sockets by hand. This
 // writes them for you.
 //
 // The oracle is node's own parser, not Express: the question here is framing, and llhttp is the
