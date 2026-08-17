@@ -33,6 +33,14 @@ function wrapFactory(factory) {
     };
     Object.setPrototypeOf(wrapped, factory);
     Object.assign(wrapped, factory);
+    // expectNative and expectDeclarative assert that a route was registered on the µWS router, or
+    // compiled into a response written at startup. The line above has just turned both off, so in
+    // this arm they assert something the run has deliberately arranged to be false, and eleven
+    // files failed here for that reason alone. Skipped rather than answered: the assertions still
+    // run in the other arm and in every ordinary `npm test`, which is where they belong. What this
+    // arm compares is the two ways of answering a request, and a file cannot compare them if it
+    // throws before it has answered one.
+    wrapped.testing = { ...factory.testing, expectNative: () => {}, expectDeclarative: () => {} };
     return wrapped;
 }
 
