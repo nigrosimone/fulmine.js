@@ -179,34 +179,33 @@ with no cache at all on the serving side.
 ### NestJS
 
 `@nestjs/platform-express` takes an Express instance, so it takes this one, and everything in a Nest
-application keeps working. One line stands between that and the speed: the adapter wraps whatever
-instance it is given in `http.createServer()` and listens on that, which is the shim, so every
-request goes through `node:http` and the application runs at Express's pace. The app here already
-answers as an `http.Server`, so it can be the server rather than being wrapped in one:
+application keeps working. The adapter is in the package, so there is nothing to write:
 
 ```ts
 import { NestFactory } from "@nestjs/core";
-import { ExpressAdapter } from "@nestjs/platform-express";
-import fulmine from "fulmine.js";
+import { FulmineExpressAdapter } from "fulmine.js/nest";
 
-class FulmineAdapter extends ExpressAdapter {
-    initHttpServer() {
-        // instead of http.createServer(instance): listen() and close() are then µWS's
-        (this as any).httpServer = this.getInstance();
-    }
-}
-
-const app = await NestFactory.create(AppModule, new FulmineAdapter(fulmine()));
+const app = await NestFactory.create(AppModule, new FulmineExpressAdapter());
 await app.listen(3000);
 ```
+
+Pass your own application where it needs options, TLS being the usual reason:
+`new FulmineExpressAdapter(fulmine({ uwsOptions }))`. `@nestjs/platform-express` is an optional peer
+dependency, so nothing is installed for anyone who never imports this.
+
+What it changes is one line and two edges. The line: Nest's own adapter wraps whatever instance it
+is given in `http.createServer()` and listens on that, which is the shim, so every request goes
+through `node:http` and the application runs at Express's pace. The app here already answers as an
+`http.Server`, so it is the server rather than being put inside one. The edges:
+`forceCloseConnections` has nothing to destroy, since the sockets belong to µWS and nothing emits
+`connection`, so it now says so instead of quietly doing nothing; and Nest decides whether it has
+already added its body parsers by scanning `app.router.stack`, which is not there, so the adapter
+remembers instead of letting a second call add a second pair. `httpsOptions` is refused rather than
+silently starting a plaintext server: TLS is configured on the app, through `uwsOptions`.
 
 Measured on the same Nest application, controllers, pipes and body parsing unchanged: **1.2x on a
 route answering text and 1.9x on one answering JSON with a route parameter**. `app.close()` closes
 the port, as it does on the shim.
-
-Two things to know. `forceCloseConnections` has nothing to destroy, since the sockets belong to µWS
-and nothing emits `connection`, and Nest looks at `app.router.stack` to decide whether it has
-already added its body parsers, which is not there, so it adds them once more than it would.
 
 ### When Express is somebody else's dependency
 
