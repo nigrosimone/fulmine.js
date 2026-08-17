@@ -589,9 +589,16 @@ module.exports = class Response extends LazyWritable {
      *
      * Nothing is written here despite the name: the headers go out when the body does.
      *
+     * Every header goes through setHeader and not through set. This is node's method, not
+     * Express's: Express does not override it, so a content-type given here keeps the value it was
+     * given, where `res.set("content-type", "text/html")` would have a charset appended to it. A
+     * handler that builds its own response and writes it with writeHead is how every meta-framework
+     * on top of Express answers, @astrojs/node and @sveltejs/adapter-node included, so the charset
+     * was being added to pages nobody asked it for.
+     *
      * @param {number} statusCode
-     * @param {string|Record<string, any>} [statusMessage] the reason phrase, or the headers
-     * @param {Record<string, any>} [headers]
+     * @param {string|Record<string, any>|any[]} [statusMessage] the reason phrase, or the headers
+     * @param {Record<string, any>|any[]} [headers]
      * @returns {this}
      */
     writeHead(statusCode, statusMessage, headers) {
@@ -605,8 +612,22 @@ module.exports = class Response extends LazyWritable {
             // string reaching here was already taken as the phrase above and simply has no keys.
             headers = /** @type {Record<string, any>} */ (statusMessage);
         }
+        if (Array.isArray(headers)) {
+            // node takes a flat list here, name then value, and not a list of pairs. An odd length
+            // is the caller's mistake and node names the argument in what it throws
+            if (headers.length % 2 !== 0) {
+                /** @type {NodeJS.ErrnoException} */
+                const err = new TypeError(`The argument 'headers' is invalid. Received ${JSON.stringify(headers)}`);
+                err.code = "ERR_INVALID_ARG_VALUE";
+                throw err;
+            }
+            for (let i = 0; i < headers.length; i += 2) {
+                this.setHeader(headers[i], headers[i + 1]);
+            }
+            return this;
+        }
         for (const header in headers) {
-            this.set(header, headers[header]);
+            this.setHeader(header, headers[header]);
         }
         return this;
     }
