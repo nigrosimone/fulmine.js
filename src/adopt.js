@@ -72,21 +72,26 @@ function indentOf(source) {
 /**
  * Reads a JSON file, or explains why it could not be read rather than throwing a parser error.
  *
+ * The read is attempted rather than guarded by an existence check. Both commands go on to write the
+ * file they read, and a check on a path followed by a write to the same path is the shape of a race
+ * whatever the odds of losing it. `code` is what a caller names the missing file by.
+ *
  * @param {string} file
- * @returns {{data: any, source: string}|{error: string}}
+ * @returns {{data: any, source: string}|{error: string, code: string|undefined}}
  */
 function readJson(file) {
     let source;
     try {
         source = fs.readFileSync(file, "utf8");
-    } catch {
-        return { error: `${file} could not be read` };
+    } catch (e) {
+        const err = /** @type {NodeJS.ErrnoException} */ (e);
+        return { error: `${file} could not be read: ${err.message}`, code: err.code };
     }
     try {
         return { data: JSON.parse(source), source };
     } catch (e) {
         const err = /** @type {Error} */ (e);
-        return { error: `${file} is not valid JSON and was left alone: ${err.message}` };
+        return { error: `${file} is not valid JSON and was left alone: ${err.message}`, code: undefined };
     }
 }
 
@@ -162,14 +167,9 @@ function override(argv) {
     const dir = path.resolve(argv.find((arg) => !arg.startsWith("--")) ?? ".");
     const file = path.join(dir, "package.json");
 
-    if (!fs.existsSync(file)) {
-        console.error(`no package.json in ${dir}`);
-        return 1;
-    }
-
     const read = readJson(file);
     if ("error" in read) {
-        console.error(read.error);
+        console.error(read.code === "ENOENT" ? `no package.json in ${dir}` : read.error);
         return 1;
     }
     const { data: pkg, source } = read;
@@ -266,16 +266,14 @@ function serverBuilds(config) {
 function angular(argv) {
     const dryRun = argv.includes("--dry-run");
     const given = path.resolve(argv.find((arg) => !arg.startsWith("--")) ?? ".");
-    const file = fs.existsSync(given) && fs.statSync(given).isFile() ? given : path.join(given, "angular.json");
-
-    if (!fs.existsSync(file)) {
-        console.error(`no angular.json at ${file}`);
-        return 1;
-    }
+    // one stat and not an existence check followed by one: the argument may be the file itself or
+    // the directory holding it, and nothing is missing if it is neither
+    const stat = fs.statSync(given, { throwIfNoEntry: false });
+    const file = stat?.isFile() ? given : path.join(given, "angular.json");
 
     const read = readJson(file);
     if ("error" in read) {
-        console.error(read.error);
+        console.error(read.code === "ENOENT" ? `no angular.json at ${file}` : read.error);
         return 1;
     }
     const { data: config, source } = read;
