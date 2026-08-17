@@ -21,6 +21,8 @@ There is a command that does that replacing for you, across a whole project, and
 npx fulmine.js verify              # can this machine and this image even run it
 npx fulmine.js migrate --dry-run   # say what it would change, change nothing
 npx fulmine.js migrate             # do it
+npx fulmine.js override            # when a framework requires express in its own code, not in yours
+npx fulmine.js angular             # angular.json's server build, which esbuild would otherwise inline
 npx fulmine.js differences         # just the list of what to check by hand
 npx fulmine.js profile             # what listen() decided about each route
 npx fulmine.js explain /api/items  # what happens when a request for that route arrives
@@ -155,8 +157,16 @@ The `server.ts` that `ng add @angular/ssr` generates is an ordinary Express appl
 one-line change applies, and `@angular/ssr`'s own `AngularNodeAppEngine` and
 `writeResponseToNodeResponse` work against Fulmine's request and response unchanged. One extra step
 is needed, and it is Angular's build rather than this library: the server bundle is built with
-esbuild, which tries to inline every dependency and cannot load µWS's native binary. Declare the two
-as external in `angular.json`:
+esbuild, which tries to inline every dependency and cannot load µWS's native binary. The two names
+have to be declared external in `angular.json`, which is what this writes:
+
+```sh
+npx fulmine.js angular             # every server build in angular.json
+npx fulmine.js angular --dry-run   # say what it would write, write nothing
+```
+
+It adds this to each build target that produces a server bundle, and leaves the browser-only ones
+alone:
 
 ```json
 "architect": { "build": { "options": {
@@ -211,7 +221,16 @@ the port, as it does on the shim.
 
 A framework built on Express does not `require("express")` in your code, it requires it in its own,
 so there is nothing for `migrate` to rewrite. Every package manager can answer `express` with this
-package instead, for your project and everything under it:
+package instead, for your project and everything under it, and this writes the block for whichever
+one your project uses:
+
+```sh
+npx fulmine.js override             # read the lockfile, write the block, say what to run next
+npx fulmine.js override --dry-run   # say what it would write, write nothing
+```
+
+It refuses rather than overwrites where a substitution is already there and is not this package. By
+hand it is one of these:
 
 ```jsonc
 // npm and its lockfile, in package.json

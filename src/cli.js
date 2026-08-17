@@ -31,6 +31,13 @@ limitations under the License.
 //
 // Whether this machine and this project can run it at all: the node version, the C library, the
 // µWebSockets.js binary, the base image a Dockerfile names. See src/verify.js.
+//
+// npx fulmine override [dir]
+// npx fulmine angular [dir]
+//
+// The two things a project needs that are a line in a JSON file rather than a specifier in a source
+// file: the package manager substitution, for a framework that requires express in its own code,
+// and angular.json's externalDependencies. See src/adopt.js.
 
 const fs = require("fs");
 const path = require("path");
@@ -38,6 +45,7 @@ const acorn = require("acorn");
 // the same walk express.testing asserts on, so the command and the assertions cannot drift
 const { collectRoutes } = require("./testing.js");
 const { verify } = require("./verify.js");
+const { override, angular } = require("./adopt.js");
 
 const FROM = "express";
 const TO = "fulmine.js";
@@ -823,9 +831,19 @@ function main(argv) {
     if (command === "explain") {
         return explain(argv.slice(1));
     }
+    if (command === "override") {
+        return override(argv.slice(1));
+    }
+    if (command === "angular") {
+        return angular(argv.slice(1));
+    }
     if (command !== "migrate") {
         console.log(`Usage:
   npx ${TO} migrate [dir]      rewrite require("${FROM}") and import from "${FROM}" to "${TO}"
+  npx ${TO} override [dir]     answer ${FROM} with this package for the whole dependency tree, for
+                               when a framework requires ${FROM} in its own code and not in yours
+  npx ${TO} angular [dir]      declare this package external in angular.json's server build, which
+                               esbuild otherwise tries to inline a native binary into
   npx ${TO} profile [entry]    load an application without listening and print what compiling
                                its routes decided, route by route
   npx ${TO} explain <route>    what happens when a request for that route arrives
@@ -833,7 +851,7 @@ function main(argv) {
   npx ${TO} differences        print what behaves differently, without changing anything
 
 Options:
-  --dry-run                    migrate: say what would change and change nothing`);
+  --dry-run                    migrate, override, angular: say what would change and change nothing`);
         return command ? 1 : 0;
     }
 
