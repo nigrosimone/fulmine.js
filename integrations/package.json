@@ -1,0 +1,45 @@
+{
+    "name": "fulmine-integrations",
+    "version": "1.0.0",
+    "private": true,
+    "description": "The same application served by Express and by Fulmine, for frameworks that build on Express",
+    "scripts": {
+        "test": "node run.js"
+    },
+    "engines": {
+        "node": ">=22"
+    },
+    "dependencies": {
+        "@apollo/server": "^5.0.0",
+        "@as-integrations/express5": "^1.1.2",
+        "@nestjs/common": "^11.1.6",
+        "@nestjs/core": "^11.1.6",
+        "@nestjs/platform-express": "^11.1.6",
+        "@trpc/server": "^11.7.1",
+        "express": "^5",
+        "fulmine.js": "file:..",
+        "graphql": "^16.11.0",
+        "reflect-metadata": "^0.2.2",
+        "rxjs": "^7.8.2"
+    },
+    "devDependencies": {
+        "@astrojs/node": "^11.1.2",
+        "@react-router/dev": "^8.3.0",
+        "@react-router/express": "^8.3.0",
+        "@react-router/node": "^8.3.0",
+        "@sveltejs/adapter-node": "^5.5.7",
+        "@sveltejs/kit": "^2.70.2",
+        "@sveltejs/vite-plugin-svelte": "^7.3.0",
+        "astro": "^7.2.2",
+        "isbot": "^5.2.1",
+        "next": "^16.3.1",
+        "react": "^19.2.8",
+        "react-dom": "^19.2.8",
+        "react-router": "^8.3.0",
+        "svelte": "^5.56.9",
+        "vite": "^8.2.1"
+    },
+    "allowScripts": {
+        "esbuild@0.28.2": true
+    }
+}

@@ -66,6 +66,7 @@ See [Migrating](#migrating) for what it handles and what it deliberately does no
     - [Response](#response)
     - [Router](#router)
 - [Tested middlewares](#tested-middlewares)
+- [Tested frameworks](#tested-frameworks)
 - [Tested view engines](#tested-view-engines)
 - [Examples](./examples/README.md)
 - [Working on Fulmine](./CONTRIBUTING.md)
@@ -206,16 +207,19 @@ dependency, so nothing is installed for anyone who never imports this.
 What it changes is one line and two edges. The line: Nest's own adapter wraps whatever instance it
 is given in `http.createServer()` and listens on that, which is the shim, so every request goes
 through `node:http` and the application runs at Express's pace. The app here already answers as an
-`http.Server`, so it is the server rather than being put inside one. The edges:
-`forceCloseConnections` has nothing to destroy, since the sockets belong to µWS and nothing emits
-`connection`, so it now says so instead of quietly doing nothing; and Nest decides whether it has
-already added its body parsers by scanning `app.router.stack`, which is not there, so the adapter
-remembers instead of letting a second call add a second pair. `httpsOptions` is refused rather than
-silently starting a plaintext server: TLS is configured on the app, through `uwsOptions`.
+`http.Server`, so it is the server rather than being put inside one. The edges: `forceCloseConnections`
+has nothing to destroy, since the sockets belong to µWS and nothing emits `connection`, so it now
+says so instead of quietly doing nothing; and Nest decides whether it has already added its body
+parsers by scanning `app.router.stack`, which is not there, so the adapter remembers instead of
+letting a second call add a second pair. `httpsOptions` is refused rather than silently starting a
+plaintext server: TLS is configured on the app, through `uwsOptions`.
 
 Measured on the same Nest application, controllers, pipes and body parsing unchanged: **1.2x on a
 route answering text and 1.9x on one answering JSON with a route parameter**. `app.close()` closes
 the port, as it does on the shim.
+
+A Nest application answering the same bytes on both is [a case in the integration
+suite](./integrations/cases/nest.js), so this is tested rather than claimed.
 
 ### When Express is somebody else's dependency
 
@@ -874,6 +878,29 @@ Almost all middlewares that are compatible with Express are compatible with Fulm
 [tsoa](https://github.com/lukeautry/tsoa) works too, but it is not in the suite above: it resolves
 `express` itself, so testing it here needs a dependency override rather than the one-line swap
 everything else takes.
+
+## Tested frameworks
+
+The list above is middlewares. A framework built on Express is a much larger user of the Express
+surface than any application is, so those have a suite of their own, in
+[`integrations/`](./integrations): the same application served twice, once on Express and once here,
+with the two outputs compared byte for byte. The four that render pages are built first, by that
+suite, so what is compared is what their own build produces.
+
+- ✅ [NestJS](https://nestjs.com) through [`fulmine.js/nest`](#nestjs)
+- ✅ [Next.js](https://nextjs.org) as a custom server, `next().getRequestHandler()`
+- ✅ [Astro](https://astro.build) through `@astrojs/node` in middleware mode
+- ✅ [SvelteKit](https://svelte.dev/docs/kit) through `@sveltejs/adapter-node`
+- ✅ [React Router v7](https://reactrouter.com) through `@react-router/express`
+- ✅ [Apollo Server](https://www.apollographql.com/docs/apollo-server) through
+  [`@as-integrations/express5`](https://www.npmjs.com/package/@as-integrations/express5)
+- ✅ [tRPC](https://trpc.io) through `@trpc/server/adapters/express`
+- ✅ [Angular SSR](#angular-ssr), which is an ordinary Express `server.ts` plus one line of build
+  configuration
+
+Each of these mounts on an ordinary Express application, so there is nothing to install and nothing
+to configure beyond what that framework already asks for. Nest is the exception, and only because
+its adapter decides what to listen on: that one is [`fulmine.js/nest`](#nestjs).
 
 ## Tested view engines
 

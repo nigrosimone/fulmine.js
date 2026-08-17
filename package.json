@@ -41,6 +41,8 @@
         "cover:full": "nyc --silent npm run test && nyc --silent --no-clean npm run test:unit && nyc --silent --no-clean npm run test:express && nyc report",
         "cover:check": "nyc check-coverage --statements 94.5 --branches 90 --functions 94 --lines 94.5",
         "examples:install": "npm --prefix examples install",
+        "test:integrations": "npm --prefix integrations test",
+        "integrations:install": "npm --prefix integrations install",
         "fuzz:wire": "node tools/wire-fuzz.js",
         "fuzz:headers": "node tools/header-fuzz.js",
         "fuzz:session": "node tools/session-fuzz.js"

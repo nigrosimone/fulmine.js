@@ -1,0 +1,5 @@
+{
+    "name": "fulmine-integration-sveltekit",
+    "private": true,
+    "type": "module"
+}

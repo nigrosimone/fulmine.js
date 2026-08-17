@@ -3,10 +3,11 @@
 Fulmine.js is a drop-in Express 5 replacement on uWebSockets.js. Compatibility with Express is the
 product, so "Express does X" settles almost every design argument.
 
-Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) first: it explains the three test suites and how to
-write a comparison test. [`benchmark/README.md`](./benchmark/README.md) explains measuring.
-[`tools/README.md`](./tools/README.md) covers the fuzzers, the Express suite and releasing. This
-file only adds what those do not say.
+Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) first: it explains the test suites and how to write a
+comparison test. [`benchmark/README.md`](./benchmark/README.md) explains measuring.
+[`tools/README.md`](./tools/README.md) covers the fuzzers, the Express suite and releasing.
+[`integrations/README.md`](./integrations/README.md) covers the frameworks that build on Express.
+This file only adds what those do not say.
 
 ## Before you commit
 
@@ -23,6 +24,12 @@ npm run format:check
 
 A behaviour fix needs a comparison test under `tests/tests/`, and you must check it fails without
 the fix before claiming it covers anything. Reverting the fix and re-running is the only proof.
+
+`npm run test:integrations` is the same rule with a framework on top, and it is not in the list
+because it needs its own install, `npm run integrations:install`, and builds four applications the
+first time. Run it when you touch anything a framework sits on: the request and response surface,
+the body parsers, `writeHead`, the header methods. Both bugs it has found so far were in code the
+comparison suite covers well and applications reach differently from frameworks.
 
 Do not tag or release unless asked. Pushing a `v*` tag is what makes
 `.github/workflows/release.yml` publish to npm; `npm run release` creates that tag.

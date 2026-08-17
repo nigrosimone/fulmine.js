@@ -161,6 +161,52 @@ jobs:
             - name: Fuzz against Express on a random seed
               run: npm run fuzz -- --rounds 20
 
+    # The frameworks that build on Express, each serving the same application twice: once on
+    # Express and once on this, with the two outputs compared byte for byte. Same rule as the
+    # comparison suite, and a job of its own because these dependencies are frameworks rather than
+    # middlewares: nobody should have to install Nest and Next to run `npm test`, and four of the
+    # seven compile an application before there is anything to serve.
+    integrations:
+        runs-on: ubuntu-latest
+        timeout-minutes: 25
+        steps:
+            - name: Checkout Source Tree
+              uses: actions/checkout@v7
+
+            - name: Cache Node.js dependencies
+              uses: actions/cache@v6
+              with:
+                  path: ~/.npm
+                  key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+                  restore-keys: |
+                      ${{ runner.os }}-node-
+
+            - name: Setup Node.js environment
+              uses: actions/setup-node@v7
+              with:
+                  node-version: "24"
+
+            - name: Install dependencies
+              run: npm install --include=dev
+
+            - name: Install the frameworks beside it
+              run: npm run integrations:install
+
+            # builds the four applications that need building, then runs every case
+            - name: Serve the same application on Express and on fulmine
+              run: npm run test:integrations
+
+            # what the two arms wrote when they disagreed, the same as the comparison suite keeps
+            - name: Keep what the arms wrote when they disagreed
+              if: failure()
+              uses: actions/upload-artifact@v7
+              with:
+                  name: integration-failures
+                  path: |
+                      integrations/*.express.txt
+                      integrations/*.fulmine.txt
+                  if-no-files-found: ignore
+
     # Express's own suite, run against this project. A gate since the count reached 1130/0:
     # any failing test, any file without a result, or a moved express tag is red. Linux only:
     # the Windows exit hang the tool works around does not exist here
