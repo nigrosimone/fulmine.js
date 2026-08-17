@@ -893,6 +893,16 @@ function onNativeAborted() {
     // error goes only to whoever listens for it, since a destroy(err) with no listener
     // would take down the process
     request.emit("aborted");
+    // and the response dies between the two, which is where node puts it. Destroyed rather than
+    // told to emit 'close', because being destroyed is the state express is in here and everything
+    // after it follows from that state rather than having to be reproduced: 'close' goes out once,
+    // a later res.write returns false and calls its callback with ERR_STREAM_DESTROYED, and no
+    // 'error' is emitted, which a destroy(err) here would.
+    //
+    // Without this a handler learnt about the abort only from a write failing, so one that had sent
+    // its head and gone quiet never learnt at all. `res.on("close")` is where cancellation hangs in
+    // every proxy and every streaming endpoint, so it never ran for exactly the shape that needs it.
+    response.destroy();
     request.destroy(request.listenerCount("error") > 0 ? err : undefined);
     response.socket?.emit("error", err);
 }
