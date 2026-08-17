@@ -368,11 +368,12 @@ module.exports = class Request extends LazyReadable {
     /** A bodyless request whose empty end has not been delivered yet, see the constructor. */
     #emptyBody = false;
 
-    /**
-     * What a body parser left behind, and undefined until one claims the request.
-     * @type {any}
-     */
-    body;
+    // `body` is deliberately not declared here. A class field would put the property on every
+    // request, and on Express there is none until a body parser assigns one. `"body" in req` is how
+    // a library asks whether the body has already been read, and tRPC's express adapter asks
+    // exactly that: answering yes on a request nobody had parsed handed it an undefined body and
+    // turned every mutation into "Unexpected end of JSON input". Its type lives in types.d.ts,
+    // where the rest of the public request surface is described.
 
     /**
      * The response this request arrived with, linked so either reaches the other.

@@ -810,12 +810,19 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 return next();
             }
 
+            // The property goes on the request before anything is decided, and its value stays
+            // undefined: body-parser's read() does exactly this, and the two halves both matter.
+            // Undefined, so a handler can still tell "nothing parsed this" from "the body was
+            // empty", which seeding an empty object would lose. Present, because `"body" in req`
+            // is how a library asks whether a parser has run at all: Apollo's express middleware
+            // refuses the request with a 500 when the property is missing, and tRPC's adapter
+            // reads the body itself when it is, so getting either half wrong breaks one of them.
+            if (!("body" in req)) {
+                req.body = undefined;
+            }
+
             // straight from the raw entries: three headers do not justify building the object
             const type = req._rawHeader("content-type");
-
-            // req.body is deliberately left undefined until a parser claims the request. That is
-            // what lets a handler tell "nothing parsed this" apart from "the body was empty",
-            // so it must not be seeded with an empty object first.
 
             // skip reading body for no content type
             // a function decides for itself, and body-parser lets it see a request that carries no

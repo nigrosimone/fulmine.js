@@ -23,3 +23,18 @@ examples/public/*.gz
 # the examples install fulmine.js from the directory above, so this lockfile is a copy of the
 # root's dependency list and goes stale every time one of them moves
 examples/package-lock.json
+integrations/package-lock.json
+
+# what the two arms of an integration case wrote when they disagreed, the same as test-failures/
+integrations/*.express.txt
+integrations/*.fulmine.txt
+
+# what each framework's build writes, plus the caches and generated types it keeps beside it.
+# integrations/build.js makes these, and remakes them when a source is newer
+integrations/apps/*/build/
+integrations/apps/*/dist/
+integrations/apps/*/.next/
+integrations/apps/*/.astro/
+integrations/apps/*/.svelte-kit/
+integrations/apps/*/.react-router/
+integrations/apps/*/package-lock.json

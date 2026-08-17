@@ -30,6 +30,9 @@ npm run benchmark:profile -- --scenario api-endpoint   # where the time goes, fo
 
 npm run test:express                            # Express's own test suite, run against this
 npm run test:express -- res.sendFile --verbose  # one area of it, with mocha's output
+
+npm run integrations:install                    # the frameworks that build on Express, beside the project
+npm run test:integrations                       # the same application on Express and on this
 ```
 
 The comparison suite is the load-bearing one. A test is a file that prints; the runner executes it
@@ -79,6 +82,19 @@ bug mine and its exit status says nothing; with `--ci`, which is how it runs in 
 red on any failing test or any file without a result. Read the header of `tools/express-suite.js`
 before reading its numbers: some of what it reports is Express testing its own internals, which the
 clone still has, and some is internals used as public API.
+
+`npm run test:integrations` is the comparison suite again, with a framework on top. Nest, Next,
+Astro, SvelteKit, React Router, Apollo and tRPC each serve one application, once on Express and once
+here, and the two outputs have to match. It lives in [`integrations/`](./integrations) rather than in
+`tests/` because those dependencies are frameworks rather than middlewares: heavy, installed on their
+own, four of them needing their own build to run first, and none of it something `npm test` should
+ask for. Read [`integrations/README.md`](./integrations/README.md) before adding a case.
+
+It earns its keep. Two runs, two real bugs, both in the gap a hand-written test does not reach:
+`req.body` was on every request where Express has none, which broke every tRPC mutation, and missing
+where Express has one, which Apollo answers with a 500; and `res.writeHead` was setting headers the
+way `res.set` does, so a content-type given to it came back with a charset Express never adds, on
+every page Astro and SvelteKit rendered.
 
 `npm run fuzz` is the third kind: it builds random applications, registers them on Express and on
 this, and compares the answers. A divergence prints the seed that reproduces it and the case shrunk

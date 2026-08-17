@@ -3,6 +3,10 @@ coverage
 .nyc_output
 package-lock.json
 
+# the applications the integration cases serve, and what their builds write. Somebody else's
+# framework each, .astro and .svelte files included, which this cannot parse without their plugins
+integrations/apps
+
 # test fixtures and view templates: reformatting these changes their bytes, which
 # changes file sizes, etags and rendered output, and several tests assert on those
 tests/parts

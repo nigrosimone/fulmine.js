@@ -21,6 +21,8 @@ There is a command that does that replacing for you, across a whole project, and
 npx fulmine.js verify              # can this machine and this image even run it
 npx fulmine.js migrate --dry-run   # say what it would change, change nothing
 npx fulmine.js migrate             # do it
+npx fulmine.js override            # when a framework requires express in its own code, not in yours
+npx fulmine.js angular             # angular.json's server build, which esbuild would otherwise inline
 npx fulmine.js differences         # just the list of what to check by hand
 npx fulmine.js profile             # what listen() decided about each route
 npx fulmine.js explain /api/items  # what happens when a request for that route arrives
@@ -64,6 +66,7 @@ See [Migrating](#migrating) for what it handles and what it deliberately does no
     - [Response](#response)
     - [Router](#router)
 - [Tested middlewares](#tested-middlewares)
+- [Tested frameworks](#tested-frameworks)
 - [Tested view engines](#tested-view-engines)
 - [Examples](./examples/README.md)
 - [Working on Fulmine](./CONTRIBUTING.md)
@@ -155,8 +158,16 @@ The `server.ts` that `ng add @angular/ssr` generates is an ordinary Express appl
 one-line change applies, and `@angular/ssr`'s own `AngularNodeAppEngine` and
 `writeResponseToNodeResponse` work against Fulmine's request and response unchanged. One extra step
 is needed, and it is Angular's build rather than this library: the server bundle is built with
-esbuild, which tries to inline every dependency and cannot load µWS's native binary. Declare the two
-as external in `angular.json`:
+esbuild, which tries to inline every dependency and cannot load µWS's native binary. The two names
+have to be declared external in `angular.json`, which is what this writes:
+
+```sh
+npx fulmine.js angular             # every server build in angular.json
+npx fulmine.js angular --dry-run   # say what it would write, write nothing
+```
+
+It adds this to each build target that produces a server bundle, and leaves the browser-only ones
+alone:
 
 ```json
 "architect": { "build": { "options": {
@@ -179,40 +190,51 @@ with no cache at all on the serving side.
 ### NestJS
 
 `@nestjs/platform-express` takes an Express instance, so it takes this one, and everything in a Nest
-application keeps working. One line stands between that and the speed: the adapter wraps whatever
-instance it is given in `http.createServer()` and listens on that, which is the shim, so every
-request goes through `node:http` and the application runs at Express's pace. The app here already
-answers as an `http.Server`, so it can be the server rather than being wrapped in one:
+application keeps working. The adapter is in the package, so there is nothing to write:
 
 ```ts
 import { NestFactory } from "@nestjs/core";
-import { ExpressAdapter } from "@nestjs/platform-express";
-import fulmine from "fulmine.js";
+import { FulmineExpressAdapter } from "fulmine.js/nest";
 
-class FulmineAdapter extends ExpressAdapter {
-    initHttpServer() {
-        // instead of http.createServer(instance): listen() and close() are then µWS's
-        (this as any).httpServer = this.getInstance();
-    }
-}
-
-const app = await NestFactory.create(AppModule, new FulmineAdapter(fulmine()));
+const app = await NestFactory.create(AppModule, new FulmineExpressAdapter());
 await app.listen(3000);
 ```
+
+Pass your own application where it needs options, TLS being the usual reason:
+`new FulmineExpressAdapter(fulmine({ uwsOptions }))`. `@nestjs/platform-express` is an optional peer
+dependency, so nothing is installed for anyone who never imports this.
+
+What it changes is one line and two edges. The line: Nest's own adapter wraps whatever instance it
+is given in `http.createServer()` and listens on that, which is the shim, so every request goes
+through `node:http` and the application runs at Express's pace. The app here already answers as an
+`http.Server`, so it is the server rather than being put inside one. The edges: `forceCloseConnections`
+has nothing to destroy, since the sockets belong to µWS and nothing emits `connection`, so it now
+says so instead of quietly doing nothing; and Nest decides whether it has already added its body
+parsers by scanning `app.router.stack`, which is not there, so the adapter remembers instead of
+letting a second call add a second pair. `httpsOptions` is refused rather than silently starting a
+plaintext server: TLS is configured on the app, through `uwsOptions`.
 
 Measured on the same Nest application, controllers, pipes and body parsing unchanged: **1.2x on a
 route answering text and 1.9x on one answering JSON with a route parameter**. `app.close()` closes
 the port, as it does on the shim.
 
-Two things to know. `forceCloseConnections` has nothing to destroy, since the sockets belong to µWS
-and nothing emits `connection`, and Nest looks at `app.router.stack` to decide whether it has
-already added its body parsers, which is not there, so it adds them once more than it would.
+A Nest application answering the same bytes on both is [a case in the integration
+suite](./integrations/cases/nest.js), so this is tested rather than claimed.
 
 ### When Express is somebody else's dependency
 
 A framework built on Express does not `require("express")` in your code, it requires it in its own,
 so there is nothing for `migrate` to rewrite. Every package manager can answer `express` with this
-package instead, for your project and everything under it:
+package instead, for your project and everything under it, and this writes the block for whichever
+one your project uses:
+
+```sh
+npx fulmine.js override             # read the lockfile, write the block, say what to run next
+npx fulmine.js override --dry-run   # say what it would write, write nothing
+```
+
+It refuses rather than overwrites where a substitution is already there and is not this package. By
+hand it is one of these:
 
 ```jsonc
 // npm and its lockfile, in package.json
@@ -856,6 +878,29 @@ Almost all middlewares that are compatible with Express are compatible with Fulm
 [tsoa](https://github.com/lukeautry/tsoa) works too, but it is not in the suite above: it resolves
 `express` itself, so testing it here needs a dependency override rather than the one-line swap
 everything else takes.
+
+## Tested frameworks
+
+The list above is middlewares. A framework built on Express is a much larger user of the Express
+surface than any application is, so those have a suite of their own, in
+[`integrations/`](./integrations): the same application served twice, once on Express and once here,
+with the two outputs compared byte for byte. The four that render pages are built first, by that
+suite, so what is compared is what their own build produces.
+
+- ✅ [NestJS](https://nestjs.com) through [`fulmine.js/nest`](#nestjs)
+- ✅ [Next.js](https://nextjs.org) as a custom server, `next().getRequestHandler()`
+- ✅ [Astro](https://astro.build) through `@astrojs/node` in middleware mode
+- ✅ [SvelteKit](https://svelte.dev/docs/kit) through `@sveltejs/adapter-node`
+- ✅ [React Router v7](https://reactrouter.com) through `@react-router/express`
+- ✅ [Apollo Server](https://www.apollographql.com/docs/apollo-server) through
+  [`@as-integrations/express5`](https://www.npmjs.com/package/@as-integrations/express5)
+- ✅ [tRPC](https://trpc.io) through `@trpc/server/adapters/express`
+- ✅ [Angular SSR](#angular-ssr), which is an ordinary Express `server.ts` plus one line of build
+  configuration
+
+Each of these mounts on an ordinary Express application, so there is nothing to install and nothing
+to configure beyond what that framework already asks for. Nest is the exception, and only because
+its adapter decides what to listen on: that one is [`fulmine.js/nest`](#nestjs).
 
 ## Tested view engines
 

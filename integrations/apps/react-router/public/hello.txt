@@ -1,0 +1,1 @@
+a static file, copied into the client build

@@ -1,0 +1,8 @@
+{
+    "name": "fulmine-integration-react-router",
+    "private": true,
+    "type": "module",
+    "dependencies": {
+        "isbot": "^5"
+    }
+}

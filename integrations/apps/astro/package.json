@@ -1,0 +1,5 @@
+{
+    "name": "fulmine-integration-astro",
+    "private": true,
+    "type": "module"
+}
