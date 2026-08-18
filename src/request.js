@@ -17,7 +17,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-const { deprecated } = require("./utils.js");
+const { deprecated, fastQueryParse } = require("./utils.js");
 const accepts = require("accepts");
 const typeis = require("type-is");
 const parseRange = require("range-parser");
@@ -1183,11 +1183,21 @@ module.exports = class Request extends LazyReadable {
         // the vendored default already answers on a bare null prototype, so it goes out as is;
         // any other parser is copied onto one, which is what kept fast-querystring's result from
         // inspecting as "Empty <[Object: null prototype] {}>" where Express shows the bare form
-        return qp
-            ? qp === parseQuery
-                ? parseQuery(this._rawQuery)
-                : Object.assign(Object.create(null), qp(this._rawQuery))
-            : Object.create(null);
+        // A parser of the application's own is handed what express hands it, which is
+        // parseurl's `query`: null when the url carries no "?" at all, and the text after it
+        // otherwise, the empty string included. Passing "" for both meant a parser written for
+        // express, which may check for null before it reads the string, saw a request that had no
+        // query as one with an empty query. The two built in parsers take the raw string.
+        if (!qp) {
+            return Object.create(null);
+        }
+        if (qp === parseQuery) {
+            return parseQuery(this._rawQuery);
+        }
+        if (qp === fastQueryParse) {
+            return Object.assign(Object.create(null), fastQueryParse(this._rawQuery));
+        }
+        return Object.assign(Object.create(null), qp(this.urlQuery === "" ? null : this._rawQuery));
     }
 
     /**

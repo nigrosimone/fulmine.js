@@ -1790,6 +1790,55 @@ module.exports = class Router extends EventEmitter {
         method = method.toUpperCase();
         callbacks = callbacks.flat(Infinity);
         checkHandlers(callbacks);
+        // What express hangs off req.route as its methods, and the three registrations do not
+        // agree on it: app.all() registers every verb one at a time, so the map names all of
+        // them; router.all() and app.route().all() mark the route _all instead; and everything
+        // hung off one app.route() shares one map, since express builds one Route for the lot.
+        // Built in node's own order, which is the order the methods package hands express, so
+        // the map reads back key for key as express's does.
+        let methodMap;
+        let stack;
+        if (method !== "USE") {
+            methodMap = this._pendingGroupMethods ?? new NullObject();
+            // and the layers behind them, which is express's Route#stack: one per handler per verb
+            // the route was registered for, in the order express pushes them. app.all() therefore
+            // has one for every verb, since that is how many times express registers the handler
+            stack = this._pendingGroupStack ?? [];
+            let verbs;
+            if (method === "ALL") {
+                if (this._isApplication && this._pendingGroup === undefined) {
+                    verbs = [];
+                    for (const known of METHODS) {
+                        const lowered = known.toLowerCase();
+                        methodMap[lowered] = true;
+                        verbs.push(lowered);
+                    }
+                } else {
+                    methodMap._all = true;
+                    // Route#all leaves the layer without one, and express reads that as any verb
+                    verbs = [undefined];
+                }
+            } else {
+                methodMap[method.toLowerCase()] = true;
+                verbs = [method.toLowerCase()];
+            }
+            for (const verb of verbs) {
+                for (const handle of callbacks) {
+                    stack.push({
+                        handle,
+                        name: handle.name || "<anonymous>",
+                        params: undefined,
+                        path: undefined,
+                        keys: [],
+                        method: verb
+                    });
+                }
+            }
+        }
+        // Several paths at once are one route to express, whose path is the array it was given,
+        // and several here, one per path, so they share the map and the stack and read back with
+        // the array as their path.
+        const writtenPath = path;
         const paths = Array.isArray(path) ? path : [path];
         const routes = [];
         for (let path of paths) {
@@ -1843,6 +1892,12 @@ module.exports = class Router extends EventEmitter {
                 regexMount: method === "USE" && path instanceof RegExp,
                 // written by the application, so express matches it as it stands
                 userRegexp: path instanceof RegExp,
+                // express reads these off req.route, and a middleware has none: see _preprocessRequest
+                methods: methodMap,
+                stack,
+                // the route as a request sees it, which is the route itself unless the path was
+                // normalised. Written into the literal so every route keeps one shape
+                exposed: /** @type {any} */ (undefined),
                 routeKey: routeKey++,
                 // which app.route() this came from, when it came from one, so the routes it built
                 // count as one route where an error is concerned. undefined for every other route
@@ -1859,6 +1914,17 @@ module.exports = class Router extends EventEmitter {
                 all: method === "ALL" || method === "USE",
                 gettable: method === "GET" || method === "HEAD"
             };
+            // Everything here matches on the normalised path, and express hands out the written
+            // one: a route registered as "/users/" is matched as "/users" with strict routing off
+            // and still reads back with its slash. Rather than carry two paths through the
+            // optimizer, a route whose path was normalised gets a view of itself with the written
+            // path on top, and that is the one the request is given.
+            route.exposed = route;
+            if (writtenPath !== path) {
+                const view = Object.create(route);
+                view.path = writtenPath;
+                route.exposed = view;
+            }
             if (
                 route.pattern instanceof RegExp &&
                 // a RegExp the application wrote: its capture groups are params too
@@ -2643,7 +2709,13 @@ module.exports = class Router extends EventEmitter {
      * @returns {any} a promise only when a param callback is involved
      */
     _preprocessRequest(req, res, route) {
-        req.route = route;
+        // express sets this inside Route#dispatch, so only a route ever writes one: a middleware
+        // reads undefined there, and so does a request nothing routed. Code that tells a route
+        // from a middleware by asking for req.route, which is how a metric gets its name, read
+        // the mount here and named itself after it
+        if (route.use !== true) {
+            req.route = route.exposed;
+        }
         // both, not the route flag alone: the flag says the route was registered natively, the
         // values say this request came in that way
         if (route.optimizedParams && req.optimizedParams) {
@@ -2966,12 +3038,24 @@ module.exports = class Router extends EventEmitter {
         // far as an error is concerned, see errorHop
         const group = ++routeGroups;
         const fns = new NullObject();
+        // one map for the whole chain, because express builds one Route for it: a request answered
+        // by the get() of an app.route() reads post() in its req.route.methods too
+        const groupMethods = new NullObject();
+        const groupStack = [];
+        // express hands back a Route, which carries these three beside the verb methods
+        fns.path = path;
+        fns.methods = groupMethods;
+        fns.stack = groupStack;
         const inGroup = (method, callbacks) => {
             this._pendingGroup = group;
+            this._pendingGroupMethods = groupMethods;
+            this._pendingGroupStack = groupStack;
             try {
                 return this.createRoute(method, path, /** @type {any} */ (fns), ...callbacks);
             } finally {
                 this._pendingGroup = undefined;
+                this._pendingGroupMethods = undefined;
+                this._pendingGroupStack = undefined;
             }
         };
         for (const method of methods) {
