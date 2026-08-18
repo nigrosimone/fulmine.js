@@ -41,6 +41,21 @@ comparison suite covers well and applications reach differently from frameworks.
 Do not tag or release unless asked. Pushing a `v*` tag is what makes
 `.github/workflows/release.yml` publish to npm; `npm run release` creates that tag.
 
+## Security
+
+[`SECURITY.md`](./SECURITY.md) says what is in scope and what is not, and the line it draws is one
+you have to apply rather than quote: **µWS's parser is not ours**. The request line, the header
+block and the chunked framing are decided before any JavaScript here runs, so before treating a
+malformed request as a bug in this project, serve the same bytes from a bare µWebSockets.js
+application. Same answer means it belongs at uNetworking, and this repository cannot fix it. Do not
+open an issue there on the maintainer's behalf, and do not add a test that will never pass: say so
+in the report and move on. Everything above the parser is ours and gets fixed here.
+
+`npm run fuzz:wire` is what tells the two apart, node's parser being its oracle. It already carries
+one documented exception, a pipelined request after a `Connection: close`, which µWS has parsed out
+of the buffer before this project can close anything. Add another only with the same evidence: a
+bare µWS application doing the same thing.
+
 ## Express version policy
 
 Test against the **released** Express only, the one in `devDependencies`. Master is out of scope.

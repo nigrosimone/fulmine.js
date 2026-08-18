@@ -104,6 +104,22 @@ where Express has one, which Apollo answers with a 500; and `res.writeHead` was 
 way `res.set` does, so a content-type given to it came back with a charset Express never adds, on
 every page Astro and SvelteKit rendered.
 
+### A bug that is a security bug
+
+Read [`SECURITY.md`](./SECURITY.md) before doing anything else with it, and do not open a public
+issue for something exploitable. Two things it asks for are worth repeating here, because they
+decide who fixes it:
+
+- **Find out which layer it is.** Serve the same request from a bare µWebSockets.js application,
+  with nothing of this project in it. If the answer is the same, the request line, the header block
+  or the chunked framing is what decided it, and that is µWS's parser: it belongs at
+  [uNetworking/uWebSockets.js](https://github.com/uNetworking/uWebSockets.js/issues), and no change
+  here can fix it. `npm run fuzz:wire` is the tool for telling the two apart, since its oracle is
+  node's parser rather than Express.
+- **Everything above the parser is ours**: routing, the request and response API, the body parsers,
+  the static files, the cookies. A request that reaches a route it must not reach, or a header of
+  one request affecting another, is a bug in this repository whatever µWS did with the bytes.
+
 `npm run fuzz` is the third kind: it builds random applications, registers them on Express and on
 this, and compares the answers. A divergence prints the seed that reproduces it and the case shrunk
 to the few lines worth keeping. Twenty rounds on a random seed run on every push.

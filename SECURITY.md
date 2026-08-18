@@ -31,6 +31,24 @@ Anything where Fulmine answers a request differently from how it should, in a wa
 - **µWebSockets.js itself.** The HTTP parser, the TLS and the socket handling are
   [uNetworking's](https://github.com/uNetworking/uWebSockets.js), and a bug in them belongs there.
   Send it to me anyway if you are not sure which side it is on, and I will help work it out.
+
+    **Please check which layer it is before reporting, and report it where it lives.** Serve the same
+    request from a bare µWebSockets.js application, with nothing of this project in it:
+
+    ```js
+    require("uWebSockets.js")
+        .App()
+        .any("/*", (res) => res.end("ok"))
+        .listen(3000, () => {});
+    ```
+
+    If that answers the same way, the bug is in the parser and the fix has to happen at
+    [uNetworking/uWebSockets.js](https://github.com/uNetworking/uWebSockets.js/issues), so please open
+    it there. The request line, the header block and the chunked framing are all decided before any
+    JavaScript of this project runs, and no version of this package can change what they do. What this
+    project can answer for is everything after that: routing, the request and response API, the body
+    parsers, the static files and the cookies.
+
 - **Express's own behaviour**, when Fulmine reproduces it faithfully. This project's promise is that
   an Express application behaves the same here; where Express is the one that is wrong, the fix
   belongs upstream and this project follows it.
