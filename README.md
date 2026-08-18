@@ -44,7 +44,6 @@ See [Migrating](#migrating) for what it handles and what it deliberately does no
 - [Why this exists](#why-this-exists)
 - [Performance](#performance)
 - [Public benchmarks](#public-benchmarks)
-- [Attribution](#attribution)
 - [Difference from similar projects](#difference-from-similar-projects)
 - [Migrating](#migrating)
     - [Angular SSR](#angular-ssr)
@@ -69,6 +68,7 @@ See [Migrating](#migrating) for what it handles and what it deliberately does no
 - [Tested frameworks](#tested-frameworks)
 - [Tested view engines](#tested-view-engines)
 - [Examples](./examples/README.md)
+- [Attribution](#attribution)
 - [Working on Fulmine](./CONTRIBUTING.md)
 
 ## Why this exists
@@ -76,6 +76,8 @@ See [Migrating](#migrating) for what it handles and what it deliberately does no
 There are several fast HTTP servers for Node built on [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js). What is scarce is one you can actually drop into an existing Express application without rewriting it.
 
 Compatibility here is not a claim, it is a test suite. Every test runs against real Express first and then against Fulmine, and the outputs have to match byte for byte. That is what makes `helmet`, `cors`, `passport`, `morgan`, `multer`, `express-session` and the rest of the ecosystem work rather than "mostly work". Express 5's own test suite runs against Fulmine too, and passes whole: 1130 passing, 0 failing at the pinned Express version.
+
+It started as a fork of [Ultimate Express](https://github.com/dimdenGD/ultimate-express), which is where the hard part was already done. See [Attribution](#attribution).
 
 ## Performance
 
@@ -103,16 +105,6 @@ Numbers produced by a project about itself deserve suspicion, so Fulmine also st
 - **[web-frameworks](https://web-frameworks-benchmark.netlify.app/result?l=javascript)**: entry merged, numbers arrive with their next published round.
 
 More to come as their maintainers take the entries in.
-
-## Attribution
-
-Fulmine is a derivative work of [Ultimate Express](https://github.com/dimdenGD/ultimate-express) by [@dimdenGD](https://github.com/dimdenGD), used under the Apache License 2.0. The full commit history is preserved, so the original authorship is visible in the repository itself.
-
-**Special thanks to [@dimdenGD](https://github.com/dimdenGD).** Ultimate Express is the hard part of this project, and it was already done before Fulmine existed. Everything here stands on that work.
-
-Fulmine is not affiliated with, endorsed by, or maintained by the authors of Ultimate Express. See [`NOTICE`](./NOTICE) for the list of significant changes.
-
-It is likewise not affiliated with the OpenJS Foundation or the Express.js project. Express is a trademark of the OpenJS Foundation.
 
 ## Difference from similar projects
 
@@ -926,6 +918,16 @@ cd examples
 npm install
 node websocket.js
 ```
+
+## Attribution
+
+Fulmine is a derivative work of [Ultimate Express](https://github.com/dimdenGD/ultimate-express) by [@dimdenGD](https://github.com/dimdenGD), used under the Apache License 2.0. The full commit history is preserved, so the original authorship is visible in the repository itself.
+
+**Special thanks to [@dimdenGD](https://github.com/dimdenGD).** Ultimate Express is the hard part of this project, and it was already done before Fulmine existed. Everything here stands on that work.
+
+Fulmine is not affiliated with, endorsed by, or maintained by the authors of Ultimate Express. See [`NOTICE`](./NOTICE) for the list of significant changes.
+
+It is likewise not affiliated with the OpenJS Foundation or the Express.js project. Express is a trademark of the OpenJS Foundation.
 
 ## Working on Fulmine
 

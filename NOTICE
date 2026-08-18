@@ -79,6 +79,37 @@ significant changes made to the original work:
   - The app is callable as a request listener, so http.createServer(app),
     supertest and anything else that invokes an app directly keeps working
     through a node:http shim.
+  - Routing rebuilt on Express 5 semantics: its path matcher, case-insensitive
+    matching by default, req.route, and assigning req.url inside a middleware
+    re-routes the rest of the stack.
+  - The routes listen() can read are compiled into one handler, with an overlap
+    analysis deciding which of them may skip the middleware chain, and a
+    self-check mode that serves the same application twice to show the compiled
+    path answers as the chain it stands in for.
+  - ETags are generated in this package rather than by the etag module, and an
+    "etag methods" setting limits them to the methods it names.
+  - express.compression() added, the compression module's middleware built in: a
+    body that arrives whole is compressed in one call, and partial content is
+    left alone.
+  - express.serverTiming() added, which reports on the response how the request
+    was routed.
+  - express.static serves the .br and .gz twins of a file with preCompressed.
+  - app.ws() serves websockets on the same port, with an upgrade hook and the
+    request on the socket.
+  - express({ cluster: "auto" }) forks one worker per core on the same port.
+  - express.Route and express.testing added, the second one asserting what
+    listen() decided about a route.
+  - X-Powered-By is not sent unless the application asks for it, and the header
+    methods, res.flushHeaders and the node members that were missing are filled
+    in.
+  - An adapter for NestJS ships as fulmine.js/nest.
+  - A fulmine command added: it profiles and explains what listen() worked out
+    about each route, verifies the machine, migrates a project, and prints the
+    differences from Express.
+  - Random applications are generated and compared against Express round by
+    round, with the request bytes, the methods that compute a header value and
+    keep-alive sequences each having their own fuzzer, and applications built on
+    four frameworks run as an integration suite.
   - Releases are built and published to npm from CI.
   - Benchmark harness reworked: wrk replaced by autocannon so the suite runs
     anywhere Node does, NODE_ENV is set, load errors and response validation are
