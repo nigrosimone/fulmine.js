@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.13.3](https://github.com/nigrosimone/fulmine.js/compare/v5.13.2...v5.13.3) (2026-08-18)
+
+### Bug Fixes
+
+* **request:** refuse a target node refuses, chunked twice, and close the connection a list asked to close ([7a13f5e](https://github.com/nigrosimone/fulmine.js/commit/7a13f5ea32d84ae551de51b36d450c8110393eb7))
+* **router:** req.route is the route's own, with the verbs and the layers express puts on it ([a9bedc9](https://github.com/nigrosimone/fulmine.js/commit/a9bedc9cb54b9a566df064ed489a7cd01c6351c3))
+
 ## [5.13.2](https://github.com/nigrosimone/fulmine.js/compare/v5.13.1...v5.13.2) (2026-08-18)
 
 ### Bug Fixes
