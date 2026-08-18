@@ -2,6 +2,14 @@
 
 The README is for people using this. This is for people changing it.
 
+The product is two things at once: answering exactly as Express does, and answering faster than
+Express. A change may not lose either. Answering differently is a bug even when the new answer
+reads better, since an application written for Express is what this runs; being slower than what it
+replaces is a bug too, since a drop-in replacement that is not faster has no reason to exist. So a
+behaviour change needs a comparison test, and a change on a path a request walks needs a number
+from `npm run benchmark:ab -- --against <ref>` before it is committed. When the two pull against
+each other, compatibility wins and the time is found somewhere else.
+
 ```sh
 npm test                  # the comparison suite: every test runs against Express, then against
                           # Fulmine, and the two outputs have to match byte for byte
@@ -99,6 +107,12 @@ every page Astro and SvelteKit rendered.
 `npm run fuzz` is the third kind: it builds random applications, registers them on Express and on
 this, and compares the answers. A divergence prints the seed that reproduces it and the case shrunk
 to the few lines worth keeping. Twenty rounds on a random seed run on every push.
+
+What it finds gets fixed, with a comparison test under `tests/tests/` like any other fix. This holds
+for a divergence that has nothing to do with what you were working on: the round found it, and the
+next run will only find it again. When it is not going to be fixed, open an issue with what
+diverges, the seed that replays it and the reason it was left, so the decision is written down
+somewhere other than a terminal that has scrolled.
 
 `--self` is the fourth, and it is the only one with no oracle in it. Both `npm test -- --self` and
 `npm run fuzz -- --self` serve the same application twice with this framework, the reference arm

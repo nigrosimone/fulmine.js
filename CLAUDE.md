@@ -1,7 +1,14 @@
 # Working on this repo as an agent
 
-Fulmine.js is a drop-in Express 5 replacement on uWebSockets.js. Compatibility with Express is the
-product, so "Express does X" settles almost every design argument.
+Fulmine.js is a drop-in Express 5 replacement on uWebSockets.js. Two things are the product:
+**compatibility with Express**, so "Express does X" settles almost every design argument, and
+**being faster than Express**, which is the only reason to replace it at all.
+
+No change may lose either one. A change that answers differently from Express is a bug even when
+the new answer looks better, and a change that is slower than what it replaces is a bug even when
+it is correct: measure it with `npm run benchmark:ab -- --against <ref>` and keep it, or find
+another way to do it. Where the two pull against each other, compatibility wins and the speed is
+paid for somewhere else.
 
 Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) first: it explains the test suites and how to write a
 comparison test. [`benchmark/README.md`](./benchmark/README.md) explains measuring.
@@ -59,6 +66,12 @@ between two runs, the machine moved and the run is void.
 `npm run fuzz` compares random applications against Express. It is the highest-yield bug finder
 here. Triage a run by grouping the divergences by which fields differ: one root cause usually
 accounts for most of them. Replay with `--seed <n> --rounds 1` and read the shrunk case it prints.
+
+**A divergence is a bug, and it gets fixed**, with a comparison test under `tests/tests/` like any
+other fix, whether or not the round that found it was about what you were changing. If it is not
+going to be fixed, open an issue that says what diverges, the seed that replays it, and why it was
+left. A finding that is neither fixed nor written down is lost as soon as the run scrolls away, and
+the next run spends its rounds on it again.
 
 `fuzz:wire`, `fuzz:headers` and `fuzz:session` take what it cannot reach through `fetch`: the
 request bytes, the methods that compute a header value, and a sequence down one keep-alive
