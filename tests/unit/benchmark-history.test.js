@@ -213,6 +213,77 @@ test("with a window, a move the recent runs have already seen is not marked", ()
     assert.strictEqual(rows[0].notable, false);
 });
 
+function steadyWindow(names, speedup = 2) {
+    return Array.from({ length: 5 }, (unused, index) =>
+        runOf(
+            Object.fromEntries(names.map((name) => [name, { speedup, express: 100, fulmine: speedup * 100 }])),
+            `2026-08-0${index + 1}T00:00:00.000Z`
+        )
+    );
+}
+
+test("a small shift the whole table shares is divided out before any row is judged", () => {
+    // the recorded 5f5fc98 shape: a table median a few percent down because the runner's session
+    // capped the fast arm lower, two rows reading -11% raw that the shift explains, and one row
+    // that moved further than the table did. Only the last one is news.
+    const names = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"];
+    const windowRuns = steadyWindow(names);
+    const scenarios = Object.fromEntries(names.map((name) => [name, { speedup: 1.92, express: 100, fulmine: 192 }]));
+    scenarios.j = { speedup: 1.78, express: 100, fulmine: 178 };
+    scenarios.k = { speedup: 1.78, express: 100, fulmine: 178 };
+    scenarios.l = { speedup: 1.5, express: 100, fulmine: 150 };
+
+    const { rows, shift } = compareRuns(windowRuns[4], runOf(scenarios), windowRuns);
+    const marked = Object.fromEntries(rows.map((entry) => [entry.name, entry.notable]));
+
+    assert.ok(Math.abs(shift - 0.96) < 1e-9);
+    // -11% raw, -7% once the table's own -4% is divided out: the flat floor used to flag these
+    assert.strictEqual(marked.j, false);
+    assert.strictEqual(marked.k, false);
+    assert.strictEqual(marked.l, true);
+});
+
+test("a table-wide move past the floor is not divided out, it could be the code", () => {
+    // every scenario down 30% at once: a change on a path every request pays has exactly this
+    // shape, so nothing is divided, every row flags, and the section says an A/B must decide
+    const names = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
+    const windowRuns = steadyWindow(names);
+    const scenarios = Object.fromEntries(names.map((name) => [name, { speedup: 1.4, express: 100, fulmine: 140 }]));
+
+    const { rows, shift, tableMove } = compareRuns(windowRuns[4], runOf(scenarios), windowRuns);
+    assert.strictEqual(shift, 1);
+    assert.ok(Math.abs(tableMove - 0.7) < 1e-9);
+    for (const entry of rows) {
+        assert.strictEqual(entry.notable, true);
+    }
+
+    const out = historyMarkdown({ run: windowRuns[4], runs: windowRuns, exact: true, key: "k" }, runOf(scenarios));
+    assert.match(out, /cannot tell them apart/);
+});
+
+test("a row seen in a single window run is judged by the flat floor, not by the shift", () => {
+    // ten rows carry a -9.5% session shift; one scenario exists only in the previous run and did
+    // not move at all. Dividing it by the shift would read the unmoved row as +10% and flag it.
+    const names = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
+    const windowRuns = steadyWindow(names);
+    windowRuns[4].scenarios.fresh = { speedup: 2, express: 100, fulmine: 200 };
+    const scenarios = Object.fromEntries(names.map((name) => [name, { speedup: 1.81, express: 100, fulmine: 181 }]));
+    scenarios.fresh = { speedup: 2, express: 100, fulmine: 200 };
+
+    const { rows } = compareRuns(windowRuns[4], runOf(scenarios), windowRuns);
+    const marked = Object.fromEntries(rows.map((entry) => [entry.name, entry.notable]));
+    assert.strictEqual(marked.fresh, false);
+    assert.strictEqual(marked.a, false);
+});
+
+test("the record keeps the round median and its spread when the run measured in rounds", () => {
+    // the median of the rounds is not the quotient of the two averages, and the spread is what
+    // lets a later reader tell a stable measurement from one that straddled two levels
+    const record = runRecordOf([{ ...row("paired", 100, 200), speedup: 2.1, roundRatios: [1.9, 2.1, 2.3] }]);
+    assert.strictEqual(record.scenarios.paired.speedup, 2.1);
+    assert.deepStrictEqual(record.scenarios.paired.spread, [1.9, 2.3]);
+});
+
 test("a bound row is never marked, its ratio cannot really move", () => {
     const previous = runOf({ ceiling: { speedup: 1.09, express: 1000, fulmine: 1090, bound: true } });
     const current = runOf({ ceiling: { speedup: 0.92, express: 1000, fulmine: 920, bound: true } });

@@ -15,7 +15,8 @@ const {
     runRecordOf,
     baselineFor,
     appendRun,
-    historyMarkdown
+    historyMarkdown,
+    median
 } = require("./history.js");
 
 const SCENARIO_FILES = fs
@@ -216,63 +217,161 @@ function formatMs(value) {
     return `${Number(value).toFixed(2)} ms`;
 }
 
-async function runScenario(framework, scenarioName, scenario, durationSeconds) {
-    const { server, stderrRef } = startScenarioServer(framework, scenarioName);
+/**
+ * One timed round of load against one arm. The sanity checks are per round, because a round that
+ * completed nothing, or answered outside 2xx/3xx, would poison the ratio it enters.
+ */
+async function loadRound(framework, scenarioName, request, load, roundSeconds) {
+    const result = await autocannon({
+        // the path goes in the url: autocannon only honours a top-level `path` through the
+        // `requests` array, so passing it alongside `url` silently sends every request to /
+        url: `http://127.0.0.1${framework.socketPath ? "" : ":" + framework.port}${request.path}`,
+        // autocannon dials the socket and keeps using the url only for the request line
+        socketPath: framework.socketPath,
+        method: request.method,
+        headers: request.headers,
+        body: request.body ?? undefined,
+        connections: load.connections || 200,
+        workers: load.workers || undefined,
+        duration: roundSeconds,
+        // the generator shares the machine with the server, so it has to be told not to wait
+        // forever on a request the server is too busy to answer
+        timeout: 30
+    });
 
-    try {
-        await waitForReady(server, framework, scenarioName);
-
-        const load = scenario.load || {};
-        const request = resolveRequest(scenario);
-
-        const result = await autocannon({
-            // the path goes in the url: autocannon only honours a top-level `path` through the
-            // `requests` array, so passing it alongside `url` silently sends every request to /
-            url: `http://127.0.0.1${framework.socketPath ? "" : ":" + framework.port}${request.path}`,
-            // autocannon dials the socket and keeps using the url only for the request line
-            socketPath: framework.socketPath,
-            method: request.method,
-            headers: request.headers,
-            body: request.body ?? undefined,
-            connections: load.connections || 200,
-            workers: load.workers || undefined,
-            duration: durationSeconds,
-            // the generator shares the machine with the server, so it has to be told not to wait
-            // forever on a request the server is too busy to answer
-            timeout: 30
-        });
-
-        const requestsPerSec = result.requests.average;
-        if (!requestsPerSec) {
-            throw new Error(
-                `no completed requests for ${framework.id}/${scenarioName}: ` +
-                    `${result.errors} errors, ${result.timeouts} timeouts, ${result.non2xx} non-2xx`
-            );
-        }
-
-        // a run that answered anything other than 2xx/3xx did not measure the scenario
-        if (result.non2xx > 0) {
-            throw new Error(
-                `${framework.id}/${scenarioName} served ${result.non2xx} non-2xx/3xx responses out of ` +
-                    `${result.requests.total}, so this run measured something other than the scenario`
-            );
-        }
-
-        const socketErrors = result.errors + result.timeouts;
-
-        return {
-            requestsPerSec,
-            transferPerSecBytes: result.throughput.average,
-            latencyP50: result.latency.p50,
-            latencyP99: result.latency.p99,
-            socketErrorLine:
-                socketErrors > 0
-                    ? `errors ${result.errors}, timeouts ${result.timeouts}, out of ${result.requests.total} requests`
-                    : null
-        };
-    } finally {
-        await stopScenarioServer(server, stderrRef);
+    if (!result.requests.average) {
+        throw new Error(
+            `no completed requests for ${framework.id}/${scenarioName}: ` +
+                `${result.errors} errors, ${result.timeouts} timeouts, ${result.non2xx} non-2xx`
+        );
     }
+
+    // a round that answered anything other than 2xx/3xx did not measure the scenario
+    if (result.non2xx > 0) {
+        throw new Error(
+            `${framework.id}/${scenarioName} served ${result.non2xx} non-2xx/3xx responses out of ` +
+                `${result.requests.total}, so this run measured something other than the scenario`
+        );
+    }
+
+    return {
+        requestsPerSec: result.requests.average,
+        transferPerSecBytes: result.throughput.average,
+        latencyP50: result.latency.p50,
+        latencyP99: result.latency.p99,
+        errors: result.errors,
+        timeouts: result.timeouts,
+        totalRequests: result.requests.total
+    };
+}
+
+/**
+ * What one arm's rounds add up to, in the shape the table renders. Throughput is the mean of the
+ * rounds, which all last the same; the latencies are the median round's, because percentiles
+ * from separate passes do not add.
+ */
+function aggregateRounds(rounds) {
+    const mean = (values) => values.reduce((sum, value) => sum + value, 0) / values.length;
+    const errors = rounds.reduce((sum, round) => sum + round.errors, 0);
+    const timeouts = rounds.reduce((sum, round) => sum + round.timeouts, 0);
+    const totalRequests = rounds.reduce((sum, round) => sum + round.totalRequests, 0);
+    return {
+        requestsPerSec: mean(rounds.map((round) => round.requestsPerSec)),
+        transferPerSecBytes: mean(rounds.map((round) => round.transferPerSecBytes)),
+        latencyP50: median(rounds.map((round) => round.latencyP50)),
+        latencyP99: median(rounds.map((round) => round.latencyP99)),
+        socketErrorLine:
+            errors + timeouts > 0 ? `errors ${errors}, timeouts ${timeouts}, out of ${totalRequests} requests` : null
+    };
+}
+
+/**
+ * Both arms of one scenario, in alternating rounds rather than one pass each.
+ *
+ * With one pass per arm, whatever the machine does between minute N and minute N+1 lands whole in
+ * the ratio, and that was the run-to-run wobble of the routing rows. Here both servers are up for
+ * the whole scenario and the load alternates between them, swapping which goes first, the same
+ * design that keeps ab.js readable on a machine that drifts: the drift lands on adjacent rounds
+ * of both arms and cancels in the per-round ratio.
+ *
+ * The layout inside the old budget is one discarded warmup round per arm and four measured
+ * rounds, all the same length. The warmup is ab.js's lesson, a first round on cold servers came
+ * out far from every round after it. Four is even on purpose: the order swap gives two rounds
+ * per orientation, and the median() of an even count averages the two middles, so what a
+ * drifting machine adds to one orientation and subtracts from the other cancels, where a median
+ * of five kept whichever orientation held the majority. The speedup is that median, so it is not
+ * exactly the quotient of the two req/sec columns, which stay plain averages.
+ */
+async function runScenarioPair(scenarioName, scenario, durationSeconds) {
+    // five equal slots per arm, one warmed through and thrown away; under 15s the slots would
+    // shrink below 3s, where the connection ramp eats the round, so the old single pass stays
+    const rounds = Math.floor(durationSeconds / 5) >= 3 ? 4 : 1;
+    const roundSeconds = rounds === 1 ? durationSeconds : Math.floor(durationSeconds / 5);
+    const request = resolveRequest(scenario);
+    const load = scenario.load || {};
+
+    const arms = FRAMEWORKS.map((framework) => ({ framework, handle: null, rounds: [], error: null }));
+    try {
+        for (const arm of arms) {
+            try {
+                arm.handle = startScenarioServer(arm.framework, scenarioName);
+                await waitForReady(arm.handle.server, arm.framework, scenarioName);
+            } catch (error) {
+                arm.error = error;
+            }
+        }
+        if (rounds > 1) {
+            for (const arm of arms) {
+                if (arm.error) {
+                    continue;
+                }
+                try {
+                    await loadRound(arm.framework, scenarioName, request, load, roundSeconds);
+                } catch (error) {
+                    arm.error = error;
+                }
+            }
+        }
+        for (let round = 0; round < rounds; round++) {
+            for (const arm of round % 2 === 0 ? arms : [...arms].reverse()) {
+                if (arm.error) {
+                    continue;
+                }
+                try {
+                    arm.rounds.push(await loadRound(arm.framework, scenarioName, request, load, roundSeconds));
+                } catch (error) {
+                    arm.error = error;
+                }
+            }
+        }
+    } finally {
+        // each stop on its own: a stop that throws must not leave the other arm's server holding
+        // a port the next scenario would bind and be misrouted on
+        await Promise.allSettled(
+            arms.filter((arm) => arm.handle).map((arm) => stopScenarioServer(arm.handle.server, arm.handle.stderrRef))
+        );
+    }
+
+    // an arm that died mid-scenario reports FAILED rather than an average of what it managed
+    const [express, fulmine] = arms.map((arm) =>
+        arm.error
+            ? { ok: false, error: arm.error.stack || arm.error.message || String(arm.error) }
+            : { ok: true, ...aggregateRounds(arm.rounds) }
+    );
+
+    const roundRatios = [];
+    if (express.ok && fulmine.ok) {
+        for (let round = 0; round < arms[0].rounds.length; round++) {
+            roundRatios.push(arms[1].rounds[round].requestsPerSec / arms[0].rounds[round].requestsPerSec);
+        }
+    }
+
+    return {
+        express,
+        ultimate: fulmine,
+        speedup: roundRatios.length > 0 ? median(roundRatios) : null,
+        roundRatios
+    };
 }
 
 function buildMarkdown(results, historySection) {
@@ -295,9 +394,11 @@ function buildMarkdown(results, historySection) {
     const socketErrors = [];
     const bounded = [];
     for (const row of results) {
+        // the median of the per-round ratios where the run measured in rounds, with the quotient
+        // of the two averages as the single-pass fallback
         const speedup =
             row.express.ok && row.ultimate.ok && row.express.requestsPerSec > 0
-                ? `${(row.ultimate.requestsPerSec / row.express.requestsPerSec).toFixed(2)}x`
+                ? `${(row.speedup ?? row.ultimate.requestsPerSec / row.express.requestsPerSec).toFixed(2)}x`
                 : "N/A";
         const expressReq = row.express.ok ? formatReqPerSec(row.express.requestsPerSec) : "FAILED";
         const ultimateReq = row.ultimate.ok ? formatReqPerSec(row.ultimate.requestsPerSec) : "FAILED";
@@ -458,42 +559,35 @@ async function main() {
             process.stderr.write(`[validation] ERROR ${scenario.name}: ${validation.message}\n`);
         }
 
-        let expressResult;
+        let pair;
         try {
-            const successfulResult = await runScenario(FRAMEWORKS[0], scenarioName, scenario, durationSeconds);
-            expressResult = {
-                ok: true,
-                ...successfulResult
-            };
+            pair = await runScenarioPair(scenarioName, scenario, durationSeconds);
         } catch (error) {
-            expressResult = {
-                ok: false,
-                error: error.stack || error.message || String(error)
-            };
-            process.stderr.write(`[benchmark] FAILED express/${scenarioName}\n${expressResult.error}\n`);
+            const failure = { ok: false, error: error.stack || error.message || String(error) };
+            pair = { express: failure, ultimate: failure, speedup: null, roundRatios: [] };
         }
-
-        let ultimateResult;
-        try {
-            const successfulResult = await runScenario(FRAMEWORKS[1], scenarioName, scenario, durationSeconds);
-            ultimateResult = {
-                ok: true,
-                ...successfulResult
-            };
-        } catch (error) {
-            ultimateResult = {
-                ok: false,
-                error: error.stack || error.message || String(error)
-            };
-            process.stderr.write(`[benchmark] FAILED fulmine/${scenarioName}\n${ultimateResult.error}\n`);
+        if (!pair.express.ok) {
+            process.stderr.write(`[benchmark] FAILED express/${scenarioName}\n${pair.express.error}\n`);
+        }
+        if (!pair.ultimate.ok) {
+            process.stderr.write(`[benchmark] FAILED fulmine/${scenarioName}\n${pair.ultimate.error}\n`);
+        }
+        if (pair.roundRatios.length > 1) {
+            // the spread of these is what says whether the row's number can be trusted at all
+            process.stdout.write(
+                `[rounds] ${scenario.name}: ${pair.roundRatios.map((ratio) => ratio.toFixed(2)).join(" ")}, ` +
+                    `median ${pair.speedup.toFixed(2)}\n`
+            );
         }
 
         results.push({
             name: scenario.name,
             bound: scenario.bound || null,
             validation,
-            express: expressResult,
-            ultimate: ultimateResult
+            express: pair.express,
+            ultimate: pair.ultimate,
+            speedup: pair.speedup,
+            roundRatios: pair.roundRatios
         });
 
         process.stdout.write(`Done: ${scenario.name}\n`);

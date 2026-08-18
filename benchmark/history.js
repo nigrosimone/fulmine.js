@@ -14,7 +14,9 @@
 //
 // The raw req/sec of both arms is kept alongside the ratio. It is not comparable across runs, but
 // when a ratio does move it says which arm moved, which is the difference between a regression here
-// and express getting faster.
+// and express getting faster. Since 2026-08-18 the ratio is the median of alternating rounds and
+// the record carries their spread, so a number written before that date does not compare with a
+// new one on equal terms: the old single-pass ratios wobble more.
 
 const fs = require("fs");
 const os = require("os");
@@ -34,6 +36,25 @@ const NOTABLE = 0.1;
 // in and once on the recovery. Five runs is enough to hold the band and short enough to follow a
 // real step
 const WINDOW = 5;
+
+// how many non-bound rows with a real window it takes to trust a table-wide shift. With fewer,
+// a median of positions carries an error of several percent of its own, and dividing that into
+// every row can move a quiet row across the floor by itself
+const SHIFT_ROWS = 10;
+
+/**
+ * The middle value, or the average of the two middles on an even count. The average matters on
+ * even counts: the measured rounds alternate which arm goes first, so taking either middle alone
+ * would keep the drift that one orientation adds and the other subtracts.
+ *
+ * @param {number[]} values
+ * @returns {number}
+ */
+function median(values) {
+    const sorted = [...values].sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
 
 /**
  * The shape of this machine without the cpu model: same platform, same width, same major node.
@@ -105,11 +126,22 @@ function runRecordOf(results) {
     const scenarios = {};
     for (const row of results) {
         if (row.express.ok && row.ultimate.ok && row.express.requestsPerSec > 0) {
+            // the median of the per-round ratios when the run measured in rounds; the quotient of
+            // the two averages is the single-pass fallback and what the old records hold
+            const speedup = row.speedup ?? row.ultimate.requestsPerSec / row.express.requestsPerSec;
             scenarios[row.name] = {
-                speedup: Number((row.ultimate.requestsPerSec / row.express.requestsPerSec).toFixed(4)),
+                speedup: Number(speedup.toFixed(4)),
                 express: Math.round(row.express.requestsPerSec),
                 fulmine: Math.round(row.ultimate.requestsPerSec)
             };
+            // the spread of the rounds travels with the number, so a later reader can tell a
+            // stable measurement from one that straddled two levels
+            if (Array.isArray(row.roundRatios) && row.roundRatios.length > 1) {
+                scenarios[row.name].spread = [
+                    Number(Math.min(...row.roundRatios).toFixed(4)),
+                    Number(Math.max(...row.roundRatios).toFixed(4))
+                ];
+            }
             // carried so the comparison can leave the row unmarked: a bound ratio cannot really
             // move, so a flag on it is weather by construction. The summary's own footnote says so
             if (row.bound) {
@@ -187,58 +219,77 @@ function appendRun(file, history, key, run) {
  * Scenario by scenario, what moved between two runs on the same machine.
  *
  * The change shown is against the last run, which is what a reader wants to see. Whether it is
- * marked is decided against the recent window instead, when there is one: a row is notable only
- * when it left the whole range those runs stayed in AND sits at least the noise floor away from
- * their median. Retro-tested over the 45 recorded sections this halves the flags while every
- * step that showed on more than one machine still gets marked. A bound row is never marked: its
- * ratio cannot really move, the main table's own footnote says so, and its twelve recorded flags
- * were all weather.
+ * marked is decided against the recent window instead, when there is one, and after dividing out
+ * the shift the whole table shares: a hosted runner's sessions cap the fast arm at different
+ * heights, which moves every capped ratio together, and that shared part says nothing about the
+ * code. The run on 5f5fc98 is the recorded case: six routing rows flagged 11 to 19% down, a
+ * table-wide shift of -4.8%, and a local A/B reading the change itself at 1.00; dividing the
+ * shift out leaves one flag of the six.
+ *
+ * The division has a limit, because a change that slows code every scenario passes through has
+ * exactly the same shape. Every recorded machine shift sat within +-7%, so a table move past the
+ * noise floor is not divided out: those rows flag raw, and the footer says the move is either the
+ * machine or the code and that only an A/B can tell them apart. A row is notable only when it
+ * left the whole range the window stayed in AND, shift aside, sits at least the noise floor from
+ * the window median; a row seen in a single window run is judged by the flat floor alone and
+ * takes no part in the shift. A bound row is never marked: its ratio cannot really move, the
+ * main table's own footnote says so, and its twelve recorded flags were all weather.
  *
  * @param {any} previous
  * @param {any} current
  * @param {any[]} [windowRuns] recent runs under the same key, oldest first; absent means only the
  *   previous run is known and the flat floor decides alone
- * @returns {{rows: any[], added: string[], missing: string[]}}
+ * @returns {{rows: any[], added: string[], missing: string[], shift: number, tableMove: number}}
  */
 function compareRuns(previous, current, windowRuns) {
     const before = previous.scenarios || {};
     const after = current.scenarios || {};
     const runs = Array.isArray(windowRuns) && windowRuns.length > 0 ? windowRuns : [previous];
-    const rows = [];
 
+    // each row's position against its own window median, kept before judging any of them: the
+    // part of it the whole table shares is the machine, and is divided out first
+    const measured = [];
     for (const name of Object.keys(after)) {
         if (!before[name]) {
             continue;
         }
-        const change = after[name].speedup / before[name].speedup - 1;
-        const bound = Boolean(after[name].bound || before[name].bound);
         const seen = runs.map((run) => run.scenarios?.[name]?.speedup).filter((speedup) => typeof speedup === "number");
-        let notable;
-        if (bound) {
-            notable = false;
-        } else if (seen.length > 1) {
-            const sorted = [...seen].sort((a, b) => a - b);
-            const median = sorted[Math.floor(sorted.length / 2)];
-            const now = after[name].speedup;
-            notable = (now < sorted[0] || now > sorted[sorted.length - 1]) && Math.abs(now / median - 1) >= NOTABLE;
-        } else {
-            notable = Math.abs(change) >= NOTABLE;
-        }
-        rows.push({
+        const sorted = [...seen].sort((a, b) => a - b);
+        const now = after[name].speedup;
+        measured.push({
             name,
-            before: before[name],
-            after: after[name],
-            change,
-            bound,
-            notable
+            bound: Boolean(after[name].bound || before[name].bound),
+            hasWindow: sorted.length > 1,
+            change: now / before[name].speedup - 1,
+            // against the previous run alone when the window holds nothing more; the range
+            // condition is then vacuous, which is what the flat floor always was
+            position: sorted.length > 1 ? now / median(sorted) : now / before[name].speedup,
+            out: sorted.length > 1 ? now < sorted[0] || now > sorted[sorted.length - 1] : true
         });
     }
+
+    // only rows with a real window vote on the shift: a single-observation position is a change
+    // against one run, not a place in a band
+    const positions = measured.filter((entry) => !entry.bound && entry.hasWindow).map((entry) => entry.position);
+    const tableMove = positions.length >= SHIFT_ROWS ? median(positions) : 1;
+    const shift = Math.abs(tableMove - 1) < NOTABLE ? tableMove : 1;
+
+    const rows = measured.map((entry) => ({
+        name: entry.name,
+        before: before[entry.name],
+        after: after[entry.name],
+        change: entry.change,
+        bound: entry.bound,
+        notable: !entry.bound && entry.out && Math.abs(entry.position / (entry.hasWindow ? shift : 1) - 1) >= NOTABLE
+    }));
 
     // biggest movement first: the reason to read this section at all is the rows that moved
     rows.sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
 
     return {
         rows,
+        shift,
+        tableMove,
         added: Object.keys(after).filter((name) => !before[name]),
         missing: Object.keys(before).filter((name) => !after[name])
     };
@@ -258,7 +309,7 @@ function historyMarkdown(baseline, current) {
     }
 
     const previous = baseline.run;
-    const { rows, added, missing } = compareRuns(previous, current, baseline.runs);
+    const { rows, added, missing, shift, tableMove } = compareRuns(previous, current, baseline.runs);
     if (rows.length === 0) {
         return null;
     }
@@ -292,16 +343,35 @@ function historyMarkdown(baseline, current) {
     }
 
     const windowSize = Array.isArray(baseline.runs) ? baseline.runs.length : 1;
+    const shiftClause =
+        shift === 1
+            ? ""
+            : `, measured after dividing out the ${shift >= 1 ? "+" : ""}${((shift - 1) * 100).toFixed(1)}% the ` +
+              `whole table moved against the same window, which at that size is the machine rather than the code`;
     lines.push("");
     lines.push(
         `Only the ratio is comparable across runs: the absolute req/sec are not, and are shown only to say ` +
             `which arm moved. A row is marked when it left the whole range of the last ` +
             `${windowSize} run${windowSize === 1 ? "" : "s"} on this machine and sits at least ` +
-            `±${Math.round(NOTABLE * 100)}% from their median; a single 20s pass wobbles up to that much on its ` +
-            `own, so even a marked row is worth a second run before it is worth a bisect. Rows the main table ` +
+            `±${Math.round(NOTABLE * 100)}% from their median${shiftClause}; a single run still wobbles, ` +
+            `so even a marked row is worth a second run before it is worth a bisect. Rows the main table ` +
             `marks as bound are never flagged, their ratio cannot really move. ` +
             `:eyes: is a ratio that fell out of the range, :trophy: one that rose out of it.`
     );
+
+    // a table-wide move past the floor is not divided out, because a change every scenario pays
+    // has the same shape as a slow session: saying "machine" here would assert what nothing in
+    // this comparison can know
+    if (shift === 1 && Math.abs(tableMove - 1) >= NOTABLE) {
+        lines.push("");
+        lines.push(
+            `> :warning: The whole table sits ${tableMove >= 1 ? "+" : ""}${((tableMove - 1) * 100).toFixed(1)}% ` +
+                `from the window medians. A move that size is either this runner's session or a change every ` +
+                `scenario pays, and this comparison cannot tell them apart: ` +
+                `\`npm run benchmark:ab -- --against ${previous.commit || "the previous commit"}\` on a flagged ` +
+                `row decides.`
+        );
+    }
 
     if (!baseline.exact) {
         lines.push("");
@@ -336,5 +406,6 @@ module.exports = {
     appendRun,
     compareRuns,
     historyMarkdown,
+    median,
     NOTABLE
 };

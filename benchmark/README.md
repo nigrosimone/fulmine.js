@@ -7,6 +7,20 @@ Compares `express` against `fulmine` scenario by scenario. The load generator is
 npm run benchmark:compare -- --duration 20 --output benchmark_summary.md
 ```
 
+Each scenario keeps both servers up and alternates the load between them rather than running one
+uninterrupted pass per arm: a discarded warmup round for each, then four measured rounds per arm
+swapping which goes first, all inside the budget the single pass had. One pass per arm put
+whatever the machine did between minute N and minute N+1 straight into the ratio, which is where
+the run-to-run wobble of the routing rows came from; alternation puts it on adjacent rounds of
+both arms, where it cancels in the per-round ratio, the same design that makes `ab.js` readable
+on a machine that drifts, and the warmup is that tool's other lesson, a first round on cold
+servers far from every round after it. Four rounds is even on purpose: two rounds per order, and
+the published speedup is the average of the two middle ratios, so a drift that inflates one order
+and deflates the other cancels while one bad round still gets dropped. That speedup is not
+exactly the quotient of the two req/sec columns, which stay plain averages of the rounds. Below
+`--duration 15` the rounds would shrink under 3s, where the connection ramp eats the round, so it
+falls back to a single pass per arm.
+
 One scenario at a time:
 
 ```bash
@@ -174,6 +188,17 @@ and Express getting faster.
 Only rows that clear the ±10% noise floor are marked: :eyes: for a ratio that fell that far,
 :trophy: for one that rose. Anything under it is weather: a table of a dozen ratios always has one
 that moved a few percent.
+
+The floor is applied after dividing out what the whole table moved against the window of the last
+5 runs, when enough rows exist to measure that. A hosted runner's sessions cap the fast arm at
+different heights, which moves every capped ratio together, and that shared shift says nothing
+about the code: the run on `5f5fc98` flagged six routing rows 11 to 19% down on a table-wide
+shift of -4.8%, while a local A/B read the change itself at 1.00. The comment prints the shift it
+divided out. The division stops at the floor itself: a table that moved 10% or more as a whole is
+just as easily a change every scenario pays, so those rows flag raw and the comment says only an
+A/B against the previous commit can attribute the move. Each run's record in
+`benchmark_history.json` also keeps the spread of its round ratios next to the speedup, so a
+reader can tell a stable measurement from one that straddled two levels.
 
 ## A unix socket instead of a port
 
