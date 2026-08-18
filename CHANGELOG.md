@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.13.2](https://github.com/nigrosimone/fulmine.js/compare/v5.13.1...v5.13.2) (2026-08-18)
+
+### Bug Fixes
+
+* **benchmark:** alternate the arms in warmed rounds and divide a small table-wide shift out of the marking ([e8dc53e](https://github.com/nigrosimone/fulmine.js/commit/e8dc53e176df420c6ba3e335b2509000ac7180db))
+* **router:** route on a rewritten req.method, and drop the slash a RegExp mount took from baseUrl ([a8a9b94](https://github.com/nigrosimone/fulmine.js/commit/a8a9b94c6bed57e9f035f89c2d5240291b93ca83))
+* **static:** look for the index inside what a trailing slash asked for, and take a list of names ([49ff15d](https://github.com/nigrosimone/fulmine.js/commit/49ff15d9d0d466eedeb7ed8e47a32fdb47980769))
+
 ## [5.13.1](https://github.com/nigrosimone/fulmine.js/compare/v5.13.0...v5.13.1) (2026-08-17)
 
 ### Bug Fixes
