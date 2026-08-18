@@ -58,7 +58,24 @@ parsed, a charset nobody can decode and a type the parser must leave alone among
 cover the response methods as well as the routing: `append`, `attachment`, cookies with options,
 `clearCookie`, arrays through `res.set`, buffers, `204`, and a body written in chunks.
 
-What it deliberately does not: aborted requests, TLS, and pipelined connection reuse.
+A third of the rounds also install one or two third-party middlewares in front of everything: `cors`,
+`helmet`, `cookie-parser`, `method-override`, `compression`, `response-time`, `morgan` and
+`express-basic-auth`, with their options drawn too, and with the request headers each of them needs
+to do anything. Both arms get the same npm package, so there is no second implementation to compare
+and a divergence is our request and response surface behaving differently under code neither
+framework wrote. That is the gap `integrations/` covers for whole frameworks, one layer down, and it
+reaches what a generated handler cannot: `on-headers`, `on-finished`, a middleware that answers
+instead of calling `next`, and a response stream somebody else writes. The headers they add,
+`access-control-*`, helmet's set and `www-authenticate`, are compared here on top of the suite's
+list, since injecting a middleware whose whole output is headers nobody looks at would prove
+nothing.
+
+What it deliberately does not: aborted requests, TLS, and pipelined connection reuse. Nor the
+middleware whose answer cannot be the same twice: `express-session` and `cookie-session` draw a
+session id and an expiry from the clock, `express-rate-limit` counts across rounds, `errorhandler`
+writes a stack whose frames belong to each project, `express-mongo-sanitize` throws on Express 5 with
+the request class in the message, the two proxies want an upstream, and `multer` and
+`express-fileupload` want a multipart body that nothing here generates.
 
 One difference must stay out of the comparison, because matching it would mean copying a fault.
 **A non-ascii header value.** Express hands the string to node, whose header block turns the

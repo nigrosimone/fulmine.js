@@ -23,9 +23,45 @@ const path = require("path");
 const realExpress = require(path.join(__dirname, "..", "node_modules", "express"));
 const fulmine = require(path.join(__dirname, "..", "src", "index.js"));
 const { COMPARED_HEADERS, PRESENCE_ONLY_HEADERS } = require(path.join(__dirname, "..", "tests", "helpers.js"));
+const cors = require("cors");
+const helmet = require("helmet");
+const cookieParser = require("cookie-parser");
+const methodOverride = require("method-override");
+const compression = require("compression");
+const responseTime = require("response-time");
+const morgan = require("morgan");
+const basicAuth = require("express-basic-auth");
 
 // x-powered-by, content-length and transfer-encoding stay out for the reasons tests/helpers.js
 // gives: the two servers differ there by design rather than by fault.
+
+// What the third party middleware below writes, compared on top of the suite's list. Injecting a
+// middleware whose whole output is headers nobody looks at would prove nothing, so these are here
+// rather than in tests/helpers.js: the suite compares them by printing them in the case that uses
+// them, and widening its list would rewrite every expected file for no gain.
+// x-response-time is deliberately absent: it is a clock reading.
+const MIDDLEWARE_HEADERS = [
+    "access-control-allow-origin",
+    "access-control-allow-credentials",
+    "access-control-allow-methods",
+    "access-control-allow-headers",
+    "access-control-expose-headers",
+    "access-control-max-age",
+    "www-authenticate",
+    "content-security-policy",
+    "cross-origin-embedder-policy",
+    "cross-origin-opener-policy",
+    "cross-origin-resource-policy",
+    "origin-agent-cluster",
+    "referrer-policy",
+    "strict-transport-security",
+    "x-content-type-options",
+    "x-dns-prefetch-control",
+    "x-download-options",
+    "x-frame-options",
+    "x-permitted-cross-domain-policies",
+    "x-xss-protection"
+];
 
 // --self compares this framework against itself with the optimizer off instead of against Express.
 //
@@ -120,6 +156,104 @@ const BODIES_FOR = {
         { type: "text/plain", text: "bytes" }
     ]
 };
+
+// The middleware an application really installs, drawn into the plan and registered on both arms.
+//
+// Unlike the body parsers, which each framework brings its own copy of, both arms here get the
+// same npm package. There is no second implementation to compare, so a divergence is our request
+// and response surface behaving differently under code that neither framework wrote, which is the
+// gap integrations/ covers for whole frameworks and this covers one layer down. It reaches what a
+// generated handler cannot: on-headers, on-finished, a middleware that answers instead of calling
+// next, and a response stream somebody else writes.
+//
+// Each entry draws its options as plain data, so the shrinker can drop it and the printed case can
+// name it. `headers` adds what the request has to carry for the middleware to do anything.
+//
+// Left out, and why:
+//   express-session, cookie-session           a session id and an expiry drawn from the clock
+//   express-rate-limit                        counts across rounds, and its headers carry a reset
+//   errorhandler                              writes the stack, whose frames belong to each project
+//   express-mongo-sanitize                    assigns to req.query, which express 5 refuses: the
+//                                             message it throws names the request class, and ours
+//                                             is not a node IncomingMessage
+//   http-proxy-middleware, express-http-proxy  want an upstream to talk to
+//   multer, express-fileupload                want a multipart body, which nothing here generates
+const SINK = { write: () => {} };
+const MIDDLEWARE = {
+    cors: {
+        draw: (pick, chance) => {
+            const options = {};
+            if (chance(0.5)) options.origin = pick(["*", "http://example.com", true, false]);
+            if (chance(0.3)) options.credentials = true;
+            if (chance(0.3)) options.methods = pick(["GET,POST", ["GET", "PUT"]]);
+            if (chance(0.25)) options.allowedHeaders = ["X-Fuzz", "Content-Type"];
+            if (chance(0.25)) options.exposedHeaders = ["X-Lit", "ETag"];
+            if (chance(0.25)) options.maxAge = 600;
+            // the preflight either ends here or is handed on to the routing, which are two
+            // different things for the request to be answered by
+            if (chance(0.2)) options.preflightContinue = true;
+            if (chance(0.2)) options.optionsSuccessStatus = 200;
+            return options;
+        },
+        build: (options) => cors(options),
+        // a preflight is an OPTIONS carrying both of these, and OPTIONS is one of the drawn verbs
+        headers: (pick, chance) => ({
+            origin: "http://example.com",
+            ...(chance(0.5) ? { "access-control-request-method": pick(["PUT", "DELETE"]) } : {})
+        })
+    },
+    helmet: {
+        draw: (pick, chance) => {
+            const options = {};
+            if (chance(0.3)) options.contentSecurityPolicy = false;
+            if (chance(0.25)) options.strictTransportSecurity = false;
+            if (chance(0.2)) options.crossOriginResourcePolicy = { policy: "cross-origin" };
+            if (chance(0.2)) options.referrerPolicy = { policy: "no-referrer-when-downgrade" };
+            if (chance(0.15)) options.xFrameOptions = { action: "sameorigin" };
+            return options;
+        },
+        build: (options) => helmet(options)
+    },
+    cookieParser: {
+        // without the secret a signed cookie raises, and one handler kind writes one
+        draw: (pick, chance) => (chance(0.5) ? { secret: "fuzz-secret" } : {}),
+        build: (options) => cookieParser(options.secret),
+        headers: () => ({ cookie: "fuzz=earlier; empty=; broken=%E0%A4%A" })
+    },
+    methodOverride: {
+        draw: (pick) => ({ from: pick(["X-HTTP-Method-Override", "X-Method"]) }),
+        build: (options) => methodOverride(options.from),
+        // the verb the routing sees is then not the verb the request was sent with
+        headers: (pick, chance) => (chance(0.6) ? { "x-http-method-override": pick(["POST", "PUT", "DELETE"]) } : {})
+    },
+    compression: {
+        // threshold 0 so a short generated body is compressed too: the default leaves everything
+        // here uncompressed and the middleware never writes
+        draw: (pick) => ({ threshold: pick([0, 1024]) }),
+        build: (options) => compression(options),
+        headers: (pick) => ({ "accept-encoding": pick(["gzip", "deflate", "gzip, deflate, br"]) })
+    },
+    responseTime: {
+        // its own header is a clock reading and stays out of the comparison. It is here for
+        // on-headers, which is what it hangs the value on and where the header block is decided
+        draw: () => ({}),
+        build: () => responseTime()
+    },
+    morgan: {
+        // the line goes nowhere: this is here for on-finished, which is where it reads the answer
+        draw: (pick) => ({ format: pick(["tiny", "short", "combined"]) }),
+        build: (options) => morgan(options.format, { stream: SINK })
+    },
+    basicAuth: {
+        draw: (pick, chance) => ({ challenge: chance(0.5) }),
+        build: (options) => basicAuth({ users: { fuzz: "secret" }, challenge: options.challenge }),
+        // most rounds send credentials that work, since a round answering 401 everywhere compares
+        // the middleware and nothing else
+        headers: (pick, chance) =>
+            chance(0.7) ? { authorization: "Basic " + Buffer.from("fuzz:secret").toString("base64") } : {}
+    }
+};
+const MIDDLEWARE_NAMES = Object.keys(MIDDLEWARE);
 
 // Every path written in the case corpus of path-to-regexp, the library express matches with. It
 // holds both sides of their tests, the patterns and the concrete paths they are matched against,
@@ -488,6 +622,19 @@ function drawPlan(rng) {
     // own frames and can never match
     const bodyParser = !skipFriendly && chance(0.3) ? pick(["json", "urlencoded", "text", "raw"]) : null;
 
+    // one or two third party middlewares in front of everything, the way an application installs
+    // them. Out of the skip-friendly mode with the rest: an opaque use() is exactly what the usage
+    // analysis has to stop at, so a round meant to reach a granted skip would no longer reach one.
+    const middlewares = [];
+    if (!skipFriendly && chance(0.35)) {
+        const count = chance(0.3) ? 2 : 1;
+        for (let i = 0; i < count; i++) {
+            const name = pick(MIDDLEWARE_NAMES);
+            if (middlewares.some((m) => m.name === name)) continue;
+            middlewares.push({ name, options: MIDDLEWARE[name].draw(pick, chance) });
+        }
+    }
+
     // a static mount: the options are the ones that change what it answers rather than how fast
     const staticMount =
         !skipFriendly && chance(0.35)
@@ -593,6 +740,11 @@ function drawPlan(rng) {
     if (chance(0.15)) headers["if-match"] = pick(['"nonsense"', "*", 'W/"weak"']);
     if (chance(0.2)) headers["accept-encoding"] = pick(["gzip", "identity", "gzip, deflate, br", "*"]);
     if (chance(0.15)) headers["accept-charset"] = pick(["utf-8", "iso-8859-1, utf-8;q=0.8"]);
+    // what the drawn middleware needs the request to carry, last so it wins over the draws above
+    for (const spec of middlewares) {
+        const extra = MIDDLEWARE[spec.name].headers;
+        if (extra) Object.assign(headers, extra(pick, chance));
+    }
 
     // GET always, since most routes are GET, plus one other verb so the method side is exercised
     // the paths a static mount can answer, asked for whether or not one is mounted: half the
@@ -636,6 +788,7 @@ function drawPlan(rng) {
         routes,
         urls,
         headers,
+        middlewares,
         bodyParser,
         body,
         staticMount,
@@ -914,6 +1067,11 @@ async function instantiate(plan, factory, port, generic) {
     // application inherits it, which is part of what this is here to compare
     app.set("views", VIEW_DIR);
     app.engine("html", viewEngine);
+    // the same instance is not shared between the arms: each gets one of its own, built from the
+    // plan's options, since a middleware that keeps state would otherwise carry it across
+    for (const spec of plan.middlewares ?? []) {
+        app.use(MIDDLEWARE[spec.name].build(spec.options));
+    }
     if (plan.bodyParser) {
         // Fulmine reads a body only for POST, PUT, PATCH and QUERY unless told otherwise, which
         // the readme states as a deliberate difference: express reads one whenever the request
@@ -1049,7 +1207,7 @@ async function answerOf(port, url, method, headers, conditional, body) {
         redirect: "manual"
     });
     const parts = [String(res.status)];
-    for (const name of COMPARED_HEADERS) {
+    for (const name of [...COMPARED_HEADERS, ...MIDDLEWARE_HEADERS]) {
         const value = name === "set-cookie" ? res.headers.getSetCookie().join(" | ") : res.headers.get(name);
         if (value !== null && value !== "")
             parts.push(`${name}: ${value.replace(/\d{2}:\d{2}:\d{2} GMT/g, "xx:xx:xx GMT")}`);
@@ -1178,6 +1336,10 @@ async function shrink(plan, target) {
     if (current.subApp) {
         current = (await tryWithout({ ...current, subApp: null })) ?? current;
     }
+    for (let i = (current.middlewares ?? []).length - 1; i >= 0; i--) {
+        const candidate = { ...current, middlewares: current.middlewares.filter((_, j) => j !== i) };
+        current = (await tryWithout(candidate)) ?? current;
+    }
     for (const key of Object.keys(current.settings)) {
         const settings = { ...current.settings };
         delete settings[key];
@@ -1201,6 +1363,8 @@ function planToSource(plan, target) {
         lines.push(`app.set(${JSON.stringify(key)}, ${JSON.stringify(value)});`);
     // what is registered before any route, and what the request carries: leaving these out made a
     // case look smaller than it was, since the answer often comes from here rather than from a route
+    for (const spec of plan.middlewares ?? [])
+        lines.push(`app.use(${spec.name}(${JSON.stringify(spec.options)}));  // the npm package, on both arms`);
     if (plan.bodyParser) lines.push(`app.use(express.${plan.bodyParser}());`);
     if (plan.body) lines.push(`// request body: ${JSON.stringify(plan.body)}`);
     if (plan.staticMount) {
