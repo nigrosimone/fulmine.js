@@ -790,13 +790,24 @@ module.exports = class Response extends LazyWritable {
             this.writeHeaders(true);
         }
         const contentLength = this.headers["content-length"];
+        // The client said this connection ends here, and it is this end() that has to make it so.
+        // µWS closes by itself for a bare "close" and not for a list, so "keep-alive, close" left
+        // the socket open and the bytes after that request were read as another one: node closes
+        // there, and a server that does not is a server the client and it disagree with about how
+        // many requests were sent. See saysClose.
+        //
+        // Only where a length goes out with it. endWithoutBody takes the flag as its second
+        // argument and reads the first as the length whatever it holds, so asking it to close
+        // without one writes "Content-Length: 9223372036854775808" onto a 204. Those two paths keep
+        // µWS's own rule, which closes for a bare "close" and not for a list.
+        const closeConnection = this.req._connectionClose === true;
         if (STATUSES_WITHOUT_BODY.has(this.statusCode) || this.statusCode < 200) {
             // no body and no length describing one, whatever the caller passed. node decides
             // this the same way, from the status alone, so res.status(304).end("x") sends the
             // status and nothing else on either.
             this._res.endWithoutBody();
         } else if (!data && contentLength) {
-            this._res.endWithoutBody(contentLength.toString());
+            this._res.endWithoutBody(contentLength.toString(), closeConnection);
         } else if (headWasAlreadyOut && this.chunkedTransfer) {
             // whatever is still queued goes first: end() must not overtake the body written before it
             this.#flushQueued(null);
@@ -817,7 +828,7 @@ module.exports = class Response extends LazyWritable {
             if (this.req.method === "HEAD") {
                 const length = Buffer.byteLength(data ?? "");
                 this.headers["content-length"] = String(length);
-                this._res.endWithoutBody(length.toString());
+                this._res.endWithoutBody(length.toString(), closeConnection);
             } else {
                 // remembered rather than measured: only a caller that asks for content-length pays
                 // for it, and uWS is measuring the same bytes for the wire anyway
@@ -825,7 +836,7 @@ module.exports = class Response extends LazyWritable {
                 // and null is sent as the empty body it means. uWS answers end(null) with a
                 // response the client never sees the end of, where node and express send an empty
                 // 200: res.end(null) is what the compression module's own test suite does
-                this._res.end(data ?? "");
+                this._res.end(data ?? "", closeConnection);
             }
         }
 

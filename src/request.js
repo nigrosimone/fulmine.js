@@ -158,6 +158,29 @@ const READABLE_OPTIONS = { highWaterMark: 128 * 1024 };
 const KNOWN_METHODS = new Set(require("http").METHODS);
 
 /**
+ * Whether a request target is bytes node's parser would have accepted, which is printable ASCII
+ * and nothing else.
+ *
+ * µWS takes the target as it finds it and decodes it as UTF-8, so `GET /cafÃ©` arrives here
+ * as a path with an é in it and the overlong encoding of a slash arrives as replacement
+ * characters. Node refuses both with a 400 before any application sees them, and it has to: what
+ * reaches req.url otherwise is not what is on the wire, and a proxy in front reading the same
+ * bytes can disagree with this server about which path was asked for. Control characters are µWS's
+ * own to refuse and it does, so the test is one comparison per character rather than two.
+ *
+ * @param {string} target the path or the query string, as µWS decoded it
+ * @returns {boolean}
+ */
+function isAsciiTarget(target) {
+    for (let i = 0; i < target.length; i++) {
+        if (target.charCodeAt(i) > 0x7e) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
  * Whether a transfer-encoding leaves the body's length knowable, which is RFC 9112's rule that
  * `chunked` comes last. `gzip, chunked` is fine and `chunked, gzip` is not: with a coding applied
  * after the framing one, nothing can say where the body ends, and node answers 400 rather than
@@ -174,7 +197,65 @@ function endsWithChunked(value) {
     const last = value.slice(value.lastIndexOf(",") + 1).trim();
     // a coding may carry parameters, which are not part of its name
     const semicolon = last.indexOf(";");
-    return (semicolon === -1 ? last : last.slice(0, semicolon)).trim().toLowerCase() === "chunked";
+    if ((semicolon === -1 ? last : last.slice(0, semicolon)).trim().toLowerCase() !== "chunked") {
+        return false;
+    }
+    // and only once. "chunked, chunked" ends with it and is still nonsense: a sender may not frame
+    // a body twice, and where node refuses the request outright µWS frames it as one chunked body
+    // and reads whatever follows as the next request on the connection
+    const codings = value.split(",");
+    let chunkedCount = 0;
+    for (const coding of codings) {
+        const parameter = coding.indexOf(";");
+        if ((parameter === -1 ? coding : coding.slice(0, parameter)).trim().toLowerCase() === "chunked") {
+            chunkedCount++;
+        }
+    }
+    return chunkedCount === 1;
+}
+
+/**
+ * Whether a Connection header says the connection ends with this response.
+ *
+ * It is a list, and "keep-alive, close" closes as much as "close" alone does. Compared against an
+ * exact "close", this server kept a connection the client had said it was done with, and then read
+ * the bytes after it as another request: node closes there, so the two disagreed on how many
+ * requests the same bytes carried, which is what a desync is.
+ *
+ * Written as a scan rather than a split and a lowercase, because almost every request that carries
+ * this header carries "keep-alive", and both of those allocate per request.
+ *
+ * @param {string} value as µWS hands it over
+ * @returns {boolean}
+ */
+function saysClose(value) {
+    const length = value.length;
+    let at = 0;
+    while (at < length) {
+        while (at < length && (value.charCodeAt(at) === 0x20 || value.charCodeAt(at) === 0x09)) {
+            at++;
+        }
+        const start = at;
+        while (at < length && value.charCodeAt(at) !== 0x2c) {
+            at++;
+        }
+        let end = at;
+        while (end > start && (value.charCodeAt(end - 1) === 0x20 || value.charCodeAt(end - 1) === 0x09)) {
+            end--;
+        }
+        if (
+            end - start === 5 &&
+            (value.charCodeAt(start) | 0x20) === 0x63 &&
+            (value.charCodeAt(start + 1) | 0x20) === 0x6c &&
+            (value.charCodeAt(start + 2) | 0x20) === 0x6f &&
+            (value.charCodeAt(start + 3) | 0x20) === 0x73 &&
+            (value.charCodeAt(start + 4) | 0x20) === 0x65
+        ) {
+            return true;
+        }
+        at++;
+    }
+    return false;
 }
 
 /**
@@ -401,12 +482,7 @@ module.exports = class Request extends LazyReadable {
         // spotted in the loop that is running anyway: a client asking for the connection to be
         // closed must not be answered that it is being kept alive. The response is built right
         // after this and reads the flag.
-        if (
-            headerKey.length === 10 &&
-            headerKey === "connection" &&
-            value.length === 5 &&
-            value.toLowerCase() === "close"
-        ) {
+        if (headerKey.length === 10 && headerKey === "connection" && saysClose(value)) {
             r._connectionClose = true;
         } else if (
             (headerKey.length === 14 && headerKey === "content-length") ||
@@ -644,7 +720,7 @@ module.exports = class Request extends LazyReadable {
                 const connection = req.getHeader("connection");
                 if (connection !== "") {
                     entries.push("connection", connection);
-                    if (connection.length === 5 && connection.toLowerCase() === "close") {
+                    if (saysClose(connection)) {
                         this._connectionClose = true;
                     }
                 }
@@ -689,6 +765,9 @@ module.exports = class Request extends LazyReadable {
             const rawQuery = req.getQuery();
             this._rawQuery = rawQuery ?? "";
             this.urlQuery = rawQuery === undefined ? "" : "?" + rawQuery;
+            if (rawQuery !== undefined && rawQuery.length !== 0 && !isAsciiTarget(rawQuery)) {
+                this._mustRefuse = true;
+            }
         }
         if (preset) {
             // the registration's constants: two native crossings and their strings not asked for
@@ -707,6 +786,12 @@ module.exports = class Request extends LazyReadable {
             // again. Building originalUrl and picking the path back out of it with indexOf and
             // substring was a search and a second string for something uWS had just handed over.
             this._path = req.getUrl();
+            // the target as it arrived, which node would have refused before this ran. A preset
+            // needs no check: it is a literal registration, and µWS only matched it because the
+            // bytes were that literal
+            if (!isAsciiTarget(this._path)) {
+                this._mustRefuse = true;
+            }
             this.originalUrl = this._path + this.urlQuery;
             this.url = this.originalUrl;
             // what the router last wrote to req.url. A middleware assigning something else is a
