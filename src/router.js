@@ -216,6 +216,11 @@ class Walk {
         if (req.url !== req._lastUrl && this.takeUrlRewrite(startIndex)) {
             return;
         }
+        // and the same for req.method, which method-override assigns: the compiled chain was
+        // picked by the verb the request arrived with, so it no longer stands for this one
+        if (req.method !== req._lastMethod && this.takeMethodRewrite(startIndex)) {
+            return;
+        }
         let routeIndex = startIndex;
         // a compiled chain runs what is in it without matching again, so this is where a layer that
         // provably has nothing to do for this request is stepped over rather than entered
@@ -346,6 +351,34 @@ class Walk {
     }
 
     /**
+     * Takes over a req.method a middleware assigned, which method-override is written to do. The
+     * ordinary scan reads req.method per route and is right from the next hop on; a compiled chain
+     * was chosen by the method µWS dispatched on, so ordinary routing takes over from the top the
+     * way a url rewrite does.
+     *
+     * @param {number} startIndex where dispatch was about to resume
+     * @returns {boolean} whether this rerouted the walk itself
+     */
+    takeMethodRewrite(startIndex) {
+        const req = this.req;
+        const router = this.router;
+        req._absorbMethodRewrite();
+        if (!this.skipCheck) {
+            return false;
+        }
+        this.skipUntil = startIndex > 0 ? this.routes[startIndex - 1] : undefined;
+        if (req._stack !== null && req._stack.length > 0) {
+            req._stack.length = 0;
+            req._consumed = 0;
+            setMountedPath(req);
+        }
+        this.routes = router._routes;
+        this.skipCheck = false;
+        this.dispatch(0);
+        return true;
+    }
+
+    /**
      * Enters the route the walk is on: a mount adjusts req.url, req.path and the mount stack on the
      * way in, and then the route's callbacks run one after another through next().
      *
@@ -375,6 +408,11 @@ class Walk {
             // one cannot bite. An application is mostly pathless middleware, and this is per hop
             if (taken !== 0 || req.endsWithSlash) {
                 req._consumed += taken;
+                // a mount that took a trailing slash: req.baseUrl then has to join the pieces
+                // rather than slice the path, which is the slower half of its getter
+                if (taken !== 0 && req._originalPath.charCodeAt(req._consumed - 1) === 0x2f) {
+                    req._mountSlash = true;
+                }
                 setMountedPath(req);
             }
         }
@@ -707,6 +745,12 @@ const PATH_PROPERTY = {
     enumerable: true
 };
 
+// and the two the walk calls when a middleware rewrote req.url or req.method, for the same reason:
+// an adopted request has no prototype of ours to find them on, and a rewrite through one of those
+// routers threw instead of being taken over
+const ABSORB_URL = Request.prototype._absorbUrlRewrite;
+const ABSORB_METHOD = Request.prototype._absorbMethodRewrite;
+
 const NO_PARAM_NAMES = [];
 
 /**
@@ -854,6 +898,8 @@ function adoptPlainRequest(req, router) {
     // an adopted request is a plain object, so it carries no prototype of ours and reads its path
     // off a property of its own. The class's getter itself, so there is one of it
     Object.defineProperty(req, "path", PATH_PROPERTY);
+    req._absorbUrlRewrite = ABSORB_URL;
+    req._absorbMethodRewrite = ABSORB_METHOD;
     req.originalUrl = req.originalUrl ?? arrived;
     req._originalPath = path;
     req.endsWithSlash = path.charCodeAt(path.length - 1) === 0x2f;
@@ -861,6 +907,7 @@ function adoptPlainRequest(req, router) {
     req._opPathLower = null;
     req._mayFailDecode = null;
     req._lastUrl = req.url;
+    req._lastMethod = req.method;
     req._isOptions = req.method === "OPTIONS";
     req._isHead = req.method === "HEAD";
     req.params = req.params ?? Object.create(null);
@@ -868,6 +915,7 @@ function adoptPlainRequest(req, router) {
     // requests never see one, same as the Request constructor
     req._stack = null;
     req._consumed = 0;
+    req._mountSlash = false;
     req._paramStack = null;
     req._matchedMethods = req._isOptions ? new Set() : null;
     req.routeCount = 1;

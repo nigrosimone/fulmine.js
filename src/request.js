@@ -730,6 +730,10 @@ module.exports = class Request extends LazyReadable {
             this._isOptions = this.method === "OPTIONS";
             this._isHead = this.method === "HEAD";
         }
+        // what the router last saw as the method. A middleware assigning another one is a rewrite,
+        // which express honours because it reads req.method at every layer, and dispatch compares
+        // against this to notice it
+        this._lastMethod = this.method;
         // the folded _opPath and the percent scan of _originalPath, built on the hop that first
         // wants them and dropped by every rewrite, see _pathMatches and Walk#dispatch
         this._opPathLower = null;
@@ -753,6 +757,8 @@ module.exports = class Request extends LazyReadable {
         // how many characters of _originalPath the mounts entered so far have taken, which is
         // where baseUrl ends and the path below them begins
         this._consumed = 0;
+        // whether one of them took a trailing slash, which only a RegExp mount can: see baseUrl
+        this._mountSlash = false;
         this._paramStack = null;
         // route and application in pairs, one pair per mounted application entered from another
         // application, so handing back puts the one that was current back, see rememberApp
@@ -934,8 +940,26 @@ module.exports = class Request extends LazyReadable {
         if (this._baseUrlOverride !== undefined) {
             return this._baseUrlOverride;
         }
+        if (this._consumed === 0) {
+            return "";
+        }
         // what the mounts took, which is where the path they left off begins
-        return this._consumed === 0 ? "" : this._originalPath.slice(0, this._consumed);
+        if (this._mountSlash !== true) {
+            return this._originalPath.slice(0, this._consumed);
+        }
+        // Express drops one trailing slash off each mount before joining them, so this is a join
+        // of the pieces rather than one slice of the path: a RegExp mount ending in "/" matched
+        // against "/a//b" takes "/a/" and reads back as "/a", and what the mount below it took is
+        // appended to that rather than to the original. Only a RegExp mount can take a trailing
+        // slash, a registered path having had it removed, so almost every request answers above.
+        let out = "";
+        let at = 0;
+        for (const taken of this._stack) {
+            const piece = this._originalPath.slice(at, at + taken);
+            at += taken;
+            out += piece.charCodeAt(taken - 1) === 0x2f ? piece.slice(0, -1) : piece;
+        }
+        return out;
     }
 
     /**
@@ -1112,6 +1136,21 @@ module.exports = class Request extends LazyReadable {
         this._opPathLower = null;
         this._mayFailDecode = null;
         this._lastUrl = newUrl;
+    }
+
+    /**
+     * Takes over what a middleware assigned to req.method. Both flags are read as bare fields by
+     * the routing scan rather than compared against req.method, so they are what has to follow it,
+     * and an OPTIONS the request has just become still needs the set the verbs are collected in.
+     */
+    _absorbMethodRewrite() {
+        const method = this.method;
+        this._isOptions = method === "OPTIONS";
+        this._isHead = method === "HEAD";
+        if (this._isOptions && this._matchedMethods === null) {
+            this._matchedMethods = new Set();
+        }
+        this._lastMethod = method;
     }
 
     /**

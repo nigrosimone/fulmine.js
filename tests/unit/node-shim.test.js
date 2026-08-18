@@ -341,6 +341,50 @@ test("a router driven with a plain object reads its path the same way", async ()
     assert.deepEqual(seen, ["/x", "/y"]);
 });
 
+test("a plain object rewritten between routes is taken over rather than thrown on", async () => {
+    // the same shape again, with the rewrite in a middleware of its own instead of inside the
+    // route: the walk then takes it over on its next hop, and the two methods it calls to do that
+    // live on a prototype this request does not have. It threw ReferenceError until they were put
+    // on the request itself. The method is rewritten too, which method-override does.
+    const router = express.Router();
+    const reached = [];
+    router.use((req, res, next) => {
+        req.url = "/y";
+        req.method = "DELETE";
+        next();
+    });
+    router.get("/y", (req, res) => {
+        reached.push("get");
+        res.end();
+    });
+    router.delete("/y", (req, res) => {
+        reached.push("delete");
+        res.end();
+    });
+
+    const noop = () => {};
+    const answered = new Promise((resolve, reject) => {
+        router.handle(
+            /** @type {any} */ ({ url: "/x", method: "GET", headers: {} }),
+            /** @type {any} */ ({
+                end: resolve,
+                setHeader: noop,
+                getHeader: () => undefined,
+                writeHead: noop,
+                write: noop,
+                on: noop,
+                once: noop,
+                removeListener: noop,
+                emit: noop
+            }),
+            (err) => reject(err ?? new Error("nothing answered"))
+        );
+    });
+    await answered;
+
+    assert.deepEqual(reached, ["delete"]);
+});
+
 test("the callable app hands an unmatched request to its next callback", async () => {
     const app = express();
     app.get("/known", (req, res) => res.send("known"));
