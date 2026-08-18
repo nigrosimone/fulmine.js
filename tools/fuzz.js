@@ -479,7 +479,12 @@ const RAISES = new Set([
     "download",
     "render-missing",
     "render-callback",
-    "cookie-signed"
+    "cookie-signed",
+    "throw-string",
+    "throw-status",
+    "throw-after-send",
+    "reject-async",
+    "send-file-options"
 ]);
 
 const HANDLER_KINDS = [
@@ -534,7 +539,27 @@ const HANDLER_KINDS = [
     "location-encoded",
     "redirect-permanent",
     "write-chunks",
-    "write-then-status"
+    "write-then-status",
+    // The request surface, which nothing here read before: every one of these is a pure function
+    // of the path and the headers, both of which are already drawn hostile, and none of them can
+    // be seen from outside unless a handler writes it into the body.
+    "req-echo",
+    "req-range",
+    "req-types",
+    // The error shapes express decides on, which are not the same as throwing an Error: a string
+    // has no message, a status on the error is what its default handler answers with, and one
+    // thrown after the head has gone out cannot be answered at all
+    "throw-string",
+    "throw-status",
+    "throw-after-send",
+    "reject-async",
+    // and the rest of the response surface
+    "location-back",
+    "write-head",
+    "remove-header",
+    "send-file-options",
+    "download-callback",
+    "sendstatus-unknown"
 ];
 
 /**
@@ -591,20 +616,21 @@ function drawPlan(rng) {
         path: chance(0.25) && libraryRoutes.length > 0 ? pick(libraryRoutes) : drawPath(allowWildcard),
         kind: pick(kinds),
         // a middleware in front of the handler, which is where next() bookkeeping goes wrong
-        lead: chance(0.25) ? pick(["header", "rewrite", "params", "plain"]) : null,
+        lead: chance(0.3) ? pick(["header", "rewrite", "params", "plain", "method", "baseurl", "leave-router"]) : null,
         id: "r" + paramCounter++
     });
 
     const settings = {};
     if (chance(0.35)) settings["strict routing"] = chance(0.7);
     if (chance(0.35)) settings["case sensitive routing"] = chance(0.7);
-    if (chance(0.2)) settings["query parser"] = pick(["simple", "extended"]);
+    if (chance(0.25)) settings["query parser"] = pick(["simple", "extended", "fn:query"]);
+    if (chance(0.12)) settings["json replacer"] = "fn:replacer";
     // etag off is what lets a chain skip the header copy and the query, so it is worth reaching
     // often rather than rarely
     if (skipFriendly) {
         settings.etag = false;
     } else if (chance(0.4)) {
-        settings.etag = pick([false, "strong", "weak"]);
+        settings.etag = pick([false, "strong", "weak", "fn:etag"]);
     }
     if (chance(0.15)) settings["declarative responses"] = false;
     if (chance(0.15)) settings["json spaces"] = 2;
@@ -612,7 +638,7 @@ function drawPlan(rng) {
     if (chance(0.1)) settings["jsonp callback name"] = "cb";
     if (chance(0.1)) settings["x-powered-by"] = true;
     if (chance(0.1)) settings["subdomain offset"] = 3;
-    if (chance(0.25)) settings["trust proxy"] = pick([true, false, 1, 2, "127.0.0.1", "loopback"]);
+    if (chance(0.3)) settings["trust proxy"] = pick([true, false, 1, 2, "127.0.0.1", "loopback", "fn:proxy"]);
     if (chance(0.5)) settings["view engine"] = "html";
     if (chance(0.3)) settings["view cache"] = chance(0.5);
 
@@ -657,7 +683,7 @@ function drawPlan(rng) {
     const routerCount = Math.floor(rng() * 3);
     for (let i = 0; i < routerCount; i++) {
         const options = {};
-        if (chance(0.25)) options.paramCallback = true;
+        if (chance(0.3)) options.paramCallback = pick(["header", "route", "error"]);
         if (chance(0.2)) options.mountShape = pick(["array", "regex"]);
         if (chance(0.4)) options.strict = chance(0.5);
         if (chance(0.4)) options.caseSensitive = chance(0.5);
@@ -724,6 +750,9 @@ function drawPlan(rng) {
     if (chance(0.5)) headers.accept = pick(["*/*", "application/json", "text/plain", "text/html;q=0.9, */*;q=0.1"]);
     if (chance(0.3)) headers["accept-language"] = pick(["en", "it, en;q=0.8"]);
     if (chance(0.3)) headers["x-fuzz"] = "probe";
+    if (chance(0.2)) headers["x-requested-with"] = "XMLHttpRequest";
+    if (chance(0.2)) headers.referer = pick(["http://localhost/from", "/relative", "not a url"]);
+    if (chance(0.15)) headers.authorization = "Bearer nothing";
     if (chance(0.2)) headers.cookie = "fuzz=earlier";
     if (chance(0.35)) headers["x-forwarded-for"] = pick(["203.0.113.9", "203.0.113.9, 198.51.100.2", "::1"]);
     if (chance(0.25)) headers["x-forwarded-proto"] = pick(["https", "http", "https, http"]);
@@ -1002,6 +1031,110 @@ function makeHandler(route) {
             return (req, res) => res.vary("Accept-Language").vary("X-Fuzz").send(id);
         case "links":
             return (req, res) => res.links({ next: "/next/" + id, last: "/last/" + id }).send(id);
+        // Everything the request says about itself, which is decided by the header block and the
+        // path and by nothing this file writes. req.ip is left out unless trust proxy is on: the
+        // socket address is the loopback one either server happened to accept on, and the two
+        // spell it differently. The peer kind above covers it under the settings that make it a
+        // function of the headers.
+        case "req-echo":
+            return (req, res) =>
+                res.json({
+                    id,
+                    xhr: req.xhr,
+                    fresh: req.fresh,
+                    stale: req.stale,
+                    protocol: req.protocol,
+                    secure: req.secure,
+                    hostname: req.hostname,
+                    subdomains: req.subdomains,
+                    route: req.route ? { path: String(req.route.path), methods: req.route.methods } : null
+                });
+        case "req-range":
+            // parsed against a size the header knows nothing about, so an unsatisfiable range and
+            // a malformed one are both reachable. The array carries its type on a property, which
+            // JSON drops, so it is written out
+            return (req, res) => {
+                const parsed = req.range(24);
+                res.json({
+                    id,
+                    ranges: parsed === undefined ? "none" : parsed,
+                    type: typeof parsed === "object" ? parsed.type : parsed
+                });
+            };
+        case "req-types":
+            return (req, res) =>
+                res.json({
+                    id,
+                    is: req.is("json"),
+                    isAny: req.is(["html", "text/*", "application/*"]),
+                    accepts: req.accepts(),
+                    charsets: req.acceptsCharsets(["utf-8", "iso-8859-1"]),
+                    encodings: req.acceptsEncodings(["gzip", "identity"]),
+                    header: req.get("x-fuzz") ?? null,
+                    referrer: req.get("referrer") ?? null
+                });
+        // a string is what a throw often is in the wild, and it has no message for a handler to
+        // print: express hands it on as it is
+        case "throw-string":
+            return () => {
+                throw "a string thrown by " + id;
+            };
+        case "throw-status":
+            return () => {
+                const err = new Error("status carrying error from " + id);
+                err.status = 429;
+                err.expose = true;
+                throw err;
+            };
+        case "throw-after-send":
+            // the head has gone out, so nothing can answer this one: what is compared is what each
+            // does with a body that is already on the wire
+            return (req, res) => {
+                res.send(id);
+                throw new Error("too late from " + id);
+            };
+        case "reject-async":
+            return async () => {
+                await Promise.resolve();
+                throw new Error("rejected by " + id);
+            };
+        case "location-back":
+            // "back" reads the Referer, and with none it is "/", which is two paths through the
+            // same method
+            return (req, res) => res.location("back").status(204).end();
+        case "write-head":
+            // node's own method, which express does not override. Every framework that renders a
+            // page builds its response with it, and it took the integrations suite to find that
+            // this one was setting headers the way res.set does
+            return (req, res) => {
+                res.writeHead(207, { "Content-Type": "text/plain", "X-Written": id });
+                res.end("head " + id);
+            };
+        case "remove-header":
+            return (req, res) => {
+                res.set("X-Gone", id);
+                res.set("X-Kept", id);
+                res.removeHeader("X-Gone");
+                res.send(id);
+            };
+        case "send-file-options":
+            // the options branch of sendFile: a root to resolve against, headers of its own, and
+            // a dotfile rule that has to refuse the path it is given. The callback has to answer:
+            // one that swallows the error leaves the request open, and the comparison would only
+            // ever see the timeout
+            return (req, res) =>
+                res.sendFile(".hidden", { root: FILE_DIR, dotfiles: "deny", headers: { "X-Sent": id } }, (err) => {
+                    if (err) res.status(403).send("refused " + id);
+                });
+        case "download-callback":
+            // with a callback the failure is the caller's, and the response is left alone
+            return (req, res) =>
+                res.download(path.join(FILE_DIR, "missing.txt"), "gone.txt", (err) => {
+                    if (err) res.status(410).send("gone " + id);
+                });
+        case "sendstatus-unknown":
+            // a code statuses has no message for, which is where express writes the number itself
+            return (req, res) => res.sendStatus(499);
         case "format":
             return (req, res) =>
                 res.format({
@@ -1032,9 +1165,42 @@ function makeLead(route) {
                 res.set("X-Params", String(Object.keys(req.params).length));
                 next();
             };
+        case "method":
+            // what method-override does, and express reads req.method again at every layer, so
+            // the route that answers after this is the one for the new verb
+            return (req, res, next) => {
+                if (req.method === "POST") req.method = "DELETE";
+                else if (req.method === "GET") req.method = "HEAD";
+                next();
+            };
+        case "baseurl":
+            // assigning it changes what reads back and not what the routing matches, which is a
+            // difference only a handler after this one can see
+            return (req, res, next) => {
+                req.baseUrl = "/assigned";
+                next();
+            };
+        case "leave-router":
+            // out of this router entirely, which is not the same hop as leaving the route
+            return (req, res, next) => next("router");
         default:
             return (req, res, next) => next();
     }
+}
+
+// Settings whose value is a function, which the plan cannot carry as data. It holds the name and
+// this holds the function, so a drawn plan still prints as source and still shrinks.
+const SETTING_FUNCTIONS = {
+    "fn:etag": () => '"fixed-by-the-application"',
+    "fn:query": (raw) => ({ raw, length: raw.length }),
+    // one hop of proxy trusted, written the way an application writes it rather than as a count
+    "fn:proxy": (address, hop) => hop < 1,
+    "fn:replacer": (key, value) => (key === "id" ? "[" + value + "]" : value)
+};
+
+/** @param {any} value a setting as the plan carries it @returns {any} what express is given */
+function settingValue(value) {
+    return typeof value === "string" && value.startsWith("fn:") ? SETTING_FUNCTIONS[value] : value;
 }
 
 /**
@@ -1062,7 +1228,7 @@ async function instantiate(plan, factory, port, generic) {
     if (generic) {
         app.set("native routes", false);
     }
-    for (const [key, value] of Object.entries(plan.settings)) app.set(key, value);
+    for (const [key, value] of Object.entries(plan.settings)) app.set(key, settingValue(value));
     // registered on every plan: an engine costs nothing until something renders, and a mounted
     // application inherits it, which is part of what this is here to compare
     app.set("views", VIEW_DIR);
@@ -1120,9 +1286,13 @@ async function instantiate(plan, factory, port, generic) {
         const router = factory.Router(routerOptions);
         if (paramCallback) {
             // express calls this once per value and not once per request, and what it writes into
-            // req.params has to survive the rest of the chain
+            // req.params has to survive the rest of the chain. The other two are the ways out of
+            // one: leaving the route before it runs, and failing the value, which is what a
+            // callback that looks an id up in a database does when it finds nothing
             router.param("p0", (req, res, next, value) => {
                 res.set("X-Param-Seen", String(value).slice(0, 20));
+                if (paramCallback === "route") return next("route");
+                if (paramCallback === "error") return next(new Error("param p0 refused: " + value));
                 next();
             });
         }
@@ -1147,7 +1317,7 @@ async function instantiate(plan, factory, port, generic) {
 
     if (plan.subApp) {
         const sub = factory();
-        for (const [key, value] of Object.entries(plan.subApp.settings)) sub.set(key, value);
+        for (const [key, value] of Object.entries(plan.subApp.settings)) sub.set(key, settingValue(value));
         if (plan.subApp.mountFirst) app.use(plan.subApp.mount, sub);
         for (const route of plan.subApp.routes) addRoute(sub, route);
         if (!plan.subApp.mountFirst) app.use(plan.subApp.mount, sub);
