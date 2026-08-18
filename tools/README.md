@@ -110,6 +110,15 @@ drown in the third case, since µWS is a different parser and is allowed to be s
 Checked by putting a known bug back: with the framing refusal reverted, `--seed 5000 --rounds 120`
 reports the appended request being served where node reads one message.
 
+What µWS decides before any of this can see it, measured against node with
+[Http11Probe](https://github.com/MDA2AV/Http11Probe) on 2026-08-18: a request line it cannot parse
+answers 505 rather than 400, an HTTP/1.0 or HTTP/0.9 request the same, a header with an empty name
+is dropped rather than refused, and chunk framing node rejects, a leading space in the size, OWS
+after it, a missing final CRLF, is accepted. Express scored 147/157 there and this scored 125/157;
+the two of those 27 differences that were reachable from JavaScript, a non-ascii and an overlong
+target, are refused here now and the score is 128/159. The rest is the parser: SECURITY.md puts it
+out of scope and explains how to check which layer a finding is in.
+
 ## header-fuzz.js
 
 Hands every value that breaks a header block to every response method that computes one, and

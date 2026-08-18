@@ -48,6 +48,8 @@ function mulberry32(seed) {
 }
 
 const CRLF = "\r\n";
+// a Connection header asking for the close, bare or one token of a list, see closeThenPipelined
+const CONNECTION_CLOSE = /connection:[^\r\n]*close/i;
 // what a well-formed request looks like, appended after a malformed one so a desync is visible: if
 // the server framed the first request differently from the client, this is read as a request of its
 // own and served, and that is exactly what smuggling delivers
@@ -139,7 +141,25 @@ const HEADER_ODDITIES = [
     () => "Expect: 100-continue"
 ];
 
-const PATHS = ["/", "/a", "/a/b", "/a%00b", "/a%2Fb", "//a", "/a?q=1", "/a#f", "/" + "x".repeat(400)];
+const PATHS = [
+    "/",
+    "/a",
+    "/a/b",
+    "/a%00b",
+    "/a%2Fb",
+    "//a",
+    "/a?q=1",
+    "/a#f",
+    "/" + "x".repeat(400),
+    // A target with bytes node's parser refuses. Written as latin1 escapes because that is how the
+    // socket is written: Ã© goes out as the two bytes of a UTF-8 é, and À¯ as
+    // the overlong encoding of a slash, which is the oldest path traversal trick there is. µWS
+    // decodes both and hands over a path that is not the bytes on the wire, so this project refuses
+    // them itself, see isAsciiTarget
+    "/cafÃ©",
+    "/À¯",
+    "/a?q=Ã©"
+];
 
 /**
  * One generated exchange: the bytes to write, and whether a well-formed request was appended.
@@ -329,7 +349,18 @@ async function main() {
         const desync = fulServed.length > nodeServed.length || fulSmuggled > nodeSmuggled;
         const morePermissive = nodeServed.length === 0 && fulServed.length > 0;
 
-        if (desync || morePermissive) {
+        // One shape is µWS's and stays out, the way the non-ascii header value stays out of fuzz.js.
+        // A client that writes "Connection: close", bare or in a list, and a second request in the
+        // same packet: node answers the first and closes, µWS has already parsed both out of the
+        // buffer and serves them. This project asks µWS to close and it does, but only after what
+        // it had already read. A bare µWS application with `res.end(body, true)` does exactly the
+        // same, which is how this was told apart, and SECURITY.md puts the parser out of scope.
+        // Narrow on purpose: it takes the close, the pipelining, and node having served the first
+        // request rather than refusing it.
+        const closeThenPipelined =
+            CONNECTION_CLOSE.test(c.bytes) && c.hasSmuggled && nodeServed.length === 1 && fulServed.length === 2;
+
+        if ((desync || morePermissive) && !closeThenPipelined) {
             findings++;
             console.log(`\n=== case ${round}, seed ${seed} (replay: --seed ${seed} --rounds 1)`);
             console.log(`  ${c.label || "(plain)"}${c.hasSmuggled ? " +smuggled" : ""}`);
