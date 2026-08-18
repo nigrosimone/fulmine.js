@@ -364,6 +364,41 @@ function pickPrecompressed(filePath, accept, ttl, statTtl) {
 }
 
 /**
+ * The index file to serve from a directory, tried in the order the option lists them, which is
+ * send's sendIndex. Throws the last failure when every name failed, and reports nothing when the
+ * list ran out without one, since those are the two different answers send gives.
+ *
+ * @param {string} dir the directory to look in
+ * @param {string[]} indexList the index names, in order
+ * @returns {{stat: any, name: string, candidate: string}|null} the file to serve, or null
+ */
+function findIndexFile(dir, indexList) {
+    let lastError;
+    for (const name of indexList) {
+        const candidate = path.join(dir, name);
+        let stat;
+        try {
+            stat = fs.statSync(candidate);
+        } catch (err) {
+            lastError = err;
+            continue;
+        }
+        // a directory by that name is not an index and is not an error either: send's own loop
+        // carries on with nothing to report, so a later name still answers and an exhausted list
+        // is the plain 404 rather than whatever the name before it failed with
+        if (stat.isDirectory()) {
+            lastError = undefined;
+            continue;
+        }
+        return { stat, name, candidate };
+    }
+    if (lastError) {
+        throw lastError;
+    }
+    return null;
+}
+
+/**
  * express.static, which is a thin front for res.sendFile: it resolves the path, refuses anything
  * that climbs out of the root, applies the dotfiles and index rules, and hands the rest over.
  *
@@ -384,6 +419,9 @@ function serveStatic(root, options) {
     // mounts sharing one options object would otherwise also share one root
     options = Object.assign(new NullObject(), options);
     if (typeof options.index === "undefined") options.index = "index.html";
+    // send takes a list and tries the names in order, so one name is a list of one and `false` is
+    // an empty one. Passing the option along as it came handed an array to path.join, which throws
+    const indexList = options.index === false || options.index === "" ? [] : [options.index].flat();
     if (typeof options.redirect === "undefined") options.redirect = true;
     if (typeof options.fallthrough === "undefined") options.fallthrough = true;
     if (typeof options.dotfiles === "undefined") options.dotfiles = "ignore";
@@ -556,9 +594,9 @@ function serveStatic(root, options) {
             // a path written with a trailing slash asks for a directory, and send answers that by
             // looking for the index inside it. With nothing there, the file it names is that
             // index and not the directory that does not exist either
-            if (rawPath.endsWith("/") && options.index) {
+            if (rawPath.endsWith("/") && indexList.length > 0) {
                 try {
-                    fs.statSync(path.join(fullpath, options.index));
+                    findIndexFile(fullpath, indexList);
                 } catch (indexError) {
                     statError = indexError;
                 }
@@ -595,8 +633,11 @@ function serveStatic(root, options) {
         }
 
         // a file asked for with a trailing slash is not that file: send stats the path slash and
-        // all and gets ENOTDIR, so a root mounted as a file answers 404 there, not the file
-        if (req.endsWithSlash && !stat.isDirectory()) {
+        // all and gets ENOTDIR, so a root mounted as a file answers 404 there, not the file.
+        // With an index configured it never gets that far: a trailing slash sends send looking for
+        // the index inside whatever the path turned out to be, so what it reports is that the
+        // index under the file is missing, and the directory branch below does it for both
+        if (req.endsWithSlash && !stat.isDirectory() && indexList.length === 0) {
             if (!options.fallthrough) {
                 res.status(404);
                 return next(httpError(404));
@@ -604,7 +645,7 @@ function serveStatic(root, options) {
             return next();
         }
 
-        if (stat.isDirectory()) {
+        if (stat.isDirectory() || req.endsWithSlash) {
             if (!req.endsWithSlash) {
                 if (options.redirect) {
                     // The query goes along, and the leading slashes are collapsed. Both were
@@ -624,11 +665,10 @@ function serveStatic(root, options) {
                     } else return next();
                 }
             }
-            if (options.index) {
+            if (indexList.length > 0) {
+                let found;
                 try {
-                    stat = fs.statSync(path.join(fullpath, options.index));
-                    _path = path.join(url, options.index);
-                    filePath = path.join(fullpath, options.index);
+                    found = findIndexFile(fullpath, indexList);
                 } catch (err) {
                     if (!options.fallthrough) {
                         res.status(404);
@@ -637,6 +677,18 @@ function serveStatic(root, options) {
                         return next(asStatError(err));
                     } else return next();
                 }
+                if (found === null) {
+                    // every name was a directory, which send reports as its plain 404 rather than
+                    // as a file that could not be read
+                    if (!options.fallthrough) {
+                        res.status(404);
+                        return next(httpError(404));
+                    }
+                    return next();
+                }
+                stat = found.stat;
+                _path = path.join(url, found.name);
+                filePath = found.candidate;
             } else {
                 // a directory with no index to serve is a Not Found, and saying so is the whole
                 // point of fallthrough: false. This moved on to the next handler instead, so the
