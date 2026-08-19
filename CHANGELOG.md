@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.15.0](https://github.com/nigrosimone/fulmine.js/compare/v5.14.0...v5.15.0) (2026-08-19)
+
+### Features
+
+* **types:** the http.Server surface of the application is declared, close() and address() included ([9af558f](https://github.com/nigrosimone/fulmine.js/commit/9af558f20e5c72f6932e1ff70233ab1a99d4ab4f))
+
 ## [5.14.0](https://github.com/nigrosimone/fulmine.js/compare/v5.13.3...v5.14.0) (2026-08-19)
 
 ### Features
