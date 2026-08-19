@@ -174,6 +174,9 @@ function makeUpgradeHandler(app, path, behavior) {
         // handler, which is the only place µWS accepts it
         res.onAborted(() => {
             aborted = true;
+            // and on the response too, so a hook that is still awaiting can see the client left
+            // rather than working on towards a handshake nobody is waiting for
+            response.aborted = true;
         });
         // and whatever the hook writes now lands outside the cork µWS holds for this callback,
         // so the response opens its own, exactly as a route handler answering late does

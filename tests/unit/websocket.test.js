@@ -204,3 +204,31 @@ test("what µWS could not match is refused where it is written, or at listen", a
     app.use(/^\/regex/, router);
     assert.throws(() => app.listen(0), /sits under a mount µWS cannot match/);
 });
+
+test("a client that leaves while the upgrade awaits marks the response aborted", async () => {
+    let seen;
+    const { port, close } = await serve((app) => {
+        app.ws("/slow", {
+            async upgrade(req, res) {
+                await new Promise((done) => setTimeout(done, 120));
+                seen = res.aborted;
+            },
+            open() {}
+        });
+    });
+
+    const net = require("node:net");
+    const socket = net.connect(port, "127.0.0.1", () => {
+        socket.write(
+            "GET /slow HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
+                "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+        );
+        setTimeout(() => socket.destroy(), 20);
+    });
+
+    await new Promise((done) => setTimeout(done, 300));
+    // closed first: a failed assertion would otherwise leave the listen socket up and the run
+    // would hang rather than report
+    await close();
+    assert.strictEqual(seen, true);
+});
