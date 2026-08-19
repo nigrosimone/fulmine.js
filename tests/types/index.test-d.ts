@@ -1,4 +1,4 @@
-import { expectType, expectAssignable } from "tsd";
+import { expectType, expectAssignable, expectError } from "tsd";
 import express from "fulmine.js";
 import type { Request, Response, NextFunction, IRouter, RequestHandler, ErrorRequestHandler } from "express";
 import type { Server } from "http";
@@ -275,3 +275,126 @@ expectType<number>(app.keepAliveTimeout);
 app.close((error) => {
     expectType<Error | undefined>(error);
 });
+
+// ---------------------------------------------------------------------------
+// Everything this project adds to Express, asserted rather than assumed. What
+// went missing before was never the Express half: it was a member the runtime
+// had and the declarations did not, or a declaration nothing here ever used.
+// ---------------------------------------------------------------------------
+
+// the settings object, every field of it
+express({ uwsOptions: { key_file_name: "key.pem", cert_file_name: "cert.pem" } });
+express({ threads: 4 });
+express({ cluster: true });
+express({ cluster: 2 });
+express({ cluster: "auto" });
+express({ http3: true });
+express({ uwsApp: app.uwsApp });
+expectError(express({ threads: "four" }));
+expectError(express({ cluster: "every" }));
+expectError(express({ nonsense: true }));
+
+// the four listen shapes, and what they hand back
+const server1 = app.listen();
+const server2 = app.listen(3000);
+const server3 = app.listen("3000", "0.0.0.0");
+const server4 = app.listen(3000, "0.0.0.0", 511, (error) => {
+    expectType<Error | undefined>(error);
+});
+expectType<uWS.TemplatedApp>(server1.uwsApp);
+expectAssignable<Server>(server2);
+expectAssignable<Server>(server3);
+expectAssignable<Server>(server4);
+expectError(app.listen(true));
+
+// the app is a node request handler, which is how http.createServer(app) and supertest take it
+declare const nodeRequest: import("http").IncomingMessage;
+declare const nodeResponse: import("http").ServerResponse;
+app(nodeRequest, nodeResponse);
+app(nodeRequest, nodeResponse, (err?: unknown) => void err);
+
+// the rest of the server surface
+expectType<void>(
+    app.getConnections((error, count) => {
+        expectType<Error | null>(error);
+        expectType<number>(count);
+    })
+);
+expectAssignable<typeof app>(app.ref());
+expectAssignable<typeof app>(app.unref());
+expectAssignable<typeof app>(app.setTimeout(1000, () => undefined));
+expectType<number>(app.timeout);
+expectType<number>(app.headersTimeout);
+expectType<number>(app.requestTimeout);
+expectType<number | null>(app.maxHeadersCount);
+expectType<number>(app.maxRequestsPerSocket);
+
+// publish and the subscriber count, which are µWS's and only reachable from the app
+expectType<boolean>(app.publish("room", "hello"));
+expectType<boolean>(app.publish("room", Buffer.from("hello"), true, false));
+expectType<number>(app.numSubscribers("room"));
+
+// ws() answers the app or the router it was called on, so it chains
+expectAssignable<typeof app>(app.ws("/chain", { open: () => undefined }));
+const wsRouter = express.Router();
+expectAssignable<typeof wsRouter>(wsRouter.ws("/lobby", { open: () => undefined }));
+
+// the behaviour is µWS's own, settings included
+app.ws("/tuned", {
+    idleTimeout: 120,
+    maxPayloadLength: 16 * 1024 * 1024,
+    maxBackpressure: 64 * 1024,
+    sendPingsAutomatically: true,
+    async message(ws, message, isBinary) {
+        expectType<ArrayBuffer>(message);
+        expectType<boolean>(isBinary);
+        await Promise.resolve();
+        ws.send(message, isBinary);
+    },
+    subscription(ws, topic, newCount, oldCount) {
+        expectType<ArrayBuffer>(topic);
+        expectType<number>(newCount);
+        expectType<number>(oldCount);
+        expectType<Request>(ws.req);
+    }
+});
+expectError(app.ws("/typo", { opened: () => undefined }));
+expectError(app.ws("/typo", { open: 5 }));
+
+// express.testing, which the comparison suite uses to pin what compiled
+const verdicts = express.testing.routeReport(app);
+expectType<string>(verdicts[0].method);
+expectType<string>(verdicts[0].path);
+expectType<boolean>(verdicts[0].native);
+expectType<void>(express.testing.expectNative(app, "/users/*"));
+expectType<void>(express.testing.expectDeclarative(app, ["/a", "/b"]));
+expectError(express.testing.expectNative(app));
+
+// express.compression(), which express has no counterpart for
+expectAssignable<RequestHandler>(express.compression());
+expectAssignable<RequestHandler>(
+    express.compression({
+        threshold: "1kb",
+        enforceEncoding: "identity",
+        brotli: { chunkSize: 1024 },
+        filter: (req, res) => {
+            expectType<Request>(req);
+            expectType<Response>(res);
+            return true;
+        }
+    })
+);
+expectType<boolean>(express.compression.filter({} as Request, {} as Response));
+
+// and the marks express.serverTiming() hangs on the response
+app.get("/timing", (_req, res) => {
+    res.timing?.("db", 12, "query");
+    expectType<string | undefined>(res.time?.("work", () => "done"));
+});
+
+// a check on the checks: these must be the shapes the runtime really has, so each is a member the
+// surface diff against express found. When one of them disappears from src/, this file stops
+// compiling rather than going quietly green.
+expectError(app.publish());
+expectError(app.numSubscribers());
+expectError(app.address(1));

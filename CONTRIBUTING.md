@@ -91,6 +91,16 @@ red on any failing test or any file without a result. Read the header of `tools/
 before reading its numbers: some of what it reports is Express testing its own internals, which the
 clone still has, and some is internals used as public API.
 
+### A member without a declaration
+
+Anything public this project adds to the application, the request or the response needs a line in
+`src/types.d.ts`, and two tests hold that. `npm run test:types` puts tsd over the declarations,
+which only checks what somebody thought to write in `tests/types/index.test-d.ts`. The other half is
+`tests/unit/types-surface.test.js`: it walks what the runtime actually carries, subtracts what
+Express and node carry, and fails on anything left that is neither declared nor named in its list of
+internals. `app.close()`, `res.aborted` and the rest of the `http.Server` surface were in the
+readme and in the runtime for months with nothing in the types, which is what that test is for.
+
 `npm run test:integrations` is the comparison suite again, with a framework on top. Nest, Next,
 Astro, SvelteKit, React Router, Apollo and tRPC each serve one application, once on Express and once
 here, and the two outputs have to match. It lives in [`integrations/`](./integrations) rather than in
