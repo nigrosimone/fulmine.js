@@ -48,6 +48,27 @@ inner.get("/target", (req, res) => {
 });
 app.use("/mounted", inner);
 
+// nothing inside the router matches the rewrite, so the walk falls back out: express rejoins
+// with the first character stripped, and "/fall" + "nowhere" lands on the outer route
+const fallout = express.Router();
+fallout.use((req, res, next) => {
+    req.url = "/nowhere?x=5";
+    next();
+});
+app.use("/fall", fallout);
+
+app.get("/fallnowhere", (req, res) => {
+    res.json({ fell: true, query: req.query, url: req.url });
+});
+
+// and the same fall-through with nothing outside either, for the 404 text
+const lost = express.Router();
+lost.use((req, res, next) => {
+    req.url = "/missing?x=6";
+    next();
+});
+app.use("/lost", lost);
+
 app.listen(13763, async () => {
     console.log("Server is running on port 13763");
 
@@ -56,7 +77,9 @@ app.listen(13763, async () => {
         () => fetchTest("http://localhost:13763/gone").then((res) => res.text()),
         () => fetchTest("http://localhost:13763/gone?a=b").then((res) => res.text()),
         () => fetchTest("http://localhost:13763/clean/sub").then((res) => res.text()),
-        () => fetchTest("http://localhost:13763/mounted").then((res) => res.text())
+        () => fetchTest("http://localhost:13763/mounted").then((res) => res.text()),
+        () => fetchTest("http://localhost:13763/fall").then((res) => res.text()),
+        () => fetchTest("http://localhost:13763/lost").then((res) => res.text())
     ]);
 
     console.log(responses);

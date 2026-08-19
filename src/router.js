@@ -411,7 +411,11 @@ class Walk {
                 useApp(req, route.mountApp);
             }
             const taken = mountPrefixLength(route, req);
-            (req._stack ??= []).push(taken);
+            // pushed negative when this mount consumes the whole remaining path: express invents
+            // the "/" the routes below see, and the pop has to know, see leaveHop and issue #17
+            (req._stack ??= []).push(
+                taken !== 0 && req._consumed + taken === req._originalPath.length ? -taken : taken
+            );
             // a use with no path consumes nothing, so everything below would work out the values
             // that are already there. Only skipped without a trailing slash, where the rules about
             // one cannot bite. An application is mostly pathless middleware, and this is per hop
@@ -486,7 +490,8 @@ class Walk {
         const req = this.req;
         const route = this.route;
         if (route.use && !route.keepMount) {
-            const taken = req._stack.pop();
+            const pushed = req._stack.pop();
+            const taken = pushed < 0 ? -pushed : pushed;
             // a rewrite done inside this middleware is taken now: the pop below recomputes
             // req.url from the original path and would silently revert it. The slashAdded
             // mangle belongs to the mount that consumed a prefix, not to a pathless use
@@ -494,11 +499,20 @@ class Walk {
                 req._absorbUrlRewrite(taken !== 0);
                 req._consumed -= taken;
                 setMountedPath(req);
-            } else if (taken !== 0) {
-                // a pathless use consumed nothing and rewrote nothing, so the recompute would
-                // write back the very values it reads
-                req._consumed -= taken;
-                setMountedPath(req);
+            } else {
+                if (pushed < 0 && req._originalPath.length > req._consumed) {
+                    // a rewrite below this mount left a remainder where entry had none: express
+                    // strips the first character of it when it rejoins, see issue #17
+                    req._originalPath =
+                        req._originalPath.slice(0, req._consumed) + req._originalPath.slice(req._consumed + 1);
+                    req._mayFailDecode = null;
+                }
+                if (taken !== 0) {
+                    // a pathless use consumed nothing and rewrote nothing, so the recompute would
+                    // write back the very values it reads
+                    req._consumed -= taken;
+                    setMountedPath(req);
+                }
             }
             restoreApp(route, req);
         }

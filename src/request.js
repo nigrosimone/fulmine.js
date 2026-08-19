@@ -1065,7 +1065,11 @@ module.exports = class Request extends LazyReadable {
         // slash, a registered path having had it removed, so almost every request answers above.
         let out = "";
         let at = 0;
-        for (const taken of this._stack) {
+        for (let taken of this._stack) {
+            // negative marks a mount that consumed the whole path, see the push in runRoute
+            if (taken < 0) {
+                taken = -taken;
+            }
             const piece = this._originalPath.slice(at, at + taken);
             at += taken;
             out += piece.charCodeAt(taken - 1) === 0x2f ? piece.slice(0, -1) : piece;
