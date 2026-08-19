@@ -72,6 +72,17 @@ const symbols = Object.getOwnPropertySymbols(outgoingMessage);
 // if a future node renames it, fall back to a private symbol rather than writing a property
 // literally named "undefined", which is what indexing with undefined would do
 const kOutHeaders = symbols.find((s) => s.toString() === "Symbol(kOutHeaders)") ?? Symbol("kOutHeaders");
+// node's emitters tombstone a removed listener's slot instead of deleting it when this flag is
+// set, which is what keeps _events in a stable shape. EventEmitter.init sets it, and never runs
+// for the lazily-materialized response, so it is set by hand; a future rename degrades to the
+// delete, not to an error
+const kShapeMode =
+    Object.getOwnPropertySymbols(new EventEmitter()).find((s) => s.toString() === "Symbol(shapeMode)") ??
+    Symbol("shapeMode");
+// names setHeader has validated and lowercased, so the constant names middleware writes per
+// request are one Map hit. Insert-only after validation, bounded; only setHeader may insert,
+// the never-throwing readers keep their plain toLowerCase
+const VALIDATED_HEADER_NAMES = new Map();
 const HIGH_WATERMARK = 128 * 1024;
 // the exact string json() writes, so send() can skip recomputing the charset on it
 const JSON_UTF8 = "application/json; charset=utf-8";
@@ -81,6 +92,18 @@ const MAX_MAXAGE = 60 * 60 * 24 * 365 * 1000;
 
 class Socket extends EventEmitter {
     /**
+     * The Socket's own error listener, shared across sockets: an error on the stand-in closes it,
+     * which is the close the connection trackers wait for. EventEmitter calls it with this = the
+     * emitter.
+     *
+     * @this {any}
+     * @param {any} err
+     */
+    static _onError(err) {
+        this.emit("close");
+    }
+
+    /**
      * Enough of a node socket for the middleware that reaches for one. There is no socket object
      * in uWS to hand over, so this stands in and forwards what it can to the response.
      *
@@ -89,10 +112,10 @@ class Socket extends EventEmitter {
     constructor(response) {
         super();
         this.response = response;
+        this[kShapeMode] = true;
 
-        this.on("error", (err) => {
-            this.emit("close");
-        });
+        // shared, not an arrow: one per process instead of one per materialized socket
+        this.on("error", Socket._onError);
     }
 
     /** Whether anything more can be written, which stops being true once the response is done. */
@@ -275,6 +298,11 @@ module.exports = class Response extends LazyWritable {
             drain: undefined
         };
         this._eventsCount = 0;
+        // tombstone removed listeners instead of deleting the key, as node's own streams do: the
+        // delete flipped this literal to dictionary mode on every on-finished cancel
+        this[kShapeMode] = true;
+        // on-finished stores its state here; declared so that store is not a shape change
+        this.__onFinished = null;
         this._req = req;
         // linked here rather than by the caller: the pair is built together, and a field the
         // constructor leaves unset is a shape change on whoever assigns it first
@@ -1376,7 +1404,16 @@ module.exports = class Response extends LazyWritable {
         if (this.headersSent) {
             throw new Error("Cannot set headers after they are sent to the client");
         }
-        validateHeaderName(field);
+        // one Map hit for a name already validated and lowercased: middleware writes the same
+        // constant names on every request. Insert-only after validation, so no bad name can enter
+        let key = VALIDATED_HEADER_NAMES.get(field);
+        if (key === undefined) {
+            validateHeaderName(field);
+            key = field.toLowerCase();
+            if (VALIDATED_HEADER_NAMES.size < 512) {
+                VALIDATED_HEADER_NAMES.set(field, key);
+            }
+        }
         if (value === undefined) {
             /** @type {NodeJS.ErrnoException} */
             const err = new TypeError(`Invalid value "undefined" for header "${field}"`);
@@ -1390,7 +1427,7 @@ module.exports = class Response extends LazyWritable {
         // catch it
         const out = Array.isArray(value) ? value.map(String) : String(value);
         validateHeaderValue(field, out);
-        this.headers[field.toLowerCase()] = out;
+        this.headers[key] = out;
         return this;
     }
 
@@ -1739,7 +1776,11 @@ module.exports = class Response extends LazyWritable {
      * @param {string} field
      */
     removeHeader(field) {
-        delete this.headers[field.toLowerCase()];
+        const key = field.toLowerCase();
+        // the delete is a runtime call, and helmet removes a header most responses never carry
+        if (key in this.headers) {
+            delete this.headers[key];
+        }
     }
 
     /**

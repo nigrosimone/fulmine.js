@@ -1749,7 +1749,9 @@ module.exports = class Request extends LazyReadable {
             const value = entries[index + 1];
             // lowercase by the entries' contract, see the field declaration
             const key = entries[index];
-            if (Object.hasOwn(headers, key)) {
+            // own values are never undefined, so the read answers "absent" without the hasOwn
+            // call; a prototype-named header reads truthy and still takes the hasOwn check
+            if (headers[key] !== undefined && Object.hasOwn(headers, key)) {
                 if (discardedDuplicates.has(key)) {
                     continue;
                 }

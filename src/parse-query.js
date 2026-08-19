@@ -37,18 +37,27 @@ const plusRegex = /\+/g;
  * `capture` collects the decoded pairs flat, key then value, so a caller can replay the stores
  * without scanning again; a repeated key marks it invalid instead. See `get query`.
  *
+ * `separatorLimit` refuses a body with that many "&" separators the way body-parser's
+ * parameterCount does, but inside this scan instead of a scan of its own: the overflow flag on
+ * the function is set, the partial result is to be discarded, and the caller answers 413.
+ *
  * @param {string} input
  * @param {string[] & {invalid?: boolean}} [capture]
+ * @param {number} [separatorLimit]
  * @returns {Record<string, string | string[]>}
  */
-function parseQuery(input, capture) {
+function parseQuery(input, capture, separatorLimit) {
     const result = Object.create(null);
+    if (separatorLimit !== undefined) {
+        parseQuery.overflow = false;
+    }
 
     if (typeof input !== "string") {
         return result;
     }
 
     const inputLength = input.length;
+    let separators = 0;
     let key;
     let value = "";
     let startingIndex = -1;
@@ -66,6 +75,12 @@ function parseQuery(input, capture) {
 
         // '&' or the end of the input closes the current pair
         if (c === 38) {
+            // real separators only, not the synthetic closing one, counted exactly as
+            // parameterCount counts them
+            if (i !== inputLength && separatorLimit !== undefined && ++separators === separatorLimit) {
+                parseQuery.overflow = true;
+                return result;
+            }
             hasBothKeyValuePair = equalityIndex > startingIndex;
 
             // the equality index doubles as the end of the key when there was no '='
@@ -143,5 +158,8 @@ function parseQuery(input, capture) {
 
     return result;
 }
+
+// whether the last limited call hit its separator limit, see the parameter's doc
+parseQuery.overflow = false;
 
 module.exports = parseQuery;

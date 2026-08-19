@@ -1510,6 +1510,11 @@ function validateHeaderName(name) {
     }
 }
 
+// values already accepted, so the constant strings middleware writes per request, helmet's CSP
+// among them, skip the scan. Insert-only after the regex accepts, so a hit cannot change a
+// verdict; bounded, and set-cookie values are per-user so they stay out
+const KNOWN_HEADER_VALUES = new Set();
+
 /**
  * Refuses a header value holding a character that cannot go on the wire, with node's error. An
  * array is sent as one header per entry, so each entry is checked on its own rather than as the
@@ -1527,8 +1532,18 @@ function validateHeaderValue(name, value) {
         }
         return;
     }
+    if (KNOWN_HEADER_VALUES.has(value)) {
+        return;
+    }
     if (HEADER_VALUE.test(value)) {
         throw headerError(`Invalid character in header content ["${name}"]`, "ERR_INVALID_CHAR");
+    }
+    if (
+        KNOWN_HEADER_VALUES.size < 512 &&
+        value.length <= 1024 &&
+        !(name.length === 10 && name.toLowerCase() === "set-cookie")
+    ) {
+        KNOWN_HEADER_VALUES.add(value);
     }
 }
 

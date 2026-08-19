@@ -29,6 +29,20 @@ const qs = require("qs");
 const parseQuery = require("./parse-query.js");
 const { kGetSafe } = require("./usage.js");
 const { AsyncResource } = require("async_hooks");
+
+/**
+ * What AsyncResource.bind answers, without node's generic wrapper: that one builds a rest-args
+ * closure and defines properties onto it per call, ~1.9us on this node, where the resource plus
+ * an arrow through runInAsyncScope restores the same context for ~0.08. The type keeps the bound
+ * function's name, as node's does.
+ *
+ * @param {(...args: any[]) => any} fn called with at most one argument by every caller here
+ * @returns {(err?: any) => any}
+ */
+function bindContext(fn) {
+    const resource = new AsyncResource(fn.name || "bound-anonymous-fn");
+    return (err) => resource.runInAsyncScope(fn, undefined, err);
+}
 const {
     fastQueryParse,
     NullObject,
@@ -758,7 +772,7 @@ function serveStatic(root, options) {
         return res.sendFile(
             _path,
             options,
-            AsyncResource.bind((e) => {
+            bindContext((e) => {
                 if (e) {
                     next(options.fallthrough && FALLTHROUGH_STATUSES.has(e.status) ? undefined : e);
                 }
@@ -911,12 +925,14 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             }
 
             const length = req._rawHeader("content-length");
+            // converted once: four sites read this number on the fast path
+            const lengthNumber = length === undefined ? NaN : +length;
 
             // No content-length and no transfer-encoding means the request carries no body at all,
             // and a body parser must leave it alone rather than parse nothing into an empty value.
             // type-is applies this before matching the type, but the simpleType shortcut below
             // compares strings directly and would otherwise skip the check.
-            if (req._rawHeader("transfer-encoding") === undefined && isNaN(length)) {
+            if (req._rawHeader("transfer-encoding") === undefined && Number.isNaN(lengthNumber)) {
                 return next();
             }
 
@@ -960,7 +976,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             // {} for json and urlencoded, '' for text, an empty Buffer for raw - rather than leaving
             // req.body as the placeholder object. there is nothing to read, so run the tail directly,
             // and the verify hook still runs first: webhook signature checks rely on that
-            if (Number(length) === 0) {
+            if (lengthNumber === 0) {
                 req.bodyRead = true;
                 const empty = Buffer.alloc(0);
                 if (!runVerify(req, res, next, options, empty)) {
@@ -969,12 +985,12 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 return beforeReturn(req, res, next, options, empty, encoding);
             }
 
-            // skip reading too large body
-            if (length && +length > limit) {
+            // skip reading too large body; NaN compares false, so no declared length passes
+            if (lengthNumber > limit) {
                 return next(
                     bodyError("request entity too large", 413, "entity.too.large", {
-                        expected: +length,
-                        length: +length,
+                        expected: lengthNumber,
+                        length: lengthNumber,
                         limit: limit
                     })
                 );
@@ -1024,7 +1040,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             // From here the body really gets read, and uWS delivers it on native callbacks that
             // carry no async context, so this is the one continuation that has to be bound: an
             // upstream middleware's AsyncLocalStorage must still be there when next runs
-            next = AsyncResource.bind(next);
+            next = bindContext(next);
 
             // with nothing to decompress, uWS can collect the whole body in native code: one
             // callback instead of one per chunk, the limit enforced before any byte reaches JS,
@@ -1032,8 +1048,8 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             // returns, so a view over uWS's own memory is enough. A declared length was the
             // original case; a chunked body accumulates in the same native vector and only loses
             // the length check, since there is no declaration to hold it to
-            const declared = Number(length);
-            const declaresLength = !isNaN(declared) && declared > 0;
+            const declared = lengthNumber;
+            const declaresLength = !Number.isNaN(declared) && declared > 0;
             if (!req.receivedData && !inflate && req._res.collectBody && (declaresLength || isNaN(declared))) {
                 req.bodyRead = true;
                 req._res.collectBody(limit, (body) => {
@@ -1358,50 +1374,58 @@ const urlencoded = createBodyParser(
     function (req, res, next, options, buf, encoding) {
         try {
             const body = decodeBody(buf, encoding);
-            const count = parameterCount(body, options.parameterLimit);
-            if (count === undefined) {
-                return next(bodyError("too many parameters", 413, "parameters.too.many"));
-            }
             // Express 5 defaults extended to false, so nested keys need opting in
             const extended = typeof options.extended !== "undefined" ? options.extended : false;
             // qs has to know the charset itself for anything but utf-8, and the sentinel options
             // change what a parse means, so those bodies skip the fast parsers
             const needsQs = encoding !== "utf-8" || options.charsetSentinel || options.interpretNumericEntities;
-            if (extended) {
-                // the ceiling body-parser gives qs: the array limit rises to the parameter count,
-                // so a form posting 150 array members still yields an array. count counts "&"
-                // separators where body-parser counts parameters, hence the + 1
-                const qsOptions = {
-                    ...EXTENDED_QS_OPTIONS,
-                    depth: options.depth !== undefined ? options.depth : 32,
-                    arrayLimit: Math.max(100, count + 1),
-                    charsetSentinel: options.charsetSentinel,
-                    interpretNumericEntities: options.interpretNumericEntities,
-                    charset: encoding,
-                    parameterLimit: options.parameterLimit
-                };
-                req.body = needsQs
-                    ? Object.assign(Object.create(null), qs.parse(body, qsOptions))
-                    : fastQueryParse(body, qsOptions);
-            } else if (needsQs) {
-                // body-parser's extended: false is still qs, with depth 0 and the count as the
-                // array ceiling; only qs decodes latin1 percent escapes as latin1
-                req.body = Object.assign(
-                    Object.create(null),
-                    qs.parse(body, {
-                        allowPrototypes: true,
-                        arrayLimit: count + 1,
-                        depth: 0,
-                        strictDepth: true,
+            if (!extended && !needsQs) {
+                // the vendored parser, so an urlencoded body inspects like req.query does. The
+                // parameter limit is enforced inside its scan, so the body is not walked twice;
+                // assigned only when it held, so an overflow leaves req.body the placeholder
+                const parsed = parseQuery(body, undefined, options.parameterLimit);
+                if (parseQuery.overflow === true) {
+                    return next(bodyError("too many parameters", 413, "parameters.too.many"));
+                }
+                req.body = parsed;
+            } else {
+                const count = parameterCount(body, options.parameterLimit);
+                if (count === undefined) {
+                    return next(bodyError("too many parameters", 413, "parameters.too.many"));
+                }
+                if (extended) {
+                    // the ceiling body-parser gives qs: the array limit rises to the parameter
+                    // count, so a form posting 150 array members still yields an array. count
+                    // counts "&" separators where body-parser counts parameters, hence the + 1
+                    const qsOptions = {
+                        ...EXTENDED_QS_OPTIONS,
+                        depth: options.depth !== undefined ? options.depth : 32,
+                        arrayLimit: Math.max(100, count + 1),
                         charsetSentinel: options.charsetSentinel,
                         interpretNumericEntities: options.interpretNumericEntities,
                         charset: encoding,
                         parameterLimit: options.parameterLimit
-                    })
-                );
-            } else {
-                // the vendored parser, so an urlencoded body inspects like req.query does
-                req.body = parseQuery(body);
+                    };
+                    req.body = needsQs
+                        ? Object.assign(Object.create(null), qs.parse(body, qsOptions))
+                        : fastQueryParse(body, qsOptions);
+                } else {
+                    // body-parser's extended: false is still qs, with depth 0 and the count as
+                    // the array ceiling; only qs decodes latin1 percent escapes as latin1
+                    req.body = Object.assign(
+                        Object.create(null),
+                        qs.parse(body, {
+                            allowPrototypes: true,
+                            arrayLimit: count + 1,
+                            depth: 0,
+                            strictDepth: true,
+                            charsetSentinel: options.charsetSentinel,
+                            interpretNumericEntities: options.interpretNumericEntities,
+                            charset: encoding,
+                            parameterLimit: options.parameterLimit
+                        })
+                    );
+                }
             }
         } catch (e) {
             // qs reports a depth overflow as a RangeError with its own wording; body-parser
