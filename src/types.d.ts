@@ -143,13 +143,16 @@ declare module "fulmine.js" {
         uWS.WebSocketBehavior<SocketData>,
         "upgrade" | "open" | "message" | "dropped" | "drain" | "close" | "ping" | "pong" | "subscription"
     > & {
-        // methods rather than function-typed properties, so a handler may narrow the request or
+        // The return types are µWS's own: it awaits nothing, but open, message and dropped are
+        // declared there as returning void or a promise, and narrowing that here made an async
+        // handler a type error against the library this wraps.
+        // Methods rather than function-typed properties, so a handler may narrow the request or
         // the socket to one carrying what the upgrade hook hung on it, which is how this project
         // says per-connection state is kept
         upgrade?(req: e.Request, res: e.Response): void | Promise<void>;
-        open?(ws: FulmineWebSocket): void;
-        message?(ws: FulmineWebSocket, message: ArrayBuffer, isBinary: boolean): void;
-        dropped?(ws: FulmineWebSocket, message: ArrayBuffer, isBinary: boolean): void;
+        open?(ws: FulmineWebSocket): void | Promise<void>;
+        message?(ws: FulmineWebSocket, message: ArrayBuffer, isBinary: boolean): void | Promise<void>;
+        dropped?(ws: FulmineWebSocket, message: ArrayBuffer, isBinary: boolean): void | Promise<void>;
         drain?(ws: FulmineWebSocket): void;
         close?(ws: FulmineWebSocket, code: number, message: ArrayBuffer): void;
         ping?(ws: FulmineWebSocket, message: ArrayBuffer): void;

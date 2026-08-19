@@ -221,7 +221,11 @@ app.ws("/room/:id", {
 });
 expectType<boolean>(app.publish("room", "hello"));
 expectType<number>(app.numSubscribers("room"));
-NamedRouter().ws("/lobby", { open: (ws) => ws.send(ws.req.path) });
+NamedRouter().ws("/lobby", {
+    open(ws) {
+        ws.send(ws.req.path);
+    }
+});
 
 // express.serverTiming(), and the two marks it hangs on the response. They are optional, because
 // they are only there on a route the middleware ran in front of
