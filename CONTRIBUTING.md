@@ -1,6 +1,7 @@
 # Working on Fulmine
 
-The README is for people using this. This is for people changing it.
+The README is for people using this. This is for people changing it, and for the agents that change
+it too: [`CLAUDE.md`](./CLAUDE.md) only adds what an agent needs on top of this file.
 
 The product is two things at once: answering exactly as Express does, and answering faster than
 Express. A change may not lose either. Answering differently is a bug even when the new answer
@@ -48,6 +49,39 @@ twice, once with `express` and once with this, and fails on any difference. That
 test means writing something that prints what you want compared, and why a test that prints from
 both the server and the client at once is a bug: the two orderings are a race.
 
+### Before you commit
+
+These are expected green. Run them, do not assume:
+
+```sh
+npm test              # the comparison suite
+npm run test:unit
+npm run test:express  # Express's own suite; 1130 passing, 0 failing
+npm run typecheck
+npm run lint
+npm run format:check
+```
+
+A behaviour fix needs a comparison test under `tests/tests/`, and the test has to be checked against
+the unfixed code before it can be said to cover anything. Reverting the fix and re-running is the
+only proof. The same holds for any new oracle: put a known bug back and confirm it is caught, since
+a check that cannot fail is worse than no check.
+
+`npm run test:integrations` is not in that list because it needs its own install,
+`npm run integrations:install`, and builds four applications the first time. Run it when you touch
+anything a framework sits on: the request and response surface, the body parsers, `writeHead`, the
+header methods. Both bugs it has found so far were in code the comparison suite covers well and
+applications reach differently from frameworks.
+
+If you touched the optimizer, the overlap analysis, the guards, the granted skips, anything in
+`_compileOptimizedRoutes`, add `npm test -- --self` and `npm run fuzz -- --self`.
+
+On Windows every test process asserts or hangs at exit under Node 24 and later.
+`tests/win-exit-delay.cjs` is preloaded for it, and it is not a test failure.
+
+Releases are the maintainer's: pushing a `v*` tag is what makes `.github/workflows/release.yml`
+publish to npm, and `npm run release` creates that tag.
+
 ### Writing a comparison test
 
 A test file is an ordinary script. The first line is its description, the second may carry a marker,
@@ -91,6 +125,10 @@ red on any failing test or any file without a result. Read the header of `tools/
 before reading its numbers: some of what it reports is Express testing its own internals, which the
 clone still has, and some is internals used as public API.
 
+Test against the **released** Express only, the one in `devDependencies`. Master is out of scope:
+its unreleased behaviour changes will fail against this project by design, and the pinned suite
+asserts the current behaviour, so chasing master breaks the gate it is supposed to protect.
+
 ### A member without a declaration
 
 Anything public this project adds to the application, the request or the response needs a line in
@@ -125,20 +163,33 @@ decide who fixes it:
   or the chunked framing is what decided it, and that is µWS's parser: it belongs at
   [uNetworking/uWebSockets.js](https://github.com/uNetworking/uWebSockets.js/issues), and no change
   here can fix it. `npm run fuzz:wire` is the tool for telling the two apart, since its oracle is
-  node's parser rather than Express.
+  node's parser rather than Express. Do not add a test for it that will never pass: say so in the
+  report and move on.
 - **Everything above the parser is ours**: routing, the request and response API, the body parsers,
   the static files, the cookies. A request that reaches a route it must not reach, or a header of
   one request affecting another, is a bug in this repository whatever µWS did with the bytes.
 
-`npm run fuzz` is the third kind: it builds random applications, registers them on Express and on
-this, and compares the answers. A divergence prints the seed that reproduces it and the case shrunk
-to the few lines worth keeping. Twenty rounds on a random seed run on every push.
+`fuzz:wire` already carries one documented exception, a pipelined request after a
+`Connection: close`, which µWS has parsed out of the buffer before this project can close anything.
+Add another only with the same evidence: a bare µWS application doing the same thing.
+
+### The fuzzers
+
+`npm run fuzz` is the third kind of test: it builds random applications, registers them on Express
+and on this, and compares the answers. It is the highest-yield bug finder here. A divergence prints
+the seed that reproduces it and the case shrunk to the few lines worth keeping, and it replays with
+`--seed <n> --rounds 1`. Triage a run by grouping the divergences by which fields differ: one root
+cause usually accounts for most of them.
 
 What it finds gets fixed, with a comparison test under `tests/tests/` like any other fix. This holds
 for a divergence that has nothing to do with what you were working on: the round found it, and the
 next run will only find it again. When it is not going to be fixed, open an issue with what
 diverges, the seed that replays it and the reason it was left, so the decision is written down
 somewhere other than a terminal that has scrolled.
+
+Twenty rounds on a **random seed** run on every push, so CI explores a different application every
+time. Red there is usually a real, pre-existing bug that the push merely exposed: read the shrunk
+case before assuming the last commit caused it.
 
 `--self` is the fourth, and it is the only one with no oracle in it. Both `npm test -- --self` and
 `npm run fuzz -- --self` serve the same application twice with this framework, the reference arm
@@ -157,9 +208,30 @@ is made of. `fuzz:headers` puts every value that breaks a header block through t
 compute one, `res.cookie` and `res.location` and the rest, since `res.set` is the only door that is
 already guarded. `fuzz:session` asks the same sequence twice, down one keep-alive connection and
 down one connection each, so an answer that changed for having followed another request is a finding
-of its own rather than a difference from Express.
+of its own rather than a difference from Express. Run the one that sits under what you changed.
 
-[`tools/README.md`](./tools/README.md) covers all five and the release script.
+Two differences must never be compared, because matching them would mean copying a fault:
+
+- **A non-ascii header value.** Express hands the string to node, whose header block turns the
+  character into `U+FFFD` and writes it as latin1, so `res.attachment("caffè.txt")` leaves Express
+  as one corrupt byte while µWS writes proper utf-8. Both compute the same value; only the wire
+  differs. Keep generated filenames and header values ASCII.
+- Whatever `tests/helpers.js` already lists: `x-powered-by`, `content-length`, `transfer-encoding`.
+
+### Measuring
+
+Use `npm run benchmark:ab -- --against <ref>`. Do not hand-roll an A/B by checking out `src/` and
+running `run.js` twice: that measures warm-up, not the change. Read the noise floor rules in
+[`benchmark/README.md`](./benchmark/README.md) before quoting a number, and run `--null` from the
+same sitting or the number is not evidence. Never run anything else on the machine while a
+benchmark measures: if the Express column moved between two runs, the machine moved and the run is
+void.
+
+Some changes need no benchmark at all. If the code sits behind a guard most applications never
+reach, say which guard and move on. Anything under about 20 ns per request is below what matters
+against a request budget of tens of microseconds.
+
+[`tools/README.md`](./tools/README.md) covers the five tools and the release script.
 [`benchmark/README.md`](./benchmark/README.md) covers measuring, including why the A/B runs
 pipelined by default, why a null control matters, and how a run is compared against the last one on
 the same machine.

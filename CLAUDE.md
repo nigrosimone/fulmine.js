@@ -2,123 +2,36 @@
 
 Fulmine.js is a drop-in Express 5 replacement on uWebSockets.js. Two things are the product:
 **compatibility with Express**, so "Express does X" settles almost every design argument, and
-**being faster than Express**, which is the only reason to replace it at all.
+**being faster than Express**, which is the only reason to replace it at all. A change that answers
+differently from Express is a bug even when the new answer looks better, and a change that is slower
+than what it replaces is a bug even when it is correct. Where the two pull against each other,
+compatibility wins and the speed is paid for somewhere else.
 
-No change may lose either one. A change that answers differently from Express is a bug even when
-the new answer looks better, and a change that is slower than what it replaces is a bug even when
-it is correct: measure it with `npm run benchmark:ab -- --against <ref>` and keep it, or find
-another way to do it. Where the two pull against each other, compatibility wins and the speed is
-paid for somewhere else.
+Everything about how to work here is in [`CONTRIBUTING.md`](./CONTRIBUTING.md): the suites, what to
+run before committing, how to write a comparison test, the fuzzers, the security layer rule, the
+Express version policy and the measuring rules. [`benchmark/README.md`](./benchmark/README.md),
+[`tools/README.md`](./tools/README.md) and [`integrations/README.md`](./integrations/README.md) go
+deeper on their own subjects. Read those rather than guessing; this file only says what an agent
+gets wrong that a human reading them would not.
 
-Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) first: it explains the test suites and how to write a
-comparison test. [`benchmark/README.md`](./benchmark/README.md) explains measuring.
-[`tools/README.md`](./tools/README.md) covers the fuzzers, the Express suite and releasing.
-[`integrations/README.md`](./integrations/README.md) covers the frameworks that build on Express.
-This file only adds what those do not say.
+## What is not yours to decide
 
-## Before you commit
+- **Do not tag or release unless asked.** `npm run release` pushes a `v*` tag and that tag publishes
+  to npm.
+- **Do not open an issue in another project on the maintainer's behalf**, uNetworking included. When
+  a finding belongs upstream, say so in your report and stop there.
+- **Do not leave a fuzz divergence behind.** It is fixed, with a comparison test, or it is written
+  down in an issue with the seed. A finding that is neither is lost when the run scrolls away, and
+  the next run spends its rounds on it again.
 
-All of these are expected green. Run them, do not assume:
+## What to say rather than assume
 
-```sh
-npm test              # comparison suite, the load-bearing one
-npm run test:unit
-npm run test:express  # Express's own suite; 1130 passing, 0 failing
-npm run typecheck
-npm run lint
-npm run format:check
-```
-
-A behaviour fix needs a comparison test under `tests/tests/`, and you must check it fails without
-the fix before claiming it covers anything. Reverting the fix and re-running is the only proof.
-
-`npm run test:integrations` is the same rule with a framework on top, and it is not in the list
-because it needs its own install, `npm run integrations:install`, and builds four applications the
-first time. Run it when you touch anything a framework sits on: the request and response surface,
-the body parsers, `writeHead`, the header methods. Both bugs it has found so far were in code the
-comparison suite covers well and applications reach differently from frameworks.
-
-Do not tag or release unless asked. Pushing a `v*` tag is what makes
-`.github/workflows/release.yml` publish to npm; `npm run release` creates that tag.
-
-## Security
-
-[`SECURITY.md`](./SECURITY.md) says what is in scope and what is not, and the line it draws is one
-you have to apply rather than quote: **µWS's parser is not ours**. The request line, the header
-block and the chunked framing are decided before any JavaScript here runs, so before treating a
-malformed request as a bug in this project, serve the same bytes from a bare µWebSockets.js
-application. Same answer means it belongs at uNetworking, and this repository cannot fix it. Do not
-open an issue there on the maintainer's behalf, and do not add a test that will never pass: say so
-in the report and move on. Everything above the parser is ours and gets fixed here.
-
-`npm run fuzz:wire` is what tells the two apart, node's parser being its oracle. It already carries
-one documented exception, a pipelined request after a `Connection: close`, which µWS has parsed out
-of the buffer before this project can close anything. Add another only with the same evidence: a
-bare µWS application doing the same thing.
-
-## Express version policy
-
-Test against the **released** Express only, the one in `devDependencies`. Master is out of scope.
-Its unreleased behaviour changes will fail against this project by design, and the pinned suite
-asserts the current behaviour, so chasing master breaks the gate it is supposed to protect.
-
-## Measuring
-
-Use `npm run benchmark:ab -- --against <ref>`. Do not hand-roll an A/B by checking out `src/` and
-running `run.js` twice: it measures warm-up, not the change. Read the noise floor rules in
-[`benchmark/README.md`](./benchmark/README.md) before quoting a number, and run `--null` from the
-same sitting or the number is not evidence.
-
-Some changes need no benchmark at all. If the code sits behind a guard most applications never
-reach, say which guard and move on. Anything under about 20 ns per request is below what matters
-against a request budget of tens of microseconds.
-
-Never run anything else on the machine while a benchmark measures. If the Express column moved
-between two runs, the machine moved and the run is void.
-
-## The fuzzers
-
-`npm run fuzz` compares random applications against Express. It is the highest-yield bug finder
-here. Triage a run by grouping the divergences by which fields differ: one root cause usually
-accounts for most of them. Replay with `--seed <n> --rounds 1` and read the shrunk case it prints.
-
-**A divergence is a bug, and it gets fixed**, with a comparison test under `tests/tests/` like any
-other fix, whether or not the round that found it was about what you were changing. If it is not
-going to be fixed, open an issue that says what diverges, the seed that replays it, and why it was
-left. A finding that is neither fixed nor written down is lost as soon as the run scrolls away, and
-the next run spends its rounds on it again.
-
-`fuzz:wire`, `fuzz:headers` and `fuzz:session` take what it cannot reach through `fetch`: the
-request bytes, the methods that compute a header value, and a sequence down one keep-alive
-connection. Run the one that sits under what you changed. `tools/README.md` has each of them.
-
-CI runs it on a **random seed**, so it explores a different application on every push. Red there is
-usually a real, pre-existing bug that this push merely exposed. Read the shrunk case before assuming
-the last commit caused it.
-
-If you touched the optimizer, the overlap analysis, the guards, the granted skips, anything in
-`_compileOptimizedRoutes`, then run `npm test -- --self` and `npm run fuzz -- --self`. Those serve the
-same application twice with this framework, the reference arm with `native routes` off, so a
-divergence is the optimizer disagreeing with the chain it stands in for rather than a compatibility
-question. `CONTRIBUTING.md` explains it. Before trusting a clean run of any oracle you add, put a
-known bug back and check it is caught: a self-check that cannot fail is worse than no check.
-
-Two differences must never be compared, because matching them would mean copying a fault:
-
-- **A non-ascii header value.** Express hands the string to node, whose header block turns the
-  character into U+FFFD and writes it as latin1, so `res.attachment("caffè.txt")` leaves
-  Express as one corrupt byte while uWS writes proper utf-8. Both compute the same value; only the
-  wire differs. Keep fuzz filenames and header values ASCII.
-- Whatever `tests/helpers.js` already lists: `x-powered-by`, `content-length`, `transfer-encoding`.
-
-## Comparison suite gotchas
-
-`// INSPECT` must not go on a file that fetches concurrently through `Promise.all`. The `[req]` line
-is printed when the request arrives and the arrivals race, while `fetchTest` orders its own lines by
-taking an index at call time, which nothing running server-side can do. Use `sequential()` instead,
-or leave the marker off. This is on top of the two rules in `CONTRIBUTING.md`.
-
-The marker is read from the leading comment block, so it can sit under a multi-line description.
-
-On Windows every test process asserts or hangs at exit under Node 24+. `tests/win-exit-delay.cjs`
-is preloaded for it. It is not a test failure.
+- **Run the gates, do not predict them.** The list is in CONTRIBUTING under "Before you commit", and
+  "it cannot have broken anything" is not a result.
+- **A fix is not covered until its test has failed without it.** Revert the fix, watch the test go
+  red, put it back. Say that you did it, or say that you did not.
+- **A number is evidence only with its control.** An A/B without a `--null` from the same sitting,
+  or with anything else running on the machine, is not a measurement. If a change needs no
+  benchmark, name the guard that makes it unreachable instead of implying it was measured.
+- **Report what happened.** Which suites ran, which did not and why, what is still failing. A green
+  summary over a suite you skipped is the one thing that makes all of the above worthless.
