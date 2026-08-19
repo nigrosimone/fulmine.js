@@ -248,3 +248,17 @@ const behavior: express.FulmineWebSocketBehavior = {
     }
 };
 wsApp.ws("/typed", behavior);
+
+// an upgrade hook narrows the request to the one it decorates, and reads it back off the socket:
+// the documented way to keep per-connection state, which has to typecheck
+type RoomRequest = Request & { roomId: string };
+type RoomSocket = express.FulmineSocket & { req: RoomRequest };
+wsApp.ws("/room/:id", {
+    upgrade(req: RoomRequest, res) {
+        expectType<boolean | undefined>(res.aborted);
+        req.roomId = String(req.params.id);
+    },
+    open(ws: RoomSocket) {
+        expectType<string>(ws.req.roomId);
+    }
+});

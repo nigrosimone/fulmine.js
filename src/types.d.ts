@@ -143,15 +143,18 @@ declare module "fulmine.js" {
         uWS.WebSocketBehavior<SocketData>,
         "upgrade" | "open" | "message" | "dropped" | "drain" | "close" | "ping" | "pong" | "subscription"
     > & {
-        upgrade?: (req: e.Request, res: e.Response) => void | Promise<void>;
-        open?: (ws: FulmineWebSocket) => void;
-        message?: (ws: FulmineWebSocket, message: ArrayBuffer, isBinary: boolean) => void;
-        dropped?: (ws: FulmineWebSocket, message: ArrayBuffer, isBinary: boolean) => void;
-        drain?: (ws: FulmineWebSocket) => void;
-        close?: (ws: FulmineWebSocket, code: number, message: ArrayBuffer) => void;
-        ping?: (ws: FulmineWebSocket, message: ArrayBuffer) => void;
-        pong?: (ws: FulmineWebSocket, message: ArrayBuffer) => void;
-        subscription?: (ws: FulmineWebSocket, topic: ArrayBuffer, newCount: number, oldCount: number) => void;
+        // methods rather than function-typed properties, so a handler may narrow the request or
+        // the socket to one carrying what the upgrade hook hung on it, which is how this project
+        // says per-connection state is kept
+        upgrade?(req: e.Request, res: e.Response): void | Promise<void>;
+        open?(ws: FulmineWebSocket): void;
+        message?(ws: FulmineWebSocket, message: ArrayBuffer, isBinary: boolean): void;
+        dropped?(ws: FulmineWebSocket, message: ArrayBuffer, isBinary: boolean): void;
+        drain?(ws: FulmineWebSocket): void;
+        close?(ws: FulmineWebSocket, code: number, message: ArrayBuffer): void;
+        ping?(ws: FulmineWebSocket, message: ArrayBuffer): void;
+        pong?(ws: FulmineWebSocket, message: ArrayBuffer): void;
+        subscription?(ws: FulmineWebSocket, topic: ArrayBuffer, newCount: number, oldCount: number): void;
     };
 
     // interfaces rather than aliases: `this` is how ws() answers the router or the app it was
@@ -209,6 +212,12 @@ declare module "fulmine.js" {
 // prototype, so a route only has them where that middleware ran, which the optional marks say.
 declare namespace Express {
     interface Response {
+        /**
+         * Whether the client went away before this response was answered. µWS frees the response
+         * then and writing to it does nothing, so a handler that awaited something checks this
+         * first. Express has no counterpart, which is why it is optional here.
+         */
+        aborted?: boolean;
         /** Adds a mark of your own. A mark with only a description is a legal entry. */
         timing?(name: string, duration?: number, description?: string): this;
         /** Times a piece of work under a name. A promise is timed to where it settles. */
