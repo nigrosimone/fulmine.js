@@ -73,9 +73,8 @@ const symbols = Object.getOwnPropertySymbols(outgoingMessage);
 // literally named "undefined", which is what indexing with undefined would do
 const kOutHeaders = symbols.find((s) => s.toString() === "Symbol(kOutHeaders)") ?? Symbol("kOutHeaders");
 const HIGH_WATERMARK = 128 * 1024;
-// Statuses whose message carries no body, so no Content-Length may describe one either. 1xx is
-// the third case and is checked by range rather than listed.
-const STATUSES_WITHOUT_BODY = new Set([204, 304]);
+// the exact string json() writes, so send() can skip recomputing the charset on it
+const JSON_UTF8 = "application/json; charset=utf-8";
 // send's ceiling for maxAge, one year in milliseconds. Anything larger is clamped to it rather
 // than written out, since a year is already longer than any cache will honour.
 const MAX_MAXAGE = 60 * 60 * 24 * 365 * 1000;
@@ -801,7 +800,9 @@ module.exports = class Response extends LazyWritable {
         // without one writes "Content-Length: 9223372036854775808" onto a 204. Those two paths keep
         // µWS's own rule, which closes for a bare "close" and not for a list.
         const closeConnection = this.req._connectionClose === true;
-        if (STATUSES_WITHOUT_BODY.has(this.statusCode) || this.statusCode < 200) {
+        // 204 and 304 carry no body, so no Content-Length may describe one either; 1xx is the
+        // third case, by range
+        if (this.statusCode === 204 || this.statusCode === 304 || this.statusCode < 200) {
             // no body and no length describing one, whatever the caller passed. node decides
             // this the same way, from the status alone, so res.status(304).end("x") sends the
             // status and nothing else on either.
@@ -905,9 +906,10 @@ module.exports = class Response extends LazyWritable {
                 if (!skipContentType) {
                     this.headers["content-type"] = "text/html; charset=utf-8";
                 }
-            } else if (typeof contentType === "string") {
+            } else if (typeof contentType === "string" && contentType !== JSON_UTF8) {
                 // replaced, not only added: the body goes out as utf-8, so a content-type saying
-                // iso-8859-1 would be describing bytes that are not there.
+                // iso-8859-1 would be describing bytes that are not there. The json() literal is
+                // already exactly that, so the common res.json answer skips the recomputation
                 this.headers["content-type"] = withUtf8Charset(contentType);
             }
         } else {
@@ -1912,7 +1914,7 @@ module.exports = class Response extends LazyWritable {
      */
     json(body) {
         if (!this.headers["content-type"]) {
-            this.headers["content-type"] = "application/json; charset=utf-8";
+            this.headers["content-type"] = JSON_UTF8;
         }
         const hot = this.app._hot();
         return this.send(stringify(body, hot.jsonReplacer, hot.jsonSpaces, hot.jsonEscape));

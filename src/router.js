@@ -2396,14 +2396,23 @@ module.exports = class Router extends EventEmitter {
                   needsConversionToRegex(p) ? patternToRegex(p, false, false) : p.toLowerCase()
               )
             : null;
-        const makeHandler = (chain, preset, skips) => {
+        const makeHandler = (chain, preset, skips, wireMethod) => {
             // the mutable object a granted skip lives on, so a middleware arriving after
             // listen can take it back: a literal registration's preset doubles as it, and a
-            // parameterised one, which has no preset, gets a holder of its own
+            // parameterised one, which has no preset, gets a holder of its own. It also carries
+            // the registration's method, so the constructor settles it with one compare
             let skipHolder = preset;
-            if (skipHolder === undefined && (skips.skipHeaders || skips.skipQuery)) {
-                skipHolder = { skipHeaders: skips.skipHeaders, skipQuery: skips.skipQuery };
-                (this._skipPresets ??= new Set()).add(skipHolder);
+            if (skipHolder === undefined && (skips.skipHeaders || skips.skipQuery || wireMethod !== null)) {
+                skipHolder = {
+                    skipHeaders: skips.skipHeaders,
+                    skipQuery: skips.skipQuery,
+                    method: wireMethod,
+                    isOptions: wireMethod === "OPTIONS",
+                    isHead: wireMethod === "HEAD"
+                };
+                if (skips.skipHeaders || skips.skipQuery) {
+                    (this._skipPresets ??= new Set()).add(skipHolder);
+                }
             }
             // all three are registration-time constants: computing them in the handler was a
             // closure and a scan of the chain on every native request.
@@ -2430,6 +2439,8 @@ module.exports = class Router extends EventEmitter {
                     return this._refuseRequest(response);
                 }
                 if (optimizedParams) {
+                    // slicing these out of the already-fetched path instead measured a wash:
+                    // the segment scan costs what the crossing costs
                     request.optimizedParams = new NullObject();
                     for (let i = 0; i < optimizedParams.length; i++) {
                         request.optimizedParams[optimizedParams[i]] = req.getParameter(i);
@@ -2475,8 +2486,8 @@ module.exports = class Router extends EventEmitter {
         // analysis in usage.js, whose default answer is no.
         //
         // The etag setting is not one of the conditions. It used to be, on the grounds that send
-        // consults freshness, but the skip branch reads if-none-match, if-modified-since and
-        // cache-control by name whatever the setting, see the comment at request.js:527, and
+        // consults freshness, but the skip branch reads if-none-match and if-modified-since by
+        // name whatever the setting, see the comment at request.js:527, and
         // req.fresh reads nothing else off the request. Requiring etag off as well cost the copy
         // to every application that left it on, which is every application that did not go
         // looking for the setting.
@@ -2508,10 +2519,13 @@ module.exports = class Router extends EventEmitter {
             return preset;
         };
 
+        // the wire token this registration answers; "any" serves every verb and stays dynamic
+        const wireMethod = method === "any" ? null : route.method;
         let fn = makeHandler(
             getChain,
             canPreset ? makePreset(route.path, route.method, getSkips) : undefined,
-            getSkips
+            getSkips,
+            wireMethod
         );
         const jsFn = fn;
 
@@ -2564,7 +2578,12 @@ module.exports = class Router extends EventEmitter {
                 fn !== jsFn
                     ? fn
                     : canPreset
-                      ? makeHandler(getChain, makePreset(route.path + "/", route.method, getSkips), getSkips)
+                      ? makeHandler(
+                            getChain,
+                            makePreset(route.path + "/", route.method, getSkips),
+                            getSkips,
+                            wireMethod
+                        )
                       : fn;
             this.uwsApp[method](replacedPath + "/", slashFn);
             if (method === "get") {
@@ -2573,7 +2592,8 @@ module.exports = class Router extends EventEmitter {
                     makeHandler(
                         headChain,
                         canPreset ? makePreset(route.path + "/", "HEAD", headSkips) : undefined,
-                        headSkips
+                        headSkips,
+                        "HEAD"
                     )
                 );
             }
@@ -2582,7 +2602,12 @@ module.exports = class Router extends EventEmitter {
             // its own handler always: the shared one would carry the GET registration's method
             this.uwsApp.head(
                 replacedPath,
-                makeHandler(headChain, canPreset ? makePreset(route.path, "HEAD", headSkips) : undefined, headSkips)
+                makeHandler(
+                    headChain,
+                    canPreset ? makePreset(route.path, "HEAD", headSkips) : undefined,
+                    headSkips,
+                    "HEAD"
+                )
             );
         }
     }

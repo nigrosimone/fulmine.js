@@ -229,6 +229,13 @@ function endsWithChunked(value) {
  * @returns {boolean}
  */
 function saysClose(value) {
+    // what clients actually send, almost always: two interned compares answer before the scan
+    if (value === "keep-alive") {
+        return false;
+    }
+    if (value === "close") {
+        return true;
+    }
     const length = value.length;
     let at = 0;
     while (at < length) {
@@ -663,6 +670,19 @@ module.exports = class Request extends LazyReadable {
     noEtag;
 
     /**
+     * The decoded pairs of the first default-parser parse of req.query, flat key,value; false
+     * when it saw a repeated key, which a flat replay cannot reproduce. See `get query`.
+     * @type {string[]|false|undefined}
+     */
+    _querySnap;
+
+    /**
+     * The raw string _querySnap came from: a url rewrite replaces _rawQuery.
+     * @type {string|undefined}
+     */
+    _querySnapRaw;
+
+    /**
      * Built for every request, which is why so little happens here. The headers are copied out
      * because uWS only lends them for this call, everything derived from them waits until something
      * asks, and the body is subscribed to only for the methods that carry one.
@@ -681,23 +701,24 @@ module.exports = class Request extends LazyReadable {
         super();
         this._res = res;
         this._req = req;
-        // the plain field behind the `readable` accessor, written rather than set so a request that
-        // never streams never builds a stream
-        this._readableFlag = true;
         if (skipHolder !== undefined && skipHolder.skipHeaders) {
             // The chain behind this registration provably never reads a header, so instead of
-            // copying them all out of uWS the constructor asks for the four that steer the
-            // framework itself: body framing, keep-alive, and accept for the error page a
-            // throw could still need. A GET that does declare a body is the rare case, and
-            // the parsers and the stream want the whole picture, so it takes the full copy.
+            // copying them all out of uWS the constructor asks for the ones that steer the
+            // framework itself: body framing, keep-alive, and the conditional pair. A GET that
+            // does declare a body is the rare case, and the parsers and the stream want the
+            // whole picture, so it takes the full copy.
             //
-            // Seven named reads against one forEach looks like it should lose, and does not: the
-            // seven are flat at 0.75us however many headers are on the wire, since each one is a
-            // napi crossing and the scan behind it is nothing, while the copy pays a hop back into
-            // JS per header and grows, 1.16us at four headers, 1.61 at eight, 2.90 at sixteen. They
-            // do not cross, and the gap widens exactly where real traffic lives, since a browser
-            // sends a dozen or more. The body case pays two of the seven and then copies anyway,
-            // which is 0.2us on a request that is about to read a body.
+            // A handful of named reads against one forEach looks like it should lose, and does
+            // not: measured at seven reads they were flat at 0.75us however many headers are on
+            // the wire, since each one is a napi crossing and the scan behind it is nothing,
+            // while the copy pays a hop back into JS per header and grows, 1.16us at four
+            // headers, 1.61 at eight, 2.90 at sixteen. They do not cross, and the gap widens
+            // exactly where real traffic lives, since a browser sends a dozen or more. The body
+            // case pays two reads and then copies anyway, which is 0.2us on a request that is
+            // about to read a body.
+            //
+            // accept is not read: nothing on a granted chain consumes it, the error and 404
+            // pages are fixed HTML that never negotiate.
             const length = req.getHeader("content-length");
             const transferEncoding = req.getHeader("transfer-encoding");
             // A content-length of "0" declares no body and used to stay on the cheap side, but
@@ -724,12 +745,8 @@ module.exports = class Request extends LazyReadable {
                         this._connectionClose = true;
                     }
                 }
-                const accept = req.getHeader("accept");
-                if (accept !== "") {
-                    entries.push("accept", accept);
-                }
                 // send consults freshness whatever the etag setting: if-none-match can be "*"
-                // and a handler may set a validator by hand, so the conditional trio has to be
+                // and a handler may set a validator by hand, so the conditional pair has to be
                 // really absent rather than merely uncopied
                 const ifNoneMatch = req.getHeader("if-none-match");
                 if (ifNoneMatch !== "") {
@@ -739,9 +756,13 @@ module.exports = class Request extends LazyReadable {
                 if (ifModifiedSince !== "") {
                     entries.push("if-modified-since", ifModifiedSince);
                 }
-                const cacheControl = req.getHeader("cache-control");
-                if (cacheControl !== "") {
-                    entries.push("cache-control", cacheControl);
+                // fresh() answers false before it reads cache-control unless a conditional
+                // arrived, so the read only pays on the requests that can use it
+                if (ifNoneMatch !== "" || ifModifiedSince !== "") {
+                    const cacheControl = req.getHeader("cache-control");
+                    if (cacheControl !== "") {
+                        entries.push("cache-control", cacheControl);
+                    }
                 }
             }
         } else {
@@ -802,18 +823,26 @@ module.exports = class Request extends LazyReadable {
             this._opPath = this._path;
             this._originalPath = this._path;
             const rawMethod = req.getCaseSensitiveMethod();
-            this.method = rawMethod.toUpperCase();
-            // node's parser knows a fixed set and refuses everything else; µWS takes the token as
-            // it finds it, so a request line is anything with a space in it. Compared before the
-            // uppercasing on purpose: a method is case sensitive, node refuses "post", and µWS
-            // folds it to POST and serves it. Only asked of a method the framework cannot route
-            // anyway, since a route can only be registered for one of these, see the loop that
-            // builds the verb methods at the end of router.js
-            if (!KNOWN_METHODS.has(rawMethod)) {
-                this._mustRefuse = true;
+            if (skipHolder !== undefined && rawMethod === skipHolder.method) {
+                // the registration's constant, byte for byte; any other spelling, "get" that µWS
+                // folded here included, takes the full check below
+                this.method = rawMethod;
+                this._isOptions = skipHolder.isOptions;
+                this._isHead = skipHolder.isHead;
+            } else {
+                this.method = rawMethod.toUpperCase();
+                // node's parser knows a fixed set and refuses everything else; µWS takes the token
+                // as it finds it, so a request line is anything with a space in it. Compared before
+                // the uppercasing on purpose: a method is case sensitive, node refuses "post", and
+                // µWS folds it to POST and serves it. Only asked of a method the framework cannot
+                // route anyway, since a route can only be registered for one of these, see the loop
+                // that builds the verb methods at the end of router.js
+                if (!KNOWN_METHODS.has(rawMethod)) {
+                    this._mustRefuse = true;
+                }
+                this._isOptions = this.method === "OPTIONS";
+                this._isHead = this.method === "HEAD";
             }
-            this._isOptions = this.method === "OPTIONS";
-            this._isHead = this.method === "HEAD";
         }
         // what the router last saw as the method. A middleware assigning another one is a rewrite,
         // which express honours because it reads req.method at every layer, and dispatch compares
@@ -839,9 +868,6 @@ module.exports = class Request extends LazyReadable {
         // null for the same reason as the two above: a request that never enters a mount never
         // needs either array, and the push sites materialize them
         this._stack = null;
-        // how many characters of _originalPath the mounts entered so far have taken, which is
-        // where baseUrl ends and the path below them begins
-        this._consumed = 0;
         // whether one of them took a trailing slash, which only a RegExp mount can: see baseUrl
         this._mountSlash = false;
         this._paramStack = null;
@@ -1257,15 +1283,16 @@ module.exports = class Request extends LazyReadable {
      * the parse cached and handed out as itself, the sanitised value leaked into req.query here and
      * a handler written against express read a trimmed value where express gives it the raw one.
      *
-     * And that is why there is no cache: the fresh object comes from parsing the raw string again,
-     * not from copying a kept parse. As first shipped this was parse-once-copy-per-read, and the
-     * copy was the expensive half: Object.assign between null-prototype objects, which live in
-     * V8's dictionary mode, measured 638ns for a two-parameter query where parsing the same string
-     * measures 119ns, and on a benchmark whose every request carries such a query it cost +1.5us
-     * of CPU per request, which a public arena saw as -8% on its query-carrying rows. A handler
-     * that reads req.query once per request now pays exactly what it paid when the parse was
-     * cached, one parse, and a handler that reads it N times pays N parses, which is express's
-     * own cost shape.
+     * And that is why there is no cache of the object: the fresh object comes from the raw
+     * string, not from copying a kept parse. As first shipped this was parse-once-copy-per-read,
+     * and the copy was the expensive half: Object.assign between null-prototype objects, which
+     * live in V8's dictionary mode, measured 638ns for a two-parameter query where parsing the
+     * same string measures 119ns, and on a benchmark whose every request carries such a query it
+     * cost +1.5us of CPU per request, which a public arena saw as -8% on its query-carrying rows.
+     *
+     * The default parser does keep the decoded pairs of its first parse, and a later read of the
+     * same raw string replays the stores into a fresh null-prototype object: identical output,
+     * still nothing shared between reads. A repeated key cannot be replayed and re-parses.
      *
      * @returns {Record<string, any>}
      */
@@ -1283,7 +1310,25 @@ module.exports = class Request extends LazyReadable {
             return Object.create(null);
         }
         if (qp === parseQuery) {
-            return parseQuery(this._rawQuery);
+            const raw = this._rawQuery;
+            if (this._querySnapRaw === raw) {
+                const snap = this._querySnap;
+                if (snap === false) {
+                    return parseQuery(raw);
+                }
+                const out = Object.create(null);
+                const pairs = /** @type {string[]} */ (snap);
+                for (let i = 0, len = pairs.length; i < len; i += 2) {
+                    out[pairs[i]] = pairs[i + 1];
+                }
+                return out;
+            }
+            /** @type {string[] & {invalid?: boolean}} */
+            const capture = [];
+            const out = parseQuery(raw, capture);
+            this._querySnapRaw = raw;
+            this._querySnap = capture.invalid === true ? false : capture;
+            return out;
         }
         if (qp === fastQueryParse) {
             return Object.assign(Object.create(null), fastQueryParse(this._rawQuery));

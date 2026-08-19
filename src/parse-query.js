@@ -34,10 +34,14 @@ const plusRegex = /\+/g;
  * node's querystring.parse semantics on a null-prototype result: repeated keys accumulate into
  * arrays, '+' is a space, percent sequences decode when present and stay literal when broken.
  *
+ * `capture` collects the decoded pairs flat, key then value, so a caller can replay the stores
+ * without scanning again; a repeated key marks it invalid instead. See `get query`.
+ *
  * @param {string} input
+ * @param {string[] & {invalid?: boolean}} [capture]
  * @returns {Record<string, string | string[]>}
  */
-function parseQuery(input) {
+function parseQuery(input, capture) {
     const result = Object.create(null);
 
     if (typeof input !== "string") {
@@ -92,7 +96,13 @@ function parseQuery(input) {
                 const currentValue = result[key];
                 if (currentValue === undefined) {
                     result[key] = value;
+                    if (capture !== undefined) {
+                        capture.push(key, value);
+                    }
                 } else {
+                    if (capture !== undefined) {
+                        capture.invalid = true;
+                    }
                     // value.pop is cheaper than Array.isArray here, as upstream measured
                     if (currentValue.pop) {
                         currentValue.push(value);
