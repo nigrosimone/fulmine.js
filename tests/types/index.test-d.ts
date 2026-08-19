@@ -266,3 +266,12 @@ wsApp.ws("/room/:id", {
         expectType<string>(ws.req.roomId);
     }
 });
+
+// the app answers as an http.Server, and the members that surface adds are declared: a shutdown
+// path calling app.close() had no type for it
+expectType<boolean>(app.listening);
+expectAssignable<{ address: string; family: string; port: number } | null>(app.address());
+expectType<number>(app.keepAliveTimeout);
+app.close((error) => {
+    expectType<Error | undefined>(error);
+});

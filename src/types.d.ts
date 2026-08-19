@@ -200,6 +200,25 @@ declare module "fulmine.js" {
         listen(port: number | string, callback?: (error?: Error) => void): FulmineServer;
         listen(port: number | string, host: string, callback?: (error?: Error) => void): FulmineServer;
         listen(port: number | string, host: string, backlog: number, callback?: (error?: Error) => void): FulmineServer;
+        /**
+         * What listen() hands back is the app itself, and it answers as an `http.Server` so a
+         * shutdown wrapper or a library testing what it was given recognises it. These are the
+         * members of that surface Express's own Application does not have; the readme's
+         * "Differences from Express" says which of them do something here and which are inert.
+         */
+        close(callback?: (error?: Error) => void): this;
+        address(): { address: string; family: string; port: number } | null;
+        readonly listening: boolean;
+        getConnections(callback: (error: Error | null, count: number) => void): void;
+        ref(): this;
+        unref(): this;
+        setTimeout(msecs?: number, callback?: () => void): this;
+        timeout: number;
+        keepAliveTimeout: number;
+        headersTimeout: number;
+        requestTimeout: number;
+        maxHeadersCount: number | null;
+        maxRequestsPerSocket: number;
         ws(path: string, behavior: WebSocketBehavior): this;
         publish(topic: string, message: string | ArrayBuffer | Buffer, isBinary?: boolean, compress?: boolean): boolean;
         numSubscribers(topic: string): number;
