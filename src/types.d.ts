@@ -115,6 +115,13 @@ declare module "fulmine.js" {
         export import NextFunction = e.NextFunction;
         export import Locals = e.Locals;
         export import Request = e.Request;
+
+        // The application, the socket and the behaviour, nameable from outside. `export =` leaves
+        // everything declared beside it out of reach of an import, so anything wrapping ws() had
+        // to write ReturnType<typeof express> and index into it to say what it takes.
+        export type FulmineApplication = Fulmine;
+        export type FulmineSocket = FulmineWebSocket;
+        export type FulmineWebSocketBehavior = WebSocketBehavior;
         export import RequestHandler = e.RequestHandler;
         export import RequestParamHandler = e.RequestParamHandler;
         export import Response = e.Response;

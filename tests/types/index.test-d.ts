@@ -234,3 +234,17 @@ app.get("/timed", async (_req, res) => {
     expectAssignable<number[] | undefined>(rows);
     res.json(rows);
 });
+
+// the websocket types are importable rather than only reachable through ReturnType, which is what
+// an application wrapping app.ws() in its own helper needs
+const wsApp: express.FulmineApplication = express();
+const behavior: express.FulmineWebSocketBehavior = {
+    upgrade(req: Request, res: Response) {
+        expectType<string>(req.path);
+        expectType<boolean>(res.headersSent);
+    },
+    open(ws: express.FulmineSocket) {
+        expectType<Request>(ws.req);
+    }
+};
+wsApp.ws("/typed", behavior);
