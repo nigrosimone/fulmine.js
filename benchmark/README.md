@@ -189,6 +189,15 @@ Only rows that clear the ±10% noise floor are marked: :eyes: for a ratio that f
 :trophy: for one that rose. Anything under it is weather: a table of a dozen ratios always has one
 that moved a few percent.
 
+A ratio is two numbers and only one of them is this project, so a mark also asks fulmine's own
+req/sec to have moved that far the same way. On the rows where the load generator sets the pace,
+which is every routing row on a four-core runner, this arm cannot move at all and the ratio is
+reporting express's wobble upside down: the 5.15.1 run flagged four routing rows 9 to 14% down
+while express had risen 6 to 10% on those same rows, and the profiler read the code as flat or
+faster on all four. That arm is judged against what the whole table's fast arm did, the same
+division the ratio gets and with the same limit past the floor, since a change that slows every
+scenario looks exactly like a slower runner.
+
 The floor is applied after dividing out what the whole table moved against the window of the last
 5 runs, when enough rows exist to measure that. A hosted runner's sessions cap the fast arm at
 different heights, which moves every capped ratio together, and that shared shift says nothing

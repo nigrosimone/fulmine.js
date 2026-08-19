@@ -276,6 +276,74 @@ test("a row seen in a single window run is judged by the flat floor, not by the 
     assert.strictEqual(marked.a, false);
 });
 
+// the 5.15.1 run, row for row, which is the recorded case of the ratio moving without the code:
+// express rose 6 to 10% on the routing rows while fulmine sat against the load generator's
+// ceiling, and four rows were flagged down where a profile read the code as flat or faster
+const RUN_5_15_1 = {
+    "connections/high-concurrency": [3.3, 13452, 43764, 3.5, 13471, 47150],
+    "engines/art": [3.48, 10495, 37256, 3.72, 10153, 38054],
+    "middlewares/body-json-4kb": [3.61, 9633, 34684, 3.96, 10167, 41428],
+    "middlewares/body-json-echo": [3.86, 10337, 39990, 4.26, 10509, 44430],
+    "middlewares/body-urlencoded": [4.05, 10118, 40218, 4.7, 9400, 44536],
+    "middlewares/express-static": [2.05, 2355, 4855, 2.03, 2463, 5016],
+    "middlewares/express-static-small": [4.3, 6860, 29562, 4.82, 6982, 33912],
+    "middlewares/realistic-stack": [2.97, 9030, 27125, 3.45, 9779, 33574],
+    "routing/api-endpoint": [4.29, 10707, 45594, 3.89, 10886, 43016],
+    "routing/api-mixed": [3.58, 12412, 44908, 3.17, 13610, 42362],
+    "routing/fallback-scan": [4.36, 7123, 31717, 6.23, 6971, 43352],
+    "routing/hello-world": [2.79, 14598, 40767, 2.4, 15960, 38376],
+    "routing/json-list": [3.34, 8815, 28343, 3.23, 9554, 30301],
+    "routing/middlewares-100": [2.05, 18893, 38750, 2.28, 19384, 44494],
+    "routing/nested-routers": [3.03, 14036, 41858, 2.93, 13834, 41366],
+    "routing/query-string": [3.79, 12502, 44584, 3.25, 13339, 41826],
+    "routing/router-mounted-params": [7.13, 6317, 45438, 7.21, 6153, 44340],
+    "routing/routes-1000": [9.72, 4749, 46230, 9.26, 4819, 44350],
+    "routing/routes-1000-params": [10.08, 4661, 46960, 9.65, 4704, 45632]
+};
+
+function armOf(index) {
+    return Object.fromEntries(
+        Object.entries(RUN_5_15_1).map(([name, cells]) => [
+            name,
+            { speedup: cells[index], express: cells[index + 1], fulmine: cells[index + 2] }
+        ])
+    );
+}
+
+test("a ratio that moved because the other arm did is not marked: only fulmine's own move counts", () => {
+    const previous = runOf(armOf(0));
+    const current = runOf(armOf(3));
+    const { rows } = compareRuns(previous, current);
+    const marked = Object.fromEntries(rows.map((entry) => [entry.name, entry.notable]));
+
+    // fulmine is against the generator's ceiling on these four, so its req/sec fell by the same
+    // 6% the whole table's fast arm fell: what moved is express, which rose 2 to 10%
+    assert.strictEqual(marked["routing/hello-world"], false);
+    assert.strictEqual(marked["routing/api-mixed"], false);
+    assert.strictEqual(marked["routing/api-endpoint"], false);
+    assert.strictEqual(marked["routing/query-string"], false);
+    // and the rows where fulmine itself moved are still news: +37% and +24% on its own arm
+    assert.strictEqual(marked["routing/fallback-scan"], true);
+    assert.strictEqual(marked["middlewares/realistic-stack"], true);
+});
+
+test("a real fall is still marked when fulmine's own arm is what fell", () => {
+    // the same table with the four flagged rows given a fulmine arm that really dropped, express
+    // held still: without that the check could never fail and would be worse than no check
+    const current = armOf(3);
+    for (const name of ["routing/hello-world", "routing/api-mixed", "routing/api-endpoint", "routing/query-string"]) {
+        const then = RUN_5_15_1[name];
+        current[name] = { speedup: then[0] * 0.75, express: then[1], fulmine: Math.round(then[2] * 0.75) };
+    }
+
+    const { rows } = compareRuns(runOf(armOf(0)), runOf(current));
+    const marked = Object.fromEntries(rows.map((entry) => [entry.name, entry.notable]));
+    assert.strictEqual(marked["routing/hello-world"], true);
+    assert.strictEqual(marked["routing/api-mixed"], true);
+    assert.strictEqual(marked["routing/api-endpoint"], true);
+    assert.strictEqual(marked["routing/query-string"], true);
+});
+
 test("the record keeps the round median and its spread when the run measured in rounds", () => {
     // the median of the rounds is not the quotient of the two averages, and the spread is what
     // lets a later reader tell a stable measurement from one that straddled two levels

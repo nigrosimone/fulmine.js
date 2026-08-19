@@ -43,6 +43,30 @@ const WINDOW = 5;
 const SHIFT_ROWS = 10;
 
 /**
+ * Whether the fast arm's own throughput moved the way the ratio says it did.
+ *
+ * A ratio is two numbers, and only one of them is this project. On every row where the load
+ * generator rather than the server sets the pace, the fast arm cannot move at all, so whatever
+ * the ratio does between two runs is the other arm's wobble with the sign turned round: the
+ * 5.15.1 run flagged four routing rows 9 to 14% down while express had risen 6 to 10% on those
+ * same rows and a profile read the code as flat or faster. So a mark also asks this arm to have
+ * moved, and to have moved the way the mark reads.
+ *
+ * Absent on a record written before both arms were kept, and then it decides nothing.
+ *
+ * @param {{arm: number|null, change: number}} entry
+ * @param {number} shift what the whole table's fast arm did, already neutralised past the floor
+ * @returns {boolean}
+ */
+function armAgrees(entry, shift) {
+    if (entry.arm === null) {
+        return true;
+    }
+    const moved = entry.arm / shift;
+    return entry.change < 0 ? moved <= 1 - NOTABLE : moved >= 1 + NOTABLE;
+}
+
+/**
  * The middle value, or the average of the two middles on an even count. The average matters on
  * even counts: the measured rounds alternate which arm goes first, so taking either middle alone
  * would keep the drift that one orientation adds and the other subtracts.
@@ -231,9 +255,10 @@ function appendRun(file, history, key, run) {
  * noise floor is not divided out: those rows flag raw, and the footer says the move is either the
  * machine or the code and that only an A/B can tell them apart. A row is notable only when it
  * left the whole range the window stayed in AND, shift aside, sits at least the noise floor from
- * the window median; a row seen in a single window run is judged by the flat floor alone and
- * takes no part in the shift. A bound row is never marked: its ratio cannot really move, the
- * main table's own footnote says so, and its twelve recorded flags were all weather.
+ * the window median AND its own fast arm moved the way the mark reads, see armAgrees; a row seen
+ * in a single window run is judged by the flat floor alone and takes no part in the shift. A bound
+ * row is never marked: its ratio cannot really move, the main table's own footnote says so, and
+ * its twelve recorded flags were all weather.
  *
  * @param {any} previous
  * @param {any} current
@@ -256,6 +281,8 @@ function compareRuns(previous, current, windowRuns) {
         const seen = runs.map((run) => run.scenarios?.[name]?.speedup).filter((speedup) => typeof speedup === "number");
         const sorted = [...seen].sort((a, b) => a - b);
         const now = after[name].speedup;
+        const armThen = before[name].fulmine;
+        const armNow = after[name].fulmine;
         measured.push({
             name,
             bound: Boolean(after[name].bound || before[name].bound),
@@ -264,7 +291,9 @@ function compareRuns(previous, current, windowRuns) {
             // against the previous run alone when the window holds nothing more; the range
             // condition is then vacuous, which is what the flat floor always was
             position: sorted.length > 1 ? now / median(sorted) : now / before[name].speedup,
-            out: sorted.length > 1 ? now < sorted[0] || now > sorted[sorted.length - 1] : true
+            out: sorted.length > 1 ? now < sorted[0] || now > sorted[sorted.length - 1] : true,
+            // what this row's own fast arm did, see armAgrees
+            arm: armThen > 0 && armNow > 0 ? armNow / armThen : null
         });
     }
 
@@ -274,13 +303,26 @@ function compareRuns(previous, current, windowRuns) {
     const tableMove = positions.length >= SHIFT_ROWS ? median(positions) : 1;
     const shift = Math.abs(tableMove - 1) < NOTABLE ? tableMove : 1;
 
+    // and the same division for the fast arm's own throughput, which a faster runner lifts on
+    // every row at once. Past the floor it is left alone for the reason the ratio's shift is:
+    // code that slowed every scenario has the same shape as a slower machine
+    const arms = measured
+        .filter((entry) => !entry.bound && entry.arm !== null)
+        .map((entry) => /** @type {number} */ (entry.arm));
+    const armMove = arms.length >= SHIFT_ROWS ? median(arms) : 1;
+    const armShift = Math.abs(armMove - 1) < NOTABLE ? armMove : 1;
+
     const rows = measured.map((entry) => ({
         name: entry.name,
         before: before[entry.name],
         after: after[entry.name],
         change: entry.change,
         bound: entry.bound,
-        notable: !entry.bound && entry.out && Math.abs(entry.position / (entry.hasWindow ? shift : 1) - 1) >= NOTABLE
+        notable:
+            !entry.bound &&
+            entry.out &&
+            Math.abs(entry.position / (entry.hasWindow ? shift : 1) - 1) >= NOTABLE &&
+            armAgrees(entry, armShift)
     }));
 
     // biggest movement first: the reason to read this section at all is the rows that moved
@@ -353,7 +395,9 @@ function historyMarkdown(baseline, current) {
         `Only the ratio is comparable across runs: the absolute req/sec are not, and are shown only to say ` +
             `which arm moved. A row is marked when it left the whole range of the last ` +
             `${windowSize} run${windowSize === 1 ? "" : "s"} on this machine and sits at least ` +
-            `±${Math.round(NOTABLE * 100)}% from their median${shiftClause}; a single run still wobbles, ` +
+            `±${Math.round(NOTABLE * 100)}% from their median${shiftClause}, and when fulmine's own ` +
+            `req/sec moved that far the same way: on a row where the load generator sets the pace, this ` +
+            `arm cannot move and the ratio only reports express's wobble. A single run still wobbles, ` +
             `so even a marked row is worth a second run before it is worth a bisect. Rows the main table ` +
             `marks as bound are never flagged, their ratio cannot really move. ` +
             `:eyes: is a ratio that fell out of the range, :trophy: one that rose out of it.`
