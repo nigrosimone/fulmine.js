@@ -210,9 +210,8 @@ function runVerify(req, res, next, options, buf) {
     } catch (e) {
         const err = /** @type {any} */ (e);
         next(
-            bodyError(err.message, err.status ?? err.statusCode ?? 403, err.type ?? "entity.verify.failed", {
-                body: buf,
-                stack: err.stack
+            asBodyError(err, err.status ?? err.statusCode ?? 403, err.type ?? "entity.verify.failed", {
+                body: buf
             })
         );
         return false;
@@ -249,6 +248,15 @@ function strictSyntaxMessage(text, char) {
     return "strict violation";
 }
 
+// The name http-errors gives each status body-parser answers with. An application reading
+// err.name, or a logger printing it, sees "PayloadTooLargeError" from Express and would have
+// seen a bare "Error" here.
+const BODY_ERROR_NAMES = {
+    400: "BadRequestError",
+    413: "PayloadTooLargeError",
+    415: "UnsupportedMediaTypeError"
+};
+
 /**
  * The error a body parser hands to next(), shaped as body-parser shapes it: with a status, since
  * `res.status(err.status || 500)` would otherwise answer 500 to a request that was merely too
@@ -262,6 +270,25 @@ function strictSyntaxMessage(text, char) {
  */
 function bodyError(message, status, type, extra) {
     const err = /** @type {any} */ (new Error(message));
+    if (BODY_ERROR_NAMES[status]) {
+        err.name = BODY_ERROR_NAMES[status];
+    }
+    return asBodyError(err, status, type, extra);
+}
+
+/**
+ * The same, for an error somebody else made: the SyntaxError JSON.parse threw, or whatever a
+ * verify hook threw. http-errors decorates such an error rather than replacing it, so its name,
+ * its stack and any property the thrower put on it are all still there when the application
+ * reads it.
+ *
+ * @param {any} err
+ * @param {number} status
+ * @param {string} type body-parser's own name for the kind of failure
+ * @param {object} [extra] anything else body-parser puts on that particular error
+ * @returns {Error}
+ */
+function asBodyError(err, status, type, extra) {
     // 4xx is the client's to see; a 5xx here would be the server's own problem and stays hidden
     err.expose = status < 500;
     err.statusCode = status;
@@ -1246,17 +1273,23 @@ const json = createBodyParser(
             // eslint-disable-next-line no-control-regex
             const first = text.match(/^[\x20\x09\x0a\x0d]*([^\x20\x09\x0a\x0d])/)?.[1];
             if (first !== "{" && first !== "[") {
-                return next(bodyError(strictSyntaxMessage(text, first), 400, "entity.parse.failed", { body: text }));
+                // a SyntaxError rather than an Error, since that is what body-parser builds here and
+                // what an application testing `err instanceof SyntaxError` looks for
+                return next(
+                    asBodyError(new SyntaxError(strictSyntaxMessage(text, first)), 400, "entity.parse.failed", {
+                        body: text
+                    })
+                );
             }
         }
 
         try {
             req.body = JSON.parse(text, options.reviver);
         } catch (e) {
-            // the JSON error's own message, which is what body-parser keeps, so an application
-            // showing err.message still says where the parse gave up
+            // V8's own error, which is what body-parser hands on: its message says where the parse
+            // gave up, and it is still the SyntaxError an application may be testing for
             const err = /** @type {any} */ (e);
-            return next(bodyError(err.message, 400, "entity.parse.failed", { body: text }));
+            return next(asBodyError(err, 400, "entity.parse.failed", { body: text }));
         }
 
         next();
