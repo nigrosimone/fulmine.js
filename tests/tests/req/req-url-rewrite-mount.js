@@ -36,6 +36,18 @@ app.get("/clean/target", (req, res) => {
     res.json({ clean: true, query: req.query, url: req.url, originalUrl: req.originalUrl });
 });
 
+// inside a mounted router the assigned url routes as it is: the inner /target answers, no
+// mangling, because express only restores at the outer layer
+const inner = express.Router();
+inner.use((req, res, next) => {
+    req.url = "/target?x=4";
+    next();
+});
+inner.get("/target", (req, res) => {
+    res.json({ inner: true, query: req.query, url: req.url, baseUrl: req.baseUrl });
+});
+app.use("/mounted", inner);
+
 app.listen(13763, async () => {
     console.log("Server is running on port 13763");
 
@@ -43,7 +55,8 @@ app.listen(13763, async () => {
         () => fetchTest("http://localhost:13763/found").then((res) => res.text()),
         () => fetchTest("http://localhost:13763/gone").then((res) => res.text()),
         () => fetchTest("http://localhost:13763/gone?a=b").then((res) => res.text()),
-        () => fetchTest("http://localhost:13763/clean/sub").then((res) => res.text())
+        () => fetchTest("http://localhost:13763/clean/sub").then((res) => res.text()),
+        () => fetchTest("http://localhost:13763/mounted").then((res) => res.text())
     ]);
 
     console.log(responses);

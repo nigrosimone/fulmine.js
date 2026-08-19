@@ -480,12 +480,14 @@ class Walk {
         if (thingamabob) {
             if (thingamabob === "route" || thingamabob === "router") {
                 if (route.use && !route.keepMount) {
+                    const taken = req._stack.pop();
                     // a rewrite done inside this middleware is taken now: the pop below recomputes
-                    // req.url from the original path and would silently revert it
+                    // req.url from the original path and would silently revert it. The slashAdded
+                    // mangle belongs to the mount that consumed a prefix, not to a pathless use
                     if (req.url !== req._lastUrl) {
-                        req._absorbUrlRewrite();
+                        req._absorbUrlRewrite(taken !== 0);
                     }
-                    req._consumed -= req._stack.pop();
+                    req._consumed -= taken;
                     setMountedPath(req);
                     restoreApp(route, req);
                 }

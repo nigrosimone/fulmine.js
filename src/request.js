@@ -1225,19 +1225,25 @@ module.exports = class Request extends LazyReadable {
      * path, and req.query reflects the new query string. The assigned url is relative to the
      * mount the request is currently in, as it is in express, so the absolute path is rebuilt
      * from the piece the mounts had consumed.
+     *
+     * @param {boolean} [leavingMount] the caller is popping the mount the rewrite happened in
      */
-    _absorbUrlRewrite() {
-        let newUrl = String(this.url);
+    _absorbUrlRewrite(leavingMount) {
+        const assignedUrl = String(this.url);
+        let newUrl = assignedUrl;
         // the prefix the mounts consumed: everything of the absolute path the relative one was not
         const lastQueryIndex = this._lastUrl.indexOf("?");
         const oldPath = lastQueryIndex === -1 ? this._lastUrl : this._lastUrl.slice(0, lastQueryIndex);
         let prefix;
         if (oldPath === "/" && !this._originalPath.endsWith("/")) {
             prefix = this._originalPath;
-            // express's slashAdded restore: the mount consumed the whole path, so the "/" the
-            // middleware saw was invented, and leaving the mount strips the first character of
-            // whatever was assigned before rejoining ("/found" + "target" is "/foundtarget")
-            newUrl = newUrl.slice(1);
+            // express's slashAdded restore, applied where express applies it, on the way out of a
+            // mount that consumed the whole path: the "/" the middleware saw was invented, and the
+            // rejoin strips the first character of whatever was assigned ("/found" + "target" is
+            // "/foundtarget"). Inside the mount the assigned url routes as it is, as express does
+            if (leavingMount === true) {
+                newUrl = newUrl.slice(1);
+            }
         } else {
             prefix = this._originalPath.slice(0, this._originalPath.length - oldPath.length);
         }
@@ -1252,7 +1258,9 @@ module.exports = class Request extends LazyReadable {
         this._opPath = newPath;
         this._opPathLower = null;
         this._mayFailDecode = null;
-        this._lastUrl = newUrl;
+        // the assigned string, not the mangled one: the compare against req.url must go quiet or
+        // the next hop absorbs the same rewrite again with a different prefix
+        this._lastUrl = assignedUrl;
     }
 
     /**
