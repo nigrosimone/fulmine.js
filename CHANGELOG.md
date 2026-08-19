@@ -1,5 +1,18 @@
 # Changelog
 
+## [5.14.0](https://github.com/nigrosimone/fulmine.js/compare/v5.13.3...v5.14.0) (2026-08-19)
+
+### Features
+
+* **types:** res.aborted is declared, and a ws handler may narrow the request it was given ([5233343](https://github.com/nigrosimone/fulmine.js/commit/5233343d0ba51410cef210426fa174aa297f9d2c))
+* **types:** the application, the socket and the behaviour of ws() are importable by name ([3c919e1](https://github.com/nigrosimone/fulmine.js/commit/3c919e1ae1b2f718ae4480a957433f80f3e055be))
+
+### Bug Fixes
+
+* **body:** the parser errors carry the name and the class http-errors gives them ([2adbb23](https://github.com/nigrosimone/fulmine.js/commit/2adbb23389ab47e4b6803b7930c73719e7803940))
+* **types:** the ws handlers keep uWS's own return types, so an async open or message is not an error ([510e868](https://github.com/nigrosimone/fulmine.js/commit/510e8685d04aa2f86afb04ba5db1384b37b3c151))
+* **websocket:** an upgrade whose client left sees res.aborted while it is still awaiting ([9bfcd06](https://github.com/nigrosimone/fulmine.js/commit/9bfcd06c3f2bf6be2f08becfe1602c065a4fb48f))
+
 ## [5.13.3](https://github.com/nigrosimone/fulmine.js/compare/v5.13.2...v5.13.3) (2026-08-18)
 
 ### Bug Fixes
