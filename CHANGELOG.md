@@ -1,5 +1,19 @@
 # Changelog
 
+## [5.15.1](https://github.com/nigrosimone/fulmine.js/compare/v5.15.0...v5.15.1) (2026-08-19)
+
+### Bug Fixes
+
+* **router:** a req.url rewrite inside a prefix mount restores as express does, and the 404 prints originalUrl ([4c76047](https://github.com/nigrosimone/fulmine.js/commit/4c760475737f4cbe5a3edc38a792b668634c28e8))
+* **router:** a rewrite that falls out of a mount that consumed the whole path rejoins as express does ([4e27339](https://github.com/nigrosimone/fulmine.js/commit/4e273394d9d75bf11732584407ce5e6a577945a1))
+* **router:** the slashAdded mangle belongs to the mount that consumed a prefix, not to a pathless use inside it ([38458de](https://github.com/nigrosimone/fulmine.js/commit/38458ded46a737226f13ec26c324e376f3a55d85))
+
+### Performance Improvements
+
+* **middlewares,response:** the context bind drops node's wrapper, and constant headers stop re-proving themselves ([86af580](https://github.com/nigrosimone/fulmine.js/commit/86af5804ccab87c4827d345b08b54793de7544b9))
+* **request,response:** the second req.query read replays the first parse, and the hot path drops dead reads ([deca0d2](https://github.com/nigrosimone/fulmine.js/commit/deca0d2c1b67c47bcba436aa5dbeff57eb1d8f81))
+* **router:** the generic scan asks an index for its literal routes, and the hop pays only for what it uses ([4164ca3](https://github.com/nigrosimone/fulmine.js/commit/4164ca3adcb115dfac40347eca4d91da4bf6a00b))
+
 ## [5.15.0](https://github.com/nigrosimone/fulmine.js/compare/v5.14.0...v5.15.0) (2026-08-19)
 
 ### Features
