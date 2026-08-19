@@ -1201,16 +1201,22 @@ module.exports = class Request extends LazyReadable {
      * from the piece the mounts had consumed.
      */
     _absorbUrlRewrite() {
-        const newUrl = String(this.url);
-        const queryIndex = newUrl.indexOf("?");
-        const newPath = queryIndex === -1 ? newUrl : newUrl.slice(0, queryIndex);
+        let newUrl = String(this.url);
         // the prefix the mounts consumed: everything of the absolute path the relative one was not
         const lastQueryIndex = this._lastUrl.indexOf("?");
         const oldPath = lastQueryIndex === -1 ? this._lastUrl : this._lastUrl.slice(0, lastQueryIndex);
-        const prefix =
-            oldPath === "/" && !this._originalPath.endsWith("/")
-                ? this._originalPath
-                : this._originalPath.slice(0, this._originalPath.length - oldPath.length);
+        let prefix;
+        if (oldPath === "/" && !this._originalPath.endsWith("/")) {
+            prefix = this._originalPath;
+            // express's slashAdded restore: the mount consumed the whole path, so the "/" the
+            // middleware saw was invented, and leaving the mount strips the first character of
+            // whatever was assigned before rejoining ("/found" + "target" is "/foundtarget")
+            newUrl = newUrl.slice(1);
+        } else {
+            prefix = this._originalPath.slice(0, this._originalPath.length - oldPath.length);
+        }
+        const queryIndex = newUrl.indexOf("?");
+        const newPath = queryIndex === -1 ? newUrl : newUrl.slice(0, queryIndex);
         this._rawQuery = queryIndex === -1 ? "" : newUrl.slice(queryIndex + 1);
         // a rewrite to "/a?" keeps its "?", as one arriving that way does
         this.urlQuery = queryIndex === -1 ? "" : "?" + this._rawQuery;

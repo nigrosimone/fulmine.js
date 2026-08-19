@@ -3132,8 +3132,12 @@ module.exports = class Router extends EventEmitter {
             return;
         }
         response.status(404);
-        // the whole path, not what a mount left behind in req.path
-        this._sendErrorPage(request, response, `Cannot ${request.method} ${request._originalPath}`, false);
+        // the pathname of originalUrl, as express's finalhandler prints it: _originalPath absorbs
+        // a req.url rewrite, originalUrl never changes
+        const originalUrl = String(request.originalUrl);
+        const queryIndex = originalUrl.indexOf("?");
+        const pathname = queryIndex === -1 ? originalUrl : originalUrl.slice(0, queryIndex);
+        this._sendErrorPage(request, response, `Cannot ${request.method} ${pathname}`, false);
     }
 };
 
