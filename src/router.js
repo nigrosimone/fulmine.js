@@ -242,36 +242,45 @@ class Walk {
             // frozen here, once per scan: _pathMatches reads the two flags as bare fields, and
             // calling this per route measured 0.45us of a scan of four hundred
             router._freezeRoutingFlags();
-            // written out rather than through a predicate handed to findIndexStartingFrom, which
-            // was one closure per hop of every request not on a compiled chain
-            for (; routeIndex < routes.length; routeIndex++) {
-                const r = routes[routeIndex];
-                // A HEAD request enters a route whose path matched even when its verb cannot serve
-                // one: express exempts HEAD from the method check ("if (!hasMethod && method !==
-                // 'HEAD')" in router/index.js), so the layer's parameters are captured and its
-                // param() callbacks run before the route is dropped. Only asked when the router has
-                // callbacks to run, since entering a route to step straight back out of it is
-                // otherwise pure cost with nothing to show for it. runRoute steps over it.
-                if (!(
-                    r.all ||
-                    r.method === req.method ||
-                    req._isOptions ||
-                    (req._isHead && (r.gettable || r.paramCallbacks.size > 0))
-                )) {
-                    // taken only to fail: _preprocessRequest decodes again and turns it into the
-                    // error, so the handlers of a route this request cannot run never see it
-                    if (mayFailDecode && router._pathMatches(r, req) && router._paramsFailToDecode(r, req)) {
-                        break;
-                    }
-                    continue;
-                }
-                if (router._pathMatches(r, req)) {
-                    // matched, and then stepped over: a body parser this request gets nothing out
-                    // of costs a hop and answers with next() at the end of it
-                    if (r.bodyParserOnly === true && stepsOver(r, req)) {
+            if (routes === router._routes) {
+                // the router's own table has an index over its literal routes, so the scan visits
+                // the handful that could match instead of every one, see _scanFrom
+                routeIndex = router._scanFrom(req, routeIndex, mayFailDecode);
+            } else {
+                // a compiled chain's own array, always short: the linear scan stays.
+                // Written out rather than through a predicate handed to findIndexStartingFrom,
+                // which was one closure per hop of every request not on a compiled chain
+                const method = req.method;
+                const length = routes.length;
+                for (; routeIndex < length; routeIndex++) {
+                    const r = routes[routeIndex];
+                    // A HEAD request enters a route whose path matched even when its verb cannot
+                    // serve one: express exempts HEAD from the method check ("if (!hasMethod &&
+                    // method !== 'HEAD')" in router/index.js), so the layer's parameters are
+                    // captured and its param() callbacks run before the route is dropped. Only
+                    // asked when the router has callbacks to run, since entering a route to step
+                    // straight back out of it is otherwise pure cost. runRoute steps over it.
+                    if (!(
+                        r.all ||
+                        r.method === method ||
+                        req._isOptions ||
+                        (req._isHead && (r.gettable || r.paramCallbacks.size > 0))
+                    )) {
+                        // taken only to fail: _preprocessRequest decodes again and turns it into
+                        // the error, so the handlers of a route this request cannot run never see it
+                        if (mayFailDecode && router._pathMatches(r, req) && router._paramsFailToDecode(r, req)) {
+                            break;
+                        }
                         continue;
                     }
-                    break;
+                    if (router._pathMatches(r, req)) {
+                        // matched, and then stepped over: a body parser this request gets nothing
+                        // out of costs a hop and answers with next() at the end of it
+                        if (r.bodyParserOnly === true && stepsOver(r, req)) {
+                            continue;
+                        }
+                        break;
+                    }
                 }
             }
         }
@@ -467,6 +476,58 @@ class Walk {
     }
 
     /**
+     * Leaves the route the walk is on: the mount pop, the router hand-back, and the hop to the
+     * route after. Out of step so the commonest hop, callbacks exhausted by a plain next(), goes
+     * here without re-running step's prologue and compares.
+     *
+     * @param {boolean} isRouter next("router") rather than next("route")
+     */
+    leaveHop(isRouter) {
+        const req = this.req;
+        const route = this.route;
+        if (route.use && !route.keepMount) {
+            const taken = req._stack.pop();
+            // a rewrite done inside this middleware is taken now: the pop below recomputes
+            // req.url from the original path and would silently revert it. The slashAdded
+            // mangle belongs to the mount that consumed a prefix, not to a pathless use
+            if (req.url !== req._lastUrl) {
+                req._absorbUrlRewrite(taken !== 0);
+                req._consumed -= taken;
+                setMountedPath(req);
+            } else if (taken !== 0) {
+                // a pathless use consumed nothing and rewrote nothing, so the recompute would
+                // write back the very values it reads
+                req._consumed -= taken;
+                setMountedPath(req);
+            }
+            restoreApp(route, req);
+        }
+        if (isRouter) {
+            if (this.skipCheck) {
+                // on a compiled chain, leaving the router is what running out of chain
+                // already means: ordinary routing takes over after the mount. With no
+                // mount in the chain the router being left is the app's own, and nothing
+                // of it may run afterwards, not even a middleware registered later
+                if (this.skipUntil?.keepMount) {
+                    return this.dispatch(this.routes.length);
+                }
+                return this.resolve(false);
+            }
+            // out of this router entirely, so whoever mounted it carries on after the
+            // mount. The app's own walk has nobody after it, and answers 404
+            return this.resolve(false);
+        }
+        req.routeCount++;
+        // dispatch is a plain call, so a synchronous throw would escape here instead of
+        // rejecting, as it used to when this recursed through the async _routeRequest
+        try {
+            return this.dispatch(this.routeIndex + 1);
+        } catch (err) {
+            return this.reject(err);
+        }
+    }
+
+    /**
      * One hop, which is what next() does: with nothing, run the route's next callback; with "route",
      * leave the route; with anything else, remember it as the error and carry on.
      *
@@ -479,41 +540,7 @@ class Walk {
         const router = this.router;
         if (thingamabob) {
             if (thingamabob === "route" || thingamabob === "router") {
-                if (route.use && !route.keepMount) {
-                    const taken = req._stack.pop();
-                    // a rewrite done inside this middleware is taken now: the pop below recomputes
-                    // req.url from the original path and would silently revert it. The slashAdded
-                    // mangle belongs to the mount that consumed a prefix, not to a pathless use
-                    if (req.url !== req._lastUrl) {
-                        req._absorbUrlRewrite(taken !== 0);
-                    }
-                    req._consumed -= taken;
-                    setMountedPath(req);
-                    restoreApp(route, req);
-                }
-                if (thingamabob === "router") {
-                    if (this.skipCheck) {
-                        // on a compiled chain, leaving the router is what running out of chain
-                        // already means: ordinary routing takes over after the mount. With no
-                        // mount in the chain the router being left is the app's own, and nothing
-                        // of it may run afterwards, not even a middleware registered later
-                        if (this.skipUntil?.keepMount) {
-                            return this.dispatch(this.routes.length);
-                        }
-                        return this.resolve(false);
-                    }
-                    // out of this router entirely, so whoever mounted it carries on after the
-                    // mount. The app's own walk has nobody after it, and answers 404
-                    return this.resolve(false);
-                }
-                req.routeCount++;
-                // dispatch is a plain call, so a synchronous throw would escape here instead of
-                // rejecting, as it used to when this recursed through the async _routeRequest
-                try {
-                    return this.dispatch(this.routeIndex + 1);
-                } catch (err) {
-                    return this.reject(err);
-                }
+                return this.leaveHop(thingamabob === "router");
             } else {
                 req._error = thingamabob;
                 req._errorKey = route.routeKey;
@@ -523,7 +550,7 @@ class Walk {
         const kind = route.callbackKinds[this.callbackIndex];
         const callback = route.callbacks[this.callbackIndex++];
         if (!callback) {
-            return this.step("route");
+            return this.leaveHop(false);
         }
         // skipping routes we already went through via optimized path. Before the Router branch
         // below and not after it: a mount whose chain was compiled has already run, and running it
@@ -717,6 +744,10 @@ function mountPrefixLength(route, req) {
     if (route.pattern === EMPTY_REGEX) {
         return 0;
     }
+    // the registration-time constant of a literal mount, exec-free. See createRoute
+    if (route.mountLen !== undefined) {
+        return route.mountLen;
+    }
     if (typeof route.pattern === "string") {
         return route.pattern.length;
     }
@@ -801,6 +832,61 @@ function ownParamNames(route) {
 function mergesParams(route, fallback) {
     const owner = route.owner ?? fallback;
     return Boolean(owner?._settings?.mergeParams);
+}
+
+// shared empty candidate list, so _scanFrom never tests for a missing map entry twice
+const EMPTY_INDICES = /** @type {number[]} */ ([]);
+
+/**
+ * The generic scan's index over a router's literal routes: route positions by folded pattern, so
+ * a scan visits the routes registered for this exact path instead of comparing every one. String
+ * patterns are pure literals, everything else, "/*" included, stays in alwaysVisit and is still
+ * matched per request by _pathMatches.
+ *
+ * @param {any[]} routes the router's own table
+ * @param {boolean} caseFlag the frozen case-sensitivity flag
+ * @returns {{map: Map<string, number[]>, alwaysVisit: number[]}}
+ */
+function buildLiteralIndex(routes, caseFlag) {
+    const map = new Map();
+    const alwaysVisit = [];
+    for (let i = 0; i < routes.length; i++) {
+        const pattern = routes[i].pattern;
+        if (typeof pattern === "string" && pattern !== "/*") {
+            const key = caseFlag ? pattern : routes[i].patternLower;
+            const list = map.get(key);
+            if (list === undefined) {
+                map.set(key, [i]);
+            } else {
+                list.push(i);
+            }
+        } else {
+            alwaysVisit.push(i);
+        }
+    }
+    return { map, alwaysVisit };
+}
+
+/**
+ * The position of the first value >= from in an ascending list, which is list.length when there
+ * is none: where a scan resuming at `from` enters a candidate list.
+ *
+ * @param {number[]} list
+ * @param {number} from
+ * @returns {number}
+ */
+function firstAtLeast(list, from) {
+    let low = 0;
+    let high = list.length;
+    while (low < high) {
+        const mid = (low + high) >> 1;
+        if (list[mid] < from) {
+            low = mid + 1;
+        } else {
+            high = mid;
+        }
+    }
+    return low;
 }
 
 /**
@@ -1715,6 +1801,90 @@ module.exports = class Router extends EventEmitter {
     }
 
     /**
+     * The generic scan over this router's own table, driven by the literal index: only the routes
+     * registered for this exact path, plus every non-literal route, are visited, in registration
+     * order, and each visited one still answers through the same method gate and _pathMatches the
+     * plain loop used. The routes skipped are exactly the literals whose string compare provably
+     * fails, so the first index this answers is the one the plain loop found.
+     *
+     * Runs after _freezeRoutingFlags, which is what makes _caseFlag and _strictFlag readable here
+     * and the lazily built index stable.
+     *
+     * @param {any} req
+     * @param {number} startIndex where to resume the scan
+     * @param {boolean} mayFailDecode whether the path carries a percent escape
+     * @returns {number} the index of the route to enter, or the table length for none
+     */
+    _scanFrom(req, startIndex, mayFailDecode) {
+        const routes = this._routes;
+        const index = (this._literalIndex ??= buildLiteralIndex(routes, /** @type {boolean} */ (this._caseFlag)));
+        let path = req._opPath;
+        if (path === "") {
+            path = "/";
+        }
+        if (!this._caseFlag) {
+            path = req._opPathLower ??= path.toLowerCase();
+        }
+        const exact = index.map.get(path) ?? EMPTY_INDICES;
+        // the trailing-slash twin _pathMatches allows outside strict routing, as a key: a path
+        // "/a/" can only text-match a literal "/a", so that list joins the candidates
+        const slashed =
+            !this._strictFlag && path.charCodeAt(path.length - 1) === 0x2f
+                ? (index.map.get(path.slice(0, -1)) ?? EMPTY_INDICES)
+                : EMPTY_INDICES;
+        const always = index.alwaysVisit;
+        let exactAt = firstAtLeast(exact, startIndex);
+        let slashedAt = firstAtLeast(slashed, startIndex);
+        let alwaysAt = firstAtLeast(always, startIndex);
+        const method = req.method;
+        const none = routes.length;
+        for (;;) {
+            // the next candidate in registration order, from whichever list holds it
+            let routeIndex = none;
+            if (exactAt < exact.length && exact[exactAt] < routeIndex) {
+                routeIndex = exact[exactAt];
+            }
+            if (slashedAt < slashed.length && slashed[slashedAt] < routeIndex) {
+                routeIndex = slashed[slashedAt];
+            }
+            if (alwaysAt < always.length && always[alwaysAt] < routeIndex) {
+                routeIndex = always[alwaysAt];
+            }
+            if (routeIndex === none) {
+                return none;
+            }
+            if (exactAt < exact.length && exact[exactAt] === routeIndex) {
+                exactAt++;
+            }
+            if (slashedAt < slashed.length && slashed[slashedAt] === routeIndex) {
+                slashedAt++;
+            }
+            if (alwaysAt < always.length && always[alwaysAt] === routeIndex) {
+                alwaysAt++;
+            }
+            const r = routes[routeIndex];
+            // the same gates as the plain loop, comments and all: see dispatch
+            if (!(
+                r.all ||
+                r.method === method ||
+                req._isOptions ||
+                (req._isHead && (r.gettable || r.paramCallbacks.size > 0))
+            )) {
+                if (mayFailDecode && this._pathMatches(r, req) && this._paramsFailToDecode(r, req)) {
+                    return routeIndex;
+                }
+                continue;
+            }
+            if (this._pathMatches(r, req)) {
+                if (r.bodyParserOnly === true && stepsOver(r, req)) {
+                    continue;
+                }
+                return routeIndex;
+            }
+        }
+    }
+
+    /**
      * Whether a route's path matches this request. A plain string compares directly, which is what
      * makes a route eligible for the native router; anything carrying a parameter or a wildcard was
      * turned into a regular expression when it was registered.
@@ -1889,6 +2059,13 @@ module.exports = class Router extends EventEmitter {
                 // the "body methods" setting as it stood the first time this layer was reached,
                 // kept the way the parser behind it keeps it. undefined until then
                 bodyMethods: undefined,
+                // a literal mount consumes exactly its registered text, so what the per-hop exec
+                // in mountPrefixLength answers is a constant. "/" stays with the exec: its clamp
+                // against a parent that consumed everything is not a constant
+                mountLen:
+                    method === "USE" && typeof path === "string" && path.length > 1 && !/[:*{\\]/.test(path)
+                        ? path.length
+                        : undefined,
                 // a mount written as a RegExp matches a piece of path that is not known until a
                 // request comes in, so its stack entry cannot be the path itself
                 regexMount: method === "USE" && path instanceof RegExp,
@@ -1939,6 +2116,8 @@ module.exports = class Router extends EventEmitter {
             routes.push(route);
         }
         this._routes.push(...routes);
+        // the literal index positions are stale the moment the table grows
+        this._literalIndex = undefined;
 
         // anything registered after listen invalidates what the header-skip analysis proved:
         // it could catch a throw or read what a chain never did, so every skip is taken back
@@ -2768,14 +2947,16 @@ module.exports = class Router extends EventEmitter {
                 raiseDecodeFailure(req, route, err);
                 return "route";
             }
-            if (mergesParams(route, this) && req._paramStack !== null && req._paramStack.length > 0) {
+            // the stack check first: it is two field loads, mergesParams is a call, and almost
+            // no request carries a param stack at all
+            if (req._paramStack !== null && req._paramStack.length > 0 && mergesParams(route, this)) {
                 req.params = mergeParams(req.params, req._paramStack);
             }
         } else {
             // express 5 gives every matched route null-prototype params; only a pathless
             // middleware layer keeps the plain object, as its router hands one to fast_slash
             req.params = route.use && route.path === "" ? {} : Object.create(null);
-            if (mergesParams(route, this) && req._paramStack !== null && req._paramStack.length > 0) {
+            if (req._paramStack !== null && req._paramStack.length > 0 && mergesParams(route, this)) {
                 req.params = mergeParams(req.params, req._paramStack);
             }
         }
