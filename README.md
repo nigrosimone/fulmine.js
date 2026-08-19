@@ -296,6 +296,10 @@ A single-stage `node:26-trixie-slim` image works too if you `apt-get install -y 
 
 ## Differences from Express
 
+What the two servers answer on the wire, probed from outside, malformed input and smuggling
+attempts included: [fulmine.js on http-probe.com](https://www.http-probe.com/servers/fulmine-js.html)
+against [express](https://www.http-probe.com/servers/express.html).
+
 - `app.listen()` returns the app rather than a separate server object, and the app answers as an `http.Server`: `app instanceof http.Server` is true, which is what the graceful shutdown wrappers and the connection trackers look for. There is still no node server underneath, the socket belongs to µWS, so what is answered is the surface and not the plumbing. There: `close()`, `address()`, `listening`, `getConnections()`, `ref()`, `unref()`, `setTimeout()` and the `keepAliveTimeout` family. Not there: nothing emits `connection`, `request` or `upgrade`, `getConnections()` counts the requests in flight rather than sockets, and the timeouts belong to µWS and are set through `uwsOptions.idleTimeout`. Anything that wants to serve its own protocol on the socket, socket.io being the usual case, still wants `app.uwsApp`. Runnable: [`examples/graceful-shutdown.js`](./examples/graceful-shutdown.js).
 - `x-powered-by` is disabled by default. Express sends `X-Powered-By: Express` unless you turn it off; Fulmine does not send it unless you turn it on with `app.set("x-powered-by", true)`. The header only tells anyone asking which framework is running.
 - request body is only read for POST, PUT, PATCH and QUERY requests by default. You can add additional methods by setting `body methods` to array with uppercased methods.
