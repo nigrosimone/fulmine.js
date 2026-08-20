@@ -11,6 +11,11 @@
 //   node benchmark/ab.js --against main --scenario routes-1000 --rounds 9
 //   node benchmark/ab.js --null                 # same code both sides, to see the noise floor
 //   node benchmark/ab.js --against main --pipelining 1   # one request per connection at a time
+//   node benchmark/ab.js --null --node-options "--max-semi-space-size=32"   # a node flag, one arm only
+//
+// --node-options goes to the candidate server and to nothing else, so a run measures a node or V8
+// flag the way --against measures a revision: same code both sides, one arm started differently.
+// Its control is the same command without it.
 //
 // The figure to read is the median of the per-round ratios. If it sits inside the spread that
 // --null produces on the same machine, the change did not move anything this can see.
@@ -27,6 +32,10 @@ const { startScenarioServer, waitForReady, stopScenarioServer, addWorktree, remo
 const BASELINE = { id: "fulmine", label: "baseline", port: 3100 };
 const CANDIDATE = { id: "fulmine", label: "candidate", port: 3101 };
 
+// switches whose value is itself a flag, so the next argument is theirs however it starts:
+// --node-options "--max-semi-space-size=32" read as two switches and dropped the value
+const TAKES_A_VALUE = new Set(["node-options"]);
+
 function parseArgs(argv) {
     const args = {};
     for (let i = 0; i < argv.length; i++) {
@@ -36,7 +45,7 @@ function parseArgs(argv) {
         }
         const key = value.slice(2);
         const next = argv[i + 1];
-        if (next === undefined || next.startsWith("--")) {
+        if (next === undefined || (next.startsWith("--") && !TAKES_A_VALUE.has(key))) {
             args[key] = true;
         } else {
             args[key] = next;
@@ -87,6 +96,10 @@ async function main() {
     const rounds = Number(args.rounds || 7);
     const durationSeconds = Number(args.duration || 5);
     const against = args.null ? null : args.against;
+    if (args["node-options"] === true) {
+        throw new Error('give the flags to --node-options, as --node-options "--max-semi-space-size=32"');
+    }
+    const nodeOptions = args["node-options"] || null;
 
     if (!against && !args.null) {
         throw new Error("give a revision with --against <ref>, or --null to measure the noise floor");
@@ -111,6 +124,9 @@ async function main() {
     }
 
     const label = against ? `${against} (baseline) vs working tree (candidate)` : "working tree against itself";
+    if (nodeOptions) {
+        process.stdout.write(`candidate node options: ${nodeOptions}\n`);
+    }
     process.stdout.write(
         `${scenario.name}: ${label}, ${rounds} rounds of ${durationSeconds}s at ${connections} connections, pipelining ${pipelining}\n\n`
     );
@@ -126,6 +142,11 @@ async function main() {
         // has already amortised
         for (const arm of arms) {
             const env = arm.src ? { FULMINE_SRC: arm.src, NODE_ENV: "production" } : { NODE_ENV: "production" };
+            // the candidate is the arm that carries the change, so it is the one a node flag goes
+            // to as well; the baseline stays the plain server it always was
+            if (nodeOptions && arm.framework === CANDIDATE) {
+                env.NODE_OPTIONS = `${process.env.NODE_OPTIONS ? process.env.NODE_OPTIONS + " " : ""}${nodeOptions}`;
+            }
             const handle = startScenarioServer(arm.framework, scenarioName, env);
             await waitForReady(handle.server, arm.framework, scenarioName);
             started.push(handle);

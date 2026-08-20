@@ -83,6 +83,23 @@ CPU microseconds the server spends per request, and a noisy neighbour stealing c
 throughput without changing how much work a request costs, so it survives conditions that make this
 harness useless.
 
+### A node flag instead of a revision
+
+`--node-options` starts the candidate server with flags of its own and leaves the baseline alone, so
+the same code runs on both sides and only the flag differs. The control is the same command without
+it.
+
+```bash
+npm run benchmark:ab -- --null --rounds 15 --node-options "--max-semi-space-size=64"
+```
+
+There is nothing in that flag, the one usually suggested for a server that allocates a lot, measured
+on 2026-08-20 on `routing/api-endpoint`: `=64` read 1.0105 between controls of 0.9952 and 0.9853 from
+the same sitting, and `=1`, which should have hurt, read 0.9918. The profiler says why, and it is the
+reading to keep: the garbage collector is 381 us per thousand requests against 15.0 us of CPU per
+request, 2.5% of it, on a row that is 62% idle. Collecting on both servers between the warmup and the
+measured rounds was tried in the same sitting and did not narrow the spread either.
+
 ## Where the time goes
 
 ```bash
