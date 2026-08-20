@@ -1,5 +1,15 @@
 # Changelog
 
+## [5.16.0](https://github.com/nigrosimone/fulmine.js/compare/v5.15.1...v5.16.0) (2026-08-20)
+
+### Features
+
+* **compression:** the encodings option names what the middleware may answer with ([18720a0](https://github.com/nigrosimone/fulmine.js/commit/18720a0d0f6c5b4b1d27b0a386796f1ec38675a7))
+
+### Bug Fixes
+
+* **benchmark:** a row is marked only when fulmine's own arm moved, not when express wobbled ([af781ea](https://github.com/nigrosimone/fulmine.js/commit/af781eabbd4dca16f7b63d6922cffaf084fc7bcd))
+
 ## [5.15.1](https://github.com/nigrosimone/fulmine.js/compare/v5.15.0...v5.15.1) (2026-08-19)
 
 ### Bug Fixes
