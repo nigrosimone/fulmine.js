@@ -19,7 +19,8 @@ module.exports = {
         // every answer here is written from a later tick. At pipelining 10 the server answered
         // nothing at all and this row read as broken. Checked on a bare µWebSockets.js
         // application with none of this project in it, and it does the same, so it is not
-        // something a change here can fix: express answers all of them.
+        // something a change here can fix: express answers all of them. Reported upstream as
+        // uNetworking/uWebSockets.js#1301.
         pipelining: 1
     },
     request: {
