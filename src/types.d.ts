@@ -17,7 +17,7 @@ limitations under the License.
 declare module "fulmine.js" {
     import e from "express";
     import uWS from "uWebSockets.js";
-    import { ZlibOptions, BrotliOptions } from "zlib";
+    import { ZlibOptions, BrotliOptions, ZstdOptions } from "zlib";
 
     type Settings = {
         uwsOptions?: uWS.AppOptions;
@@ -50,12 +50,14 @@ declare module "fulmine.js" {
             enforceEncoding?: string;
             /** Brotli options. The default quality is 4. */
             brotli?: BrotliOptions;
+            /** Zstd options. Node's own defaults. Offered only where zlib has zstd. */
+            zstd?: ZstdOptions;
             /**
              * The encodings this middleware may answer with; what is not named is never used,
              * however the client ranks it. Fulmine's own option, the compression module has no
              * equivalent. An uncompressed answer is always on offer.
              */
-            encodings?: ("br" | "gzip" | "deflate" | "identity")[];
+            encodings?: ("br" | "zstd" | "gzip" | "deflate" | "identity")[];
         }
         // what listen() decided about each route, for a test to hold on to
         interface RouteVerdict {

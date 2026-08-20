@@ -734,9 +734,11 @@ serverTest(
 );
 
 test("encodings refuses a name nobody knows, at creation and not per request", () => {
-    assert.throws(() => express.compression({ encodings: ["zstd"] }), {
+    // "zstd" used to be the example here, and stopped being one when it became an answer this
+    // middleware can give. What is left has to be a name no version of it will ever take
+    assert.throws(() => express.compression({ encodings: ["lzma"] }), {
         name: "TypeError",
-        message: 'unknown encoding "zstd" in encodings'
+        message: 'unknown encoding "lzma" in encodings'
     });
     assert.throws(() => express.compression({ encodings: "gzip" }), {
         name: "TypeError"

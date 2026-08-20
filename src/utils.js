@@ -849,7 +849,8 @@ function stringify(value, replacer, spaces, escape) {
 const ENCODING_BR = 1;
 const ENCODING_GZIP = 2;
 const ENCODING_DEFLATE = 4;
-const ENCODING_ANY = ENCODING_BR | ENCODING_GZIP | ENCODING_DEFLATE;
+const ENCODING_ZSTD = 8;
+const ENCODING_ANY = ENCODING_BR | ENCODING_GZIP | ENCODING_DEFLATE | ENCODING_ZSTD;
 
 /**
  * The encoding to answer with, read straight off Accept-Encoding rather than through negotiator:
@@ -864,12 +865,15 @@ const ENCODING_ANY = ENCODING_BR | ENCODING_GZIP | ENCODING_DEFLATE;
  * answer is always on offer, and is what an empty header ends up choosing.
  *
  * @param {string} accept the header, or "" when the request carried none
- * @param {number} allowed ENCODING_BR, ENCODING_GZIP and ENCODING_DEFLATE, or'd together
- * @returns {string} "br", "gzip", "deflate", "identity", or "" when nothing is acceptable
+ * @param {number} allowed ENCODING_BR, ENCODING_ZSTD, ENCODING_GZIP and ENCODING_DEFLATE, or'd
+ *   together
+ * @returns {string} "br", "zstd", "gzip", "deflate", "identity", or "" when nothing is
+ *   acceptable
  */
 function negotiateEncoding(accept, allowed) {
     // -1 while a name has not appeared: q=0 is a refusal and has to be told apart from silence
     let br = -1;
+    let zstd = -1;
     let gzip = -1;
     let deflate = -1;
     let identity = -1;
@@ -907,6 +911,9 @@ function negotiateEncoding(accept, allowed) {
             case "gzip":
                 gzip = q;
                 break;
+            case "zstd":
+                zstd = q;
+                break;
             case "deflate":
                 deflate = q;
                 break;
@@ -920,6 +927,7 @@ function negotiateEncoding(accept, allowed) {
         index = end + 1;
     }
     if (br < 0) br = star;
+    if (zstd < 0) zstd = star;
     if (gzip < 0) gzip = star;
     if (deflate < 0) deflate = star;
     // An uncompressed answer that the request did not name is worth the lowest q it named
@@ -929,6 +937,7 @@ function negotiateEncoding(accept, allowed) {
     if (identity < 0) identity = star < 0 ? minQuality : star;
 
     if (!(allowed & ENCODING_BR)) br = -1;
+    if (!(allowed & ENCODING_ZSTD)) zstd = -1;
     if (!(allowed & ENCODING_GZIP)) gzip = -1;
     if (!(allowed & ENCODING_DEFLATE)) deflate = -1;
 
@@ -937,6 +946,12 @@ function negotiateEncoding(accept, allowed) {
     if (br > bestQ) {
         best = "br";
         bestQ = br;
+    }
+    // Below brotli on a tie, on purpose: a client that takes both is answered the way it was
+    // answered before zstd was on the list. Above gzip, which it beats on both counts.
+    if (zstd > bestQ) {
+        best = "zstd";
+        bestQ = zstd;
     }
     if (gzip > bestQ) {
         best = "gzip";
@@ -1645,6 +1660,7 @@ module.exports = {
     ENCODING_BR,
     ENCODING_GZIP,
     ENCODING_DEFLATE,
+    ENCODING_ZSTD,
     ENCODING_ANY,
     memoizeByString,
     isRangeFresh,

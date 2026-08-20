@@ -26,6 +26,9 @@ limitations under the License.
 //     write produce the same deflate output.
 //   - partial content is left alone. The compression module compresses a 206 as well, and the
 //     result is a byte range of the file described as gzip, which no client can decode.
+//   - zstd is on offer, which the compression module cannot do at all. It is ranked below brotli,
+//     so a client that takes both is answered exactly as it was before, and above gzip, which it
+//     beats on ratio and on time. A Node whose zlib has no zstd never offers it.
 //
 // The streaming half is the module's own design, because it is the right one: a transform stream,
 // its output written as it comes, and the drain listeners moved onto it so a pipe that fills up
@@ -42,17 +45,26 @@ const {
     ENCODING_BR,
     ENCODING_GZIP,
     ENCODING_DEFLATE,
+    ENCODING_ZSTD,
     memoizeByString
 } = require("./utils.js");
+
+// zstd arrived in node's zlib during the range of versions this supports, so whether it can be
+// answered at all is a question about the runtime rather than about the options
+const HAS_ZSTD = typeof zlib.zstdCompressSync === "function";
 
 // what the `encodings` option may name, and the mask each name contributes. identity is 0: an
 // uncompressed answer is always on offer, naming it only makes the list read complete
 const ENCODING_MASKS = new Map([
     ["br", ENCODING_BR],
+    ["zstd", ENCODING_ZSTD],
     ["gzip", ENCODING_GZIP],
     ["deflate", ENCODING_DEFLATE],
     ["identity", 0]
 ]);
+
+// everything on offer, which is everything the runtime can produce
+const ENCODING_DEFAULT = HAS_ZSTD ? ENCODING_ANY : ENCODING_ANY & ~ENCODING_ZSTD;
 
 // Cache-Control: no-transform forbids recoding the body, which is what this does
 const NO_TRANSFORM = /(?:^|,)\s*?no-transform\s*?(?:,|$)/;
@@ -77,8 +89,11 @@ function addVary(res) {
  */
 function noFlush() {}
 
-// what enforceEncoding is allowed to name, the compression module's list
+// what enforceEncoding is allowed to name, the compression module's list and ours
 const ENFORCEABLE = new Set(["gzip", "deflate", "identity", "br"]);
+if (HAS_ZSTD) {
+    ENFORCEABLE.add("zstd");
+}
 
 // Up to this many bytes a whole body is compressed on this thread, and above it on the libuv pool.
 // One call either way; what changes is who waits. A small body pays more for the hop onto the pool
@@ -151,11 +166,13 @@ function toBuffer(chunk, encoding) {
  * @param {string} [options.enforceEncoding] what to use when the request carries no
  *   Accept-Encoding at all. Default "identity", which is to say nothing is compressed.
  * @param {object} [options.brotli] brotli options, `params` included. The default quality is 4.
+ * @param {object} [options.zstd] zstd options, `params` included, node's own defaults otherwise.
  * @param {string[]} [options.encodings] the encodings this middleware may answer with, out of
- *   "br", "gzip" and "deflate". What is not named is never used, however the client ranks it: a
- *   server that prefers cheap gzip over brotli passes ["gzip", "deflate"]. An uncompressed answer
- *   is always on offer, and enforceEncoding stays its own explicit choice, outside this list.
- *   This option is fulmine's own, the compression module has no equivalent.
+ *   "br", "zstd", "gzip" and "deflate". What is not named is never used, however the client ranks
+ *   it: a server that prefers cheap gzip over brotli passes ["gzip", "deflate"], one that would
+ *   rather answer zstd than brotli passes ["zstd", "gzip"]. An uncompressed answer is always on
+ *   offer, and enforceEncoding stays its own explicit choice, outside this list. This option is
+ *   fulmine's own, the compression module has no equivalent.
  * @param {number} [options.level] zlib compression level, for gzip and deflate.
  * @param {number} [options.chunkSize] zlib chunk size.
  * @param {number} [options.memLevel] zlib memory level.
@@ -173,6 +190,9 @@ function compression(options) {
         [zlib.constants.BROTLI_PARAM_QUALITY]: 4,
         ...(opts.brotli && /** @type {any} */ (opts.brotli).params)
     };
+    // node's default level, unlike brotli above: zstd at its default is already in the band where
+    // this middleware wants to be, and dropping it further buys nothing worth the ratio
+    const zstdOptions = { ...opts.zstd };
     const filter = opts.filter || shouldCompress;
     const enforceEncoding = opts.enforceEncoding || "identity";
     // bytes.parse reads "1kb" and hands back null for anything it cannot, an absent option
@@ -180,7 +200,7 @@ function compression(options) {
     const threshold = bytes.parse(/** @type {any} */ (opts.threshold)) ?? 1024;
     // the mask handed to the negotiation, built once here: a name nobody knows is a config
     // mistake and throws now rather than serving the wrong bytes later
-    let allowed = ENCODING_ANY;
+    let allowed = ENCODING_DEFAULT;
     if (opts.encodings !== undefined) {
         if (!Array.isArray(opts.encodings)) {
             throw new TypeError("encodings must be an array of encoding names");
@@ -190,6 +210,9 @@ function compression(options) {
             const mask = ENCODING_MASKS.get(name);
             if (mask === undefined) {
                 throw new TypeError(`unknown encoding "${name}" in encodings`);
+            }
+            if (mask === ENCODING_ZSTD && !HAS_ZSTD) {
+                throw new TypeError(`"zstd" needs a node whose zlib has zstd, and this one does not`);
             }
             allowed |= mask;
         }
@@ -210,6 +233,9 @@ function compression(options) {
         if (method === "br") {
             return zlib.brotliCompressSync(body, brotliOptions);
         }
+        if (method === "zstd") {
+            return zlib.zstdCompressSync(body, zstdOptions);
+        }
         return zlib.deflateSync(body, zlibOptions);
     }
 
@@ -225,6 +251,8 @@ function compression(options) {
             zlib.gzip(body, zlibOptions, done);
         } else if (method === "br") {
             zlib.brotliCompress(body, brotliOptions, done);
+        } else if (method === "zstd") {
+            zlib.zstdCompress(body, zstdOptions, done);
         } else {
             zlib.deflate(body, zlibOptions, done);
         }
@@ -240,6 +268,9 @@ function compression(options) {
         }
         if (method === "br") {
             return zlib.createBrotliCompress(brotliOptions);
+        }
+        if (method === "zstd") {
+            return zlib.createZstdCompress(zstdOptions);
         }
         return zlib.createDeflate(zlibOptions);
     }
