@@ -50,6 +50,7 @@ See [Migrating](#migrating) for what it handles and what it deliberately does no
     - [NestJS](#nestjs)
     - [When Express is somebody else's dependency](#when-express-is-somebody-elses-dependency)
 - [Docker](#docker)
+- [Behind a private registry](#behind-a-private-registry)
 - [Differences from Express](#differences-from-express)
 - [Performance tips](#performance-tips)
 - [WebSockets](#websockets)
@@ -293,6 +294,79 @@ CMD ["node", "server.js"]
 ```
 
 A single-stage `node:26-trixie-slim` image works too if you `apt-get install -y git ca-certificates` before `npm ci`. Prebuilt binaries exist for x64 and arm64 on Linux, macOS and Windows, so nothing is compiled at install time either way.
+
+## Behind a private registry
+
+µWebSockets.js is not on npm, it is installed from GitHub, and npm allows that by default, so an
+ordinary `npm install fulmine.js` needs nothing from this section. It is here for the builds that
+have turned git dependencies off, or that cannot reach github.com at all:
+
+```
+allow-git=none   npm error code EALLOWGIT
+                 npm error Fetching packages of type "git" have been disabled
+                 npm error Refusing to fetch "uWebSockets.js@github:uNetworking/uWebSockets.js#v20.69.0"
+
+allow-git=root   npm error code EALLOWGIT
+                 npm error Fetching non-root packages of type "git" have been disabled
+```
+
+`root` is the one that surprises people: it allows a git dependency your own `package.json` asks
+for, and still refuses this one, because it is asked for by fulmine rather than by you.
+
+The answer is to put µWebSockets.js in your own registry and point at it from there. Three steps,
+and nothing is compiled on the way: the tarball is what uNetworking already publishes on the tag,
+prebuilt binaries included.
+
+**1. Pack the tag.** No clone needed, npm takes the git spec directly:
+
+```sh
+npm pack "github:uNetworking/uWebSockets.js#v20.69.0"
+```
+
+Read the version out of [`package.json`](./package.json) rather than copying the one above, since
+it moves with each release of this package.
+
+**2. Publish it to your registry.**
+
+```sh
+npm publish uWebSockets.js-20.69.0.tgz --registry https://registry.internal/
+```
+
+The tarball is around 33 MB, because it carries a binary for every Node ABI and platform, and that
+is larger than several defaults along the way. Verdaccio refuses it at `max_body_size: 10mb`,
+and an nginx in front of any registry refuses it at `client_max_body_size 1m`. Both answer
+`413 Payload Too Large` without ever naming µWebSockets.js, so raise them before deciding the
+tarball is broken:
+
+```yaml
+# verdaccio config.yaml
+max_body_size: 200mb
+```
+
+**3. Override the git spec in your application.** The version is the same one you packed:
+
+```json
+{
+    "dependencies": { "fulmine.js": "5.17.0" },
+    "overrides": { "uWebSockets.js": "20.69.0" }
+}
+```
+
+`npm install` and `npm ci` both work from here with git off, and the lockfile resolves to your
+registry with an integrity hash, so nothing reaches for git at install time:
+
+```json
+"node_modules/uWebSockets.js": {
+    "version": "20.69.0",
+    "resolved": "https://registry.internal/uWebSockets.js/-/uWebSockets.js-20.69.0.tgz",
+    "integrity": "sha512-kO7bcc/Hy3K6YnAVKBCu9ffYC1tl/ccDzDJqVK/GAO81XRRL+R1VmJP8mReg..."
+}
+```
+
+One thing to tell your security team before their scanner does: the lockfile still contains the
+line `"uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.69.0"`. That is fulmine's declared
+range, not a resolution, and a scanner that reads what is declared rather than what was installed
+will report a git dependency that the install never used.
 
 ## Differences from Express
 
