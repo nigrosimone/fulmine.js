@@ -13,7 +13,14 @@ module.exports = {
         by: "zlib deflate of the same payload, which both middlewares hand to the same library"
     },
     load: {
-        connections: 200
+        connections: 200,
+        // µWS loses a response written from a later tick once the next pipelined request on that
+        // connection has been parsed, and a body this size is compressed on the thread pool, so
+        // every answer here is written from a later tick. At pipelining 10 the server answered
+        // nothing at all and this row read as broken. Checked on a bare µWebSockets.js
+        // application with none of this project in it, and it does the same, so it is not
+        // something a change here can fix: express answers all of them.
+        pipelining: 1
     },
     request: {
         method: "GET",

@@ -115,7 +115,9 @@ async function main() {
     // 20k requests a second on a laptop, which is below what either arm can serve, so without
     // pipelining both arms report the load generator's ceiling and every ratio comes back 1.00
     // whatever the change did. Measured on a change worth a fifth: 1.00 at pipelining 1, 1.17 at 10.
-    const pipelining = Number(args.pipelining || 10);
+    // A scenario may refuse pipelining, in which case it is measured without and says why in its
+    // own file. The command line still wins over both.
+    const pipelining = Number(args.pipelining || (scenario.load && scenario.load.pipelining) || 10);
 
     let baselineSrc = null;
     if (against) {

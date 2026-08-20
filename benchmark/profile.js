@@ -352,11 +352,13 @@ async function main() {
     const scenarioName = args.scenario || "api-endpoint";
     const durationSeconds = Number(args.duration || 10);
     const connections = Number(args.connections || 50);
-    const pipelining = Number(args.pipelining || 10);
     const rounds = Number(args.rounds || 3);
     const against = args.against;
 
     const scenario = require(path.join(__dirname, "scenarios", `${scenarioName}.js`));
+    // A scenario that cannot be pipelined says so, and is measured one request per connection
+    // rather than reported as broken. The command line still wins over both.
+    const pipelining = Number(args.pipelining || (scenario.load && scenario.load.pipelining) || 10);
     const request = resolveRequest(scenario);
 
     let baselineSrc = null;
