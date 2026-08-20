@@ -754,3 +754,94 @@ serverTest(
         assert.strictEqual(res.text, "hello, world");
     }
 );
+
+// A body past SYNC_LIMIT goes to the libuv pool instead of being compressed on this thread. The
+// answer has to be the same one, whichever side of that line it falls: same bytes, a
+// Content-Length that describes what went out, and the callback still called.
+const BIG = "x".repeat(64 * 1024);
+
+/** @param {any} req @param {any} res */
+function bigBody(req, res) {
+    res.setHeader("Content-Type", "text/plain");
+    res.end(BIG);
+}
+
+for (const [encoding, name] of [
+    ["gzip", "gzip"],
+    ["deflate", "deflate"],
+    ["br", "brotli"]
+]) {
+    if (encoding === "br" && !hasBrotliSupport) {
+        continue;
+    }
+    serverTest(
+        `a body past the sync limit is compressed on the pool, ${name}`,
+        { threshold: 0 },
+        bigBody,
+        async (server) => {
+            const res = await request(server.url, { headers: { "Accept-Encoding": encoding } });
+            assert.strictEqual(res.headers["content-encoding"], encoding);
+            assert.strictEqual(res.text, BIG);
+            // the length of what went out, not of what the handler wrote
+            assert.strictEqual(res.headers["content-length"], String(res.raw.length));
+            assert.ok(res.raw.length < BIG.length);
+        }
+    );
+}
+
+test("a body past the sync limit still calls end's callback", async () => {
+    const server = await createServer({ threshold: 0 }, (req, res) => {
+        res.setHeader("Content-Type", "text/plain");
+        res.end(BIG, () => {
+            called = true;
+        });
+    });
+    let called = false;
+    try {
+        const res = await request(server.url, { headers: { "Accept-Encoding": "gzip" } });
+        assert.strictEqual(res.text, BIG);
+        assert.strictEqual(called, true);
+    } finally {
+        await server.close();
+    }
+});
+
+// The middleware reads Accept-Encoding off the raw entries when the request is one of ours, and
+// off req.headers when it is not. A router adopts a plain request onto our prototype, so the
+// second half is for the middleware used on its own, in a node server with no router at all.
+test("the middleware negotiates on a bare node request too", async () => {
+    const compress = express.compression({ threshold: 0 });
+
+    const server = http.createServer((req, res) => {
+        // no router has touched this one: an IncomingMessage and nothing else
+        assert.strictEqual(typeof req._foldedHeader, "undefined");
+        compress(req, res, () => {
+            res.setHeader("Content-Type", "text/plain");
+            res.end("hello, world");
+        });
+    });
+    await new Promise((resolve) => server.listen(0, resolve));
+    try {
+        const url = `http://127.0.0.1:${/** @type {any} */ (server.address()).port}`;
+        const res = await request(url, { headers: { "Accept-Encoding": "gzip" } });
+        assert.strictEqual(res.headers["content-encoding"], "gzip");
+        assert.strictEqual(res.text, "hello, world");
+    } finally {
+        await new Promise((resolve) => server.close(resolve));
+    }
+});
+
+serverTest(
+    "res.flush before anything is written has nothing to flush",
+    { threshold: 0 },
+    (req, res) => {
+        res.setHeader("Content-Type", "text/plain");
+        // the compression module puts flush() on every response and code calls it unasked
+        res.flush();
+        res.end("hello, world");
+    },
+    async (server) => {
+        const res = await request(server.url, { headers: { "Accept-Encoding": "gzip" } });
+        assert.strictEqual(res.text, "hello, world");
+    }
+);
