@@ -20,7 +20,7 @@
     },
     "scripts": {
         "test": "node tests/index.js",
-        "test:unit": "node --test --test-timeout=120000 \"tests/unit/*.test.js\"",
+        "test:unit": "node --expose-gc --test --test-timeout=120000 \"tests/unit/*.test.js\"",
         "test:types": "tsd --files tests/types/*.test-d.ts",
         "test:express": "node tools/express-suite.js",
         "fuzz": "node tools/fuzz.js",

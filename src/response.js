@@ -388,6 +388,11 @@ module.exports = class Response extends LazyWritable {
             this.finished = true;
             this.#socket?.emit("close");
         });
+        // this ends the response without emitting 'close' on it, so the cleanup riding that
+        // listener never runs and the response stays linked in the app's pending list, holding
+        // its request and whatever body was read. close()'s drain sweeps it by the flag, but a
+        // server that is never closed kept every one of them
+        this._unlinkPending();
     }
 
     /**
