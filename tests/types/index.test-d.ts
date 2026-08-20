@@ -376,6 +376,7 @@ expectAssignable<RequestHandler>(
     express.compression({
         threshold: "1kb",
         enforceEncoding: "identity",
+        encodings: ["gzip", "deflate"],
         brotli: { chunkSize: 1024 },
         filter: (req, res) => {
             expectType<Request>(req);

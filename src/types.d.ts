@@ -50,6 +50,12 @@ declare module "fulmine.js" {
             enforceEncoding?: string;
             /** Brotli options. The default quality is 4. */
             brotli?: BrotliOptions;
+            /**
+             * The encodings this middleware may answer with; what is not named is never used,
+             * however the client ranks it. Fulmine's own option, the compression module has no
+             * equivalent. An uncompressed answer is always on offer.
+             */
+            encodings?: ("br" | "gzip" | "deflate" | "identity")[];
         }
         // what listen() decided about each route, for a test to hold on to
         interface RouteVerdict {

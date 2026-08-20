@@ -502,6 +502,13 @@ Server-Timing: route;desc="native", hdr;desc="not copied", db;dur=3.62, total;du
 app.use(express.compression({ threshold: 1024 }));
 ```
 
+One option is Fulmine's own, `encodings`: the list of what the middleware may answer with, out of `"br"`, `"gzip"` and `"deflate"`. What is not named is never used, however the client ranks it, and an uncompressed answer is always on offer. It exists because the preferred encoding is a cost decision, not only a size one: brotli compresses smaller but what it costs per response depends on the machine, and on a CPU where it runs expensive `encodings: ["gzip"]` buys the cheaper call for every client that accepts both.
+
+```js
+// answer gzip even to a client that also accepts br
+app.use(express.compression({ level: 1, encodings: ["gzip"] }));
+```
+
 Runnable: [`examples/compression.js`](./examples/compression.js).
 
 5. If a route answers with a JSON shape you know in advance, [express-fast-json-stringify](https://www.npmjs.com/package/express-fast-json-stringify) compiles that shape into a serializer and `res.fastJson()` replaces `res.json()`. `JSON.stringify()` has to walk an object it knows nothing about; a compiled serializer does not. It is worth reaching for, and a CPU profile says why: on a route answering 3.6KB of JSON, serialising it is about 25% of the time that is not spent waiting, ahead of the ETag at 19% and of everything the framework does to route the request and build its request and response objects.

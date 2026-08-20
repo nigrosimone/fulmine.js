@@ -952,6 +952,35 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
+     * The same, with repeats folded exactly as the headers object folds them, so a reader of one
+     * name per request does not build the whole object to stay correct on a repeated header.
+     * Not for set-cookie, whose folded form is an array.
+     *
+     * @param {string} name lowercase
+     * @returns {string|undefined}
+     */
+    _foldedHeader(name) {
+        if (this.#cachedHeaders !== null) {
+            return this.#cachedHeaders[name];
+        }
+        const entries = this.#rawHeadersEntries;
+        let value;
+        for (let i = 0, len = entries.length; i < len; i += 2) {
+            if (entries[i] === name) {
+                if (value === undefined) {
+                    value = entries[i + 1];
+                } else {
+                    if (discardedDuplicates.has(name)) {
+                        continue;
+                    }
+                    value += (name === "cookie" ? "; " : ", ") + entries[i + 1];
+                }
+            }
+        }
+        return value;
+    }
+
+    /**
      * Whether there is any point still reading the body: once the response is finished or the
      * connection is gone, uWS has nothing left to hand over.
      */

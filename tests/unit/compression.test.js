@@ -676,3 +676,81 @@ serverTest(
         shouldNotHaveHeader(res, "Content-Encoding");
     }
 );
+
+// The encodings option, which is fulmine's own: the list of what the middleware may answer with.
+// Upstream has no equivalent, so these cases are not ported, they are the specification.
+
+serverTest(
+    "encodings should serve gzip although the client also offers br",
+    { threshold: 0, encodings: ["gzip"] },
+    helloWorld,
+    async (server) => {
+        const res = await request(server.url, { headers: { "Accept-Encoding": "gzip, br" } });
+        assert.strictEqual(res.headers["content-encoding"], "gzip");
+        assert.strictEqual(res.text, "hello, world");
+    }
+);
+
+serverTest(
+    "encodings should fall back to identity when the client offers none of the list",
+    { threshold: 0, encodings: ["gzip"] },
+    helloWorld,
+    async (server) => {
+        const res = await request(server.url, { headers: { "Accept-Encoding": "br" } });
+        shouldNotHaveHeader(res, "Content-Encoding");
+        assert.strictEqual(res.text, "hello, world");
+    }
+);
+
+serverTest(
+    "encodings absent should keep the default preference, which is br",
+    { threshold: 0 },
+    helloWorld,
+    async (server) => {
+        const res = await request(server.url, { headers: { "Accept-Encoding": "gzip, br" } });
+        assert.strictEqual(res.headers["content-encoding"], "br");
+    }
+);
+
+serverTest(
+    "encodings should still respect the client's q values inside the list",
+    { threshold: 0, encodings: ["gzip", "deflate"] },
+    helloWorld,
+    async (server) => {
+        const res = await request(server.url, { headers: { "Accept-Encoding": "gzip;q=0.5, deflate;q=0.9, br" } });
+        assert.strictEqual(res.headers["content-encoding"], "deflate");
+    }
+);
+
+serverTest(
+    "encodings of identity alone compresses nothing",
+    { threshold: 0, encodings: ["identity"] },
+    helloWorld,
+    async (server) => {
+        const res = await request(server.url, { headers: { "Accept-Encoding": "gzip, br" } });
+        shouldNotHaveHeader(res, "Content-Encoding");
+        assert.strictEqual(res.text, "hello, world");
+    }
+);
+
+test("encodings refuses a name nobody knows, at creation and not per request", () => {
+    assert.throws(() => express.compression({ encodings: ["zstd"] }), {
+        name: "TypeError",
+        message: 'unknown encoding "zstd" in encodings'
+    });
+    assert.throws(() => express.compression({ encodings: "gzip" }), {
+        name: "TypeError"
+    });
+});
+
+serverTest(
+    "encodings does not filter enforceEncoding, which is its own explicit choice",
+    { threshold: 0, encodings: ["gzip"], enforceEncoding: "br" },
+    helloWorld,
+    async (server) => {
+        // no Accept-Encoding at all: enforceEncoding answers, the list does not apply
+        const res = await request(server.url);
+        assert.strictEqual(res.headers["content-encoding"], "br");
+        assert.strictEqual(res.text, "hello, world");
+    }
+);

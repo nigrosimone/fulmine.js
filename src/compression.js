@@ -36,7 +36,23 @@ limitations under the License.
 const zlib = require("zlib");
 const bytes = require("bytes");
 const compressible = require("compressible");
-const { negotiateEncoding, ENCODING_ANY, memoizeByString } = require("./utils.js");
+const {
+    negotiateEncoding,
+    ENCODING_ANY,
+    ENCODING_BR,
+    ENCODING_GZIP,
+    ENCODING_DEFLATE,
+    memoizeByString
+} = require("./utils.js");
+
+// what the `encodings` option may name, and the mask each name contributes. identity is 0: an
+// uncompressed answer is always on offer, naming it only makes the list read complete
+const ENCODING_MASKS = new Map([
+    ["br", ENCODING_BR],
+    ["gzip", ENCODING_GZIP],
+    ["deflate", ENCODING_DEFLATE],
+    ["identity", 0]
+]);
 
 // Cache-Control: no-transform forbids recoding the body, which is what this does
 const NO_TRANSFORM = /(?:^|,)\s*?no-transform\s*?(?:,|$)/;
@@ -135,6 +151,11 @@ function toBuffer(chunk, encoding) {
  * @param {string} [options.enforceEncoding] what to use when the request carries no
  *   Accept-Encoding at all. Default "identity", which is to say nothing is compressed.
  * @param {object} [options.brotli] brotli options, `params` included. The default quality is 4.
+ * @param {string[]} [options.encodings] the encodings this middleware may answer with, out of
+ *   "br", "gzip" and "deflate". What is not named is never used, however the client ranks it: a
+ *   server that prefers cheap gzip over brotli passes ["gzip", "deflate"]. An uncompressed answer
+ *   is always on offer, and enforceEncoding stays its own explicit choice, outside this list.
+ *   This option is fulmine's own, the compression module has no equivalent.
  * @param {number} [options.level] zlib compression level, for gzip and deflate.
  * @param {number} [options.chunkSize] zlib chunk size.
  * @param {number} [options.memLevel] zlib memory level.
@@ -157,6 +178,22 @@ function compression(options) {
     // bytes.parse reads "1kb" and hands back null for anything it cannot, an absent option
     // included, which is where the default comes in
     const threshold = bytes.parse(/** @type {any} */ (opts.threshold)) ?? 1024;
+    // the mask handed to the negotiation, built once here: a name nobody knows is a config
+    // mistake and throws now rather than serving the wrong bytes later
+    let allowed = ENCODING_ANY;
+    if (opts.encodings !== undefined) {
+        if (!Array.isArray(opts.encodings)) {
+            throw new TypeError("encodings must be an array of encoding names");
+        }
+        allowed = 0;
+        for (const name of opts.encodings) {
+            const mask = ENCODING_MASKS.get(name);
+            if (mask === undefined) {
+                throw new TypeError(`unknown encoding "${name}" in encodings`);
+            }
+            allowed |= mask;
+        }
+    }
 
     /**
      * A whole body, compressed on this thread. Blocks the event loop for as long as it takes,
@@ -213,8 +250,14 @@ function compression(options) {
         // has to carry. Most requests to most routes cannot: a client that sent no Accept-Encoding,
         // one that refused everything, a HEAD. Those get the Vary and nothing else, since the
         // answer still depends on the header even when this particular client did not ask.
-        const accept = req.headers["accept-encoding"];
-        let chosen = negotiateEncoding(accept === undefined ? "" : accept, ENCODING_ANY);
+        // straight from the raw entries where this request keeps them: reading req.headers here
+        // built the whole object for one name. Folded, so a repeated Accept-Encoding still reads
+        // as the joined list the headers object would have shown
+        const accept =
+            typeof req._foldedHeader === "function"
+                ? req._foldedHeader("accept-encoding")
+                : req.headers["accept-encoding"];
+        let chosen = negotiateEncoding(accept === undefined ? "" : accept, allowed);
         if (accept === undefined && ENFORCEABLE.has(enforceEncoding)) {
             chosen = enforceEncoding;
         }

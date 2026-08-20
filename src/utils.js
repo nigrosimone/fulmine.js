@@ -1644,6 +1644,7 @@ module.exports = {
     negotiateEncoding,
     ENCODING_BR,
     ENCODING_GZIP,
+    ENCODING_DEFLATE,
     ENCODING_ANY,
     memoizeByString,
     isRangeFresh,
