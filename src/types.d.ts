@@ -17,7 +17,7 @@ limitations under the License.
 declare module "fulmine.js" {
     import e from "express";
     import uWS from "uWebSockets.js";
-    import { ZlibOptions, BrotliOptions, ZstdOptions } from "zlib";
+    import { ZlibOptions, BrotliOptions } from "zlib";
 
     type Settings = {
         uwsOptions?: uWS.AppOptions;
@@ -41,6 +41,17 @@ declare module "fulmine.js" {
 
         // express has no compression middleware, so there is nothing to re-export: these are the
         // compression module's options, which this one takes as they are
+        /**
+         * What zlib takes for zstd, written out here rather than imported from "zlib": the type
+         * arrived in @types/node only when node grew zstd, and the version of that is the
+         * consumer's, so importing it would stop an older one from compiling at all.
+         */
+        interface ZstdCompressOptions {
+            chunkSize?: number;
+            maxOutputLength?: number;
+            /** zlib.constants.ZSTD_c_* to their values, ZSTD_c_compressionLevel included. */
+            params?: Record<number, number>;
+        }
         interface CompressionOptions extends ZlibOptions {
             /** The smallest body worth compressing, in bytes or as "1kb". Default 1024. */
             threshold?: number | string;
@@ -51,7 +62,7 @@ declare module "fulmine.js" {
             /** Brotli options. The default quality is 4. */
             brotli?: BrotliOptions;
             /** Zstd options. Node's own defaults. Offered only where zlib has zstd. */
-            zstd?: ZstdOptions;
+            zstd?: ZstdCompressOptions;
             /**
              * The encodings this middleware may answer with; what is not named is never used,
              * however the client ranks it. Fulmine's own option, the compression module has no
