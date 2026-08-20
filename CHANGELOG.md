@@ -1,5 +1,15 @@
 # Changelog
 
+## [5.17.0](https://github.com/nigrosimone/fulmine.js/compare/v5.16.0...v5.17.0) (2026-08-20)
+
+### Features
+
+* **benchmark:** --node-options measures a node flag the way --against measures a revision ([d885d5d](https://github.com/nigrosimone/fulmine.js/commit/d885d5daaf27a5291d751c1995b2addef4333e36))
+
+### Bug Fixes
+
+* **response:** an error that ends the response takes it out of the pending list too ([9b91628](https://github.com/nigrosimone/fulmine.js/commit/9b91628457ef4a36abdd97f43c084749d69bc76a))
+
 ## [5.16.0](https://github.com/nigrosimone/fulmine.js/compare/v5.15.1...v5.16.0) (2026-08-20)
 
 ### Features
