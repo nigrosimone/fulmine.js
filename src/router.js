@@ -708,7 +708,7 @@ function nativeDone(matched) {
                 this.router._endUnmatched(this.req, response);
             } catch (err) {
                 if (response.aborted || response.finished) {
-                    console.error(err);
+                    logError(this.router, err);
                 } else {
                     this.router._handleError(err, null, this.req, response);
                 }
@@ -731,7 +731,7 @@ function nativeFail(err) {
     queueMicrotask(() => {
         const response = this.res;
         if (response.aborted || response.finished) {
-            console.error(err);
+            logError(this.router, err);
         } else {
             this.router._handleError(err, null, this.req, response);
         }
@@ -1023,6 +1023,22 @@ function adoptPlainRequest(req, router) {
     req.routeCount = 1;
     // read when a mount is left, and there is no application here to read it from
     req.app = req.app ?? router;
+}
+
+/**
+ * What express's logerror does. Its final handler prints the error it is about to answer with,
+ * unless the application runs under `env: "test"`, which is how its own suite stays quiet, and it
+ * prints the stack rather than the object. A falsy throw is not printed at all, since finalhandler
+ * only calls onerror when there is an error to call it with.
+ *
+ * @param {any} router the router whose settings decide it
+ * @param {any} err
+ * @returns {void}
+ */
+function logError(router, err) {
+    if (err && router.get("env") !== "test") {
+        console.error(err.stack || err.toString());
+    }
 }
 
 /**
@@ -2832,7 +2848,7 @@ module.exports = class Router extends EventEmitter {
                 return request.next(thrown);
             }
         }
-        console.error(err);
+        logError(this, err);
         if (response.statusCode === 200) {
             // the status the error carries, as express's own final handler reads it: a body that
             // was too large or a request cut short is the client's 4xx, not a 500 from here
