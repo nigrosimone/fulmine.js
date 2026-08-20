@@ -469,6 +469,20 @@ routeReport(app); // the whole list, to assert on however you like
 
 A path is written as it was registered, `"/users/:id"` and not `"/users/7"`, and a trailing `*` names everything under a prefix. A pattern that matches no route throws too, so a misspelled path fails instead of passing quietly. The application does not need to be listening. Runnable: [`examples/fast-routes.js`](./examples/fast-routes.js).
 
+A route can stay native and still slow down request by request, because most of what makes this fast is work that does not happen: the request is not turned into a `Readable`, the response is not turned into a `Writable`, `req.headers` is not folded into an object, the query is not parsed, no socket stand-in is allocated. A middleware that reads `req.headers.host` puts one of those back on every request, and nothing fails. `expectLazy` is the assertion for that half, asked from inside a handler:
+
+```js
+const { workReport, expectLazy } = require("fulmine.js").testing;
+
+app.post("/items", (req, res) => {
+    expectLazy(req, res, { allow: ["body"] }); // throws naming what else was built
+    workReport(req, res); // { native, declarative, headers, query, body, requestStream, ... }
+    res.json(req.body);
+});
+```
+
+Asking costs a property read: every field is state the framework already keeps, nothing is counted or wrapped to make it readable.
+
 `npx fulmine.js explain /api/items/:id` answers the other question, the one about a single endpoint rather than about the table: how it is matched, what is copied out of the request, what runs and what each layer costs the route.
 
 ```text
@@ -489,7 +503,7 @@ The same verdict reaches the browser, per request, with `express.serverTiming()`
 Server-Timing: route;desc="native", hdr;desc="not copied", db;dur=3.62, total;dur=4.66
 ```
 
-`route;desc="native"` means µWS matched the path in C++ and the chain was worked out at startup; `route;desc="router"` means this one was matched here, layer by layer. `res.timing(name, ms, desc)` and `res.time(name, fn)` add marks of your own, and `fn` may return a promise. The duration ends where the header does, since Server-Timing goes out with the head. A route compiled into a response never enters JavaScript, so nothing times it: `npx fulmine.js profile` is where those are counted. Runnable: [`examples/server-timing.js`](./examples/server-timing.js).
+`route;desc="native"` means µWS matched the path in C++ and the chain was worked out at startup; `route;desc="router"` means this one was matched here, layer by layer. `res.timing(name, ms, desc)` and `res.time(name, fn)` add marks of your own, and `fn` may return a promise. The duration ends where the header does, since Server-Timing goes out with the head. A route compiled into a response never enters JavaScript, so nothing times it: `npx fulmine.js profile` is where those are counted. The same middleware writes `work;desc="headers, query"` when the request built something a fast one does not, the fields `expectLazy` checks, and writes nothing when it built none of them. `serverTiming({ work: false })` turns that off. Runnable: [`examples/server-timing.js`](./examples/server-timing.js).
 
 2. Do not use external `serve-static` module. Instead use built-in `express.static()` middleware, which is optimized for Fulmine. If your build already writes `.br` and `.gz` files next to the originals, `express.static(dir, { preCompressed: true })` serves those to the clients that accept them, so nothing is compressed at request time and a fraction of the bytes goes out: on a 4KB script with a brotli twin, 12 times fewer. It costs no more than serving the file itself, one `stat` per request, because the twin is looked for before the file and its own `stat` is the only one the request needs. A type that is already compressed, a woff2 or a webp, is not looked up at all, and which twins a path has is remembered for a second: `{ cache: false }` asks the disk every time, `{ cache: "5s" }` sets the window. Only their presence is remembered, never their size or mtime, so nothing is ever described by a stale number. `Vary: Accept-Encoding` is sent whether or not a twin is found, the content type stays the one the requested name implies, and each variant carries its own ETag. Runnable: [`examples/static-precompressed.js`](./examples/static-precompressed.js).
 
@@ -677,7 +691,7 @@ In general, basically all features and options are supported. Use the [Express 5
 - ✅ express.text()
 - ✅ express.raw()
 - ✅ express.serverTiming(). Fulmine's own: Server-Timing carrying how the request was routed, described under [Performance tips](#performance-tips).
-- ✅ express.testing. Fulmine's own: `expectNative`, `expectDeclarative` and `routeReport`, described under [Performance tips](#performance-tips).
+- ✅ express.testing. Fulmine's own: `expectNative`, `expectDeclarative`, `routeReport`, `expectLazy` and `workReport`, described under [Performance tips](#performance-tips).
 - ✅ express.compression(). Fulmine's own, since Express has none: it is the [compression](https://npmjs.com/package/compression) module's options and behaviour built in, described under [Performance tips](#performance-tips).
 - 🚧 express.request (this is not a constructor but a prototype for replacing methods)
 - 🚧 express.response (this is not a constructor but a prototype for replacing methods)

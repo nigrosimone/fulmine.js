@@ -8,6 +8,10 @@
 // route;desc="native" means uWS matched the path in C++ and the chain was worked out at startup;
 // route;desc="router" means this one was matched here, layer by layer. A route compiled into a
 // response never enters JavaScript, so nothing times it: npx fulmine.js profile counts those.
+//
+// work;desc="..." names what this request was made to build: the folded req.headers object, the
+// parsed query, the body, the request as a Readable, the response as a Writable, the socket
+// stand-in. A fast request builds none of them and the field is absent.
 const express = require("fulmine.js"); // instead of require("express")
 
 const app = express();
@@ -15,6 +19,7 @@ const app = express();
 app.use(
     express.serverTiming({
         routing: true, // how the request was routed. Default true
+        work: true, // what the request was made to build. Default true
         total: true, // the time up to the head. Default true
         name: "total" // what the total is called
     })

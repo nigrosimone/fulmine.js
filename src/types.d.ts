@@ -74,6 +74,26 @@ declare module "fulmine.js" {
             /** Why it fell back to the ordinary router, when it did. */
             reason?: string;
         }
+        // what one request was made to build, none of which a fast request builds
+        interface WorkReport {
+            /** Whether µWS matched this route itself. */
+            native: boolean;
+            /** Whether it was compiled into a response written at startup. */
+            declarative: boolean;
+            /** Whether the folded `req.headers` object was built. */
+            headers: boolean;
+            /** Whether the query string was parsed. */
+            query: boolean;
+            /** Whether a body parser put something on `req.body`. */
+            body: boolean;
+            /** Whether the request became a real Readable. */
+            requestStream: boolean;
+            /** Whether the response became a real Writable. */
+            responseStream: boolean;
+            /** Whether a socket stand-in was allocated. */
+            socket: boolean;
+        }
+        type WorkField = "headers" | "query" | "body" | "requestStream" | "responseStream" | "socket";
         export namespace testing {
             /** Every route, with what compiling it decided. */
             function routeReport(app: Fulmine): RouteVerdict[];
@@ -81,6 +101,10 @@ declare module "fulmine.js" {
             function expectNative(app: Fulmine, patterns: string | string[]): void;
             /** Throws unless every route named was compiled into a response. */
             function expectDeclarative(app: Fulmine, patterns: string | string[]): void;
+            /** What this one request was made to build, asked from a handler or a finish listener. */
+            function workReport(req: e.Request, res: e.Response): WorkReport;
+            /** Throws if this request built anything `allow` does not name. */
+            function expectLazy(req: e.Request, res: e.Response, options?: { allow?: WorkField[] }): void;
         }
 
         // Server-Timing, carrying how the request was routed. Express has no such middleware, so
@@ -88,6 +112,11 @@ declare module "fulmine.js" {
         interface ServerTimingOptions {
             /** Whether to report how the request was routed. Default true. */
             routing?: boolean;
+            /**
+             * Whether to report what the request was made to build. Default true. A request that
+             * built none of it writes no such field.
+             */
+            work?: boolean;
             /** Whether to report the time up to the head. Default true. */
             total?: boolean;
             /** What the total is called. Default "total". */

@@ -230,7 +230,7 @@ NamedRouter().ws("/lobby", {
 // express.serverTiming(), and the two marks it hangs on the response. They are optional, because
 // they are only there on a route the middleware ran in front of
 expectAssignable<RequestHandler>(express.serverTiming());
-expectAssignable<RequestHandler>(express.serverTiming({ routing: false, total: true, name: "app" }));
+expectAssignable<RequestHandler>(express.serverTiming({ routing: false, work: false, total: true, name: "app" }));
 app.get("/timed", async (_req, res) => {
     res.timing?.("cache", undefined, "miss");
     res.timing?.("db", 3.2);
@@ -369,6 +369,17 @@ expectType<boolean>(verdicts[0].native);
 expectType<void>(express.testing.expectNative(app, "/users/*"));
 expectType<void>(express.testing.expectDeclarative(app, ["/a", "/b"]));
 expectError(express.testing.expectNative(app));
+
+// and what one request was made to build, which the route verdict cannot say
+app.get("/probe", (req, res) => {
+    const done = express.testing.workReport(req, res);
+    expectType<boolean>(done.requestStream);
+    expectType<boolean>(done.headers);
+    expectType<void>(express.testing.expectLazy(req, res));
+    expectType<void>(express.testing.expectLazy(req, res, { allow: ["body", "query"] }));
+    expectError(express.testing.expectLazy(req, res, { allow: ["streams"] }));
+    res.end();
+});
 
 // express.compression(), which express has no counterpart for
 expectAssignable<RequestHandler>(express.compression());

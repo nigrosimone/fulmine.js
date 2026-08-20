@@ -28,6 +28,8 @@ limitations under the License.
 
 "use strict";
 
+const { work, names: workNames } = require("./work.js");
+
 /**
  * Every route of an application and of the routers mounted under it, each with the path it answers
  * from the outside.
@@ -222,4 +224,58 @@ function expectDeclarative(app, patterns) {
     );
 }
 
-module.exports = { routeReport, expectNative, expectDeclarative, collectRoutes };
+/**
+ * What this one request made the framework do, asked from inside a handler or from a `finish`
+ * listener. See src/work.js for what each field means and why asking is free.
+ *
+ * @param {any} req
+ * @param {any} res
+ * @returns {import("./work.js").Work}
+ */
+function workReport(req, res) {
+    return work(req, res);
+}
+
+// The work a fast request does none of, which is what expectLazy is about. The route verdict is
+// not in here: expectNative and expectDeclarative are what assert on that.
+const LAZY = ["headers", "query", "body", "requestStream", "responseStream", "socket"];
+
+/**
+ * Throws if this request built anything it did not have to.
+ *
+ * The route verdict is a property of the application and holds for every request; this is the
+ * other half, which holds for one. A route can stay native and still slow down request by request,
+ * because a middleware read `req.headers.host` or piped instead of sending: the answer stays
+ * correct, the route report stays green, and the throughput does not.
+ *
+ * `allow` names what is fine here, which is most of the point: a route that parses a body is
+ * asserted as one that parses a body and nothing else.
+ *
+ * @param {any} req
+ * @param {any} res
+ * @param {object} [options]
+ * @param {string[]} [options.allow] fields of the report this route is expected to do anyway
+ */
+function expectLazy(req, res, options) {
+    const allowed = options?.allow ?? [];
+    for (const field of allowed) {
+        if (!LAZY.includes(field)) {
+            throw new TypeError(`expectLazy: "${field}" is not one of ${LAZY.join(", ")}`);
+        }
+    }
+    const done = work(req, res);
+    const unwanted = { ...done };
+    for (const field of allowed) {
+        /** @type {any} */ (unwanted)[field] = false;
+    }
+    const listed = workNames(unwanted);
+    if (listed.length === 0) {
+        return;
+    }
+    throw new Error(
+        `${req.method} ${req.originalUrl} did work a fast request does not: ${listed.join(", ")}.\n` +
+            `Run \`npx fulmine explain ${req.route?.path ?? req.path}\` to see what the chain asks for.`
+    );
+}
+
+module.exports = { routeReport, expectNative, expectDeclarative, collectRoutes, workReport, expectLazy };

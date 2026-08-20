@@ -186,3 +186,47 @@ test("a mark with punctuation in its name is written as a token", async () => {
     assert.match(answer.timing, /dbquerydur99;dur=1\.00/, "the name is stripped to a token");
     assert.ok(!answer.timing.includes("total;dur"), "and the total was turned off");
 });
+
+test("a request that built nothing says nothing about it", async () => {
+    const answer = await ask((app) => {
+        app.use(express.serverTiming());
+        app.get("/hello", (req, res) => res.send("ok"));
+    }, "/hello");
+    assert.doesNotMatch(answer.timing, /work;/, "the fast request is the quiet one");
+});
+
+test("and one that built something names what it built", async () => {
+    const answer = await ask((app) => {
+        app.use(express.serverTiming());
+        app.get("/host", (req, res) => res.send(String(req.headers.host) + String(req.query.q)));
+    }, "/host?q=1");
+    assert.match(answer.timing, /work;desc="headers, query"/);
+});
+
+test("a body parser shows up, and a write after the head does not", async () => {
+    const answer = await ask(
+        (app) => {
+            app.use(express.serverTiming());
+            app.use(express.json());
+            app.post("/items", (req, res) => {
+                res.write(JSON.stringify(req.body));
+                res.end();
+            });
+        },
+        "/items",
+        { method: "POST", headers: { "content-type": "application/json" }, body: '{"a":1}' }
+    );
+    // the header goes out with the head, so it says what was true when the head was written: the
+    // Writable this write is about to build did not exist yet. Anything built before the first
+    // byte is in, anything after it is not, which is the same boundary the total has
+    assert.match(answer.timing, /work;desc="body"/);
+});
+
+test("the work field can be turned off", async () => {
+    const answer = await ask((app) => {
+        app.use(express.serverTiming({ work: false }));
+        app.get("/host", (req, res) => res.send(String(req.headers.host)));
+    }, "/host");
+    assert.doesNotMatch(answer.timing, /work;/);
+    assert.match(answer.timing, /total;dur=/);
+});

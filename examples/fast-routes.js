@@ -7,7 +7,7 @@
 //   node fast-routes.js
 //   npx fulmine.js profile fast-routes.js   # the same verdicts, for a human to read
 const express = require("fulmine.js"); // instead of require("express")
-const { expectNative, expectDeclarative, routeReport } = require("fulmine.js").testing;
+const { expectNative, expectDeclarative, routeReport, expectLazy } = require("fulmine.js").testing;
 
 const app = express();
 
@@ -26,6 +26,16 @@ app.get("/api/items/:id", (req, res) => res.json({ id: req.params.id, at: Date.n
 
 // this one cannot be native: the parameter is not a whole segment, so it goes the ordinary way
 app.get("/flights/:from-:to", (req, res) => res.json(req.params));
+
+// The route verdict holds for every request. The other half holds for one: a native route still
+// folds req.headers into an object if something reads it, still turns the response into a
+// Writable if something writes it in pieces, and the answer stays correct either way. expectLazy
+// throws when this request built anything allow does not name
+app.get("/api/search", (req, res) => {
+    const found = { q: req.query.q };
+    expectLazy(req, res, { allow: ["query"] });
+    res.json(found);
+});
 
 app.listen(3000, () => {
     // throws, naming the route and the reason, if either of these stopped being eligible. A

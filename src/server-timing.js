@@ -30,11 +30,19 @@ limitations under the License.
 // enters javascript, so no middleware runs on it and there is nothing to time. `npx fulmine
 // profile` is where those are counted.
 //
+// The other field only this framework can write is `work`, which names what the request was made to
+// build: the folded headers object, the parsed query, the body, the Readable, the Writable, the
+// socket stand-in. A fast request builds none of them and the field is absent, so it appears
+// exactly when something is worth looking at. See src/work.js.
+//
 // The duration ends where the header does. Server-Timing goes out with the head, so `total` covers
-// everything up to the moment the answer starts leaving, and not the body after it. Every stopwatch
-// middleware has that boundary; this one says so.
+// everything up to the moment the answer starts leaving, and not the body after it, and `work` has
+// the same boundary: a stream built by the write that carries the head is built after this is
+// written. Every stopwatch middleware has that boundary; this one says so.
 
 "use strict";
+
+const { work, names } = require("./work.js");
 
 /**
  * A duration in milliseconds, as Server-Timing writes them: two decimals, which is a hundredth of
@@ -61,6 +69,8 @@ function describe(text) {
  *
  * @param {object} [options]
  * @param {boolean} [options.routing] whether to report how the request was routed. Default true.
+ * @param {boolean} [options.work] whether to report what the request was made to build. Default
+ *   true. Nothing is written for a request that built none of it, which is the usual one.
  * @param {boolean} [options.total] whether to report the time up to the head. Default true.
  * @param {string} [options.name] what the total is called. Default "total".
  * @returns {(req: any, res: any, next: (err?: any) => void) => void}
@@ -68,6 +78,7 @@ function describe(text) {
 function serverTiming(options) {
     const opts = options || {};
     const routing = opts.routing !== false;
+    const wantsWork = opts.work !== false;
     const wantsTotal = opts.total !== false;
     const totalName = opts.name || "total";
 
@@ -153,6 +164,16 @@ function serverTiming(options) {
                     if (native.skipQuery) {
                         entries.push(`query;desc=${describe("not parsed")}`);
                     }
+                }
+            }
+            if (wantsWork) {
+                // what this one request made the framework build, which the route verdict above
+                // cannot say: a native route still folds the headers if a middleware reads them,
+                // and that is per request, not per route. Read at the head, so it covers the
+                // chain and not the body written after it, the same boundary as the total.
+                const listed = names(work(req, res));
+                if (listed.length !== 0) {
+                    entries.push(`work;desc=${describe(listed.join(", "))}`);
                 }
             }
             entries.push(...marks);

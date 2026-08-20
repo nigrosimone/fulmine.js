@@ -471,6 +471,15 @@ module.exports = class Response extends LazyWritable {
     }
 
     /**
+     * Whether that socket was ever built, for src/work.js. `socket` itself answers null once the
+     * response is over, so it cannot be asked after the fact; this reads the field.
+     * @returns {boolean}
+     */
+    get _socketBuilt() {
+        return this.#socket !== null;
+    }
+
+    /**
      * Hands everything queued to uWS as one write, which is where the saving is, and keeps the
      * backpressure the single write used to do.
      *

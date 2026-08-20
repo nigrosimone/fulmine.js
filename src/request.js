@@ -1371,6 +1371,11 @@ module.exports = class Request extends LazyReadable {
             this._querySnap = capture.invalid === true ? false : capture;
             return out;
         }
+        // The other two parsers keep no snapshot, so they only leave the mark that says a parse
+        // happened: false is "there is nothing to replay", which is what the branch above already
+        // does for a query it cannot replay. Two stores next to two allocations.
+        this._querySnapRaw = this._rawQuery;
+        this._querySnap = false;
         if (qp === fastQueryParse) {
             return Object.assign(Object.create(null), fastQueryParse(this._rawQuery));
         }
@@ -1840,6 +1845,36 @@ module.exports = class Request extends LazyReadable {
         // a copy, since this is exactly how the headers are kept and handing the array itself out
         // would let a caller rewrite what routing reads
         return this.#rawHeadersEntries.slice();
+    }
+
+    // The three below report work this request was made to do, for src/work.js: they exist because
+    // the state that answers them is private, and they compute nothing that was not already there.
+    // Reading one costs a load; not reading one costs nothing at all, which is the point.
+
+    /**
+     * Whether the folded `req.headers` object has been built. Most requests never ask for it, and
+     * a middleware that does puts it back on all of them.
+     * @returns {boolean}
+     */
+    get _headersBuilt() {
+        return this.#cachedHeaders !== null || this.#cachedDistinctHeaders !== null;
+    }
+
+    /**
+     * Whether the query string has been parsed. `req.query` caches nothing, so this says a parse
+     * happened and not how many.
+     * @returns {boolean}
+     */
+    get _queryParsed() {
+        return this._querySnapRaw !== undefined;
+    }
+
+    /**
+     * Whether the socket stand-in `req.connection` was allocated.
+     * @returns {boolean}
+     */
+    get _socketBuilt() {
+        return Boolean(this.#cachedConnection);
     }
 };
 
