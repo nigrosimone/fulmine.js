@@ -2,7 +2,7 @@
 
 # Fulmine.js
 
-Fulmine - means lightning ⚡ in Italian - is a drop-in replacement for Express 5, running on [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js) instead of `node:http`. Your existing middleware keeps working.
+Fulmine - means lightning ⚡ in Italian - is a blazing-fast drop-in replacement for Express 5, running on [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js) instead of `node:http`. Your existing middleware keeps working.
 
 ```js
 const express = require("fulmine.js"); // instead of require("express")
