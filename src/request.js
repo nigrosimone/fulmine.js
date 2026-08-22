@@ -914,9 +914,11 @@ module.exports = class Request extends LazyReadable {
             if (this.#responseEnded) {
                 return;
             }
-            // ab.slice(0) copies the ArrayBuffer; uWS neuters `ab` after this callback,
-            // so a Buffer.from(ab) view would corrupt data left in the Readable queue.
-            const chunk = Buffer.from(ab.slice(0));
+            // The bytes are copied because uWS neuters `ab` when this callback returns, and a
+            // view of it would corrupt whatever is still queued. Buffer.from over a view rather
+            // than ab.slice(0): the slice allocates an ArrayBuffer of its own for every chunk,
+            // which on a small body costs several times the copying it is there to do.
+            const chunk = Buffer.from(new Uint8Array(ab));
             const accepted = this.push(chunk);
             // push() may synchronously end the response via a flowing-mode listener.
             if (!accepted && !isLast && !this.#responseEnded) {
