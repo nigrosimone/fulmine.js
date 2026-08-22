@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.18.1](https://github.com/nigrosimone/fulmine.js/compare/v5.18.0...v5.18.1) (2026-08-22)
+
+### Performance Improvements
+
+* **request:** a body chunk is copied out of a view of the uWS buffer, not out of a slice of it ([a6d1428](https://github.com/nigrosimone/fulmine.js/commit/a6d14281a14b1da70ade1604d1d262b157943d6a))
+
 ## [5.18.0](https://github.com/nigrosimone/fulmine.js/compare/v5.17.0...v5.18.0) (2026-08-22)
 
 ### Features
