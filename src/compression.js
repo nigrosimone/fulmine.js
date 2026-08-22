@@ -102,6 +102,100 @@ if (HAS_ZSTD) {
 // wins by 43% at 1.4KB and by 22% at 16KB, and loses by 32% at 32KB and by 90% at 78KB.
 const SYNC_LIMIT = 24 * 1024;
 
+const noop = () => {};
+
+/**
+ * A whole-body compressor that keeps one stream instead of letting zlib build and throw one away
+ * per call, which on a body under the sync limit costs more than the compression does. Same bytes,
+ * a third of the time.
+ *
+ * It is private node, and two things have to be held in place for it: close, because the FINISH
+ * that ends the member would otherwise take the binding with it, and the handle, which that same
+ * FINISH drops off the stream before returning. The probe then compresses each body twice and
+ * gives the whole thing up unless every answer matches `oneShot` exactly, so a node that does any
+ * of this differently gets the public API back and loses nothing but the speed.
+ *
+ * Only for the deflate formats. A brotli stream carries context across a reset and answers the
+ * second body with bytes that depend on the first.
+ *
+ * @param {() => any} create
+ * @param {number} finishFlag
+ * @param {(body: Buffer) => Buffer} oneShot
+ * @returns {(body: Buffer) => Buffer}
+ */
+function reusableCompressor(create, finishFlag, oneShot) {
+    let stream;
+    try {
+        stream = create();
+    } catch {
+        return oneShot;
+    }
+    const handle = stream._handle;
+    if (
+        typeof stream._processChunk !== "function" ||
+        typeof stream.reset !== "function" ||
+        !handle ||
+        typeof handle.close !== "function"
+    ) {
+        return oneShot;
+    }
+    const realClose = stream.close;
+    const realHandleClose = handle.close;
+    let broken = false;
+    // a compression is sync from its first byte to its last, so a second body can only arrive
+    // here from inside the first one; that one is answered the ordinary way
+    let busy = false;
+
+    // a stream given up on is left half finished, and an abandoned zlib handle emits later on its
+    // own: an uncaught "buffer error" and a dead process
+    const giveUp = () => {
+        broken = true;
+        try {
+            stream.on("error", noop);
+            stream.destroy();
+        } catch {
+            // it is on its way out either way
+        }
+        return oneShot;
+    };
+
+    const compress = (body) => {
+        if (broken || busy) {
+            return oneShot(body);
+        }
+        busy = true;
+        stream.close = noop;
+        handle.close = noop;
+        try {
+            // FINISH hands the member back and drops the handle off the stream on its way out,
+            // so the stream is only whole again once it is put back, and only reusable once reset
+            const out = Buffer.from(stream._processChunk(body, finishFlag));
+            stream._handle = handle;
+            stream.reset();
+            return out;
+        } catch {
+            stream._handle = handle;
+            giveUp();
+            return oneShot(body);
+        } finally {
+            stream.close = realClose;
+            handle.close = realHandleClose;
+            stream.removeAllListeners("error");
+            busy = false;
+        }
+    };
+
+    // twice per probe, because a stream that keeps state answers the first body correctly and the
+    // second one differently
+    for (const probe of [Buffer.alloc(64, 0x61), Buffer.from("{}".repeat(600))]) {
+        const expected = oneShot(probe);
+        if (!compress(probe).equals(expected) || !compress(probe).equals(expected)) {
+            return giveUp();
+        }
+    }
+    return compress;
+}
+
 /**
  * The default filter: whether the content type is worth compressing at all. A response with no
  * type is left alone, since nothing says what its bytes are.
@@ -218,6 +312,10 @@ function compression(options) {
         }
     }
 
+    // built on first use, so an application that never answers gzip keeps no stream alive
+    let gzipWhole;
+    let deflateWhole;
+
     /**
      * A whole body, compressed on this thread. Blocks the event loop for as long as it takes,
      * which is why only a small one comes here, see SYNC_LIMIT.
@@ -228,7 +326,12 @@ function compression(options) {
      */
     function compressWhole(method, body) {
         if (method === "gzip") {
-            return zlib.gzipSync(body, zlibOptions);
+            gzipWhole ??= reusableCompressor(
+                () => zlib.createGzip(zlibOptions),
+                zlib.constants.Z_FINISH,
+                (b) => zlib.gzipSync(b, zlibOptions)
+            );
+            return gzipWhole(body);
         }
         if (method === "br") {
             return zlib.brotliCompressSync(body, brotliOptions);
@@ -236,7 +339,12 @@ function compression(options) {
         if (method === "zstd") {
             return zlib.zstdCompressSync(body, zstdOptions);
         }
-        return zlib.deflateSync(body, zlibOptions);
+        deflateWhole ??= reusableCompressor(
+            () => zlib.createDeflate(zlibOptions),
+            zlib.constants.Z_FINISH,
+            (b) => zlib.deflateSync(b, zlibOptions)
+        );
+        return deflateWhole(body);
     }
 
     /**
