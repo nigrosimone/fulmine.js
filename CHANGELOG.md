@@ -1,5 +1,22 @@
 # Changelog
 
+## [5.18.0](https://github.com/nigrosimone/fulmine.js/compare/v5.17.0...v5.18.0) (2026-08-22)
+
+### Features
+
+* **compression:** zstd is answered where the client prefers it, ranked below brotli so an upgrade changes nothing ([6db7a81](https://github.com/nigrosimone/fulmine.js/commit/6db7a815bd06e0d90530842d20b291ed3f73b15e))
+* **testing:** what one request was made to build, as an assertion and as a Server-Timing field ([a74fc3f](https://github.com/nigrosimone/fulmine.js/commit/a74fc3f285275972f86e562833126f0327b85b97))
+
+### Bug Fixes
+
+* **benchmark:** a scenario can refuse pipelining, which is what the compression row needed to run at all ([bb8add1](https://github.com/nigrosimone/fulmine.js/commit/bb8add111d62e256cd4384520915f756ede1d9dc))
+* **errors:** the final handler stays quiet under env test, as express does ([af45745](https://github.com/nigrosimone/fulmine.js/commit/af4574501b7789485fd3ccedc6e01d6901f9b34a))
+* **types:** the zstd option carries its own shape, so an older @types/node still compiles ([dffef37](https://github.com/nigrosimone/fulmine.js/commit/dffef37f311664aac9c41c1352aabb1d1777ef5f))
+
+### Performance Improvements
+
+* **compression:** a whole body is gzipped on a kept stream, not on one built and thrown away per call ([6cc3083](https://github.com/nigrosimone/fulmine.js/commit/6cc308309bc76382522fdffc3218f165bce36ada))
+
 ## [5.17.0](https://github.com/nigrosimone/fulmine.js/compare/v5.16.0...v5.17.0) (2026-08-20)
 
 ### Features
