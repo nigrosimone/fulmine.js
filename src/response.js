@@ -83,6 +83,32 @@ const kShapeMode =
 // request are one Map hit. Insert-only after validation, bounded; only setHeader may insert,
 // the never-throwing readers keep their plain toLowerCase
 const VALIDATED_HEADER_NAMES = new Map();
+// The names and values that recur on every response, kept as Buffers for the uWS crossing: a
+// Buffer is memcpy'd as it is, a string pays a UTF-8 scan and copy per call. A header that is
+// not here just misses the lookup and crosses as the string it was. Names must stay lowercase,
+// which is how writeHeaders receives them.
+const HEADER_NAME_BUF = { __proto__: null };
+const HEADER_VALUE_BUF = { __proto__: null };
+for (const s of ["connection", "keep-alive", "content-type", "vary", "x-powered-by", "content-encoding"]) {
+    HEADER_NAME_BUF[s] = Buffer.from(s);
+}
+for (const s of [
+    "keep-alive",
+    "timeout=10",
+    "close",
+    "Fulmine",
+    "Accept-Encoding",
+    "text/html; charset=utf-8",
+    "text/plain; charset=utf-8",
+    "application/json; charset=utf-8",
+    "application/octet-stream",
+    "gzip",
+    "br",
+    "deflate",
+    "zstd"
+]) {
+    HEADER_VALUE_BUF[s] = Buffer.from(s);
+}
 const HIGH_WATERMARK = 128 * 1024;
 // the exact string json() writes, so send() can skip recomputing the charset on it
 const JSON_UTF8 = "application/json; charset=utf-8";
@@ -714,12 +740,15 @@ module.exports = class Response extends LazyWritable {
                 this.totalSize = parseInt(value);
                 continue;
             }
+            // the recurring names and values cross as cached Buffers, see HEADER_NAME_BUF; a
+            // miss is two failed lookups and the string goes as it came
+            const name = HEADER_NAME_BUF[header] || header;
             if (Array.isArray(value)) {
                 for (const val of value) {
-                    res.writeHeader(header, val);
+                    res.writeHeader(name, HEADER_VALUE_BUF[val] || val);
                 }
             } else {
-                res.writeHeader(header, value);
+                res.writeHeader(name, HEADER_VALUE_BUF[value] || value);
             }
         }
         this.headersSent = true;

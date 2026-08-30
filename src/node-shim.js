@@ -222,7 +222,9 @@ class NodeHttpResponse {
      */
     writeHeader(key, value) {
         if (!this._nodeRes.headersSent) {
-            this._nodeRes.appendHeader(key, String(value));
+            // String() because writeHeaders hands the recurring names and values over as
+            // Buffers for the uWS crossing, and node's appendHeader wants strings
+            this._nodeRes.appendHeader(String(key), String(value));
         }
         return this;
     }
