@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.18.2](https://github.com/nigrosimone/fulmine.js/compare/v5.18.1...v5.18.2) (2026-08-30)
+
+### Performance Improvements
+
+* **response:** recurring header names and values cross into uWS as cached Buffers, not strings ([244ad18](https://github.com/nigrosimone/fulmine.js/commit/244ad1856d37eb0917723f67fa548f2be26af2c7))
+
 ## [5.18.1](https://github.com/nigrosimone/fulmine.js/compare/v5.18.0...v5.18.1) (2026-08-22)
 
 ### Performance Improvements
