@@ -93,7 +93,9 @@ const GAPS = {
         // node adds the Date header unless this is turned off. It is added here always
         "sendDate",
         // 1xx informational responses, which µWS cannot send
-        "writeInformation"
+        "writeInformation",
+        // node's own deprecated alias for writeHead, gone in node 26 and still there on 22 and 24
+        "writeHeader"
     ]),
     socket: new Set([
         // req.socket and res.socket are one stand-in, an EventEmitter with the address, the ports,
@@ -172,8 +174,10 @@ test("nothing Express carries goes missing here without being written down", asy
     for (const kind of ["request", "response", "socket"]) {
         const missing = [...reference[kind]].filter((name) => !ours[kind].has(name));
         unlisted[kind] = missing.filter((name) => !GAPS[kind].has(name)).sort();
-        // and the other way, so the list says what is missing now rather than what once was
-        closed[kind] = [...GAPS[kind]].filter((name) => !missing.includes(name)).sort();
+        // and the other way, so the list says what is missing now rather than what once was. Only
+        // names Express still carries on the node running this: a member node has dropped since,
+        // writeHeader on 26 for one, is out of the comparison rather than a gap that closed
+        closed[kind] = [...GAPS[kind]].filter((name) => reference[kind].has(name) && !missing.includes(name)).sort();
     }
 
     assert.deepStrictEqual(unlisted, { request: [], response: [], socket: [] });
