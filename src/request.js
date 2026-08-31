@@ -875,6 +875,10 @@ module.exports = class Request extends LazyReadable {
         // application, so handing back puts the one that was current back, see rememberApp
         this._appStack = undefined;
         this.receivedData = false;
+        // node's IncomingMessage flag: false until the whole body has arrived. on-finished
+        // reads it to decide a request is done with, and body-parser asks on-finished before
+        // it reads, so a parser running after another one has to find it here
+        this.complete = false;
         // reading ip is very slow in UWS, so its better to not do it unless truly needed
         if (app.needsIpAfterResponse) {
             // an app that has been seen asking after the response reads it now, because by then
@@ -896,6 +900,7 @@ module.exports = class Request extends LazyReadable {
             this._subscribeBody();
         } else {
             this.receivedData = true;
+            this.complete = true;
             // not pushed here: ending a Readable costs a scheduled tick and its bookkeeping,
             // and on a bodyless request nobody may ever look. The null goes out from _read(),
             // which is where every consumer arrives
@@ -926,6 +931,7 @@ module.exports = class Request extends LazyReadable {
                 this.#paused = true;
             }
             if (isLast) {
+                this.complete = true;
                 this.push(null);
             }
         });
@@ -1521,7 +1527,7 @@ module.exports = class Request extends LazyReadable {
      * Enough of a node socket for the middleware that reaches for one. Built on first read and
      * kept, so req.socket keeps its identity across reads as node's does. remotePort hides behind
      * its own getter because it is a native uWS call almost no caller makes.
-     * @returns {{remoteAddress: string|undefined, remotePort: number, localPort: number|undefined, encrypted: boolean, end: (body?: any) => void}}
+     * @returns {{remoteAddress: string|undefined, remotePort: number, localPort: number|undefined, readable: boolean, encrypted: boolean, end: (body?: any) => void}}
      */
     get connection() {
         if (this.#cachedConnection) {
@@ -1534,6 +1540,9 @@ module.exports = class Request extends LazyReadable {
                 return uwsRes.getRemotePort();
             },
             localPort: this.app.port,
+            // on-finished reads socket.readable before anything else, and a socket without
+            // one reads as a request that is already over
+            readable: true,
             encrypted: this.app.ssl,
             end: (body) => this.res.end(body)
         });

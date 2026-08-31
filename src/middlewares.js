@@ -898,8 +898,12 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             // context is still intact and an AsyncResource here would be 1.4 microseconds of
             // nothing. The bind happens below, only once a real read is about to go async.
 
-            // skip reading body twice
-            if (req.bodyRead) {
+            // skip reading body twice. The second half is what body-parser asks on-finished
+            // before it reads, said in this project's own terms: the body has all arrived and
+            // the stream is no longer readable, so whoever read it left nothing to wait for.
+            // Not readableEnded, which is one of the wrapped Readable members and would build
+            // the stream this parser exists to avoid building
+            if (req.bodyRead || (req.complete === true && req.readable === false)) {
                 return next();
             }
 
@@ -1052,6 +1056,11 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             const declaresLength = !Number.isNaN(declared) && declared > 0;
             if (!req.receivedData && !inflate && req._res.collectBody && (declaresLength || isNaN(declared))) {
                 req.bodyRead = true;
+                // µWS hands the whole body over here and the Readable never runs, so the
+                // request has to look read anyway: a parser after this one asks the stream,
+                // not us, and would wait for an end that is never coming
+                req.complete = true;
+                req.readable = false;
                 req._res.collectBody(limit, (body) => {
                     if (body === null) {
                         // over maxSize: uWS refused it natively
@@ -1246,6 +1255,11 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 req._res.onData((ab, isLast) => {
                     onData(ab);
                     if (isLast) {
+                        // this subscription replaced the Readable's own, so the stream will
+                        // never end by itself. What an ended one leaves behind is set here
+                        // instead, since that is what the next parser looks at
+                        req.complete = true;
+                        req.readable = false;
                         onEnd();
                     }
                 });

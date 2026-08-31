@@ -190,3 +190,106 @@ test("expectLazy refuses a field it does not know, rather than passing on it", a
     }, "/hello");
     assert.throws(() => expectLazy(answer.req, answer.res, { allow: ["streams"] }), /is not one of/);
 });
+
+// The table below is the standing guard rather than one more example: every shape an ordinary
+// application is made of, with what it is allowed to build written next to it. A change that makes
+// one of them reach for the stream, the headers object or the socket fails here with the field
+// named, which is what the fix for the second-parser hang needed and did not have: `readableEnded`
+// reads like a plain flag and is one of the wrapped Readable members, so asking it built the very
+// stream the body parsers exist to avoid, on every request carrying a body.
+const LAZY_CASES = [
+    {
+        name: "a text body",
+        setup: (app) => {
+            app.use(express.text());
+            app.post("/t", (req, res) => res.send(String(req.body)));
+        },
+        path: "/t",
+        init: { method: "POST", headers: { "content-type": "text/plain" }, body: "hello" },
+        expect: "hello",
+        allow: ["body"]
+    },
+    {
+        name: "a raw body",
+        setup: (app) => {
+            app.use(express.raw());
+            app.post("/r", (req, res) => res.send(String(req.body.length)));
+        },
+        path: "/r",
+        init: { method: "POST", headers: { "content-type": "application/octet-stream" }, body: "abcd" },
+        expect: "4",
+        allow: ["body"]
+    },
+    {
+        name: "the same parser twice, where the second one steps aside",
+        setup: (app) => {
+            app.use(express.json());
+            app.use(express.json());
+            app.post("/j", (req, res) => res.json(req.body));
+        },
+        path: "/j",
+        init: { method: "POST", headers: { "content-type": "application/json" }, body: '{"a":1}' },
+        expect: '{"a":1}',
+        allow: ["body"]
+    },
+    {
+        name: "a parser a request with no body walks past",
+        setup: (app) => {
+            app.use(express.json());
+            app.get("/none", (req, res) => res.send("no body"));
+        },
+        path: "/none",
+        expect: "no body",
+        allow: []
+    },
+    {
+        name: "a mounted router with a parameter",
+        setup: (app) => {
+            const router = express.Router();
+            router.get("/:id", (req, res) => res.send(req.params.id));
+            app.use("/api", router);
+        },
+        path: "/api/42",
+        expect: "42",
+        allow: []
+    },
+    {
+        name: "a redirect",
+        setup: (app) => {
+            app.get("/old", (req, res) => res.redirect("/new"));
+        },
+        path: "/old",
+        allow: []
+    },
+    {
+        name: "a cookie written on the way out",
+        setup: (app) => {
+            app.get("/c", (req, res) => res.cookie("a", "b").send("set"));
+        },
+        path: "/c",
+        expect: "set",
+        allow: []
+    },
+    {
+        name: "an error answered by a handler",
+        setup: (app) => {
+            app.get("/boom", () => {
+                throw new Error("boom");
+            });
+            app.use((err, req, res, next) => res.status(500).send(err.message));
+        },
+        path: "/boom",
+        expect: "boom",
+        allow: []
+    }
+];
+
+for (const testCase of LAZY_CASES) {
+    test(`${testCase.name} builds nothing it was not allowed to`, async () => {
+        const answer = await ask(testCase.setup, testCase.path, testCase.init);
+        if (testCase.expect !== undefined) {
+            assert.strictEqual(answer.body, testCase.expect);
+        }
+        expectLazy(answer.req, answer.res, { allow: testCase.allow });
+    });
+}
