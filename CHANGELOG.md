@@ -1,5 +1,19 @@
 # Changelog
 
+## [5.19.0](https://github.com/nigrosimone/fulmine.js/compare/v5.18.2...v5.19.0) (2026-08-31)
+
+### Features
+
+* **router:** router.stack and app.router, the layers express hands out and the router it hands out ([aacec7f](https://github.com/nigrosimone/fulmine.js/commit/aacec7f352473c39f6a368965108329f8013c745))
+
+### Bug Fixes
+
+* **body:** a body another reader already took is left to it by the parser that runs next ([a57d8bc](https://github.com/nigrosimone/fulmine.js/commit/a57d8bc553e98d0163da566cb3a2d1b4e9733714))
+* **request:** req.socket and res.socket are one stand-in, with the members an application calls ([a46b512](https://github.com/nigrosimone/fulmine.js/commit/a46b512e5017203cdb448f06a880f15fd702aa24))
+* **request:** the socket stand-in answers setTimeout, setKeepAlive and setNoDelay ([3061dff](https://github.com/nigrosimone/fulmine.js/commit/3061dff41f6162ce5c4dd01e75a6db4cb115896c))
+* **response:** destroy() drops the connection, so a stream that dies mid-transfer does not hang the client ([6873b74](https://github.com/nigrosimone/fulmine.js/commit/6873b741eadd1adab514b6954145a928437e5f44))
+* **response:** writableEnded is true once end() has been called, the way node sets it ([d2c1d0e](https://github.com/nigrosimone/fulmine.js/commit/d2c1d0e6d15f78bb72e9e3f98812e2bc5f49d9ef))
+
 ## [5.18.2](https://github.com/nigrosimone/fulmine.js/compare/v5.18.1...v5.18.2) (2026-08-30)
 
 ### Performance Improvements
