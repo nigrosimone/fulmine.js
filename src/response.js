@@ -139,6 +139,13 @@ class Socket extends EventEmitter {
         super();
         this.response = response;
         this[kShapeMode] = true;
+        // middleware assigns to this one, which is why it is a field rather than a getter: express
+        // reads socket.encrypted for req.protocol and a proxy shim writes it
+        this.encrypted = response.req.app.ssl;
+        this.localPort = response.req.app.port;
+        // on-finished reads socket.readable before anything else, and a socket without one reads
+        // as a request that is already over
+        this.readable = true;
 
         // shared, not an arrow: one per process instead of one per materialized socket
         this.on("error", Socket._onError);
@@ -149,6 +156,37 @@ class Socket extends EventEmitter {
         return !this.response.finished;
     }
 
+    /** The peer, as node reports it. Reading it out of µWS is slow, so the request caches it. */
+    get remoteAddress() {
+        return this.response.req.parsedIp;
+    }
+
+    /** A native µWS call almost no caller makes, so it stays behind its getter. */
+    get remotePort() {
+        return this.response.req._res.getRemotePort();
+    }
+
+    /**
+     * node's socket carries these three and applications call them on a request they mean to hold
+     * open, almost always to take the timeout off. µWS has no per socket timeout reachable from
+     * javascript, so they do nothing and hand the socket back the way node's do. n8n's chat trigger
+     * calls setTimeout on every webhook, and without it the workflow answered 500.
+     * @returns {this}
+     */
+    setTimeout() {
+        return this;
+    }
+
+    /** @returns {this} */
+    setKeepAlive() {
+        return this;
+    }
+
+    /** @returns {this} */
+    setNoDelay() {
+        return this;
+    }
+
     /**
      * Finishes the response through the socket, which is how the middleware that only knows
      * about sockets ends one.
@@ -156,6 +194,100 @@ class Socket extends EventEmitter {
      */
     end(body) {
         this.response.end(body);
+    }
+
+    /**
+     * What a server side socket answers about itself. µWS owns the connection, so these follow the
+     * response: it is open until the response is over, and it was never a socket being dialled.
+     */
+    get destroyed() {
+        return this.response.finished === true;
+    }
+
+    /** @returns {string} "open" until the response is over, as a served socket reads. */
+    get readyState() {
+        return this.response.finished === true ? "closed" : "open";
+    }
+
+    /** @returns {boolean} never: this end was accepted, not dialled. */
+    get connecting() {
+        return false;
+    }
+
+    /** @returns {boolean} never, for the same reason. */
+    get pending() {
+        return false;
+    }
+
+    /**
+     * The end of the connection node reports here. There is no address to read back from µWS, so
+     * this is the port the application bound and the family the peer arrived on.
+     * @returns {{address: string|undefined, family: string, port: number|undefined}}
+     */
+    address() {
+        const remote = this.response.req.parsedIp;
+        return {
+            address: this.response.req.app._listenHost,
+            family: remote?.includes(":") ? "IPv6" : "IPv4",
+            port: this.localPort
+        };
+    }
+
+    /**
+     * Drops the connection, which is what an application does to a client it will not serve. node
+     * takes an error and re-emits it; this closes and says so through 'close', since there is no
+     * socket underneath to carry an error of its own.
+     * @returns {this}
+     */
+    destroy() {
+        this.close();
+        return this;
+    }
+
+    /** @returns {this} */
+    destroySoon() {
+        this.close();
+        return this;
+    }
+
+    /**
+     * Holds and resumes the body arriving on this connection, which is the only half of node's
+     * pause() that means anything here: the response is written when the application writes it.
+     * @returns {this}
+     */
+    pause() {
+        this.response.req.pause();
+        return this;
+    }
+
+    /** @returns {this} */
+    resume() {
+        this.response.req.resume();
+        return this;
+    }
+
+    /**
+     * node writes these bytes past the response, straight onto the connection. There is no way
+     * past µWS's framing here, so they go through the response instead, which is what the
+     * middleware writing to a socket means by it.
+     *
+     * @param {any} chunk
+     * @param {any} [encoding]
+     * @param {any} [callback]
+     * @returns {boolean}
+     */
+    write(chunk, encoding, callback) {
+        return this.response.write(chunk, encoding, callback);
+    }
+
+    /** The event loop is µWS's, so there is nothing to hold open or let go. @returns {this} */
+    ref() {
+        return this;
+    }
+
+    /** @returns {this} */
+    unref() {
+        return this;
     }
 
     /** Closes the connection outright, without finishing a response first. */
@@ -490,6 +622,17 @@ module.exports = class Response extends LazyWritable {
      */
     get socket() {
         if (this.#ended) return null;
+        return this._socketShim();
+    }
+
+    /**
+     * The stand-in itself, built on first ask and kept. `socket` answers null once the response is
+     * over, as node's does; the request's `socket` is the same object and stays, so it comes
+     * through here instead.
+     *
+     * @returns {any}
+     */
+    _socketShim() {
         if (!this.#socket) {
             this.#socket = new Socket(this);
         }

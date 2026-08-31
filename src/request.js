@@ -1524,36 +1524,14 @@ module.exports = class Request extends LazyReadable {
     #cachedConnection = null;
 
     /**
-     * Enough of a node socket for the middleware that reaches for one. Built on first read and
-     * kept, so req.socket keeps its identity across reads as node's does. remotePort hides behind
-     * its own getter because it is a native uWS call almost no caller makes.
-     * @returns {{remoteAddress: string|undefined, remotePort: number, localPort: number|undefined, readable: boolean, encrypted: boolean, setTimeout: (ms?: number, cb?: () => void) => any, setKeepAlive: (enable?: boolean, delay?: number) => any, setNoDelay: (noDelay?: boolean) => any, end: (body?: any) => void}}
+     * The socket node would have handed over, which is the same object as `res.socket`: one
+     * stand-in for the pair, as node has one socket for both. Built on first read and kept, so it
+     * keeps its identity across reads, and kept here as well so that it still answers once the
+     * response is over and `res.socket` has gone null.
+     * @returns {any}
      */
     get connection() {
-        if (this.#cachedConnection) {
-            return this.#cachedConnection;
-        }
-        const uwsRes = this._res;
-        return (this.#cachedConnection = {
-            remoteAddress: this.parsedIp,
-            get remotePort() {
-                return uwsRes.getRemotePort();
-            },
-            localPort: this.app.port,
-            // on-finished reads socket.readable before anything else, and a socket without
-            // one reads as a request that is already over
-            readable: true,
-            encrypted: this.app.ssl,
-            // node's socket carries these three and applications call them on a request they
-            // mean to hold open, almost always to take the timeout off. µWS has no per socket
-            // timeout reachable from javascript, so they do nothing and hand the socket back
-            // the way node's do. n8n's chat trigger calls setTimeout on every webhook, and
-            // without it the workflow answered 500
-            setTimeout: () => this.connection,
-            setKeepAlive: () => this.connection,
-            setNoDelay: () => this.connection,
-            end: (body) => this.res.end(body)
-        });
+        return (this.#cachedConnection ??= this.res._socketShim());
     }
 
     /**
