@@ -554,6 +554,30 @@ module.exports = class Response extends LazyWritable {
     }
 
     /**
+     * Drops the connection, which is how an application abandons a response it cannot finish: a
+     * download whose source dies mid-transfer has to leave the client with a reset rather than a
+     * truncated body it would take for the whole file. node destroys the socket here and µWS's
+     * close() is the same thing; without it the client waited for bytes that were never coming and
+     * the request hung until its own timeout. LibreChat's download route is written exactly that
+     * way, `stream.on("error", () => res.destroy())`.
+     *
+     * A response that is over, or one whose client is already gone, only tears the stream down:
+     * there is nothing left to close, and touching an aborted µWS response is a use after free.
+     * One difference from node stays: writableEnded reads true after this, because it is answered
+     * from the same finished flag the close sets, where node leaves it false until end() is called.
+     *
+     * @param {any} [error]
+     * @returns {this}
+     */
+    destroy(error) {
+        if (this.finished !== true && this.aborted !== true) {
+            this.finished = true;
+            this._res.close();
+        }
+        return super.destroy(error);
+    }
+
+    /**
      * on(), not once(), so this must stay idempotent: end() emits 'close' by hand and a later
      * destroy() makes Writable emit it again.
      */
