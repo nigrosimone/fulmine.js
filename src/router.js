@@ -142,6 +142,66 @@ let routeKey = 0;
  * A nested router gets its own walk, through its own _routeRequest, so req.next belongs to whoever
  * is running the request at that moment.
  */
+/**
+ * The layer Express makes for one mounted handler. `name` is what a caller matches on: a function's
+ * own name, "router" for a mounted router, and "<anonymous>" for the rest, exactly as express reads
+ * them off the handle.
+ *
+ * @param {any} route
+ * @param {any} callback
+ * @returns {any}
+ */
+function layerFor(route, callback) {
+    const layer = {
+        handle: callback,
+        // express reads the name off the handle, and its own handles are named: a mounted
+        // application is "app" and a mounted router "router", whatever this project happens
+        // to call the function underneath
+        name: Array.isArray(callback._routes)
+            ? callback._isApplication
+                ? "app"
+                : "router"
+            : callback.name || "<anonymous>",
+        params: undefined,
+        path: undefined,
+        keys: [],
+        route: undefined
+    };
+    route._layers.set(callback, layer);
+    return layer;
+}
+
+/**
+ * The layer Express makes for a route, whose handle runs the route's own handlers one after
+ * another. Express calls that handle `handle`, and a caller that looks for a route layer looks for
+ * that name.
+ *
+ * @param {any} route
+ * @returns {any}
+ */
+function routeLayer(route) {
+    const handle = function handle(req, res, next) {
+        let index = 0;
+        const step = (err) => {
+            const callback = route.callbacks[index++];
+            if (callback === undefined) {
+                return next(err);
+            }
+            const isErrorHandler = callback.length === 4;
+            if ((err === undefined || err === null) === isErrorHandler) {
+                return step(err);
+            }
+            try {
+                return isErrorHandler ? callback(err, req, res, step) : callback(req, res, step);
+            } catch (thrown) {
+                return step(thrown);
+            }
+        };
+        step();
+    };
+    return { handle, name: "handle", params: undefined, path: undefined, keys: [], route: route.exposed };
+}
+
 class Walk {
     /**
      * @param {any} router
@@ -1974,6 +2034,33 @@ module.exports = class Router extends EventEmitter {
             return after === undefined || after === "/";
         }
         return pattern.test(path);
+    }
+
+    /**
+     * The layers Express keeps on a router, in Express's own shape: one per middleware, one per
+     * route, and the route's own handlers under `route.stack`. Libraries that list an
+     * application's endpoints walk this, and so do tests that reach in for a single handler by
+     * name, which is how LibreChat pulls one middleware out of its router to exercise it.
+     *
+     * A view, built from the routes this router holds and rebuilt on every read, so it follows
+     * what has been registered. It is not the router's own storage: pushing a layer onto it, or
+     * splicing one out, moves nothing. The layer objects themselves are kept, so a caller that
+     * compares identities across two reads gets the same answer Express gives.
+     *
+     * @returns {any[]}
+     */
+    get stack() {
+        const layers = [];
+        for (const route of this._routes) {
+            if (route.use) {
+                for (const callback of route.callbacks) {
+                    layers.push((route._layers ??= new Map()).get(callback) ?? layerFor(route, callback));
+                }
+            } else {
+                layers.push((route._routeLayer ??= routeLayer(route)));
+            }
+        }
+        return layers;
     }
 
     /**

@@ -235,6 +235,15 @@ declare module "fulmine.js" {
         readonly uwsApp: uWS.TemplatedApp;
 
         /**
+         * The layers the application routes through, in express's shape: one per middleware, one
+         * per route with the route's own handlers under it. Express keeps this on the router it
+         * builds and hands out as `app.router`, which is here too and is the application itself,
+         * so `app.stack` and `app.router.stack` are the same walk. Read-only: it is rebuilt from
+         * the registered routes on every read, so putting a layer into it moves nothing.
+         */
+        readonly stack: any[];
+
+        /**
          * Binds, and calls back the way Express 5 does: with nothing when the socket is listening,
          * and with the error when the bind failed, since Express registers the listen callback on
          * 'error' as well as on 'listening'. `this` inside it is the app, which is what listen

@@ -688,6 +688,17 @@ class Application extends Router {
     }
 
     /**
+     * The router the application routes through, which express 5 hands out so that a caller can
+     * walk `app.router.stack`. Here the application is the router, so it hands back itself and the
+     * walk finds the same layers.
+     *
+     * @returns {this}
+     */
+    get router() {
+        return this;
+    }
+
+    /**
      * The bound address, or null when not listening.
      * @returns {{address: string, family: string, port: number}|null}
      */
