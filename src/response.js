@@ -2338,6 +2338,19 @@ module.exports = class Response extends LazyWritable {
     get writableFinished() {
         return this.finished;
     }
+
+    /**
+     * Whether end() has been called. node sets this one there and writableFinished later, once the
+     * bytes are out; here end() hands the whole response to µWS, so the two are the same moment.
+     * Without it the base property answered false forever, and an application that asks whether it
+     * has already answered - LibreChat's agent stream does, before it decides whether to keep a
+     * subscription - carried on writing to a response that was over.
+     */
+    // @ts-expect-error TS2611, the accessor replacing the base property is deliberate. Expect
+    // rather than ignore, so it fails loudly if it ever stops applying.
+    get writableEnded() {
+        return this.finished;
+    }
 };
 
 // res.contentType is res.type under express's other name. On the prototype rather than an instance

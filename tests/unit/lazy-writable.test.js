@@ -58,6 +58,8 @@ test("the event map is the one node's own constructor would have written", () =>
 });
 
 test("every door into Writable builds the state rather than tripping over its absence", () => {
+    // writableEnded and writableFinished are not doors: both are answered from the response's
+    // own finished flag, which is the same answer without a stream behind it
     const doors = [
         ["write", (/** @type {any} */ r) => r.write("x")],
         ["cork", (/** @type {any} */ r) => r.cork()],
@@ -67,7 +69,6 @@ test("every door into Writable builds the state rather than tripping over its ab
         ["writableLength", (/** @type {any} */ r) => r.writableLength],
         ["writableHighWaterMark", (/** @type {any} */ r) => r.writableHighWaterMark],
         ["writableObjectMode", (/** @type {any} */ r) => r.writableObjectMode],
-        ["writableEnded", (/** @type {any} */ r) => r.writableEnded],
         ["writableCorked", (/** @type {any} */ r) => r.writableCorked],
         ["writableNeedDrain", (/** @type {any} */ r) => r.writableNeedDrain],
         ["destroyed", (/** @type {any} */ r) => r.destroyed],
