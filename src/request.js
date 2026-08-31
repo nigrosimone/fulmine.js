@@ -1527,7 +1527,7 @@ module.exports = class Request extends LazyReadable {
      * Enough of a node socket for the middleware that reaches for one. Built on first read and
      * kept, so req.socket keeps its identity across reads as node's does. remotePort hides behind
      * its own getter because it is a native uWS call almost no caller makes.
-     * @returns {{remoteAddress: string|undefined, remotePort: number, localPort: number|undefined, readable: boolean, encrypted: boolean, end: (body?: any) => void}}
+     * @returns {{remoteAddress: string|undefined, remotePort: number, localPort: number|undefined, readable: boolean, encrypted: boolean, setTimeout: (ms?: number, cb?: () => void) => any, setKeepAlive: (enable?: boolean, delay?: number) => any, setNoDelay: (noDelay?: boolean) => any, end: (body?: any) => void}}
      */
     get connection() {
         if (this.#cachedConnection) {
@@ -1544,6 +1544,14 @@ module.exports = class Request extends LazyReadable {
             // one reads as a request that is already over
             readable: true,
             encrypted: this.app.ssl,
+            // node's socket carries these three and applications call them on a request they
+            // mean to hold open, almost always to take the timeout off. µWS has no per socket
+            // timeout reachable from javascript, so they do nothing and hand the socket back
+            // the way node's do. n8n's chat trigger calls setTimeout on every webhook, and
+            // without it the workflow answered 500
+            setTimeout: () => this.connection,
+            setKeepAlive: () => this.connection,
+            setNoDelay: () => this.connection,
             end: (body) => this.res.end(body)
         });
     }
