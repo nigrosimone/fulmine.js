@@ -11,9 +11,13 @@ const { fetchTest } = require("../../helpers.js");
 
 const app = express();
 
+// writableFinished is deliberately not in here. node sets it when the bytes are actually gone, so
+// right after end() it is true or false depending on whether the write flushed synchronously: true
+// on Windows, false on the CI runners. This project hands the whole response to µWS in end() and
+// answers true from there, which is the same approximation it has always made, and comparing it
+// here would only be comparing the machine.
 const state = (res) => ({
     writableEnded: res.writableEnded,
-    writableFinished: res.writableFinished,
     finished: res.finished,
     headersSent: res.headersSent
 });
