@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.19.1](https://github.com/nigrosimone/fulmine.js/compare/v5.19.0...v5.19.1) (2026-09-02)
+
+### Bug Fixes
+
+* **cli:** typescript 7 publishes no parser, so migrate reads a .ts file through its scanner ([fc26b59](https://github.com/nigrosimone/fulmine.js/commit/fc26b59131486faa2486fda03492ad7cfbbda308))
+
 ## [5.19.0](https://github.com/nigrosimone/fulmine.js/compare/v5.18.2...v5.19.0) (2026-08-31)
 
 ### Features
