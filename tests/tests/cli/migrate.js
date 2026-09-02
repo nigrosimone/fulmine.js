@@ -144,6 +144,102 @@ try {
     // the modules are still installed, so that half is still worth saying
     assert("but still names the modules to replace", again.includes("compression -> express.compression()"));
     assert("express is still the thing being replaced", typeof express === "function");
+
+    // typescript 7 is the compiler rewritten in Go: require("typescript") is a version number and
+    // the parser used above is not published any more, so .ts files go through its scanner instead.
+    // The project below lives under node_modules so that the stand-in package, which is only an
+    // exports map onto the real typescript 7 installed here, resolves it by name
+    const ts7Root = path.join(__dirname, "../../../node_modules/.fulmine-migrate-ts7");
+    fs.rmSync(ts7Root, { recursive: true, force: true });
+    try {
+        const stub = path.join(ts7Root, "node_modules/typescript");
+        fs.mkdirSync(stub, { recursive: true });
+        fs.writeFileSync(
+            path.join(stub, "package.json"),
+            JSON.stringify({
+                name: "typescript",
+                version: "7.0.2",
+                type: "module",
+                exports: {
+                    ".": "./version.cjs",
+                    "./unstable/ast": "./ast.js",
+                    "./unstable/ast/scanner": "./scanner.js"
+                }
+            })
+        );
+        fs.writeFileSync(
+            path.join(stub, "version.cjs"),
+            'module.exports = { version: "7.0.2", versionMajorMinor: "7.0" };'
+        );
+        fs.writeFileSync(path.join(stub, "ast.js"), 'export * from "typescript7/unstable/ast";');
+        fs.writeFileSync(path.join(stub, "scanner.js"), 'export * from "typescript7/unstable/ast/scanner";');
+
+        fs.writeFileSync(path.join(ts7Root, "typed.ts"), FIXTURES["typed.ts"]);
+        fs.writeFileSync(path.join(ts7Root, "component.tsx"), FIXTURES["component.tsx"]);
+        fs.writeFileSync(path.join(ts7Root, "middlewares.js"), FIXTURES["middlewares.js"]);
+
+        const out = execFileSync(process.execPath, [cli, "migrate", ts7Root]).toString();
+        const ts7Typed = fs.readFileSync(path.join(ts7Root, "typed.ts"), "utf8");
+        const ts7Component = fs.readFileSync(path.join(ts7Root, "component.tsx"), "utf8");
+
+        // the same two files, and the same five the tree found in them above
+        assert(
+            "typescript 7 rewrites as many imports as the tree did",
+            out.includes("rewrote 5 import(s) in 2 file(s)")
+        );
+        assert(
+            "every TypeScript import is rewritten under typescript 7 too",
+            !ts7Typed.includes('from "express"') && !ts7Typed.includes('require("express")')
+        );
+        assert(
+            "a type-only import is rewritten under typescript 7",
+            ts7Typed.includes('import type { Request, Response } from "fulmine.js";')
+        );
+        assert(
+            "import equals require is rewritten under typescript 7",
+            ts7Typed.includes('import legacy = require("fulmine.js");')
+        );
+        assert(
+            "a different package is left alone under typescript 7",
+            ts7Typed.includes('import session from "express-session";')
+        );
+        assert(
+            "a string that is not an import is left alone under typescript 7",
+            ts7Typed.includes('const notAnImport = "express";')
+        );
+        assert(
+            "a type annotation is left alone under typescript 7",
+            ts7Typed.includes("const app: express.Application")
+        );
+        assert(
+            "tsx is rewritten and its JSX survives under typescript 7",
+            ts7Component.includes('from "fulmine.js"') && ts7Component.includes("<div className='x'>")
+        );
+        assert(
+            "and the modules with something built in here are still named",
+            out.includes("compression -> express.compression()")
+        );
+    } finally {
+        fs.rmSync(ts7Root, { recursive: true, force: true });
+    }
+
+    // a typescript that is neither: no parser, and no scanner behind it either
+    const noReader = fs.mkdtempSync(path.join(os.tmpdir(), "fulmine-migrate-noreader-"));
+    try {
+        const stub = path.join(noReader, "node_modules/typescript");
+        fs.mkdirSync(stub, { recursive: true });
+        fs.writeFileSync(path.join(stub, "package.json"), '{"name":"typescript","version":"8.0.0","main":"index.js"}');
+        fs.writeFileSync(path.join(stub, "index.js"), 'module.exports = { version: "8.0.0" };');
+        fs.writeFileSync(path.join(noReader, "typed.ts"), 'import express from "express";\n');
+
+        const out = execFileSync(process.execPath, [cli, "migrate", "--dry-run", noReader]).toString();
+        assert(
+            "a typescript with nothing to read a file with does not crash",
+            out.includes("1 TypeScript file(s) were left alone")
+        );
+    } finally {
+        fs.rmSync(noReader, { recursive: true, force: true });
+    }
 } finally {
     fs.rmSync(root, { recursive: true, force: true });
 }
