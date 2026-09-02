@@ -143,19 +143,42 @@ function collectFiles(dir) {
 }
 
 /**
- * The TypeScript compiler belonging to the project being migrated, or null when it has none.
+ * A reader for the .ts files of the project being migrated, or null when it has no TypeScript.
  *
  * acorn cannot read TypeScript, and shipping a parser that can would put megabytes into this
  * package for a command most people run once. A TypeScript project already has the compiler, so
  * it is resolved from there. A project without one is told its .ts files were left alone rather
  * than having them quietly skipped, which is what happened before they were looked at at all.
  *
+ * typescript 7 is the compiler rewritten in Go, and it publishes no JavaScript parser any more:
+ * require("typescript") gives back a version number and nothing else. Its scanner survives, on an
+ * ESM-only subpath that require() reads on every node this package supports, so 7 gets the token
+ * walk and 6 keeps the tree.
+ *
  * @param {string} target directory being migrated
- * @returns {any|null}
+ * @returns {((source: string, fileName: string, seen?: Set<string>) => {start: number, end: number}[])|null}
  */
 function loadTypeScript(target) {
+    /** @param {string} name */
+    const load = (name) => require(require.resolve(name, { paths: [target, process.cwd()] }));
+
     try {
-        return require(require.resolve("typescript", { paths: [target, process.cwd()] }));
+        const ts = load("typescript");
+        if (typeof ts.createSourceFile === "function") {
+            return (source, fileName, seen) => findSpecifiersTypeScript(source, fileName, ts, seen);
+        }
+    } catch {
+        return null;
+    }
+
+    try {
+        const { createScanner } = load("typescript/unstable/ast/scanner");
+        const { LanguageVariant, SyntaxKind } = load("typescript/unstable/ast");
+        // an unstable subpath, so the name the token loop stops on is checked here rather than read
+        // as undefined and scanned past the end of the file forever
+        if (SyntaxKind.EndOfFile === undefined) return null;
+        const ts = { createScanner, LanguageVariant, SyntaxKind };
+        return (source, fileName, seen) => findSpecifiersScanner(source, fileName, ts, seen);
     } catch {
         return null;
     }
@@ -219,6 +242,53 @@ function findSpecifiersTypeScript(source, fileName, ts, seen) {
     };
 
     visit(sourceFile);
+    return found;
+}
+
+/**
+ * The same specifiers again, read from the token stream instead of from a tree. typescript 7 has
+ * no parser to give a tree, and its scanner already does the part that a search over the text gets
+ * wrong: comments, template literals and strings that only look like imports are not tokens here.
+ *
+ * @param {string} source
+ * @param {string} fileName decides whether JSX is allowed, as above
+ * @param {any} ts the scanner and the two enums loadTypeScript kept
+ * @param {Set<string>} [seen] as in findSpecifiers
+ * @returns {{start: number, end: number}[]}
+ */
+function findSpecifiersScanner(source, fileName, ts, seen) {
+    const kind = ts.SyntaxKind;
+    const scanner = ts.createScanner(
+        true,
+        fileName.endsWith(".tsx") ? ts.LanguageVariant.JSX : ts.LanguageVariant.Standard,
+        source
+    );
+
+    /** @type {{start: number, end: number}[]} */
+    const found = [];
+    // the three tokens before the one in hand, newest first
+    let back1 = -1;
+    let back2 = -1;
+    let back3 = -1;
+
+    for (let token = scanner.scan(); token !== kind.EndOfFile; token = scanner.scan()) {
+        // from "express", and import("express") or require("express") as a call. The dot rules out
+        // obj.require("express"), which is somebody else's require and not a module specifier
+        const isFrom = back1 === kind.FromKeyword;
+        const isRequire = back2 === kind.RequireKeyword && back3 !== kind.DotToken && back3 !== kind.QuestionDotToken;
+        const isCall = back1 === kind.OpenParenToken && (back2 === kind.ImportKeyword || isRequire);
+        if (token === kind.StringLiteral && (isFrom || isCall)) {
+            const text = scanner.getTokenValue();
+            if (text === FROM) {
+                found.push({ start: scanner.getTokenStart(), end: scanner.getTokenEnd() });
+            } else if (seen && BUILT_IN_INSTEAD[text]) {
+                seen.add(text);
+            }
+        }
+        back3 = back2;
+        back2 = back1;
+        back1 = token;
+    }
     return found;
 }
 
@@ -874,7 +944,7 @@ Options:
 
     // resolved once, and only if there is anything to use it on
     const hasTypeScriptFiles = files.some((file) => TYPESCRIPT_EXTENSIONS.has(path.extname(file)));
-    const ts = hasTypeScriptFiles ? loadTypeScript(target) : null;
+    const readTypeScript = hasTypeScriptFiles ? loadTypeScript(target) : null;
 
     for (const file of files) {
         const source = fs.readFileSync(file, "utf8");
@@ -883,14 +953,15 @@ Options:
         if (!source.includes(FROM) && !Object.keys(BUILT_IN_INSTEAD).some((name) => source.includes(name))) continue;
 
         const isTypeScript = TYPESCRIPT_EXTENSIONS.has(path.extname(file));
-        if (isTypeScript && !ts) {
+        if (isTypeScript && !readTypeScript) {
             needTypeScript.push(path.relative(target, file));
             continue;
         }
 
-        const specifiers = isTypeScript
-            ? findSpecifiersTypeScript(source, file, ts, builtInInstead)
-            : findSpecifiers(source, builtInInstead);
+        const specifiers =
+            isTypeScript && readTypeScript
+                ? readTypeScript(source, file, builtInInstead)
+                : findSpecifiers(source, builtInInstead);
         if (specifiers === null) {
             unparsed.push(path.relative(target, file));
             continue;

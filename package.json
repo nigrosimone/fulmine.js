@@ -198,6 +198,8 @@
         "swagger-ui-express": "^5.0.1",
         "swig": "^1.4.2",
         "tsd": "^0.33.0",
+        "typescript": "^6.0.3",
+        "typescript7": "npm:typescript@^7.0.2",
         "vhost": "^3.0.2"
     },
     "contributors": [
