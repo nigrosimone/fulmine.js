@@ -624,6 +624,8 @@ app.listen(3000, () => console.log(`worker ${process.pid} listening`));
 
 Anything held per process is now held per worker: an in-memory cache, a rate-limit counter, a session store or a `Map` of connected sockets is not shared, and needs Redis or something like it to be. `app.close()` in the primary stops the workers, and a `SIGTERM` or `SIGINT` that reaches only the primary, which is what a container sends, is passed on to them. Runnable: [`examples/cluster.js`](./examples/cluster.js).
 
+10. `app.set("connection headers", false)` stops `Connection: keep-alive` and `Keep-Alive: timeout=10` going out on every response. Express sends both, so Fulmine sends both by default. An HTTP/1.1 connection stays open without being told, so to an HTTP/1.1 client the two headers say nothing it does not know already, and they cost 46 bytes and two header writes per response. A request that asked for `Connection: close` still gets `Connection: close`, and the connection is closed. Turn it off for an API behind a proxy or serving HTTP/1.1 clients; keep the default where a client or a proxy relies on the header to keep the connection open. Worth 2% to 3.5% here on a route that is not compiled, plus the bytes.
+
 ## WebSockets
 
 `app.ws()` registers a WebSocket route, served by µWS itself. The upgrade never reaches node, so `server.on("upgrade")` and the libraries built on it have nothing to hear; this is the replacement.
