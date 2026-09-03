@@ -1,5 +1,7 @@
 # Changelog
 
+## [5.19.2](https://github.com/nigrosimone/fulmine.js/compare/v5.19.1...v5.19.2) (2026-09-03)
+
 ## [5.19.1](https://github.com/nigrosimone/fulmine.js/compare/v5.19.0...v5.19.1) (2026-09-02)
 
 ### Bug Fixes
