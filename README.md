@@ -32,7 +32,7 @@ See [Migrating](#migrating) for what it handles and what it deliberately does no
 
 [![npm version](https://img.shields.io/npm/v/fulmine.js)](https://www.npmjs.com/package/fulmine.js)
 [![Node.js 22 | 24 | 26](https://img.shields.io/badge/Node.js-22%20%7C%2024%20%7C%2026-green)](https://nodejs.org)
-[![HTTP Arena](https://img.shields.io/endpoint?url=https://www.http-arena.com/badge/fulmine/h1.json)](https://www.http-arena.com/#tuned=0)
+[![HTTP Arena](https://img.shields.io/endpoint?url=https://www.http-arena.com/badge/fulmine.js/h1.json)](https://www.http-arena.com/#tuned=0)
 [![Coverage Status](https://coveralls.io/repos/github/nigrosimone/fulmine.js/badge.svg?branch=main)](https://coveralls.io/github/nigrosimone/fulmine.js?branch=main)
 [![CodeQL](https://github.com/nigrosimone/fulmine.js/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/nigrosimone/fulmine.js/actions/workflows/codeql.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/nigrosimone/fulmine.js/badge)](https://scorecard.dev/viewer/?uri=github.com/nigrosimone/fulmine.js)
