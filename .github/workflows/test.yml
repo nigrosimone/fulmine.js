@@ -5,6 +5,13 @@ on:
         branches: ["main"]
     pull_request:
         branches: ["main"]
+    # The same suites on nobody's commit, twice a month. Node keeps moving under the pinned
+    # majors below, and a patch release that answers differently from Express is our bug the day
+    # it ships, not the day somebody happens to push. Cron cannot say every two weeks, so the 1st
+    # and the 15th.
+    schedule:
+        - cron: "23 5 1,15 * *"
+    workflow_dispatch:
 
 # nothing here writes to the repository: the coverage upload posts to Coveralls, not to GitHub
 permissions:
