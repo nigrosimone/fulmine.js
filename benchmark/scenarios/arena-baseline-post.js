@@ -1,12 +1,17 @@
 "use strict";
 
-// HttpArena's baseline row, the POST half of it. That profile rotates GET, POST with a
-// Content-Length and POST chunked in equal parts, so two requests in three carry a body, and the
-// body is two bytes: what it measures is the machinery around a body, never the copying of one.
-//
-// It sits here because that row is the widest gap on the board, 53us of CPU per request against
-// uWebSockets.js's 27, and the suite had nothing shaped like it: the other POST scenarios all go
-// through a body parser, and this handler reads the stream itself, the way the arena entry does.
+// HttpArena's baseline POST handler: sum the query and a small text body using the published
+// adapter's parser and connection-header setting. The type callback also accepts requests that
+// omit Content-Type, as HttpArena's load generator does.
+function sumQuery(query) {
+    let sum = 0;
+    for (const k in query) {
+        const n = parseInt(query[k], 10);
+        if (n === n) sum += n;
+    }
+    return sum;
+}
+
 module.exports = {
     name: "routing/arena-baseline-post",
     path: "/baseline11?a=13&b=42",
@@ -14,20 +19,14 @@ module.exports = {
         method: "POST",
         body: "20"
     },
-    setup(app) {
-        app.post("/baseline11", (req, res) => {
-            let sum = 0;
-            for (const k in req.query) {
-                const n = parseInt(req.query[k], 10);
-                if (n === n) sum += n;
-            }
-            let body = "";
-            req.on("data", (chunk) => (body += chunk));
-            req.on("end", () => {
-                const n = parseInt(body.trim(), 10);
-                if (n === n) sum += n;
-                res.type("text/plain").send(String(sum));
-            });
+    setup(app, express) {
+        app.set("connection headers", false);
+        const readText = express.text({ type: () => true });
+        app.post("/baseline11", readText, (req, res) => {
+            let total = sumQuery(req.query);
+            const n = parseInt(typeof req.body === "string" ? req.body.trim() : "", 10);
+            if (n === n) total += n;
+            res.type("text/plain").send(String(total));
         });
     }
 };
