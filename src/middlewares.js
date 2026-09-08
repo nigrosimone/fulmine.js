@@ -1013,7 +1013,6 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 return next();
             }
 
-            const abs = [];
             let inflate;
             let totalSize = 0;
             const rawContentEncoding = req._rawHeader("content-encoding");
@@ -1099,6 +1098,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             // the cap means a client that declares a body and never sends it costs no more than one
             // that actually sends a body that size, and content-length above limit was
             // already rejected above
+            const abs = [];
             const declaredLength = inflate ? -1 : Number(length);
             let target =
                 declaredLength > 0 && declaredLength <= MAX_PREALLOCATED_BODY
