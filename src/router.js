@@ -218,8 +218,8 @@ module.exports = class Router extends EventEmitter {
      * Routes a request through this router, as Express's app.handle and router.handle do. next() is
      * called when nothing answered, so an unmatched request goes back to whoever is running this.
      *
-     * @param {any} req
-     * @param {any} res
+     * @param {any} req a Request, or the plain object express's own router tests drive it with
+     * @param {any} res a Response, or whatever the caller is serving with
      * @param {(err?: any) => void} [next]
      * @returns {Promise<void>}
      */
@@ -366,7 +366,7 @@ module.exports = class Router extends EventEmitter {
      * what a nested router strips off the path before matching against it. Cached per stack, since
      * the same mount chain is walked by every request that reaches it.
      *
-     * @param {any} req
+     * @param {Request} req
      * @returns {RegExp}
      */
     getFullMountpath(req) {
@@ -410,7 +410,7 @@ module.exports = class Router extends EventEmitter {
      *
      * Runs after _freezeRoutingFlags, which is what makes _caseFlag and _strictFlag readable here.
      *
-     * @param {any} req
+     * @param {Request} req
      * @param {number} startIndex where to resume the scan
      * @param {boolean} mayFailDecode whether the path carries a percent escape
      * @returns {number} the index of the route to enter, or the table length for none
@@ -489,8 +489,8 @@ module.exports = class Router extends EventEmitter {
      * makes a route eligible for the native router; anything carrying a parameter or a wildcard was
      * turned into a regular expression when it was registered.
      *
-     * @param {any} route
-     * @param {any} req
+     * @param {any} route see createRoute
+     * @param {Request} req
      * @returns {boolean}
      */
     _pathMatches(route, req) {
@@ -782,7 +782,7 @@ module.exports = class Router extends EventEmitter {
      * request does whichever path serves it. The response rides back as request.res: returning
      * a `{ request, response }` pair was one throwaway object per request.
      *
-     * @param {any} res uWS response
+     * @param {any} res uWS response, which the shipped typings do not describe
      * @param {any} req uWS request, readable only during this call
      * @param {any} [preset] a literal registration's constants, see nativePreset
      * @param {any} [skipHolder] the object a granted header skip lives on: the preset itself
@@ -811,7 +811,7 @@ module.exports = class Router extends EventEmitter {
      * Called once handleRequest has fully returned, never from inside it: an Application links the
      * response into its pending list after the base call, and the 'close' emitted here takes it out.
      *
-     * @param {any} response
+     * @param {Response} response
      */
     _refuseRequest(response) {
         response.finished = true;
@@ -824,8 +824,8 @@ module.exports = class Router extends EventEmitter {
      * for a response that outlives its handler callback: the native handler arms it in its
      * finally when the answer is still pending, which on a synchronous route it never is.
      *
-     * @param {any} res uWS response
-     * @param {any} response
+     * @param {any} res uWS response, which the shipped typings do not describe
+     * @param {Response} response
      */
     _armAbort(res, response) {
         res.onAborted(onNativeAborted.bind(response));
@@ -886,10 +886,10 @@ module.exports = class Router extends EventEmitter {
      * Passing something to next() from an error handler clears the error and resumes routing,
      * which is how Express lets a handler decide the error was not fatal.
      *
-     * @param {any} err
+     * @param {any} err whatever was thrown, which need not be an Error
      * @param {Function|null} handler the four-argument handler to call, or null for the default
-     * @param {any} request
-     * @param {any} response
+     * @param {Request} request
+     * @param {Response} response
      */
     _handleError(err, handler, request, response) {
         if (handler) {
@@ -920,7 +920,7 @@ module.exports = class Router extends EventEmitter {
      * The HTML for an error, which in production says only what the status means rather than what
      * went wrong, so a stack trace does not reach the client.
      *
-     * @param {any} err
+     * @param {any} err whatever was thrown, which need not be an Error
      * @param {number} statusCode
      * @param {boolean} [checkEnv] whether production should redact it
      * @returns {string}
@@ -997,10 +997,10 @@ module.exports = class Router extends EventEmitter {
      * and from any mergeParams parents, and the app.param callbacks for the parameters this route
      * matched that this request has not already seen.
      *
-     * @param {any} req
-     * @param {any} res
-     * @param {any} route
-     * @returns {any} a promise only when a param callback is involved
+     * @param {Request} req
+     * @param {Response} res
+     * @param {any} route see createRoute
+     * @returns {Promise<true|"route">|true|"route"} a promise only when a param callback is involved
      */
     _preprocessRequest(req, res, route) {
         // express sets this inside Route#dispatch, so only a route ever writes one: a middleware
@@ -1068,8 +1068,8 @@ module.exports = class Router extends EventEmitter {
      * route whose path matched and whose method did not, which express still decodes: the 400 it
      * answers there is what this reproduces.
      *
-     * @param {any} route
-     * @param {any} req
+     * @param {any} route see createRoute
+     * @param {Request} req
      * @returns {boolean}
      */
     _paramsFailToDecode(route, req) {
@@ -1092,9 +1092,9 @@ module.exports = class Router extends EventEmitter {
      * value calls it again, and a value already seen restores what that call left in req.params,
      * its deferral or its error included, without running anything.
      *
-     * @param {any} req
-     * @param {any} res
-     * @param {any} route
+     * @param {Request} req
+     * @param {Response} res
+     * @param {any} route see createRoute
      * @param {Map<string, Function[]>} paramCallbacks the owning router's, which is also the key of
      *   its own cache: two routers that declare the same parameter each call their own
      * @returns {Promise<true|"route">|true}
@@ -1230,8 +1230,8 @@ module.exports = class Router extends EventEmitter {
      * and nativeFail defer their epilogues to the microtask the await used to resume on, so the
      * visible order holds.
      *
-     * @param {any} req
-     * @param {any} res
+     * @param {Request} req
+     * @param {Response} res
      */
     _routeRequestDirect(req, res) {
         const walk = new Walk(this, req, res, this._routes, false, undefined, nativeDone, nativeFail);
@@ -1362,9 +1362,9 @@ module.exports = class Router extends EventEmitter {
      * Answers with an error page, locked down: no sniffing, no ETag, and a content security policy
      * that allows nothing, since the page carries a message that came from somewhere else.
      *
-     * @param {any} request
-     * @param {any} response
-     * @param {any} err
+     * @param {Request} request
+     * @param {Response} response
+     * @param {any} err whatever was thrown, which need not be an Error
      * @param {boolean} [checkEnv] whether production should redact it
      */
     _sendErrorPage(request, response, err, checkEnv = false) {
@@ -1384,8 +1384,8 @@ module.exports = class Router extends EventEmitter {
      * answering when the head has already been written, which is what node's setHeader would do
      * and what lets an error handler see it, as in Express.
      *
-     * @param {any} request
-     * @param {any} response
+     * @param {Request} request
+     * @param {Response} response
      * @param {Set<string>} methods the verbs the answering router knows, which are its own
      */
     _sendOptionsReply(request, response, methods) {
@@ -1408,8 +1408,8 @@ module.exports = class Router extends EventEmitter {
      * OPTIONS reply, or with a 404. The native chain, the app's catch-all handler and the node shim
      * all end here, so that they end a request the same way.
      *
-     * @param {any} request
-     * @param {any} response
+     * @param {Request} request
+     * @param {Response} response
      */
     _endUnmatched(request, response) {
         if (request._error) {

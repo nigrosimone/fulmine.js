@@ -28,6 +28,10 @@ const {
     CALLBACK_ROUTER
 } = require("./router-utils.js");
 
+/** @typedef {import("./request.js")} Request */
+/** @typedef {import("./response.js")} Response */
+/** @typedef {import("./router.js")} Router */
+
 /**
  * One walk of one router's routes, for one request.
  *
@@ -39,10 +43,10 @@ const {
  */
 class Walk {
     /**
-     * @param {any} router
-     * @param {any} req
-     * @param {any} res
-     * @param {any[]} routes
+     * @param {Router} router
+     * @param {Request} req
+     * @param {Response} res
+     * @param {any[]} routes the route table being walked, see createRoute in router.js
      * @param {boolean} skipCheck take the route at the index without matching it, which is how an
      *   already-decided chain is walked
      * @param {any} skipUntil route to resume after when this chain runs out, or undefined
@@ -192,7 +196,12 @@ class Walk {
             }
             // an error out of a mount is attributed to the mount, so error handlers declared before
             // it do not catch it, as in ordinary dispatch
-            if (req._error && this.skipUntil && this.skipUntil.keepMount && this.skipUntil.routeKey > req._errorKey) {
+            if (
+                req._error &&
+                this.skipUntil &&
+                this.skipUntil.keepMount &&
+                this.skipUntil.routeKey > /** @type {number} */ (req._errorKey)
+            ) {
                 req._errorKey = this.skipUntil.routeKey;
                 req._errorGroup = this.skipUntil.group;
             }
@@ -346,7 +355,7 @@ class Walk {
         // or out of a mount, walks past to the router's own error handlers. Middleware error
         // handlers keep the ordinary rule.
         const reachable = route.use
-            ? route.routeKey >= req._errorKey
+            ? req._errorKey !== undefined && route.routeKey >= req._errorKey
             : route.routeKey === req._errorKey || (route.group !== undefined && route.group === req._errorGroup);
         if (req._error && kind === CALLBACK_ERROR && reachable) {
             const out = this.router._handleError(req._error, callback, req, this.res);
@@ -502,7 +511,7 @@ class Walk {
                     if (parentMethods !== null) {
                         req._matchedMethods = parentMethods;
                     }
-                    if (req._isOptions && childMethods.size && !req._error) {
+                    if (req._isOptions && childMethods !== null && childMethods.size && !req._error) {
                         // OPTIONS routing is different, it stops in the router if matched.
                         // Express answers as the router hands back, so a throw while answering,
                         // a head already written being the way, walks on to later error handlers
@@ -532,9 +541,11 @@ class Walk {
             try {
                 // handling OPTIONS method
                 if (req._isOptions && !route.all && route.method !== "OPTIONS") {
-                    req._matchedMethods.add(route.method);
+                    // an OPTIONS request always carries the set, see the Request constructor
+                    const matched = /** @type {Set<string>} */ (req._matchedMethods);
+                    matched.add(route.method);
                     if (route.gettable) {
-                        req._matchedMethods.add("HEAD");
+                        matched.add("HEAD");
                     }
                     return this.step(undefined);
                 }

@@ -183,6 +183,547 @@ function literalValue(node) {
 }
 
 // generates a declarative response from a callback
+/**
+ * The status and the headers the calls set, in the order they were first written. null when one
+ * of them is not a literal this can read.
+ *
+ * @param {any[]} callExprs the res calls, in run order
+ * @param {any[]} headers written to, so the caller keeps the array the body reader also uses
+ * @returns {{statusCode: number, sendStatusUsed: boolean}|null}
+ */
+function readStatusAndHeaders(callExprs, headers) {
+    let statusCode = 200;
+    // sendStatus and a bare send() both leave the body empty, but sendStatus sends the status
+    // message and send() sends nothing
+    let sendStatusUsed = false;
+    // get statusCode
+    for (const call of callExprs) {
+        if (call.obj.propertyName === "status") {
+            if (call.arguments[0].type !== "Literal") {
+                return null;
+            }
+            statusCode = call.arguments[0].value;
+        }
+    }
+
+    // get headers
+    for (const call of callExprs) {
+        const isType = call.obj.propertyName === "type" || call.obj.propertyName === "contentType";
+        if (
+            call.obj.propertyName === "header" ||
+            call.obj.propertyName === "setHeader" ||
+            call.obj.propertyName === "set" ||
+            isType
+        ) {
+            // type() is set("content-type", ...) after a media type lookup. set() also takes a
+            // whole object, one pair per set(). setHeader is node's and takes only strings.
+            let pairs;
+            if (isType) {
+                if (call.arguments[0].type !== "Literal") {
+                    return null;
+                }
+                pairs = [["content-type", typeValueOf(String(call.arguments[0].value))]];
+            } else if (call.arguments.length === 1 && call.obj.propertyName !== "setHeader") {
+                if (call.arguments[0].type !== "ObjectExpression") {
+                    return null;
+                }
+                pairs = [];
+                for (const property of call.arguments[0].properties) {
+                    const key = literalKeyOf(property);
+                    if (key === null || property.value.type !== "Literal") {
+                        return null;
+                    }
+                    pairs.push([key, String(property.value.value)]);
+                }
+            } else {
+                if (call.arguments[0].type !== "Literal" || call.arguments[1]?.type !== "Literal") {
+                    return null;
+                }
+                // String() here: a numeric literal would reach uWS writeHeader as a number,
+                // and uWS refuses anything that is not a string
+                pairs = [[call.arguments[0].value, String(call.arguments[1].value)]];
+            }
+
+            for (let [header, value] of pairs) {
+                const name = String(header).toLowerCase();
+                // res.set adds a charset to a content-type, res.setHeader does not: setHeader
+                // is node's and node does not know what a media type is
+                if (call.obj.propertyName !== "setHeader" && name === "content-type") {
+                    value = withDefaultCharset(value);
+                }
+                const index = headers.findIndex((entry) => String(entry[0]).toLowerCase() === name);
+                if (index === -1) {
+                    headers.push([header, value]);
+                } else {
+                    // in place, so the header keeps the position it was first given
+                    headers[index][1] = value;
+                    // set replaces the header, so values appended after it go too. Replacing
+                    // only the first left the response carrying both.
+                    for (let i = headers.length - 1; i > index; i--) {
+                        if (String(headers[i][0]).toLowerCase() === name) {
+                            headers.splice(i, 1);
+                        }
+                    }
+                }
+            }
+        } else if (call.obj.propertyName === "append") {
+            if (call.arguments[0].type !== "Literal" || call.arguments[1].type !== "Literal") {
+                return null;
+            }
+            headers.push([call.arguments[0].value, String(call.arguments[1].value)]);
+        } else if (call.obj.propertyName === "sendStatus") {
+            if (call.arguments[0].type !== "Literal") {
+                return null;
+            }
+            statusCode = call.arguments[0].value;
+            sendStatusUsed = true;
+        }
+    }
+    return { statusCode, sendStatusUsed };
+}
+
+/**
+ * The body parts the calls write, pushed into `body`, with the content-type decisions they imply
+ * pushed into `headers`. null when one of the calls writes something this cannot read.
+ *
+ * @param {any[]} callExprs the res calls, in run order
+ * @param {any[]} headers the headers read so far, written to
+ * @param {any[]} body the body parts, written to
+ * @param {any} app the application, for the json settings
+ * @param {string[]} queries names bound by a destructured req.query
+ * @param {string[]} params names bound by a destructured req.params
+ * @returns {{sendUsed: boolean, bodyFromSend: boolean}|null}
+ */
+function readBody(callExprs, headers, body, app, queries, params) {
+    // get body
+    let sendUsed = false;
+    // only send() gets an ETag. end() is node's and never computes one, and the ordinary path
+    // does the same.
+    let bodyFromSend = false;
+    for (const call of callExprs) {
+        if (bodyMethods.has(call.obj.propertyName)) {
+            if (sendUsed) {
+                return null;
+            }
+            // send() with no argument gets no content-type, same as Express and as the ordinary
+            // path. It was given one here anyway, so the two paths disagreed on `res.send()`.
+            if (call.obj.propertyName !== "end") {
+                bodyFromSend = true;
+            }
+            const arg = call.arguments[0];
+
+            if (call.obj.propertyName === "json") {
+                // res.json() with no argument sends no body and no length, a shape left to the
+                // ordinary path
+                if (!arg) {
+                    return null;
+                }
+                // a replacer runs per response on the ordinary path, so a body computed once
+                // could not honour it
+                const replacer = app.get("json replacer");
+                if (typeof replacer !== "undefined" && typeof replacer !== "string") {
+                    return null;
+                }
+                // json sets a type only when none was chosen, then hands a string to send,
+                // which adds the charset to whatever type is there
+                const existing = headers.find((header) => header[0].toLowerCase() === "content-type");
+                if (existing) {
+                    existing[1] = withUtf8Charset(String(existing[1]));
+                } else {
+                    headers.push(["content-type", "application/json; charset=utf-8"]);
+                }
+                body.push({
+                    type: "text",
+                    value: stringify(literalValue(arg), replacer, app.get("json spaces"), app.get("json escape"))
+                });
+                sendUsed = true;
+                continue;
+            }
+
+            if (call.obj.propertyName === "send" && arg) {
+                // The body decides the content-type, so this runs before the body is read.
+                // Doing it after made res.set("content-type", "text/plain") + res.send({})
+                // answer application/json, where Express answers text/plain.
+                const isJsonBody =
+                    arg.type === "ObjectExpression" || (arg.type === "Literal" && typeof arg.value === "boolean");
+                const isNullBody = arg.type === "Literal" && arg.value === null;
+                const existing = headers.find((header) => header[0].toLowerCase() === "content-type");
+                if (!existing) {
+                    if (isJsonBody) {
+                        headers.push(["content-type", "application/json; charset=utf-8"]);
+                    } else if (!isNullBody) {
+                        // send(null) sends an empty string and chooses no type, the same as
+                        // the ordinary path
+                        headers.push(["content-type", "text/html; charset=utf-8"]);
+                    }
+                } else {
+                    existing[1] = withUtf8Charset(String(existing[1]));
+                }
+            }
+            if (arg) {
+                if (arg.type === "Literal") {
+                    if (typeof arg.value === "number") {
+                        // status code
+                        return null;
+                    }
+                    // the content-type was decided above, from what this argument is
+                    const val = arg.value === null ? "" : arg.value;
+                    body.push({ type: "text", value: val });
+                } else if (arg.type === "TemplateLiteral") {
+                    const exprs = [...arg.quasis, ...arg.expressions].sort((a, b) => a.start - b.start);
+                    for (const expr of exprs) {
+                        if (expr.type === "TemplateElement") {
+                            body.push({ type: "text", value: expr.value.cooked });
+                        } else if (expr.type === "MemberExpression") {
+                            const obj = expr.object;
+                            let type;
+                            if (obj.type === "MemberExpression") {
+                                if (obj.property.type !== "Identifier") {
+                                    return null;
+                                }
+                                type = obj.property.name;
+                            } else if (obj.type === "Identifier") {
+                                type = obj.name;
+                            } else {
+                                return null;
+                            }
+                            if (type !== "params" && type !== "query") {
+                                return null;
+                            }
+                            body.push({ type, value: expr.property.name });
+                        } else if (expr.type === "Identifier") {
+                            if (queries.includes(expr.name)) {
+                                body.push({ type: "query", value: expr.name });
+                            } else if (params.includes(expr.name)) {
+                                body.push({ type: "params", value: expr.name });
+                            } else {
+                                return null;
+                            }
+                        } else {
+                            return null;
+                        }
+                    }
+                } else if (arg.type === "MemberExpression") {
+                    if (!arg.object.property) {
+                        return null;
+                    }
+                    if (
+                        arg.object.property.type !== "Identifier" ||
+                        (arg.object.property.name !== "query" && arg.object.property.name !== "params")
+                    ) {
+                        return null;
+                    }
+                    body.push({ type: arg.object.property.name, value: arg.property.name });
+                } else if (arg.type === "BinaryExpression") {
+                    const stuff = [];
+                    /**
+                     * Reads a chain of string concatenations right to left. Each side must be a literal or a
+                     * param or query value, anything else makes the whole handler fall back.
+                     *
+                     * @param {any} node a BinaryExpression
+                     * @returns {boolean}
+                     */
+                    function check(node) {
+                        // only "+" concatenates, any other operator computes a value the parts
+                        // cannot hold, so the handler falls back
+                        if (node.operator !== "+") {
+                            return false;
+                        }
+                        if (node.right.type === "Literal") {
+                            stuff.push({ type: "text", value: node.right.value });
+                        } else if (node.right.type === "MemberExpression") {
+                            stuff.push({ type: node.right.object.property.name, value: node.right.property.name });
+                        } else return false;
+                        if (node.left.type === "Literal") {
+                            stuff.push({ type: "text", value: node.left.value });
+                        } else if (node.left.type === "MemberExpression") {
+                            stuff.push({ type: node.left.object.property.name, value: node.left.property.name });
+                        } else if (node.left.type === "BinaryExpression") {
+                            return check(node.left);
+                        } else return false;
+
+                        return true;
+                    }
+                    if (!check(arg)) {
+                        return null;
+                    }
+                    body.push(...stuff.reverse());
+                } else if (arg.type === "ObjectExpression") {
+                    if (call.obj.propertyName === "end") {
+                        return null;
+                    }
+                    // a replacer runs per response on the ordinary path, so a body computed
+                    // once could not honour it
+                    const replacer = app.get("json replacer");
+                    if (typeof replacer !== "undefined" && typeof replacer !== "string") {
+                        return null;
+                    }
+
+                    // the content-type was decided above, from what this argument is
+                    body.push({
+                        type: "text",
+                        value: stringify(literalValue(arg), replacer, app.get("json spaces"), app.get("json escape"))
+                    });
+                } else {
+                    return null;
+                }
+            }
+            sendUsed = true;
+        }
+    }
+    return { sendUsed, bodyFromSend };
+}
+/**
+ * The handler's AST and its parameter names, when it is a shape this compiler can read at all.
+ * null for anything it cannot: a keyword it does not admit, a node type the walk cannot see
+ * through, too few parameters, or a return that is not the last statement.
+ *
+ * @param {Function} cb
+ * @returns {{fn: any, args: string[]}|null}
+ */
+function readHandler(cb) {
+    let code = cb.toString();
+    // convert anonymous functions to named ones to make it valid code
+    if (code.startsWith("function") || code.startsWith("async function")) {
+        code = code.replace(/function *\(/, "function __cb(");
+    }
+
+    // Anything not understood returns false and falls back to ordinary routing. Widening the
+    // list below is not worth it: over the 1113 handlers in tests, demo and benchmark, 42.6%
+    // call something that is not res, `const` would unlock 7 (0.6%), a conditional 0.1% more.
+    /** @type {any[]} */
+    const tokens = [...acorn.tokenizer(code, { ecmaVersion: "latest" })];
+
+    if (
+        tokens.some((token) =>
+            [
+                "throw",
+                "new",
+                "await",
+                "try",
+                "catch",
+                "finally",
+                "if",
+                "else",
+                "switch",
+                "case",
+                "default",
+                "for",
+                "while",
+                "do",
+                "var",
+                "let",
+                "const"
+            ].includes(token.value)
+        )
+    ) {
+        return null;
+    }
+
+    /** @type {any[]} */
+    const parsed = parser.parse(code, { ecmaVersion: "latest" }).body;
+    let fn = parsed[0];
+
+    if (fn.type === "ExpressionStatement") {
+        fn = fn.expression;
+    }
+
+    // check if it is a function
+    if (fn.type !== "FunctionDeclaration" && fn.type !== "ArrowFunctionExpression") {
+        return null;
+    }
+
+    // before reading the tree, because reading is only valid for the shapes the walk can see
+    // through
+    const nodeTypes = new Set();
+    collectNodeTypes(fn, nodeTypes);
+    for (const type of nodeTypes) {
+        if (!understoodNodeTypes.has(type)) {
+            return null;
+        }
+    }
+
+    const args = fn.params.map((param) => param.name);
+
+    if (args.length < 2) {
+        // invalid function? doesn't have (req, res) args
+        return null;
+    }
+
+    // `return res.send(...)` is the same response as `res.send(...)`, but only as the last
+    // statement: every call is read, so a return in the middle would compile dead ones.
+    const returns = filterNodes(fn, (node) => node.type === "ReturnStatement");
+    if (returns.length) {
+        const statements = fn.body.type === "BlockStatement" ? fn.body.body : null;
+        if (!statements || returns.length > 1 || returns[0] !== statements[statements.length - 1]) {
+            return null;
+        }
+    }
+
+    return { fn, args };
+}
+
+/**
+ * The names a destructured `req` binds for query and params, so the body reader can tell one of
+ * them from an identifier it must refuse. null when the pattern is one this cannot read.
+ *
+ * @param {any} fn the handler's AST
+ * @param {string[]} args its parameter names
+ * @returns {{req: string, res: string, queryName: string|undefined, paramsName: string|undefined,
+ *   queries: string[], params: string[]}|null}
+ */
+function readParamNames(fn, args) {
+    const [req, res] = args;
+    let queryName, paramsName;
+    const queries = [],
+        params = [];
+
+    if (fn.params[0].type === "ObjectPattern") {
+        const query = fn.params[0].properties.find((prop) => prop.key.name === "query");
+        const param = fn.params[0].properties.find((prop) => prop.key.name === "params");
+
+        if (query?.value?.type === "Identifier") {
+            queryName = query.value.name;
+        } else if (query?.value?.type === "ObjectPattern") {
+            for (const prop of query.value.properties) {
+                if (prop.value.type !== "Identifier") {
+                    return null;
+                }
+                queries.push(prop.value.name);
+            }
+        } else {
+            return null;
+        }
+
+        if (param?.value?.type === "Identifier") {
+            paramsName = param.value.name;
+        } else if (param?.value?.type === "ObjectPattern") {
+            for (const prop of param.value.properties) {
+                if (prop.value.type !== "Identifier") {
+                    return null;
+                }
+                params.push(prop.value.name);
+            }
+        } else {
+            return null;
+        }
+    }
+    return { req, res, queryName, paramsName, queries, params };
+}
+
+/**
+ * Every call the handler makes, in the order they run, cut after the one that writes the body.
+ * null when it calls anything but `res`, or a method a compiled response cannot stand for.
+ *
+ * @param {any} fn the handler's AST
+ * @param {string} res the name its second parameter was given
+ * @returns {any[]|null}
+ */
+function readResCalls(fn, res) {
+    // check if it calls any other function other than the one in `res`
+    const callExprs = filterNodes(fn, (node) => node.type === "CallExpression");
+    const resCalls = [];
+    for (const expr of callExprs) {
+        let calleeName, propertyName;
+
+        // get propertyName
+        if (expr.type === "MemberExpression") {
+            propertyName = expr.property.name;
+        } else if (expr.type === "CallExpression") {
+            propertyName = expr.callee?.property?.name ?? expr.callee?.name;
+        }
+
+        // get calleeName
+        switch (expr.callee.type) {
+            case "Identifier":
+                calleeName = expr.callee.name;
+                break;
+            case "MemberExpression":
+                if (expr.callee.object.type === "Identifier") {
+                    calleeName = expr.callee.object.name;
+                } else if (expr.callee.object.type === "CallExpression") {
+                    // function call chaining
+                    let callee = expr.callee;
+                    while (callee.object.callee) {
+                        callee = callee.object.callee;
+                    }
+                    if (callee.object.type !== "Identifier") {
+                        return null;
+                    }
+                    calleeName = callee.object.name;
+                }
+                break;
+            default:
+                return null;
+        }
+        // check if calleeName is res
+        if (calleeName !== res) {
+            return null;
+        }
+
+        const obj = { calleeName, propertyName };
+        expr.obj = obj;
+        resCalls.push(obj);
+    }
+
+    // check if res property being called are
+    // - set, header, setHeader
+    // - status
+    // - send
+    // - end
+    for (const call of resCalls) {
+        if (!allowedResMethods.includes(call.propertyName)) {
+            return null;
+        }
+    }
+
+    // Sorted in run order. In a chain the walk reaches the outer call first, so
+    // res.status(201).status(202) was read backwards. End position orders both cases.
+    callExprs.sort((a, b) => a.end - b.end);
+
+    // Nothing after the body call has any effect: on Express res.send("k") then
+    // res.status(201) is still a 200. Two calls that both write a body fall back.
+    const terminalIndex = callExprs.findIndex((call) => terminalMethods.has(call.obj.propertyName));
+    if (terminalIndex !== -1) {
+        for (let i = terminalIndex + 1; i < callExprs.length; i++) {
+            if (terminalMethods.has(callExprs[i].obj.propertyName)) {
+                return null;
+            }
+        }
+        callExprs.length = terminalIndex + 1;
+    }
+    return callExprs;
+}
+
+/**
+ * Whether every identifier in the handler is one a compiled response can stand for.
+ *
+ * @param {any} fn the handler's AST
+ * @param {string[]} args its parameter names
+ * @param {any} names what a destructured req bound, from readParamNames
+ * @returns {boolean}
+ */
+function identifiersAllowed(fn, args, names) {
+    const { req, res, queryName, paramsName, queries, params } = names;
+    const identifiers = filterNodes(fn, (node) => node.type === "Identifier")
+        .slice(args.length)
+        .map((id) => id.name);
+    if (identifiers[identifiers.length - 1] === "__cb") {
+        identifiers.pop();
+    }
+    return identifiers.every(
+        (id, i) =>
+            allowedIdentifiers.includes(id) ||
+            id === req ||
+            id === res ||
+            (identifiers[i - 2] === req && identifiers[i - 1] === "params") ||
+            (identifiers[i - 2] === req && identifiers[i - 1] === "query") ||
+            id === queryName ||
+            id === paramsName ||
+            queries.includes(id) ||
+            params.includes(id)
+    );
+}
 // uWS allows creating such responses and they are extremely fast
 // since you don't even have to call into Node.js at all
 // declarative response will only be created if callback is 'simple enough'
@@ -193,489 +734,41 @@ function literalValue(node) {
 // basically, its only simple, static responses
 module.exports = function compileDeclarative(cb, app) {
     try {
-        let code = cb.toString();
-        // convert anonymous functions to named ones to make it valid code
-        if (code.startsWith("function") || code.startsWith("async function")) {
-            code = code.replace(/function *\(/, "function __cb(");
+        const handler = readHandler(cb);
+        if (handler === null) {
+            return false;
         }
+        const { fn, args } = handler;
 
-        // Anything not understood returns false and falls back to ordinary routing. Widening the
-        // list below is not worth it: over the 1113 handlers in tests, demo and benchmark, 42.6%
-        // call something that is not res, `const` would unlock 7 (0.6%), a conditional 0.1% more.
-        /** @type {any[]} */
-        const tokens = [...acorn.tokenizer(code, { ecmaVersion: "latest" })];
+        const names = readParamNames(fn, args);
+        if (names === null) {
+            return false;
+        }
+        const { res, queries, params } = names;
 
-        if (
-            tokens.some((token) =>
-                [
-                    "throw",
-                    "new",
-                    "await",
-                    "try",
-                    "catch",
-                    "finally",
-                    "if",
-                    "else",
-                    "switch",
-                    "case",
-                    "default",
-                    "for",
-                    "while",
-                    "do",
-                    "var",
-                    "let",
-                    "const"
-                ].includes(token.value)
-            )
-        ) {
+        const callExprs = readResCalls(fn, res);
+        if (callExprs === null) {
             return false;
         }
 
-        /** @type {any[]} */
-        const parsed = parser.parse(code, { ecmaVersion: "latest" }).body;
-        let fn = parsed[0];
-
-        if (fn.type === "ExpressionStatement") {
-            fn = fn.expression;
-        }
-
-        // check if it is a function
-        if (fn.type !== "FunctionDeclaration" && fn.type !== "ArrowFunctionExpression") {
+        if (!identifiersAllowed(fn, args, names)) {
             return false;
         }
 
-        // before reading the tree, because reading is only valid for the shapes the walk can see
-        // through
-        const nodeTypes = new Set();
-        collectNodeTypes(fn, nodeTypes);
-        for (const type of nodeTypes) {
-            if (!understoodNodeTypes.has(type)) {
-                return false;
-            }
-        }
-
-        const args = fn.params.map((param) => param.name);
-
-        if (args.length < 2) {
-            // invalid function? doesn't have (req, res) args
-            return false;
-        }
-
-        // `return res.send(...)` is the same response as `res.send(...)`, but only as the last
-        // statement: every call is read, so a return in the middle would compile dead ones.
-        const returns = filterNodes(fn, (node) => node.type === "ReturnStatement");
-        if (returns.length) {
-            const statements = fn.body.type === "BlockStatement" ? fn.body.body : null;
-            if (!statements || returns.length > 1 || returns[0] !== statements[statements.length - 1]) {
-                return false;
-            }
-        }
-
-        const [req, res] = args;
-        let queryName, paramsName;
-        const queries = [],
-            params = [];
-
-        if (fn.params[0].type === "ObjectPattern") {
-            const query = fn.params[0].properties.find((prop) => prop.key.name === "query");
-            const param = fn.params[0].properties.find((prop) => prop.key.name === "params");
-
-            if (query?.value?.type === "Identifier") {
-                queryName = query.value.name;
-            } else if (query?.value?.type === "ObjectPattern") {
-                for (const prop of query.value.properties) {
-                    if (prop.value.type !== "Identifier") {
-                        return false;
-                    }
-                    queries.push(prop.value.name);
-                }
-            } else {
-                return false;
-            }
-
-            if (param?.value?.type === "Identifier") {
-                paramsName = param.value.name;
-            } else if (param?.value?.type === "ObjectPattern") {
-                for (const prop of param.value.properties) {
-                    if (prop.value.type !== "Identifier") {
-                        return false;
-                    }
-                    params.push(prop.value.name);
-                }
-            } else {
-                return false;
-            }
-        }
-
-        // check if it calls any other function other than the one in `res`
-        const callExprs = filterNodes(fn, (node) => node.type === "CallExpression");
-        const resCalls = [];
-        for (const expr of callExprs) {
-            let calleeName, propertyName;
-
-            // get propertyName
-            if (expr.type === "MemberExpression") {
-                propertyName = expr.property.name;
-            } else if (expr.type === "CallExpression") {
-                propertyName = expr.callee?.property?.name ?? expr.callee?.name;
-            }
-
-            // get calleeName
-            switch (expr.callee.type) {
-                case "Identifier":
-                    calleeName = expr.callee.name;
-                    break;
-                case "MemberExpression":
-                    if (expr.callee.object.type === "Identifier") {
-                        calleeName = expr.callee.object.name;
-                    } else if (expr.callee.object.type === "CallExpression") {
-                        // function call chaining
-                        let callee = expr.callee;
-                        while (callee.object.callee) {
-                            callee = callee.object.callee;
-                        }
-                        if (callee.object.type !== "Identifier") {
-                            return false;
-                        }
-                        calleeName = callee.object.name;
-                    }
-                    break;
-                default:
-                    return false;
-            }
-            // check if calleeName is res
-            if (calleeName !== res) {
-                return false;
-            }
-
-            const obj = { calleeName, propertyName };
-            expr.obj = obj;
-            resCalls.push(obj);
-        }
-
-        // check if res property being called are
-        // - set, header, setHeader
-        // - status
-        // - send
-        // - end
-        for (const call of resCalls) {
-            if (!allowedResMethods.includes(call.propertyName)) {
-                return false;
-            }
-        }
-
-        // Sorted in run order. In a chain the walk reaches the outer call first, so
-        // res.status(201).status(202) was read backwards. End position orders both cases.
-        callExprs.sort((a, b) => a.end - b.end);
-
-        // Nothing after the body call has any effect: on Express res.send("k") then
-        // res.status(201) is still a 200. Two calls that both write a body fall back.
-        const terminalIndex = callExprs.findIndex((call) => terminalMethods.has(call.obj.propertyName));
-        if (terminalIndex !== -1) {
-            for (let i = terminalIndex + 1; i < callExprs.length; i++) {
-                if (terminalMethods.has(callExprs[i].obj.propertyName)) {
-                    return false;
-                }
-            }
-            callExprs.length = terminalIndex + 1;
-        }
-
-        // check if all identifiers are allowed
-        const identifiers = filterNodes(fn, (node) => node.type === "Identifier")
-            .slice(args.length)
-            .map((id) => id.name);
-        if (identifiers[identifiers.length - 1] === "__cb") {
-            identifiers.pop();
-        }
-        if (
-            !identifiers.every(
-                (id, i) =>
-                    allowedIdentifiers.includes(id) ||
-                    id === req ||
-                    id === res ||
-                    (identifiers[i - 2] === req && identifiers[i - 1] === "params") ||
-                    (identifiers[i - 2] === req && identifiers[i - 1] === "query") ||
-                    id === queryName ||
-                    id === paramsName ||
-                    queries.includes(id) ||
-                    params.includes(id)
-            )
-        ) {
-            return false;
-        }
-
-        let statusCode = 200;
-        // sendStatus and a bare send() both leave the body empty, but sendStatus sends the status
-        // message and send() sends nothing
-        let sendStatusUsed = false;
         const headers = [];
         const body = [];
 
-        // get statusCode
-        for (const call of callExprs) {
-            if (call.obj.propertyName === "status") {
-                if (call.arguments[0].type !== "Literal") {
-                    return false;
-                }
-                statusCode = call.arguments[0].value;
-            }
+        const status = readStatusAndHeaders(callExprs, headers);
+        if (status === null) {
+            return false;
         }
+        const { statusCode, sendStatusUsed } = status;
 
-        // get headers
-        for (const call of callExprs) {
-            const isType = call.obj.propertyName === "type" || call.obj.propertyName === "contentType";
-            if (
-                call.obj.propertyName === "header" ||
-                call.obj.propertyName === "setHeader" ||
-                call.obj.propertyName === "set" ||
-                isType
-            ) {
-                // type() is set("content-type", ...) after a media type lookup. set() also takes a
-                // whole object, one pair per set(). setHeader is node's and takes only strings.
-                let pairs;
-                if (isType) {
-                    if (call.arguments[0].type !== "Literal") {
-                        return false;
-                    }
-                    pairs = [["content-type", typeValueOf(String(call.arguments[0].value))]];
-                } else if (call.arguments.length === 1 && call.obj.propertyName !== "setHeader") {
-                    if (call.arguments[0].type !== "ObjectExpression") {
-                        return false;
-                    }
-                    pairs = [];
-                    for (const property of call.arguments[0].properties) {
-                        const key = literalKeyOf(property);
-                        if (key === null || property.value.type !== "Literal") {
-                            return false;
-                        }
-                        pairs.push([key, String(property.value.value)]);
-                    }
-                } else {
-                    if (call.arguments[0].type !== "Literal" || call.arguments[1]?.type !== "Literal") {
-                        return false;
-                    }
-                    // String() here: a numeric literal would reach uWS writeHeader as a number,
-                    // and uWS refuses anything that is not a string
-                    pairs = [[call.arguments[0].value, String(call.arguments[1].value)]];
-                }
-
-                for (let [header, value] of pairs) {
-                    const name = String(header).toLowerCase();
-                    // res.set adds a charset to a content-type, res.setHeader does not: setHeader
-                    // is node's and node does not know what a media type is
-                    if (call.obj.propertyName !== "setHeader" && name === "content-type") {
-                        value = withDefaultCharset(value);
-                    }
-                    const index = headers.findIndex((entry) => String(entry[0]).toLowerCase() === name);
-                    if (index === -1) {
-                        headers.push([header, value]);
-                    } else {
-                        // in place, so the header keeps the position it was first given
-                        headers[index][1] = value;
-                        // set replaces the header, so values appended after it go too. Replacing
-                        // only the first left the response carrying both.
-                        for (let i = headers.length - 1; i > index; i--) {
-                            if (String(headers[i][0]).toLowerCase() === name) {
-                                headers.splice(i, 1);
-                            }
-                        }
-                    }
-                }
-            } else if (call.obj.propertyName === "append") {
-                if (call.arguments[0].type !== "Literal" || call.arguments[1].type !== "Literal") {
-                    return false;
-                }
-                headers.push([call.arguments[0].value, String(call.arguments[1].value)]);
-            } else if (call.obj.propertyName === "sendStatus") {
-                if (call.arguments[0].type !== "Literal") {
-                    return false;
-                }
-                statusCode = call.arguments[0].value;
-                sendStatusUsed = true;
-            }
+        const read = readBody(callExprs, headers, body, app, queries, params);
+        if (read === null) {
+            return false;
         }
-
-        // get body
-        let sendUsed = false;
-        // only send() gets an ETag. end() is node's and never computes one, and the ordinary path
-        // does the same.
-        let bodyFromSend = false;
-        for (const call of callExprs) {
-            if (bodyMethods.has(call.obj.propertyName)) {
-                if (sendUsed) {
-                    return false;
-                }
-                // send() with no argument gets no content-type, same as Express and as the ordinary
-                // path. It was given one here anyway, so the two paths disagreed on `res.send()`.
-                if (call.obj.propertyName !== "end") {
-                    bodyFromSend = true;
-                }
-                const arg = call.arguments[0];
-
-                if (call.obj.propertyName === "json") {
-                    // res.json() with no argument sends no body and no length, a shape left to the
-                    // ordinary path
-                    if (!arg) {
-                        return false;
-                    }
-                    // a replacer runs per response on the ordinary path, so a body computed once
-                    // could not honour it
-                    const replacer = app.get("json replacer");
-                    if (typeof replacer !== "undefined" && typeof replacer !== "string") {
-                        return false;
-                    }
-                    // json sets a type only when none was chosen, then hands a string to send,
-                    // which adds the charset to whatever type is there
-                    const existing = headers.find((header) => header[0].toLowerCase() === "content-type");
-                    if (existing) {
-                        existing[1] = withUtf8Charset(String(existing[1]));
-                    } else {
-                        headers.push(["content-type", "application/json; charset=utf-8"]);
-                    }
-                    body.push({
-                        type: "text",
-                        value: stringify(literalValue(arg), replacer, app.get("json spaces"), app.get("json escape"))
-                    });
-                    sendUsed = true;
-                    continue;
-                }
-
-                if (call.obj.propertyName === "send" && arg) {
-                    // The body decides the content-type, so this runs before the body is read.
-                    // Doing it after made res.set("content-type", "text/plain") + res.send({})
-                    // answer application/json, where Express answers text/plain.
-                    const isJsonBody =
-                        arg.type === "ObjectExpression" || (arg.type === "Literal" && typeof arg.value === "boolean");
-                    const isNullBody = arg.type === "Literal" && arg.value === null;
-                    const existing = headers.find((header) => header[0].toLowerCase() === "content-type");
-                    if (!existing) {
-                        if (isJsonBody) {
-                            headers.push(["content-type", "application/json; charset=utf-8"]);
-                        } else if (!isNullBody) {
-                            // send(null) sends an empty string and chooses no type, the same as
-                            // the ordinary path
-                            headers.push(["content-type", "text/html; charset=utf-8"]);
-                        }
-                    } else {
-                        existing[1] = withUtf8Charset(String(existing[1]));
-                    }
-                }
-                if (arg) {
-                    if (arg.type === "Literal") {
-                        if (typeof arg.value === "number") {
-                            // status code
-                            return false;
-                        }
-                        // the content-type was decided above, from what this argument is
-                        const val = arg.value === null ? "" : arg.value;
-                        body.push({ type: "text", value: val });
-                    } else if (arg.type === "TemplateLiteral") {
-                        const exprs = [...arg.quasis, ...arg.expressions].sort((a, b) => a.start - b.start);
-                        for (const expr of exprs) {
-                            if (expr.type === "TemplateElement") {
-                                body.push({ type: "text", value: expr.value.cooked });
-                            } else if (expr.type === "MemberExpression") {
-                                const obj = expr.object;
-                                let type;
-                                if (obj.type === "MemberExpression") {
-                                    if (obj.property.type !== "Identifier") {
-                                        return false;
-                                    }
-                                    type = obj.property.name;
-                                } else if (obj.type === "Identifier") {
-                                    type = obj.name;
-                                } else {
-                                    return false;
-                                }
-                                if (type !== "params" && type !== "query") {
-                                    return false;
-                                }
-                                body.push({ type, value: expr.property.name });
-                            } else if (expr.type === "Identifier") {
-                                if (queries.includes(expr.name)) {
-                                    body.push({ type: "query", value: expr.name });
-                                } else if (params.includes(expr.name)) {
-                                    body.push({ type: "params", value: expr.name });
-                                } else {
-                                    return false;
-                                }
-                            } else {
-                                return false;
-                            }
-                        }
-                    } else if (arg.type === "MemberExpression") {
-                        if (!arg.object.property) {
-                            return false;
-                        }
-                        if (
-                            arg.object.property.type !== "Identifier" ||
-                            (arg.object.property.name !== "query" && arg.object.property.name !== "params")
-                        ) {
-                            return false;
-                        }
-                        body.push({ type: arg.object.property.name, value: arg.property.name });
-                    } else if (arg.type === "BinaryExpression") {
-                        const stuff = [];
-                        /**
-                         * Reads a chain of string concatenations right to left. Each side must be a literal or a
-                         * param or query value, anything else makes the whole handler fall back.
-                         *
-                         * @param {any} node a BinaryExpression
-                         * @returns {boolean}
-                         */
-                        function check(node) {
-                            // only "+" concatenates, any other operator computes a value the parts
-                            // cannot hold, so the handler falls back
-                            if (node.operator !== "+") {
-                                return false;
-                            }
-                            if (node.right.type === "Literal") {
-                                stuff.push({ type: "text", value: node.right.value });
-                            } else if (node.right.type === "MemberExpression") {
-                                stuff.push({ type: node.right.object.property.name, value: node.right.property.name });
-                            } else return false;
-                            if (node.left.type === "Literal") {
-                                stuff.push({ type: "text", value: node.left.value });
-                            } else if (node.left.type === "MemberExpression") {
-                                stuff.push({ type: node.left.object.property.name, value: node.left.property.name });
-                            } else if (node.left.type === "BinaryExpression") {
-                                return check(node.left);
-                            } else return false;
-
-                            return true;
-                        }
-                        if (!check(arg)) {
-                            return false;
-                        }
-                        body.push(...stuff.reverse());
-                    } else if (arg.type === "ObjectExpression") {
-                        if (call.obj.propertyName === "end") {
-                            return false;
-                        }
-                        // a replacer runs per response on the ordinary path, so a body computed
-                        // once could not honour it
-                        const replacer = app.get("json replacer");
-                        if (typeof replacer !== "undefined" && typeof replacer !== "string") {
-                            return false;
-                        }
-
-                        // the content-type was decided above, from what this argument is
-                        body.push({
-                            type: "text",
-                            value: stringify(
-                                literalValue(arg),
-                                replacer,
-                                app.get("json spaces"),
-                                app.get("json escape")
-                            )
-                        });
-                    } else {
-                        return false;
-                    }
-                }
-                sendUsed = true;
-            }
-        }
+        const { sendUsed, bodyFromSend } = read;
 
         // a handler that never sends is not a response: Express leaves the request waiting, so this
         // has to fall back instead of answering a bare 200
