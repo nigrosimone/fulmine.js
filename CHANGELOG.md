@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.19.3](https://github.com/nigrosimone/fulmine.js/compare/v5.19.2...v5.19.3) (2026-09-09)
+
+### Performance Improvements
+
+* defer abs allocation ([af15e93](https://github.com/nigrosimone/fulmine.js/commit/af15e93d15042d315ca1ba20ac11cafe8b9f3156))
+
 ## [5.19.2](https://github.com/nigrosimone/fulmine.js/compare/v5.19.1...v5.19.2) (2026-09-03)
 
 ## [5.19.1](https://github.com/nigrosimone/fulmine.js/compare/v5.19.0...v5.19.1) (2026-09-02)
