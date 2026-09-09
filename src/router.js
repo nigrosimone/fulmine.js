@@ -372,9 +372,9 @@ module.exports = class Router extends EventEmitter {
     getFullMountpath(req) {
         // path-less app.use() pushes "", so a stack of only those joins to "" no matter how deep it is.
         // patternToRegex("", true) is EMPTY_REGEX, so this returns exactly what the join path would,
-        // without walking the whole stack on every hop. _stackMounted first: it is 0 whenever
-        // _stack is still null, and req.baseUrl asks from unmounted requests too
-        if (req._stackMounted === 0 || req._stack.length === 0) {
+        // The null first: _stack stays null until a mount is entered, and this is reachable from
+        // an unmounted request. It used to read a counter that no longer exists, so it threw
+        if (req._stack === null || req._stack.length === 0) {
             return EMPTY_REGEX;
         }
         const fullStack = req._stack.join("");
@@ -1415,7 +1415,8 @@ module.exports = class Router extends EventEmitter {
         if (request._error) {
             return this._handleError(request._error, null, request, response);
         }
-        if (request._isOptions && request._matchedMethods.size > 0) {
+        // the null test costs nothing outside an OPTIONS request, and only one carries the set
+        if (request._isOptions && request._matchedMethods !== null && request._matchedMethods.size > 0) {
             try {
                 this._sendOptionsReply(request, response, request._matchedMethods);
             } catch (err) {

@@ -27,11 +27,16 @@ limitations under the License.
 
 const { work, names: workNames } = require("./work.js");
 
+/** @typedef {import("./request.js")} Request */
+/** @typedef {import("./response.js")} Response */
+/** @typedef {import("./router.js")} Router */
+/** @typedef {import("./application.js").Application} Application */
+
 /**
  * Every route of an application and of the routers mounted under it, each with the path it answers
  * from the outside.
  *
- * @param {any} router
+ * @param {Router} router
  * @param {string} prefix
  * @param {any[]} [into]
  * @returns {{route: any, full: string}[]}
@@ -52,7 +57,7 @@ function collectRoutes(router, prefix, into = []) {
  * Compiles the routes, which is what listen() does before it binds, without binding anything. Once
  * per application: a second compilation would register everything with µWS twice.
  *
- * @param {any} app
+ * @param {Application} app
  */
 function compileOnce(app) {
     if (app.listenCalled || app._testingCompiled) {
@@ -68,7 +73,7 @@ function compileOnce(app) {
  * The primitive the two assertions below are written on. Exported so an application with rules of
  * its own can assert them directly.
  *
- * @param {any} app an application, listening or not
+ * @param {Application} app an application, listening or not
  * @returns {{method: string, path: string, native: boolean, declarative: boolean, skipHeaders: boolean,
  *   skipQuery: boolean, reason: string|undefined}[]}
  */
@@ -117,7 +122,7 @@ function names(entry, pattern) {
  * The routes the patterns name. A pattern that names none throws, so a misspelled route fails
  * instead of passing on an empty list.
  *
- * @param {any} app
+ * @param {Application} app
  * @param {string|string[]} patterns
  * @param {string} caller the name in the message
  * @returns {ReturnType<typeof routeReport>}
@@ -151,7 +156,7 @@ function select(app, patterns, caller) {
  * Throws unless every route named is answered by uWS itself. The message names each route that
  * fell back and why, in the same words `npx fulmine profile` uses.
  *
- * @param {any} app
+ * @param {Application} app
  * @param {string|string[]} patterns paths as they were registered, "GET /path" to pin the method,
  *   a trailing "*" for everything under a prefix
  */
@@ -173,7 +178,7 @@ function expectNative(app, patterns) {
  * The handler is the last answer, not the first: three refusals come before it, and blaming the
  * handler sends the reader to rewrite something that was already simple enough.
  *
- * @param {any} app
+ * @param {Application} app
  * @param {{path: string}} entry
  * @returns {string}
  */
@@ -197,7 +202,7 @@ function whyNotCompiled(app, entry) {
  * Throws unless every route named is answered from a response written at startup. One step past
  * native: uWS answers it without entering javascript.
  *
- * @param {any} app
+ * @param {Application} app
  * @param {string|string[]} patterns as in expectNative
  */
 function expectDeclarative(app, patterns) {
@@ -222,8 +227,8 @@ function expectDeclarative(app, patterns) {
  * What this one request made the framework do, asked from inside a handler or from a `finish`
  * listener. See src/work.js for what each field means and why asking is free.
  *
- * @param {any} req
- * @param {any} res
+ * @param {Request} req
+ * @param {Response} res
  * @returns {import("./work.js").Work}
  */
 function workReport(req, res) {
@@ -243,8 +248,8 @@ const LAZY = ["headers", "query", "body", "requestStream", "responseStream", "so
  * `allow` names what is fine here: a route that parses a body is asserted as one that parses a
  * body and nothing else.
  *
- * @param {any} req
- * @param {any} res
+ * @param {Request} req
+ * @param {Response} res
  * @param {object} [options]
  * @param {string[]} [options.allow] fields of the report this route is expected to do anyway
  */

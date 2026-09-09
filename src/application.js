@@ -104,6 +104,13 @@ class Application extends Router {
     _isApplication = true;
 
     /**
+     * Whether express.testing already compiled the routes of this app. Written there and nowhere
+     * else: a second compilation would register everything with uWS twice. See src/testing.js.
+     * @type {boolean|undefined}
+     */
+    _testingCompiled;
+
+    /**
      * @param {object} [settings] the options express() takes. uwsOptions goes to uWS and decides
      *   between an HTTP, an HTTPS and an HTTP/3 server; threads sizes the file-reading pool, and 0
      *   turns it off; cluster forks one process per core over the same port; uwsApp adopts an

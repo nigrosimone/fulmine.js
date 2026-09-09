@@ -23,6 +23,13 @@ const Request = require("./request.js");
 const { METHODS } = require("http");
 
 /** @typedef {import("./walk.js")} Walk */
+/** @typedef {import("./router.js")} Router */
+/**
+ * One entry of a router's table, as createRoute in router.js builds it. Left loose on purpose: the
+ * optimizer hangs half a dozen more fields on it after registration, and writing them all out here
+ * would be a second copy of createRoute that nothing keeps in step.
+ * @typedef {any} RouteEntry
+ */
 
 // whether a registered path could be asked for in another case, which is what decides whether the
 // native router can be trusted to prefer it, see _optimizeRoute
@@ -92,9 +99,9 @@ for (const method of resDecMethods) {
  * own name, "router" for a mounted router, and "<anonymous>" for the rest, exactly as express reads
  * them off the handle.
  *
- * @param {any} route
- * @param {any} callback
- * @returns {any}
+ * @param {RouteEntry} route
+ * @param {any} callback a handler, or a mounted router, which is callable and carries _routes
+ * @returns {any} the layer object, which is express's shape and not one of ours
  */
 function layerFor(route, callback) {
     const layer = {
@@ -121,8 +128,8 @@ function layerFor(route, callback) {
  * another. Express calls that handle `handle`, and a caller that looks for a route layer looks for
  * that name.
  *
- * @param {any} route
- * @returns {any}
+ * @param {RouteEntry} route
+ * @returns {any} the layer object, which is express's shape and not one of ours
  */
 function routeLayer(route) {
     const handle = function handle(req, res, next) {
@@ -211,8 +218,8 @@ function nativeFail(err) {
  * difference between a sum and a guess: a mount written as an optional group composes into a
  * pattern the path no longer satisfies, and the prefix stayed on.
  *
- * @param {any} route
- * @param {any} req
+ * @param {RouteEntry} route
+ * @param {Request} req
  * @returns {number}
  */
 function mountPrefixLength(route, req) {
@@ -237,7 +244,7 @@ function mountPrefixLength(route, req) {
  * Writes the path the routes below a mount see: the original with what the mounts took off the
  * front. The root reads as "/" rather than as nothing, which is how express hands it over.
  *
- * @param {any} req
+ * @param {Request} req
  */
 function setMountedPath(req) {
     req._opPath = req._consumed === 0 ? req._originalPath : req._originalPath.slice(req._consumed);
@@ -273,7 +280,7 @@ const NO_PARAM_NAMES = [];
  *
  * Worked out once per route and kept, since it follows from the pattern.
  *
- * @param {any} route
+ * @param {RouteEntry} route
  * @returns {string[]}
  */
 function ownParamNames(route) {
@@ -301,8 +308,8 @@ function ownParamNames(route) {
  * for them. The stack holds what a mergeParams router captured on the way in, and a plain router
  * mounted inside one must not read it: express asks each router in turn, not the outermost.
  *
- * @param {any} route
- * @param {any} fallback the router dispatching, when the route names no owner
+ * @param {RouteEntry} route
+ * @param {Router} fallback the router dispatching, when the route names no owner
  * @returns {boolean}
  */
 function mergesParams(route, fallback) {
@@ -433,8 +440,8 @@ function protohostOf(url) {
  * req.url becomes an accessor, so the router goes on writing plain paths to it while a reader sees
  * the absolute URI it arrived as, which keeps the protohost out of the dispatch.
  *
- * @param {any} req
- * @param {any} router
+ * @param {any} req the plain object a caller drove the router with, not one of our requests
+ * @param {Router} router
  */
 function adoptPlainRequest(req, router) {
     const arrived = typeof req.url === "string" ? req.url : "";
@@ -493,8 +500,8 @@ function adoptPlainRequest(req, router) {
  * prints the stack rather than the object. A falsy throw is not printed at all, since finalhandler
  * only calls onerror when there is an error to call it with.
  *
- * @param {any} router the router whose settings decide it
- * @param {any} err
+ * @param {Router} router the router whose settings decide it
+ * @param {any} err whatever was thrown, which need not be an Error
  * @returns {void}
  */
 function logError(router, err) {
@@ -563,7 +570,7 @@ function nativePreset(path, method) {
  * included. The header-skip analysis needs the answer to be no: a throw inside an analyzed
  * handler would hand the request to code nobody analyzed.
  *
- * @param {any} router
+ * @param {Router} router
  * @returns {boolean}
  */
 function hasErrorMiddleware(router) {
@@ -611,9 +618,9 @@ const CALLBACK_ROUTER = 2;
  * was replaced by the decode failure of a route further down that was never going to run. Found by
  * fuzzing route tables against express.
  *
- * @param {any} req
- * @param {any} route
- * @param {any} err
+ * @param {Request} req
+ * @param {RouteEntry} route
+ * @param {any} err whatever decoding threw
  */
 function raiseDecodeFailure(req, route, err) {
     if (req._error) {
@@ -653,8 +660,8 @@ const BODY_METHODS = new Set(["POST", "PUT", "PATCH", "QUERY"]);
  * call next from inside a callback, reading a body, stat-ing a file, loading a session, so no
  * design that keeps the semantics can fuse them.
  *
- * @param {any} route
- * @param {any} req
+ * @param {RouteEntry} route
+ * @param {Request} req
  * @returns {boolean}
  */
 function stepsOver(route, req) {
@@ -678,7 +685,8 @@ function stepsOver(route, req) {
     // `"body" in req` to tell "a parser has run" from "none has", and a skip that did not leave
     // it would answer a GET differently from express. See the same seeding in middlewares.js
     if (!("body" in req)) {
-        req.body = undefined;
+        // cast because `body` is deliberately not a field of Request, see the comment there
+        /** @type {any} */ (req).body = undefined;
     }
     return true;
 }
@@ -713,7 +721,7 @@ function couldAnswer(route, path) {
  *
  * @param {{path: string, use: boolean, method: string, all: boolean}} guard
  * @param {string} leafPath the leaf's absolute path, parameters and all
- * @param {any} leaf
+ * @param {RouteEntry} leaf
  * @returns {boolean}
  */
 function shadowsLeaf(guard, leafPath, leaf) {
@@ -729,8 +737,8 @@ function shadowsLeaf(guard, leafPath, leaf) {
  * again, and uWS picks by specificity. They are carried down the walk and asked about every leaf,
  * see shadowsLeaf.
  *
- * @param {any} router the router the mount belongs to
- * @param {any} mount
+ * @param {Router} router the router the mount belongs to
+ * @param {RouteEntry} mount
  * @param {string} pathPrefix what the mounts above this one consumed
  * @param {any[]} chain the layers that always run before the mount, which need no guard
  * @param {any[]} inherited the guards from further out, since a mount two levels down is under
@@ -773,9 +781,9 @@ function guardsInside(router, mount, pathPrefix, chain, inherited) {
  *
  * The route is remembered alongside, so the pop can only take back what this same route put there.
  *
- * @param {any} walk
- * @param {any} route
- * @param {any} req
+ * @param {Walk} walk
+ * @param {RouteEntry} route
+ * @param {Request} req
  */
 function rememberApp(walk, route, req) {
     if (walk.router._isApplication && route.callbacks[0]?._isApplication) {
@@ -786,8 +794,8 @@ function rememberApp(walk, route, req) {
 /**
  * Puts back what rememberApp noted, if this is the route that noted it.
  *
- * @param {any} route
- * @param {any} req
+ * @param {RouteEntry} route
+ * @param {Request} req
  */
 function restoreApp(route, req) {
     const stack = req._appStack;
@@ -800,8 +808,8 @@ function restoreApp(route, req) {
 
 /**
  * useApp
- * @param {any} req
- * @param {any} app
+ * @param {Request} req
+ * @param {any} app the application taking the request over
  */
 function useApp(req, app) {
     req.app = app;
@@ -874,7 +882,7 @@ function callablePrototypeFor(classPrototype) {
  * and writing it into the page unescaped put that into the markup. The Content-Security-Policy on
  * this response stops a script from running, but a policy is a second line and not the first.
  *
- * @param {any} err
+ * @param {any} err whatever was thrown, which need not be an Error
  * @returns {string}
  */
 function generateErrorPageHtml(err) {

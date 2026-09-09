@@ -110,6 +110,13 @@ module.exports = class Response extends LazyWritable {
     #outHeaders = null;
 
     /**
+     * Whether node's writeHead has run, which only the per-app subclass sets. _sendOptionsReply
+     * refuses to write a second head over it, as node's setHeader does.
+     * @type {boolean|undefined}
+     */
+    _headWritten;
+
+    /**
      * The request this response answers, linked so either reaches the other.
      * @type {InstanceType<typeof import("./request.js")>}
      */

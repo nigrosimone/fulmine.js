@@ -28,6 +28,9 @@ limitations under the License.
 
 "use strict";
 
+/** @typedef {import("./request.js")} Request */
+/** @typedef {import("./response.js")} Response */
+
 /**
  * @typedef {object} Work
  * @property {boolean} native whether µWS matched this route itself
@@ -43,20 +46,23 @@ limitations under the License.
 /**
  * What this request did so far. The answer changes while the chain runs, so ask at the end of it.
  *
- * @param {any} req
- * @param {any} res the response, since half of this is about the response
+ * @param {Request} req
+ * @param {Response} res the response, since half of this is about the response
  * @returns {Work}
  */
 function work(req, res) {
     const native = req.route?._native;
+    // cast for the three the classes do not declare: `body` is deliberately not a field of
+    // Request, and the two stream states are node's own, written when a lazy stream is built
+    const loose = /** @type {any} */ (req);
     return {
         native: Boolean(native),
         declarative: Boolean(native?.declarative),
         headers: req._headersBuilt,
         query: req._queryParsed,
-        body: req.body !== undefined,
-        requestStream: req._readableState !== undefined,
-        responseStream: res._writableState !== undefined,
+        body: loose.body !== undefined,
+        requestStream: loose._readableState !== undefined,
+        responseStream: /** @type {any} */ (res)._writableState !== undefined,
         socket: req._socketBuilt || res._socketBuilt
     };
 }

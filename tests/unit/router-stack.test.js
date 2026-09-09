@@ -82,3 +82,23 @@ test("an error handed to the layer skips straight to the one written for it", ()
     assert.strictEqual(router.stack[0].route.path, "/x");
     assert.strictEqual(router.stack[1].route.path, "/y");
 });
+
+test("getFullMountpath answers an empty pattern for a request that entered no mount", async () => {
+    const app = express();
+    /** @type {any} */
+    let seen;
+    app.get("/x", (req, res) => {
+        seen = app.getFullMountpath(req);
+        res.end("ok");
+    });
+    const server = app.listen(38417);
+    try {
+        await fetch("http://127.0.0.1:38417/x").then((response) => response.text());
+    } finally {
+        server.close();
+    }
+    // req._stack is null until a mount is entered, and the guard used to read a counter nothing
+    // writes any more, so this threw a TypeError instead of answering
+    assert.ok(seen instanceof RegExp);
+    assert.strictEqual(seen.source, new RegExp("").source);
+});
