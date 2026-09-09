@@ -16,40 +16,31 @@ limitations under the License.
 
 // What makes an application answer the questions a library asks about an http.Server.
 //
-// `app.listen()` returns the app, and there is no node server under it: the socket belongs to µWS.
-// That is the one place where a drop-in stops being a drop-in, because the graceful shutdown
-// libraries, the connection trackers and the health check wrappers do not use a server, they
-// *recognise* one: `server instanceof http.Server`, then close(), address(), getConnections() and
-// the events around them. Everything they need can be answered honestly here.
+// `app.listen()` returns the app and there is no node server under it, the socket belongs to uWS.
+// Graceful shutdown libraries, connection trackers and health check wrappers recognise a server
+// with `server instanceof http.Server`, then call close(), address(), getConnections().
 //
-// Two halves, and the second is the delicate one:
+// Two halves:
 //
-//   - the members. close(), address(), listening and the events already exist on the application,
-//     because Express hands back an http.Server and code written for Express uses them. What was
-//     missing is the rest of the net.Server surface, added below.
-//   - the recognition. An application cannot inherit from http.Server: its prototype chain already
-//     runs through Router and this project's own EventEmitter, and http.Server.prototype has a
-//     chain of its own that cannot be spliced into it without re-parenting node's classes for the
-//     whole process. So instanceof is taught about applications instead, through the hook the
-//     language provides for exactly this: Symbol.hasInstance. The patch is additive. Everything
-//     that was an http.Server before still is, and the only new answer is for an application.
+//   - the members. close(), address(), listening and the events are already on the application,
+//     because Express hands back an http.Server. The rest of net.Server is added below.
+//   - the recognition. An application cannot inherit from http.Server, its prototype chain runs
+//     through Router and this project's own EventEmitter. So instanceof is taught instead, with
+//     Symbol.hasInstance. The patch is additive, nothing loses the answer it had.
 //
-// What this deliberately does not do is pretend the plumbing is there. Nothing emits 'request',
-// 'connection' or 'upgrade', because those carry node sockets and there are none: a library that
-// counts connections through them counts zero, and socket.io still wants app.uwsApp. The shape is
-// honest about what is behind it, which is why getConnections answers with the requests in flight
-// rather than with a number nobody could stand behind.
+// Nothing emits 'request', 'connection' or 'upgrade': those carry node sockets and there are none.
+// A library counting connections through them counts zero, and socket.io wants app.uwsApp.
 
 const http = require("http");
 const net = require("net");
 
-// what marks an application, read by the instanceof hook below. A symbol rather than a property
-// name, so nothing can be mistaken for an application by carrying the wrong field
+// what marks an application, read by the instanceof hook below. A symbol, so no plain field name
+// can be mistaken for it
 const kIsApplication = Symbol.for("fulmine.application");
 
 /**
  * Teaches `instanceof` that an application is a server, once per class. The original answer is
- * asked first and is never overruled: this only adds an answer for objects carrying the mark.
+ * asked first and never overruled.
  *
  * @param {Function} klass http.Server or net.Server
  */
@@ -65,8 +56,8 @@ function acceptApplications(klass) {
             if (previous.call(this, value)) {
                 return true;
             }
-            // an application is a function, and a property read works on one; the guard is for the
-            // primitives and the nulls that reach any instanceof
+            // an application is a function and a property read works on one. The guard is for the
+            // primitives and nulls that reach any instanceof
             return value != null && /** @type {any} */ (value)[kIsApplication] === true;
         },
         configurable: true,
@@ -79,8 +70,8 @@ acceptApplications(http.Server);
 acceptApplications(net.Server);
 
 /**
- * The net.Server members an application does not get from Express's side of the API, defined on
- * the application prototype. Each one answers for µWS rather than for a socket node does not have.
+ * The net.Server members Express's API does not give, on the application prototype. Each one
+ * answers for uWS, not for a node socket.
  *
  * @param {any} prototype Application.prototype
  */
@@ -88,11 +79,8 @@ function addServerMembers(prototype) {
     Object.defineProperty(prototype, kIsApplication, { value: true, configurable: true });
 
     /**
-     * How many requests this application is serving right now.
-     *
-     * node counts sockets; there are none to count here, and the number a graceful shutdown is
-     * waiting for is this one anyway: it reaches zero when the last answer has gone out. An idle
-     * keep-alive connection is not counted, and closing does not wait for one either.
+     * How many requests this application is serving right now. node counts sockets, there are none
+     * here, and this is the number a graceful shutdown waits for. An idle keep-alive is not counted.
      *
      * @param {(err: Error|null, count: number) => void} callback
      */
@@ -106,9 +94,8 @@ function addServerMembers(prototype) {
     };
 
     /**
-     * node's, for a handle this does not own: µWS's loop is what keeps the process alive, and it
-     * is not something a caller may unref. Both are no-ops that hand the server back, so a chain
-     * written against node's API keeps working.
+     * A handle this does not own: uWS's loop keeps the process alive and a caller cannot unref it.
+     * Both are no-ops returning the server, so a chain written against node's API keeps working.
      *
      * @returns {any}
      */
@@ -122,8 +109,8 @@ function addServerMembers(prototype) {
     };
 
     /**
-     * Registers the callback the way node's does and remembers the value, which is all a caller
-     * can observe. The timeout itself belongs to µWS and is set through uwsOptions.idleTimeout.
+     * Registers the callback like node's does and remembers the value, which is all a caller can
+     * observe. The timeout belongs to uWS and is set through uwsOptions.idleTimeout.
      *
      * @this {any}
      * @param {number} [msecs]
@@ -138,10 +125,8 @@ function addServerMembers(prototype) {
         return this;
     };
 
-    // The numbers node's http.Server carries and a caller may read or write. They are inert here,
-    // and they are declared rather than left undefined because reading one is how a library works
-    // out what it is talking to: `server.keepAliveTimeout` undefined has been read as "not a
-    // server" before now.
+    // The numbers node's http.Server carries. Inert here, but declared rather than left undefined:
+    // a library reads `server.keepAliveTimeout` to work out what it is talking to.
     for (const [name, value] of /** @type {[string, any][]} */ ([
         ["timeout", 0],
         ["keepAliveTimeout", 5000],

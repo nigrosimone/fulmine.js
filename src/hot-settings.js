@@ -19,9 +19,9 @@ limitations under the License.
 
 const { settingsEpoch } = require("./utils.js");
 
-// The settings the request and response hot paths read, resolved to plain fields: each read was a
-// variadic get() whose rest array escapes into createRoute, plus a dictionary miss per mount level
-// for the json keys, which have no default. One shape for every router, stale when the epoch moves.
+// The settings the hot paths read, resolved to plain fields: each read was a variadic get() whose
+// rest array escapes into createRoute, plus a dictionary miss per mount level for the json keys.
+// One shape for every router, stale when the epoch moves.
 class HotSettings {
     /** Every field declared up front, one hidden class for every router's copy. */
     constructor() {
@@ -40,12 +40,10 @@ class HotSettings {
 }
 
 /**
- * What app.settings is wrapped in, so a write that never went through set() still tells the hot
- * copies they are out of date. Only writes are trapped: a missing trap is the plain operation on
- * the object itself, so reads through here behave exactly as they did.
+ * What app.settings is wrapped in, so a write that never went through set() still bumps the epoch.
+ * Only writes are trapped, a read is the plain operation on the object.
  *
- * defineProperty is here for the trust proxy default marker, which set() writes that way, and for
- * anything else reaching for Object.defineProperty rather than an assignment.
+ * defineProperty is here for the trust proxy default marker, which set() writes that way.
  */
 const settingsWriteTraps = {
     /**
