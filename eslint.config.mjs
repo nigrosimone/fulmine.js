@@ -2,6 +2,7 @@ import js from "@eslint/js";
 import globals from "globals";
 import prettier from "eslint-config-prettier";
 import jsdoc from "eslint-plugin-jsdoc";
+import sonarjs from "eslint-plugin-sonarjs";
 
 export default [
     {
@@ -73,6 +74,46 @@ export default [
             // than by listing arguments whose names already say what they are
             "jsdoc/require-param": "off",
             "jsdoc/require-returns": "off"
+        }
+    },
+    {
+        // Adopted 2026-09-08, only src/. The recommended set minus the rules below: those fire on
+        // things this codebase does on purpose, and a rule nobody may act on is worse than no rule.
+        // The count each one was carrying when it was turned off is written next to it, so a later
+        // reader can see what turning it back on would cost.
+        files: ["src/**/*.js"],
+        plugins: { sonarjs },
+        rules: {
+            ...sonarjs.configs.recommended.rules,
+            // 49. The request path is deliberately long and flat: splitting it is what the speed
+            // rule in CONTRIBUTING forbids, so this rule and this project disagree by design
+            "sonarjs/cognitive-complexity": "off",
+            // 16. `x ?? (x = ...)` is the memoization idiom used throughout, see statusLine
+            "sonarjs/no-nested-assignment": "off",
+            // 16 and 7, both style, and prettier already decides how these are laid out
+            "sonarjs/no-nested-conditional": "off",
+            "sonarjs/no-nested-template-literals": "off",
+            // 6. This parses HTTP: control characters are the subject, not an accident
+            "sonarjs/no-control-regex": "off",
+            // 3, style
+            "sonarjs/no-inverted-boolean-check": "off",
+            // 1, a false positive: compression.js probes a stateful stream twice on purpose, and
+            // the two calls are identical because that is the test
+            "sonarjs/no-identical-expressions": "off",
+            // 1, a false positive: /\/+$/ in router.js is express's own regex, character for
+            // character, and the paths it runs on are written by the developer, not received
+            "sonarjs/super-linear-regex": "off",
+            // one site each, left off until someone decides whether to change the site or the rule:
+            // no-empty-group and void-use in utils.js, no-ignored-exceptions in declarative.js,
+            // no-invariant-returns in response.js, no-nested-functions in middlewares.js,
+            // pseudo-random and no-hardcoded-ip in application.js
+            "sonarjs/no-empty-group": "off",
+            "sonarjs/void-use": "off",
+            "sonarjs/no-ignored-exceptions": "off",
+            "sonarjs/no-invariant-returns": "off",
+            "sonarjs/no-nested-functions": "off",
+            "sonarjs/pseudo-random": "off",
+            "sonarjs/no-hardcoded-ip": "off"
         }
     },
     {
