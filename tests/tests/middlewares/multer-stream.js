@@ -1,4 +1,4 @@
-// what multer is handed, on the shapes that exercise the stream underneath it rather than the parser
+// what multer is handed on the shapes that exercise the stream, not the parser
 // INSPECT
 //
 // The parsing is multer's and identical on both servers. What differs is what feeds it: a body

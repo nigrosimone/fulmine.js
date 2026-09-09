@@ -88,7 +88,7 @@ test("a repeated header joins with a comma, as the object does", async () => {
     }
 });
 
-test("a repeated cookie joins with a semicolon, which is what a cookie header means", async () => {
+test("a repeated cookie joins with a semicolon", async () => {
     const server = await serve(["cookie"]);
     try {
         const seen = await ask(server.port, "Cookie: a=1\r\nCookie: b=2\r\n");

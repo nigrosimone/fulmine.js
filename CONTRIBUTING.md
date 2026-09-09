@@ -2,6 +2,8 @@
 
 The README is for people using this. This is for people changing it, and for the agents that change
 it too: [`CLAUDE.md`](./CLAUDE.md) only adds what an agent needs on top of this file.
+[`ARCHITECTURE.md`](./ARCHITECTURE.md) is the map: which file owns what, and how a request goes
+through them. Read it first if you have not worked here before.
 
 The product is two things at once: answering exactly as Express does, and answering faster than
 Express. A change may not lose either. Answering differently is a bug even when the new answer

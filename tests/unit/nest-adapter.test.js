@@ -16,7 +16,7 @@ test("with no instance it builds a fulmine app, not an express one", () => {
     assert.ok(adapter.getInstance().uwsApp, "the instance should be one of ours");
 });
 
-test("the app is the server rather than being wrapped in one", () => {
+test("the app is the server, not wrapped in one", () => {
     const app = fulmine();
     const adapter = new FulmineExpressAdapter(app);
     adapter.initHttpServer({});

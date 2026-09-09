@@ -1,4 +1,4 @@
-// two nested mounts reusing the same parameter name, which is any REST layout with :id twice
+// two nested mounts reusing the same parameter name, as in a REST layout with :id twice
 // INSPECT
 
 const express = require("express");

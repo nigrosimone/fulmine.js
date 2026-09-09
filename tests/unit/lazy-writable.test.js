@@ -57,7 +57,7 @@ test("the event map is the one node's own constructor would have written", () =>
     assert.deepStrictEqual(Object.keys(new Writable()._events), shape);
 });
 
-test("every door into Writable builds the state rather than tripping over its absence", () => {
+test("every door into Writable builds the state first", () => {
     // writableEnded and writableFinished are not doors: both are answered from the response's
     // own finished flag, which is the same answer without a stream behind it
     const doors = [

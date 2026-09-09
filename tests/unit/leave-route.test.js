@@ -98,7 +98,7 @@ test("leaving a route with an error skips to an error handler", async () => {
     close();
 });
 
-test("a sendFile failure leaves the route rather than reaching a handler inside it", async () => {
+test("a sendFile failure leaves the route, so no handler inside it sees it", async () => {
     const ran = [];
     const { url, close } = await serve((app) => {
         app.get(

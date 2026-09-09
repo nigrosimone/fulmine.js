@@ -341,7 +341,7 @@ test("a router driven with a plain object reads its path the same way", async ()
     assert.deepEqual(seen, ["/x", "/y"]);
 });
 
-test("a plain object rewritten between routes is taken over rather than thrown on", async () => {
+test("a plain object rewritten between routes is taken over", async () => {
     // the same shape again, with the rewrite in a middleware of its own instead of inside the
     // route: the walk then takes it over on its next hop, and the two methods it calls to do that
     // live on a prototype this request does not have. It threw ReferenceError until they were put

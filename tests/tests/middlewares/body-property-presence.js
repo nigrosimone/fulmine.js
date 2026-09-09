@@ -1,4 +1,4 @@
-// whether req.body is on the request at all, which is a different question from what it holds
+// whether req.body is on the request at all, apart from what it holds
 //
 // body-parser puts the property there before it decides anything, and leaves it undefined on a
 // request it goes on to skip. Libraries read `"body" in req` to tell "a parser has run" from "none

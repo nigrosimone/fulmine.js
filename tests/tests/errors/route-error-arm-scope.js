@@ -1,4 +1,4 @@
-// an error handler written inside a route catches what that route raised, and nothing else
+// an error handler inside a route catches only what that route raised
 // INSPECT
 //
 // Express skips a route layer while an error is in flight, so an error from a middleware before it,

@@ -33,7 +33,7 @@ function runOf(scenarios, at, commit) {
     return { at, commit, node: process.versions.node, scenarios };
 }
 
-test("the exact key extends the loose one, so a loose match can be found by prefix", () => {
+test("the exact key extends the loose one, so a prefix finds a loose match", () => {
     assert.ok(machineKey().startsWith(`${looseKey()}-`));
     // the major node version is in both: a ratio that moved because node:http got faster is not a
     // regression here, and has been read as one before
@@ -327,7 +327,7 @@ test("a ratio that moved because the other arm did is not marked: only fulmine's
     assert.strictEqual(marked["middlewares/realistic-stack"], true);
 });
 
-test("a real fall is still marked when fulmine's own arm is what fell", () => {
+test("a real fall is still marked when fulmine's own arm fell", () => {
     // the same table with the four flagged rows given a fulmine arm that really dropped, express
     // held still: without that the check could never fail and would be worse than no check
     const current = armOf(3);

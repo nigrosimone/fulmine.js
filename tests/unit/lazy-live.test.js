@@ -164,7 +164,7 @@ test("a 404 the framework writes itself builds nothing either", async () => {
     expectLazy(answer.req, answer.res);
 });
 
-test("reading req.headers is what the check is for", async () => {
+test("the check catches a read of req.headers", async () => {
     const answer = await ask((app) => {
         app.get("/host", (req, res) => res.send(String(req.headers.host)));
     }, "/host");
@@ -172,7 +172,7 @@ test("reading req.headers is what the check is for", async () => {
     assert.throws(() => expectLazy(answer.req, answer.res), /did work a fast request does not: headers/);
 });
 
-test("writing the response in pieces is what builds the Writable", async () => {
+test("writing the response in pieces builds the Writable", async () => {
     const answer = await ask((app) => {
         app.get("/pieces", (req, res) => {
             res.write("one ");
@@ -184,7 +184,7 @@ test("writing the response in pieces is what builds the Writable", async () => {
     assert.throws(() => expectLazy(answer.req, answer.res), /res stream/);
 });
 
-test("expectLazy refuses a field it does not know, rather than passing on it", async () => {
+test("expectLazy refuses a field it does not know", async () => {
     const answer = await ask((app) => {
         app.get("/hello", (req, res) => res.send("ok"));
     }, "/hello");

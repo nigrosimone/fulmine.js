@@ -26,7 +26,7 @@ function arm(emitter, onError, onClose) {
     return "on";
 }
 
-test("a fresh stream has both slots free, which is what makes the direct write safe", () => {
+test("a fresh stream has both listener slots free", () => {
     const stream = new Writable();
     assert.strictEqual(stream._eventsCount, 0);
     // node shapes _events for a stream up front, close and error among the keys and every value

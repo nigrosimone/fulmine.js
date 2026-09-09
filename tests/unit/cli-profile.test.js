@@ -169,7 +169,7 @@ test("a file that builds nothing, or will not load, says so and fails", (t) => {
     assert.match(missing.out, /Nothing to profile/);
 });
 
-test("an application on a second copy of the library is stubbed too, rather than left to listen", async (t) => {
+test("an application on a second copy of the library is stubbed too", async (t) => {
     // The command runs from its own copy and the application loads whichever one resolves from its
     // own directory. A global install, an npx of a pinned version or a hoisted workspace leaves two
     // on disk, and stubbing only this one lets the application's real listen() bind the port, after

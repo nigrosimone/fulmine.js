@@ -9,7 +9,9 @@ compatibility wins and the speed is paid for somewhere else.
 
 Everything about how to work here is in [`CONTRIBUTING.md`](./CONTRIBUTING.md): the suites, what to
 run before committing, how to write a comparison test, the fuzzers, the security layer rule, the
-Express version policy and the measuring rules. [`benchmark/README.md`](./benchmark/README.md),
+Express version policy and the measuring rules. [`ARCHITECTURE.md`](./ARCHITECTURE.md) is the map of
+`src/`: which file owns what, the two paths a request can take, and the fields the walk carries.
+[`benchmark/README.md`](./benchmark/README.md),
 [`tools/README.md`](./tools/README.md) and [`integrations/README.md`](./integrations/README.md) go
 deeper on their own subjects. Read those rather than guessing; this file only says what an agent
 gets wrong that a human reading them would not.

@@ -47,7 +47,7 @@ function readJson(dir, name) {
     return JSON.parse(fs.readFileSync(path.join(dir, name), "utf8"));
 }
 
-test("override writes npm's overrides when a package-lock is what is there", () => {
+test("override writes npm's overrides when there is a package-lock", () => {
     const dir = fixture({
         "package.json": JSON.stringify({ name: "demo" }, null, 2) + "\n",
         "package-lock.json": "{}"
@@ -115,7 +115,7 @@ test("override refuses bun, which cannot load the binary at all", () => {
     assert.match(out, /bun does not load it/);
 });
 
-test("override says which file it could not read rather than throwing a parser error", () => {
+test("override says which file it could not read, and throws no parser error", () => {
     const dir = fixture({ "package.json": "{ not json" });
     const { code, out } = run(["override", dir]);
     assert.strictEqual(code, 1);

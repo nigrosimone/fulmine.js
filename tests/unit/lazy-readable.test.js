@@ -56,7 +56,7 @@ test("a fresh request is a Readable and has none of one", () => {
     assert.strictEqual(request.readable, true);
 });
 
-test("every door into Readable builds the state rather than tripping over its absence", () => {
+test("every door into Readable builds the state first", () => {
     const doors = [
         ["on", (r) => r.on("data", () => {})],
         ["once", (r) => r.once("end", () => {})],

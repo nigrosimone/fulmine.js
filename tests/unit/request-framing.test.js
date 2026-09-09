@@ -77,7 +77,7 @@ function answerCount(text) {
 
 const BODY = '{"ok":true}'; // 11 bytes
 
-test("two content-lengths are refused, whatever they say", async () => {
+test("two content-lengths are refused even when they agree", async () => {
     const { port, close, served } = await serve();
 
     for (const pair of ["11\r\nContent-Length: 11", "11\r\nContent-Length: 40", "40\r\nContent-Length: 11"]) {

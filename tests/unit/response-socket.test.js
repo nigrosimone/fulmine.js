@@ -91,7 +91,7 @@ test("end() on the socket ends the response, as node's does", async () => {
     assert.strictEqual(answer.body, "through the socket");
 });
 
-test("writing after the response is finished destroys rather than answers twice", async () => {
+test("writing after the response is finished destroys it", async () => {
     /** @type {any[]} */
     const errors = [];
     const answer = await ask((app) => {

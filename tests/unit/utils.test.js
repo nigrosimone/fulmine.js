@@ -98,7 +98,7 @@ test("patternToRegex compiles the four shapes a path can take", () => {
     assert.ok(patternToRegex("/a\\:b").test("/a:b"));
 });
 
-test("patternToRegex refuses what it cannot match rather than matching it literally", () => {
+test("patternToRegex refuses what it cannot match", () => {
     // a route that quietly stops matching is worse than one that fails at startup
     assert.throws(() => patternToRegex("/*"), /Missing parameter name/);
     assert.throws(() => patternToRegex("/:"), /Missing parameter name/);
@@ -132,7 +132,7 @@ test("compileTrust turns every accepted spelling into a predicate", () => {
     assert.strictEqual(compileTrust(false)("127.0.0.1", 0), false);
 });
 
-test("decode answers rather than throwing on a malformed escape", () => {
+test("decode answers -1 on a malformed escape", () => {
     assert.strictEqual(decode("/a%20b"), "/a b");
     assert.strictEqual(decode("/a%ZZ"), -1);
     assert.strictEqual(decode("/plain"), "/plain");
@@ -161,7 +161,7 @@ test("parseHttpDate answers NaN for anything it cannot read", () => {
     assert.strictEqual(parseHttpDate(undefined) <= Date.now(), false);
 });
 
-test("findIndexStartingFrom resumes rather than restarting", () => {
+test("findIndexStartingFrom resumes from the index it was given", () => {
     const items = ["a", "b", "a", "c"];
     assert.strictEqual(
         findIndexStartingFrom(items, (x) => x === "a"),
@@ -261,7 +261,7 @@ test("isRangeFresh reads If-Range as either an etag or a date", () => {
     );
 });
 
-test("isPreconditionFailure is about If-Match, which is a 412 and not a 304", () => {
+test("isPreconditionFailure is about If-Match: a 412, not a 304", () => {
     const res = (headers) => ({ get: (name) => headers[name.toLowerCase()] });
 
     assert.strictEqual(isPreconditionFailure({ headers: {} }, res({})), false);
@@ -283,7 +283,7 @@ test("withDefaultCharset adds the charset a media type implies, and only then", 
     assert.strictEqual(withDefaultCharset("text/html; charset=iso-8859-1"), "text/html; charset=iso-8859-1");
 });
 
-test("withUtf8Charset replaces rather than appends, because the body is utf-8 whatever was there", () => {
+test("withUtf8Charset replaces the charset instead of appending one", () => {
     assert.strictEqual(withUtf8Charset("text/html; charset=iso-8859-1"), "text/html; charset=utf-8");
     assert.strictEqual(withUtf8Charset("text/plain"), "text/plain; charset=utf-8");
     // already right: the fast path returns the value itself
@@ -392,7 +392,7 @@ test("statTag answers exactly what the etag package answers for a file", () => {
     assert.strictEqual(statTag(stat, true), reference(stat, { weak: true }));
 });
 
-test("memoizeByString answers from the cache and starts over rather than growing", () => {
+test("memoizeByString answers from the cache and clears it at the limit", () => {
     let calls = 0;
     const memo = memoizeByString((key) => {
         calls++;
