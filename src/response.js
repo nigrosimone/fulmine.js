@@ -128,7 +128,8 @@ module.exports = class Response extends LazyWritable {
      * when the setting asks for it.
      *
      * @param {any} res the uWS response
-     * @param {any} req the Request, already built, which is where the connection header is read from
+     * @param {any} req the Request, already built. Loose because the per-app subclass in
+     *   application.js inherits this constructor and its own shape has to stay assignable
      * @param {any} app the application or router this request arrived at
      */
     constructor(res, req, app) {
@@ -394,7 +395,8 @@ module.exports = class Response extends LazyWritable {
      * The booked flush. Static, so a response that never writes in pieces allocates nothing for it:
      * nextTick forwards the receiver as an argument.
      *
-     * @param {any} res
+     * @param {any} res the response whose queue is being flushed. Loose because naming the class
+     *   inside its own body makes the checker see two unrelated `this` types
      */
     static #flushOnTick(res) {
         res.#flushBooked = false;

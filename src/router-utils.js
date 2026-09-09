@@ -696,7 +696,7 @@ function stepsOver(route, req) {
  * A literal answers only itself; anything with a parameter or a wildcard answers what its regex
  * says. Used where the question is "would this earlier route have had its turn first".
  *
- * @param {any} route
+ * @param {RouteEntry} route
  * @param {string} path
  * @returns {boolean}
  */

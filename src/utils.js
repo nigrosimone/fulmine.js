@@ -28,6 +28,9 @@ const ms = require("ms");
 const fs = require("fs");
 const { Stats } = require("fs");
 
+/** @typedef {import("./request.js")} Request */
+/** @typedef {import("./response.js")} Response */
+
 const EMPTY_REGEX = new RegExp(``);
 
 // what express hands qs for a query string. allowPrototypes keeps a key named "constructor" or
@@ -1260,8 +1263,8 @@ function parseHttpDate(date) {
  * no longer the current one, which is a 412 rather than a 304: the client asked to be stopped if
  * anything had changed.
  *
- * @param {any} req
- * @param {any} res
+ * @param {Request} req
+ * @param {Response} res
  * @returns {boolean}
  */
 function isPreconditionFailure(req, res) {
@@ -1282,7 +1285,8 @@ function isPreconditionFailure(req, res) {
     // if-unmodified-since
     const unmodifiedSince = parseHttpDate(req.headers["if-unmodified-since"]);
     if (!isNaN(unmodifiedSince)) {
-        const lastModified = parseHttpDate(res.get("Last-Modified"));
+        // cast because res.get answers an array for set-cookie, and never for this one
+        const lastModified = parseHttpDate(/** @type {string|undefined} */ (res.get("Last-Modified")));
         return isNaN(lastModified) || lastModified > unmodifiedSince;
     }
 
@@ -1353,8 +1357,8 @@ function createETagGenerator(options) {
  * and sending the whole file. It may carry either an ETag or a date, and a date only counts when
  * it matches Last-Modified exactly.
  *
- * @param {any} req
- * @param {any} res
+ * @param {Request} req
+ * @param {Response} res
  * @returns {boolean}
  */
 function isRangeFresh(req, res) {
@@ -1370,7 +1374,8 @@ function isRangeFresh(req, res) {
     }
 
     // if-range as modified date
-    const lastModified = res.get("Last-Modified");
+    // cast because res.get answers an array for set-cookie, and never for this one
+    const lastModified = /** @type {string|undefined} */ (res.get("Last-Modified"));
     return parseHttpDate(lastModified) <= parseHttpDate(ifRange);
 }
 

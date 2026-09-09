@@ -66,6 +66,8 @@ const {
     generateErrorPageHtml
 } = require("./router-utils.js");
 
+/** @typedef {import("./router-utils.js").RouteEntry} RouteEntry */
+
 // hands out one number per app.route(), so the routes it creates know they belong together
 let routeGroups = 0;
 
@@ -182,7 +184,11 @@ module.exports = class Router extends EventEmitter {
         this.settings = new Proxy(settings, settingsWriteTraps);
         // the base classes; an Application replaces these with its own per-app subclasses, and a
         // plain router has no request/response prototype layer, as in Express
+        // Typed loosely because an Application replaces both with per-app subclasses of its own,
+        // and a field declared as the base class would not accept one under strictFunctionTypes
+        /** @type {any} */
         this._request = Request;
+        /** @type {any} */
         this._response = Response;
 
         if (typeof settings.caseSensitive !== "undefined") {
@@ -489,7 +495,7 @@ module.exports = class Router extends EventEmitter {
      * makes a route eligible for the native router; anything carrying a parameter or a wildcard was
      * turned into a regular expression when it was registered.
      *
-     * @param {any} route see createRoute
+     * @param {RouteEntry} route
      * @param {Request} req
      * @returns {boolean}
      */
@@ -761,7 +767,7 @@ module.exports = class Router extends EventEmitter {
      * The chain a request would walk to reach this route, see optimizeRoute in optimizer.js. Kept
      * as a method because a mounted router is asked for its own through it.
      *
-     * @param {any} route
+     * @param {RouteEntry} route
      * @param {any[]} routes every route of this router, in registration order
      * @returns {any[]|false} the chain, ending in the route itself
      */
@@ -839,7 +845,7 @@ module.exports = class Router extends EventEmitter {
      * mount or a pattern of an unknown shape counts as an overlap; two paths µWS could match itself
      * are compared segment by segment.
      *
-     * @param {any} route
+     * @param {RouteEntry} route
      * @param {any[]} routes every route of the router this one belongs to
      * @returns {boolean}
      */
@@ -874,7 +880,7 @@ module.exports = class Router extends EventEmitter {
      * Registers one route with uWS, see registerUwsRoute in optimizer.js. Kept as a method because
      * the optimizer tests replace it to see which routes went native.
      *
-     * @param {any} route
+     * @param {RouteEntry} route
      * @param {any[]} optimizedPath the chain the route was optimized with
      */
     _registerUwsRoute(route, optimizedPath) {
@@ -999,7 +1005,7 @@ module.exports = class Router extends EventEmitter {
      *
      * @param {Request} req
      * @param {Response} res
-     * @param {any} route see createRoute
+     * @param {RouteEntry} route
      * @returns {Promise<true|"route">|true|"route"} a promise only when a param callback is involved
      */
     _preprocessRequest(req, res, route) {
@@ -1068,7 +1074,7 @@ module.exports = class Router extends EventEmitter {
      * route whose path matched and whose method did not, which express still decodes: the 400 it
      * answers there is what this reproduces.
      *
-     * @param {any} route see createRoute
+     * @param {RouteEntry} route
      * @param {Request} req
      * @returns {boolean}
      */
@@ -1094,7 +1100,7 @@ module.exports = class Router extends EventEmitter {
      *
      * @param {Request} req
      * @param {Response} res
-     * @param {any} route see createRoute
+     * @param {RouteEntry} route
      * @param {Map<string, Function[]>} paramCallbacks the owning router's, which is also the key of
      *   its own cache: two routers that declare the same parameter each call their own
      * @returns {Promise<true|"route">|true}

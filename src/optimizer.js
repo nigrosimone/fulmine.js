@@ -17,6 +17,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+/** @typedef {import("./router.js")} Router */
+/** @typedef {import("./router-utils.js").RouteEntry} RouteEntry */
+
 const {
     patternToRegex,
     needsConversionToRegex,
@@ -61,8 +64,8 @@ function useRouterClass(cls) {
  * time. The native router jumps straight to the route, so everything registered before it that
  * could also match has to be in the chain, in order.
  *
- * @param {any} router
- * @param {any} route
+ * @param {Router} router
+ * @param {RouteEntry} route
  * @param {any[]} routes every route of this router, in registration order
  * @returns {any[]|false} the chain, ending in the route itself
  */
@@ -371,8 +374,8 @@ function compileOptimizedRoutes(root) {
  * Hands one route to µWS, along with the chain of everything that has to run in front of it,
  * and records that chain on the route so the handler can walk it.
  *
- * @param {any} router
- * @param {any} route
+ * @param {Router} router
+ * @param {RouteEntry} route
  * @param {any[]} optimizedPath the routes to run, in order, ending with this one
  */
 function registerUwsRoute(router, route, optimizedPath) {

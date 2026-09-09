@@ -68,8 +68,8 @@ class Route {
     /**
      * Runs the handlers this request's verb reaches, one after another through next().
      *
-     * @param {any} req
-     * @param {any} res
+     * @param {any} req a Request, or whatever a caller that built this Route by hand is serving
+     * @param {any} res the matching response
      * @param {(err?: any) => void} done called when the route is finished with the request, with
      *   whatever error it ended on
      */

@@ -17,6 +17,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+/** @typedef {import("./response.js")} Response */
+
 // events is faster at init, tseep is faster at sending events
 // since we create a ton of objects and dont send a ton of events, its better to use events here
 const { EventEmitter } = require("events");
@@ -38,7 +40,7 @@ class Socket extends EventEmitter {
      * Enough of a node socket for the middleware that reaches for one. uWS has no socket object to
      * hand over, so this stands in and forwards what it can to the response.
      *
-     * @param {any} response
+     * @param {Response} response
      */
     constructor(response) {
         super();

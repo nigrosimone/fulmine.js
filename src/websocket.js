@@ -18,6 +18,9 @@ limitations under the License.
 
 const { canBeOptimizedWithParams, decodeParam, NullObject } = require("./utils.js");
 
+/** @typedef {import("./router.js")} Router */
+/** @typedef {import("./application.js").Application} Application */
+
 // the parameter names in a path, in the order µWS numbers them
 const PARAM = /:(\w+)/g;
 
@@ -49,7 +52,7 @@ function joinPaths(prefix, path) {
  * Walked separately from the HTTP routes: those fall back to ordinary routing when uWS cannot
  * match them, a websocket has no fallback, so an unmountable one is refused out loud.
  *
- * @param {any} router
+ * @param {Router} router
  * @param {string|null} prefix the mount path accumulated so far, or null once a mount was a
  *   shape µWS cannot match, which makes everything below it unreachable
  * @param {any[]} out
@@ -99,7 +102,7 @@ function collectRoutes(router, prefix, out, seen) {
  * The uWS upgrade handler for one route: builds this project's request and response, offers them
  * to the application's own `upgrade` hook, and completes the handshake unless that hook answered.
  *
- * @param {any} app the application whose request and response classes serve this route
+ * @param {Application} app the application whose request and response classes serve this route
  * @param {string} path the composed path, whose parameters are read back by index
  * @param {any} behavior what the caller registered
  * @returns {(res: any, req: any, context: any) => void}
@@ -193,7 +196,7 @@ function makeUpgradeHandler(app, path, behavior) {
  * Hands every websocket route to uWS. Called from listen(), before the catch-all: uWS routes an
  * upgrade to the websocket route even when a catch-all covers the same path.
  *
- * @param {any} app
+ * @param {Application} app
  */
 function registerWebSocketRoutes(app) {
     const routes = [];

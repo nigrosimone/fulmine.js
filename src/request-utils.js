@@ -19,6 +19,8 @@ limitations under the License.
 
 const { isIP } = require("node:net");
 
+/** @typedef {import("./request.js")} Request */
+
 // accepts, type-is, proxy-addr and fresh declare a node IncomingMessage but read only .headers off
 // it. This request is not one, so it is passed as itself and the declared type is stepped around.
 const asMessage = (req) => /** @type {any} */ (req);
@@ -249,7 +251,7 @@ function saysClose(value) {
  * whatever runs next, the callback after it in the same route included. The cached field answers
  * while the two agree.
  *
- * @param {any} req
+ * @param {Request} req
  * @returns {string}
  */
 function currentPath(req) {
