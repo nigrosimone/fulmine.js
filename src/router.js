@@ -176,10 +176,8 @@ module.exports = class Router extends EventEmitter {
         this.mountpath = "/";
         // The settings twice: the plain object everything inside here reads, and the Proxy the
         // outside gets. Express lets an application write app.settings["x"] straight, which set()
-        // never sees, so the hot copies in _hot() would keep answering the old value until an
-        // unrelated set() happened to bump the epoch and the change landed by surprise. The trap
-        // bumps it on the spot. Reading through a Proxy costs about 20ns, which is why the inside
-        // never does: _settings is the same object without the wrapper.
+        // never sees, so the hot copies in _hot() kept answering the old value. The trap bumps the
+        // epoch on the spot. Reading through a Proxy costs about 20ns, so the inside never does
         this._settings = settings;
         this.settings = new Proxy(settings, settingsWriteTraps);
         // the base classes; an Application replaces these with its own per-app subclasses, and a
@@ -231,11 +229,9 @@ module.exports = class Router extends EventEmitter {
             return serveNodeRequest(this, req, /** @type {any} */ (res), next);
         }
         // an app taking over a request becomes that request's app, as it does when mounted, so
-        // req.app.get("view engine") inside a sub-app reads the sub-app's settings and not the
-        // settings of whatever handed the request over. A plain router is not an app and leaves it
-        // alone, which is what Express's router.handle does too.
-        // a plain object, which is how express's router can be driven and how its own tests drive
-        // it. One of ours arrives with these set, so this costs a property read
+        // req.app.get("view engine") inside a sub-app reads the sub-app's settings. A plain router
+        // is not an app and leaves it alone, as Express's router.handle does.
+        // a plain object, which is how express's router can be driven and how its own tests drive it
         if (req._opPath === undefined) {
             if (typeof req.url !== "string" || req.url === "") {
                 // express reads the path with parseurl, which answers nothing for these, and it
@@ -409,12 +405,10 @@ module.exports = class Router extends EventEmitter {
     /**
      * The generic scan over this router's own table, driven by the literal index: only the routes
      * registered for this exact path, plus every non-literal route, are visited, in registration
-     * order, and each visited one still answers through the same method gate and _pathMatches the
-     * plain loop used. The routes skipped are exactly the literals whose string compare provably
-     * fails, so the first index this answers is the one the plain loop found.
+     * order, and each one still answers through the same method gate and _pathMatches the plain
+     * loop used. The routes skipped are exactly the literals whose string compare provably fails.
      *
-     * Runs after _freezeRoutingFlags, which is what makes _caseFlag and _strictFlag readable here
-     * and the lazily built index stable.
+     * Runs after _freezeRoutingFlags, which is what makes _caseFlag and _strictFlag readable here.
      *
      * @param {any} req
      * @param {number} startIndex where to resume the scan
@@ -554,14 +548,13 @@ module.exports = class Router extends EventEmitter {
 
     /**
      * The layers Express keeps on a router, in Express's own shape: one per middleware, one per
-     * route, and the route's own handlers under `route.stack`. Libraries that list an
-     * application's endpoints walk this, and so do tests that reach in for a single handler by
-     * name, which is how LibreChat pulls one middleware out of its router to exercise it.
+     * route, and the route's own handlers under `route.stack`. Libraries that list an application's
+     * endpoints walk this, and so do tests that reach in for a handler by name, which is how
+     * LibreChat pulls one middleware out of its router.
      *
-     * A view, built from the routes this router holds and rebuilt on every read, so it follows
-     * what has been registered. It is not the router's own storage: pushing a layer onto it, or
-     * splicing one out, moves nothing. The layer objects themselves are kept, so a caller that
-     * compares identities across two reads gets the same answer Express gives.
+     * A view, rebuilt on every read, not the router's own storage: pushing a layer onto it or
+     * splicing one out moves nothing. The layer objects are kept, so identities compare across two
+     * reads the way they do in Express.
      *
      * @returns {any[]}
      */
@@ -595,12 +588,10 @@ module.exports = class Router extends EventEmitter {
         method = method.toUpperCase();
         callbacks = callbacks.flat(Infinity);
         checkHandlers(callbacks);
-        // What express hangs off req.route as its methods, and the three registrations do not
-        // agree on it: app.all() registers every verb one at a time, so the map names all of
-        // them; router.all() and app.route().all() mark the route _all instead; and everything
-        // hung off one app.route() shares one map, since express builds one Route for the lot.
-        // Built in node's own order, which is the order the methods package hands express, so
-        // the map reads back key for key as express's does.
+        // What express hangs off req.route as its methods, and the three registrations disagree:
+        // app.all() registers every verb one at a time, so the map names all of them; router.all()
+        // and app.route().all() mark the route _all instead; everything hung off one app.route()
+        // shares one map. Built in node's own order, so it reads back key for key as express's does
         let methodMap;
         let stack;
         if (method !== "USE") {
@@ -810,17 +801,15 @@ module.exports = class Router extends EventEmitter {
      * Refuses a request whose framing cannot be trusted and hangs up without answering. No route
      * runs, so nothing downstream can be reached by one.
      *
-     * Hanging up is the whole point: uWS has already read what followed the body it believed in as
-     * a second, pipelined request, and it dispatches that one unless the socket goes. Node answers
+     * Hanging up is the point: uWS has already read what followed the body it believed in as a
+     * second, pipelined request, and it dispatches that one unless the socket goes. Node answers
      * 400 and then closes, and this cannot do both: uWS only skips the queued request when the
-     * response is closed rather than completed, and any of writeStatus, end or endWithoutBody
-     * completes it. Measured every combination, and delivering the 400 always let the smuggled
-     * request through, so the close wins and the client gets nothing. Nothing legitimate sends two
-     * content-lengths, so there is no well-behaved client to explain it to.
+     * response is closed rather than completed, and writeStatus, end and endWithoutBody all
+     * complete it. Every combination was measured and delivering the 400 always let the smuggled
+     * request through, so the close wins.
      *
      * Called once handleRequest has fully returned, never from inside it: an Application links the
-     * response into its pending list after the base call, and the 'close' emitted here is what
-     * takes it back out again.
+     * response into its pending list after the base call, and the 'close' emitted here takes it out.
      *
      * @param {any} response
      */
@@ -1063,11 +1052,10 @@ module.exports = class Router extends EventEmitter {
         // the route's own router's callbacks: an optimized chain is walked by the app even when it
         // ends in a mounted router's route
         //
-        // A route an OPTIONS request reaches only to have its verb counted for the automatic reply
-        // is not a route this request runs, and express does not run its app.param() callbacks for
-        // it. The same condition runRoute counts the verb under, see the OPTIONS branch there. The
-        // decoding above still happens either way, because express decodes a layer whose path
-        // matched whatever its method is, which is what answers 400 for a malformed escape.
+        // A route an OPTIONS request reaches only to have its verb counted is not a route this
+        // request runs, and express does not run its app.param() callbacks for it. Same condition
+        // as the OPTIONS branch in runRoute. The decoding above happens either way, because express
+        // decodes a layer whose path matched whatever its method is
         const paramCallbacks = route.paramCallbacks;
         if (paramCallbacks.size > 0 && !(req._isOptions && !route.all && route.method !== "OPTIONS")) {
             return this._runParamCallbacks(req, res, route, paramCallbacks);
@@ -1100,9 +1088,9 @@ module.exports = class Router extends EventEmitter {
      * Runs the app.param() callbacks for the parameters this route matched, and says whether the
      * route may run.
      *
-     * Express calls one once per value and not once per request: the same name matched with a
-     * different value calls it again, and a value it has already seen restores whatever that call
-     * left in req.params, its deferral or its error included, without running anything.
+     * Express calls one once per value and not once per request: the same name with a different
+     * value calls it again, and a value already seen restores what that call left in req.params,
+     * its deferral or its error included, without running anything.
      *
      * @param {any} req
      * @param {any} res
@@ -1300,16 +1288,14 @@ module.exports = class Router extends EventEmitter {
     }
 
     /**
-     * Registers a websocket route, which µWS serves itself.
+     * Registers a websocket route, which uWS serves itself.
      *
-     * The behavior is µWS's, settings and socket handlers alike, plus one addition: an
-     * `upgrade(req, res)` of this project's own shape, which runs before the handshake with a
-     * real request and response. Answering with the response declines the socket, which is how
-     * a check refuses one; returning a promise holds the handshake until it settles.
+     * The behavior is uWS's, settings and socket handlers alike, plus one addition: an
+     * `upgrade(req, res)` of this project's own shape, which runs before the handshake with a real
+     * request and response. Answering with the response declines the socket; returning a promise
+     * holds the handshake until it settles.
      *
-     * The request lives as long as the socket and reaches every handler as `ws.req`, so what
-     * the upgrade learned about the client, and anything it hangs on the request, is there when
-     * a message arrives.
+     * The request lives as long as the socket and reaches every handler as `ws.req`.
      *
      * @example
      * app.ws("/room/:id", {
@@ -1322,7 +1308,7 @@ module.exports = class Router extends EventEmitter {
      * });
      *
      * @param {string} path a literal path, or one whose parameters are whole segments
-     * @param {object} behavior µWS's WebSocketBehavior, plus the optional `upgrade` above
+     * @param {object} behavior uWS's WebSocketBehavior, plus the optional `upgrade` above
      * @returns {this}
      */
     ws(path, behavior) {

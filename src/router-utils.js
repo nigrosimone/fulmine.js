@@ -33,9 +33,9 @@ const HAS_LETTER = /[a-zA-Z]/;
  * folded string when the earlier path is a literal, and an insensitive pattern when it has
  * parameters of its own.
  *
- * The string side is compared character by character rather than through toLowerCase, because it
- * sits on the hot path of every parameter route that has an earlier literal, and saying no must
- * allocate nothing.
+ * The string side is compared character by character rather than through toLowerCase: it sits on
+ * the hot path of every parameter route with an earlier literal, and saying no must allocate
+ * nothing.
  *
  * @param {(string|RegExp)[]} guards
  * @param {string} path the path as it arrived
@@ -51,14 +51,11 @@ function anyGuardHits(guards, path) {
             continue;
         }
         // the guard is a registered path, which under the default routing answers the same path
-        // with one trailing slash as well: "/x1" registered is what serves "/x1/", so "/X1/" is
-        // just as much a case variant of it as "/X1" is. Missing that answered "/X1/" from the
-        // parameter route behind it while express answered from the literal.
-        //
-        // The regex guards, for earlier paths that carry parameters of their own, are built
-        // non-strict and already accept it. Erring wide costs nothing here either: a guard that
-        // hits only hands the request to the generic router, which is where express's own order
-        // decides anyway
+        // with one trailing slash too: "/x1" registered serves "/x1/", so "/X1/" is as much a case
+        // variant of it as "/X1". Missing that answered "/X1/" from the parameter route behind it
+        // while express answered from the literal. The regex guards are built non-strict and
+        // already accept it. Erring wide costs nothing: a guard that hits only hands the request
+        // to the generic router
         const slashed = path.length === guard.length + 1 && path.charCodeAt(guard.length) === 0x2f;
         if (guard.length !== path.length && !slashed) {
             continue;
@@ -153,11 +150,11 @@ function routeLayer(route) {
 /**
  * The native handler's resolve, invoked as this.resolve(matched) with the walk as receiver. The
  * promise pair _routeRequest allocates exists for callers that await; the uWS handler never did,
- * and on the common path, where the handler answers and next() is never called, that promise
- * never even settled: an async frame and two promises of floating garbage per request.
+ * and on the common path that promise never even settled: an async frame and two promises of
+ * floating garbage per request.
  *
- * The 404 epilogue stays on a microtask, exactly where the await used to resume: a middleware
- * that writes after calling next() must still win the headersSent check, as it does in express.
+ * The 404 epilogue stays on a microtask, where the await used to resume: a middleware that writes
+ * after calling next() must still win the headersSent check, as it does in express.
  * @this {Walk}
  */
 function nativeDone(matched) {
@@ -210,10 +207,9 @@ function nativeFail(err) {
  * there is. Exec runs on the same fixed-up path _pathMatches tested: a parent mount that consumed
  * everything leaves "", where the pattern was matched against "/".
  *
- * Counting what each mount took, rather than rebuilding one pattern out of the whole stack and
- * matching that against the original path, is the difference between a sum and a guess: a mount
- * written as an optional group composes into a pattern the path no longer satisfies, and the
- * prefix stayed on.
+ * Counting what each mount took, rather than composing one pattern out of the whole stack, is the
+ * difference between a sum and a guess: a mount written as an optional group composes into a
+ * pattern the path no longer satisfies, and the prefix stayed on.
  *
  * @param {any} route
  * @param {any} req
@@ -271,12 +267,11 @@ const NO_PARAM_NAMES = [];
  * The parameter names a route captures with its own pattern.
  *
  * This is the set express runs param callbacks for. A name that reached req.params from a mount
- * above, through mergeParams, belongs to that mount's router and not to this one, and express does
- * not call this router's param() for it: it walks the keys the layer itself matched. Reading
- * req.params instead ran a callback for every inherited name too, which is visible whenever such a
- * callback does anything, and turned a 200 into a 500 when one of them refused the value.
+ * above, through mergeParams, belongs to that mount's router: express walks the keys the layer
+ * itself matched. Reading req.params instead ran a callback for every inherited name too, and
+ * turned a 200 into a 500 when one of them refused the value.
  *
- * Worked out once per route and kept, since it follows from the pattern and never changes.
+ * Worked out once per route and kept, since it follows from the pattern.
  *
  * @param {any} route
  * @returns {string[]}
@@ -429,14 +424,14 @@ function protohostOf(url) {
 }
 
 /**
- * Fills in what dispatch reads on a request that did not come from µWS.
+ * Fills in what dispatch reads on a request that did not come from uWS.
  *
  * express's router can be driven with a plain object, `router.handle({ url, method }, res, next)`,
- * and its own tests do exactly that; so does anything mounting a router on a server of its own.
- * Only ever called for such a request: one of ours arrives with these fields already set.
+ * and its own tests do exactly that. Only ever called for such a request: one of ours arrives with
+ * these fields already set.
  *
  * req.url becomes an accessor, so the router goes on writing plain paths to it while a reader sees
- * the absolute URI it arrived as. That keeps the protohost out of the dispatch itself.
+ * the absolute URI it arrived as, which keeps the protohost out of the dispatch.
  *
  * @param {any} req
  * @param {any} router
@@ -527,14 +522,13 @@ function onNativeAborted() {
     // would take down the process
     request.emit("aborted");
     // and the response dies between the two, which is where node puts it. Destroyed rather than
-    // told to emit 'close', because being destroyed is the state express is in here and everything
-    // after it follows from that state rather than having to be reproduced: 'close' goes out once,
-    // a later res.write returns false and calls its callback with ERR_STREAM_DESTROYED, and no
-    // 'error' is emitted, which a destroy(err) here would.
+    // told to emit 'close', because being destroyed is the state express is in here and the rest
+    // follows from it: 'close' goes out once, a later res.write returns false and calls back with
+    // ERR_STREAM_DESTROYED, and no 'error' is emitted.
     //
     // Without this a handler learnt about the abort only from a write failing, so one that had sent
     // its head and gone quiet never learnt at all. `res.on("close")` is where cancellation hangs in
-    // every proxy and every streaming endpoint, so it never ran for exactly the shape that needs it.
+    // every proxy and every streaming endpoint
     response.destroy();
     request.destroy(request.listenerCount("error") > 0 ? err : undefined);
     response.socket?.emit("error", err);
@@ -612,12 +606,10 @@ const CALLBACK_ROUTER = 2;
  * Reports a parameter that will not decode, unless something is already being reported.
  *
  * Matching a route decodes its parameters, and that happens while the walk is still looking for
- * whoever should answer, including when it is looking for an error handler. Express does the same
- * and keeps the first error it has: `layerError = layerError || match` in its router. Overwriting
- * meant a middleware that had already refused the path, express.static answering Bad Request on an
- * escape it could not decode, had its answer replaced by the decode failure of a route further down
- * that was never going to run. Same status, different message, and only when a later route happens
- * to match the same path. Found by fuzzing route tables against express.
+ * whoever should answer. Express keeps the first error it has: `layerError = layerError || match`
+ * in its router. Overwriting meant express.static's Bad Request on an escape it could not decode
+ * was replaced by the decode failure of a route further down that was never going to run. Found by
+ * fuzzing route tables against express.
  *
  * @param {any} req
  * @param {any} route
@@ -640,8 +632,8 @@ const BODY_METHODS = new Set(["POST", "PUT", "PATCH", "QUERY"]);
  * Whether this layer can be stepped over for this request without changing a thing.
  *
  * Only the body parsers are ever asked. Their prologue leaves a request that said nothing about a
- * body alone, whatever content type it carries, which is what `kGetSafe` already records for the
- * header-skip analysis. Two conditions on top of that mark, and both are needed:
+ * body alone, whatever content type it carries, which is what `kGetSafe` records. Two conditions
+ * on top of that mark, and both are needed:
  *
  * The request must have said nothing about framing at all, a `content-length: 0` included. A parser
  * that can see a length answers about the body it describes even when that body is empty: a zero
@@ -649,21 +641,17 @@ const BODY_METHODS = new Set(["POST", "PUT", "PATCH", "QUERY"]);
  *
  * And the verb must be one no parser reads a body for. With no length and no transfer-encoding a
  * POST still walks into the read, comes back with nothing, and leaves `req.body` as the empty value
- * its parser produces, which is a thing a handler can see.
+ * its parser produces, which a handler can see.
  *
- * What this is worth: a hop measured 367 microseconds per thousand requests on the machine this was
- * written on, and the parser prologue it reaches measured 38. Ten to one, for a layer that had
- * nothing to do.
+ * What it is worth: a hop measured 367us per thousand requests and the parser prologue it reaches
+ * measured 38, ten to one for a layer that had nothing to do.
  *
- * That number is also why fusing consecutive layers into one generated function keeps coming up,
- * and why it is not here. Counted over a real front, morgan, helmet, compression, cors, the two body
- * parsers, express-session, a middleware of one's own and express.static: three of the nine can be
- * fused, and the longest run of fusable ones in a row is one. Fusing needs two. The rule was relaxed
- * from "calls next once, unconditionally" to merely "calls next synchronously" and the answer did
- * not move, because the six that fail all call next from inside a callback: they are asynchronous by
- * nature, reading a body, stat-ing a file, loading a session. A layer that has not decided by the
- * time it returns cannot be fused by any design that keeps the semantics. What fuses is a run of
- * trivial middlewares, which is a benchmark shape rather than an application's.
+ * That number is why fusing consecutive layers into one generated function keeps coming up, and why
+ * it is not here. Counted over a real front (morgan, helmet, compression, cors, the two body
+ * parsers, express-session, one of one's own, express.static): three of the nine can be fused, and
+ * the longest run of fusable ones in a row is one, where fusing needs two. The six that fail all
+ * call next from inside a callback, reading a body, stat-ing a file, loading a session, so no
+ * design that keeps the semantics can fuse them.
  *
  * @param {any} route
  * @param {any} req
@@ -714,17 +702,14 @@ function couldAnswer(route, path) {
 /**
  * Whether a layer written before a mount could answer a request for one of the paths inside it.
  *
- * A mount covers everything under its path, so this is a question about a subtree rather than about
- * the mount point, and the two answers differ: `/a` and `/:p0/:p1/:p2` match none of each other's
- * text, and both answer `/a/x/y`. µWS jumps straight to whichever leaf it registered, so a leaf a
- * layer like this could have answered has to stay on the generic path, which is the only place
- * express's registration order decides.
+ * A mount covers everything under its path, so this is a question about a subtree and not about the
+ * mount point: `/a` and `/:p0/:p1/:p2` match none of each other's text and both answer `/a/x/y`.
+ * uWS jumps straight to whichever leaf it registered, so a leaf a layer like this could have
+ * answered has to stay on the generic path.
  *
  * Only layers with more segments than the mount path reach this: one with as few already matches
- * the mount point itself, and _optimizeRoute has refused the mount before the walk gets here.
- *
- * Compared folded whichever way the routers are set. A wrong yes costs a leaf its native
- * registration and nothing else.
+ * the mount point itself. Compared folded whichever way the routers are set, and a wrong yes costs
+ * a leaf its native registration and nothing else.
  *
  * @param {{path: string, use: boolean, method: string, all: boolean}} guard
  * @param {string} leafPath the leaf's absolute path, parameters and all
@@ -739,10 +724,10 @@ function shadowsLeaf(guard, leafPath, leaf) {
 }
 
 /**
- * The layers before a mount that answer some of what is inside it and not all of it, which is the
- * one thing neither the chain nor µWS's own choice can say: the chain runs what is in it without
- * matching again, and µWS picks by specificity. They are carried down the walk instead and asked
- * about every leaf, see shadowsLeaf.
+ * The layers before a mount that answer some of what is inside it and not all of it, the one thing
+ * neither the chain nor uWS's own choice can say: the chain runs what is in it without matching
+ * again, and uWS picks by specificity. They are carried down the walk and asked about every leaf,
+ * see shadowsLeaf.
  *
  * @param {any} router the router the mount belongs to
  * @param {any} mount
@@ -774,24 +759,19 @@ function guardsInside(router, mount, pathPrefix, chain, inherited) {
 }
 
 /**
- * Notes which application is current before a mounted one is entered, so that exact one comes back
- * when it hands over.
+ * Notes which application is current before a mounted one is entered, so that exact one comes back.
  *
  * Only an application takes it back. Express restores req.app by putting the request prototype
  * back, and it wraps a mounted application to do that only in Application#use: hang one off a plain
- * Router and nothing restores it, so whatever runs afterwards still reads the settings of the
- * application that was entered. Restoring regardless made a later res.send answer with the outer
+ * Router and nothing restores it. Restoring regardless made a later res.send answer with the outer
  * application's etag setting where express answers with the inner.
  *
  * And what comes back is what was current, not the entered application's parent. Those differ the
- * moment a sub-app is entered from inside another sub-app that a plain Router mounted: the outer
- * one is still current, express puts that one back, and reaching for `.parent` skipped a level.
- * A 404 from the top application then carried an ETag under `app.set("etag", false)`, because the
- * settings answering were the inner application's. Found by fuzzing three levels of routers.
+ * moment a sub-app is entered from inside another sub-app a plain Router mounted, and reaching for
+ * `.parent` skipped a level: a 404 from the top application then carried an ETag under
+ * `app.set("etag", false)`. Found by fuzzing three levels of routers.
  *
- * The route is remembered alongside, so the pop can only ever take back what this same route put
- * there: a mounted application that answers instead of handing over leaves its entry behind, and
- * the request is over by then.
+ * The route is remembered alongside, so the pop can only take back what this same route put there.
  *
  * @param {any} walk
  * @param {any} route
@@ -887,14 +867,12 @@ function callablePrototypeFor(classPrototype) {
 }
 
 /**
- * The default error page, which is the one Express produces: the stack in a pre, and nothing else.
- * What reaches it has already been redacted when the environment calls for it.
+ * The default error page, the one Express produces: the stack in a pre, and nothing else. What
+ * reaches it has already been redacted when the environment calls for it.
  *
  * The text is escaped, which is not decoration. An error message can carry anything a client sent,
- * a path or a header among them, and writing it into the page unescaped put whatever it held into
- * the markup. The Content-Security-Policy on this response stops a script there from running, but
- * a policy is a second line and not the first. finalhandler escapes and then puts the line breaks
- * and the indentation back as markup, and this reads the same as what it produces.
+ * and writing it into the page unescaped put that into the markup. The Content-Security-Policy on
+ * this response stops a script from running, but a policy is a second line and not the first.
  *
  * @param {any} err
  * @returns {string}

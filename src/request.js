@@ -56,10 +56,9 @@ module.exports = class Request extends LazyReadable {
     /**
      * Every header, flat: name then value, name then value.
      *
-     * An array of pairs meant one array allocated per header on every request, and a request
-     * carries eight or ten of them, so everything that reads this walks it two at a time. The
-     * names are lowercase by contract: uWS lowers them on the wire and the node shim lowers
-     * them in its forEach, so readers compare without lowering again.
+     * An array of pairs meant one array per header on every request, and a request carries eight or
+     * ten, so everything that reads this walks it two at a time. The names are lowercase by
+     * contract: uWS lowers them on the wire and the node shim lowers them in its forEach.
      *
      * @type {string[]}
      */
@@ -76,10 +75,9 @@ module.exports = class Request extends LazyReadable {
 
     // `body` is deliberately not declared here. A class field would put the property on every
     // request, and on Express there is none until a body parser assigns one. `"body" in req` is how
-    // a library asks whether the body has already been read, and tRPC's express adapter asks
-    // exactly that: answering yes on a request nobody had parsed handed it an undefined body and
-    // turned every mutation into "Unexpected end of JSON input". Its type lives in types.d.ts,
-    // where the rest of the public request surface is described.
+    // a library asks whether the body was read, and tRPC's express adapter does exactly that:
+    // answering yes turned every mutation into "Unexpected end of JSON input". Its type is in
+    // types.d.ts, with the rest of the public request surface.
 
     /**
      * The response this request arrived with, linked so either reaches the other.
@@ -237,22 +235,21 @@ module.exports = class Request extends LazyReadable {
     _sawContentLength;
 
     /**
-     * Whether this request must not be routed at all. Node's parser refuses each of these outright
-     * and answers 400; every one of them is a way for bytes the client did not send as a request to
-     * be served as one, which is request smuggling.
+     * Whether this request must not be routed at all. Node's parser refuses each of these and
+     * answers 400; every one is a way for bytes the client did not send as a request to be served
+     * as one, which is request smuggling.
      *
      *   a repeated content-length     uWS frames on the first and drops the rest, so a proxy in
-     *                                 front reading the last one instead forwards bytes uWS then
-     *                                 answers as a second, pipelined request
+     *                                 front reading the last one forwards bytes uWS then answers
+     *                                 as a second, pipelined request
      *   one that is not a byte count  uWS keeps whatever is left after trimming, an empty value
-     *                                 included, and frames the request as carrying no body at all,
-     *                                 which turns the body the client sent into that same second
-     *                                 request. See isByteCount
-     *   a method nobody defines       uWS takes any token as the method, so anything at all
-     *                                 followed by a space and a path is a request line to it. A
-     *                                 request with no content-length and no transfer-encoding has
-     *                                 no body, so the bytes after it are the next request: node
-     *                                 reads them and answers 400, uWS served them. See KNOWN_METHODS
+     *                                 included, and frames the request as carrying no body, which
+     *                                 turns the body the client sent into that second request.
+     *                                 See isByteCount
+     *   a method nobody defines       uWS takes any token as the method, so anything followed by a
+     *                                 space and a path is a request line to it. With no
+     *                                 content-length and no transfer-encoding there is no body, so
+     *                                 the bytes after it are the next request. See KNOWN_METHODS
      *
      * Declared for the same reason as rawIp.
      *
@@ -308,9 +305,9 @@ module.exports = class Request extends LazyReadable {
      * @param {any} req the uWS request, readable only during this call
      * @param {any} res the uWS response
      * @param {any} app the application or router this request arrived at
-     * @param {any} [preset] a literal native registration's constants: µWS matched the URL byte
-     *   for byte against that exact pattern and dispatched by method, so path, method and what
-     *   derives from them are known without asking
+     * @param {any} [preset] a literal native registration's constants: uWS matched the URL byte for
+     *   byte against that exact pattern and dispatched by method, so path, method and what derives
+     *   from them are known without asking
      * @param {any} [skipHolder] where a granted header skip lives: the preset itself for a
      *   literal registration, a holder of its own for a parameterised one
      */
@@ -323,33 +320,25 @@ module.exports = class Request extends LazyReadable {
             // The chain behind this registration provably never reads a header, so instead of
             // copying them all out of uWS the constructor asks for the ones that steer the
             // framework itself: body framing, keep-alive, and the conditional pair. A GET that
-            // does declare a body is the rare case, and the parsers and the stream want the
-            // whole picture, so it takes the full copy.
+            // declares a body takes the full copy.
             //
-            // A handful of named reads against one forEach looks like it should lose, and does
-            // not: measured at seven reads they were flat at 0.75us however many headers are on
-            // the wire, since each one is a napi crossing and the scan behind it is nothing,
-            // while the copy pays a hop back into JS per header and grows, 1.16us at four
-            // headers, 1.61 at eight, 2.90 at sixteen. They do not cross, and the gap widens
-            // exactly where real traffic lives, since a browser sends a dozen or more. The body
-            // case pays two reads and then copies anyway, which is 0.2us on a request that is
-            // about to read a body.
+            // A handful of named reads beats one forEach: measured at seven reads they are flat at
+            // 0.75us however many headers are on the wire, since each one is a napi crossing, while
+            // the copy pays a hop back into JS per header and grows, 1.16us at four headers, 1.61
+            // at eight, 2.90 at sixteen. The body case pays two reads and then copies anyway, 0.2us.
             //
-            // accept is not read: nothing on a granted chain consumes it, the error and 404
-            // pages are fixed HTML that never negotiate.
+            // accept is not read: nothing on a granted chain consumes it, the error and 404 pages
+            // are fixed HTML that never negotiate.
             const length = req.getHeader("content-length");
             const transferEncoding = req.getHeader("transfer-encoding");
             // A content-length of "0" declares no body and used to stay on the cheap side, but
-            // getHeader only ever returns the first of a repeated header, so a duplicate cannot be
-            // seen from here, and a duplicate has to be refused rather than routed: see
-            // _mustRefuse. Anything that says a word about framing takes the full copy instead.
+            // getHeader only returns the first of a repeated header, so a duplicate cannot be seen
+            // from here and has to be refused rather than routed, see _mustRefuse. Anything that
+            // says a word about framing takes the full copy instead.
             //
             // One shape stays invisible here, a content-length present with an empty value: uWS
-            // answers "" for that and for a header that was never sent, and nothing in its API
-            // tells them apart. It frames both as carrying no body, which is the right reading of
-            // the second, so this server stays consistent with itself either way. The full copy
-            // below does refuse it, which is every request except a GET whose whole chain provably
-            // reads no header at all.
+            // answers "" for that and for a header never sent, and nothing in its API tells them
+            // apart. It frames both as carrying no body. The full copy below does refuse it.
             if (length !== "" || transferEncoding !== "") {
                 currentRequest = this;
                 this._req.forEach(Request.#collectHeader);
@@ -390,11 +379,9 @@ module.exports = class Request extends LazyReadable {
         }
         this.routeCount = 1;
         this.app = app;
-        // both forms are kept, because both are asked for: the query with its "?" goes into
-        // req.url, and req.query parses the raw one. Keeping only the first meant slicing the "?"
-        // back off for every request that reads req.query. When the chain provably reads
-        // neither, the native call is not made at all: the framework's own answers, the 404
-        // included, are written from the path alone
+        // both forms are kept because both are asked for: the query with its "?" goes into req.url,
+        // and req.query parses the raw one. When the chain provably reads neither, the native call
+        // is not made at all: the framework's own answers are written from the path alone
         if (skipHolder !== undefined && skipHolder.skipQuery) {
             this._rawQuery = "";
             this.urlQuery = "";
@@ -449,12 +436,10 @@ module.exports = class Request extends LazyReadable {
                 this._isHead = skipHolder.isHead;
             } else {
                 this.method = rawMethod.toUpperCase();
-                // node's parser knows a fixed set and refuses everything else; µWS takes the token
+                // node's parser knows a fixed set and refuses everything else, uWS takes the token
                 // as it finds it, so a request line is anything with a space in it. Compared before
-                // the uppercasing on purpose: a method is case sensitive, node refuses "post", and
-                // µWS folds it to POST and serves it. Only asked of a method the framework cannot
-                // route anyway, since a route can only be registered for one of these, see the loop
-                // that builds the verb methods at the end of router.js
+                // the uppercasing on purpose: a method is case sensitive, node refuses "post" and
+                // uWS folds it to POST and serves it
                 if (!KNOWN_METHODS.has(rawMethod)) {
                     this._mustRefuse = true;
                 }
@@ -475,12 +460,10 @@ module.exports = class Request extends LazyReadable {
         // Two Sets per request, for two things almost no request needs.
         //
         // _matchedMethods collects the verbs a path answers so an OPTIONS request can be told what
-        // they are, and every place that reads it asks _isOptions first, so it is built only for
-        // the requests that are one.
+        // they are, and every reader asks _isOptions first, so it is built only for those.
         //
-        // _paramCalled remembers, per router, what each app.param() callback was called with and
-        // what it left behind, so it is only wanted by an application that uses app.param at all.
-        // The router builds it the first time it has something to put in it.
+        // _paramCalled remembers, per router, what each app.param() callback was called with, so
+        // only an application using app.param wants it. The router builds it when it has something.
         this._matchedMethods = this._isOptions ? new Set() : null;
         this._paramCalled = null;
         // null for the same reason as the two above: a request that never enters a mount never
@@ -510,10 +493,8 @@ module.exports = class Request extends LazyReadable {
         }
 
         // A body exists on the wire only when the request declares one, content-length or
-        // transfer-encoding, whatever the verb, and that evidence was spotted during the header
-        // copy. The verb list and the "body methods" settings read this branch used to pay per
-        // request said nothing the headers had not already said; the setting still gates the
-        // body parsers, which is where it matters
+        // transfer-encoding, whatever the verb, and that was spotted during the header copy. The
+        // verb list this used to read said nothing the headers had not already said
         if (/** @type {any} */ (this)._declaresBody) {
             this._subscribeBody();
         } else {
@@ -622,8 +603,7 @@ module.exports = class Request extends LazyReadable {
      * a visitor who has gone away can be stopped. `@angular/ssr` reads it when it builds a web
      * Request out of this one, which is how an SSR render learns to give up.
      *
-     * Made on the first ask rather than for every request: most requests never look at it, and an
-     * AbortController each would be an allocation nobody reads.
+     * Made on the first ask: most requests never look at it.
      *
      * @returns {AbortSignal}
      */
@@ -713,11 +693,9 @@ module.exports = class Request extends LazyReadable {
         if (this._mountSlash !== true) {
             return this._originalPath.slice(0, this._consumed);
         }
-        // Express drops one trailing slash off each mount before joining them, so this is a join
-        // of the pieces rather than one slice of the path: a RegExp mount ending in "/" matched
-        // against "/a//b" takes "/a/" and reads back as "/a", and what the mount below it took is
-        // appended to that rather than to the original. Only a RegExp mount can take a trailing
-        // slash, a registered path having had it removed, so almost every request answers above.
+        // Express drops one trailing slash off each mount before joining them, so this is a join of
+        // the pieces and not one slice of the path: a RegExp mount ending in "/" matched against
+        // "/a//b" takes "/a/" and reads back as "/a". Only a RegExp mount can take a trailing slash
         let out = "";
         let at = 0;
         for (let taken of this._stack) {
@@ -942,37 +920,33 @@ module.exports = class Request extends LazyReadable {
      * object, so a key like "__proto__" cannot reach Object.prototype. No setter, so assigning to
      * req.query throws as it does on Express.
      *
-     * Every read answers a new object, because express's getter re-parses on every read and so hands
-     * one back too. Two consequences an application can see, and both of them bite: `req.query` is
-     * never the object another reader holds, and a write to a key of it is gone by the next read.
-     * That second one is how express-validator's sanitisers behave: `.trim()` on a query parameter
-     * changes nothing an ordinary handler will see, which is why it also offers matchedData(). With
-     * the parse cached and handed out as itself, the sanitised value leaked into req.query here and
-     * a handler written against express read a trimmed value where express gives it the raw one.
+     * Every read answers a new object, because express re-parses on every read and hands one back
+     * too. So req.query is never the object another reader holds, and a write to a key of it is
+     * gone by the next read. That is how express-validator's sanitisers behave: `.trim()` on a
+     * query parameter changes nothing an ordinary handler sees. With the parse cached and handed
+     * out as itself, the sanitised value leaked into req.query here.
      *
-     * And that is why there is no cache of the object: the fresh object comes from the raw
-     * string, not from copying a kept parse. As first shipped this was parse-once-copy-per-read,
-     * and the copy was the expensive half: Object.assign between null-prototype objects, which
-     * live in V8's dictionary mode, measured 638ns for a two-parameter query where parsing the
-     * same string measures 119ns, and on a benchmark whose every request carries such a query it
-     * cost +1.5us of CPU per request, which a public arena saw as -8% on its query-carrying rows.
+     * So there is no cache of the object: the fresh object comes from the raw string, not from
+     * copying a kept parse. Parse-once-copy-per-read was the first shape shipped, and the copy was
+     * the expensive half: Object.assign between null-prototype objects, which live in V8's
+     * dictionary mode, measured 638ns for a two-parameter query where parsing the same string
+     * measures 119ns, so +1.5us of CPU per request, which a public arena saw as -8% on its
+     * query-carrying rows.
      *
-     * The default parser does keep the decoded pairs of its first parse, and a later read of the
-     * same raw string replays the stores into a fresh null-prototype object: identical output,
-     * still nothing shared between reads. A repeated key cannot be replayed and re-parses.
+     * The default parser keeps the decoded pairs of its first parse and replays the stores into a
+     * fresh null-prototype object: same output, nothing shared between reads. A repeated key
+     * cannot be replayed and re-parses.
      *
      * @returns {Record<string, any>}
      */
     get query() {
         const qp = this.app._hot().queryParserFn;
-        // the vendored default already answers on a bare null prototype, so it goes out as is;
-        // any other parser is copied onto one, which is what kept fast-querystring's result from
-        // inspecting as "Empty <[Object: null prototype] {}>" where Express shows the bare form
-        // A parser of the application's own is handed what express hands it, which is
-        // parseurl's `query`: null when the url carries no "?" at all, and the text after it
-        // otherwise, the empty string included. Passing "" for both meant a parser written for
-        // express, which may check for null before it reads the string, saw a request that had no
-        // query as one with an empty query. The two built in parsers take the raw string.
+        // the vendored default already answers on a bare null prototype, so it goes out as is; any
+        // other parser is copied onto one, which kept fast-querystring's result from inspecting as
+        // "Empty <[Object: null prototype] {}>" where Express shows the bare form.
+        // A parser of the application's own is handed what express hands it, parseurl's `query`:
+        // null when the url carries no "?", the text after it otherwise, empty string included.
+        // Passing "" for both made a parser written for express see no query as an empty query.
         if (!qp) {
             return Object.create(null);
         }
@@ -1054,12 +1028,11 @@ module.exports = class Request extends LazyReadable {
      * The peer address bytes, from the socket or, when the application asked for it, from a PROXY
      * protocol preamble the load balancer in front of this server sent ahead of the request.
      *
-     * The setting is off by default and has to stay that way. µWS parses the preamble from whoever
-     * sends it, with nothing to ask for it at listen time and no way to restrict who may, so an
-     * application that took the address unconditionally would let any client claim any address:
-     * the first sixteen bytes of a connection are enough to become 10.0.0.1 for a rate limiter, an
-     * allow list or an audit log. Turn it on only when nothing can reach this server except the
-     * proxy in front of it.
+     * The setting is off by default and has to stay that way. uWS parses the preamble from whoever
+     * sends it, with no way to restrict who may, so an application that took the address
+     * unconditionally would let any client claim any address: the first sixteen bytes of a
+     * connection are enough to become 10.0.0.1 for a rate limiter or an allow list. Turn it on only
+     * when nothing can reach this server except the proxy in front of it.
      *
      * @returns {ArrayBuffer} the socket's own address when no preamble arrived
      */
@@ -1116,11 +1089,9 @@ module.exports = class Request extends LazyReadable {
         } else if (rawIp.byteLength === 16) {
             const bytes = new Uint8Array(rawIp);
             if (isMappedIPv4(bytes)) {
-                // ::ffff:a.b.c.d, which is what a dual stack listener hands over for every IPv4
-                // peer, so it is what nearly every request here is. The general path below reaches
-                // the same string through a DataView, an array of eight groups and a scan for the
-                // longest run of zeros, and measured 157ns more per request for it. Anything that
-                // reads req.ip pays that once, and morgan reads it on every line it writes.
+                // ::ffff:a.b.c.d, what a dual stack listener hands over for every IPv4 peer, so
+                // nearly every request here. The general path below reaches the same string through
+                // a DataView and a scan for the longest zero run, 157ns more per request
                 ip = "::ffff:" + bytes[12] + "." + bytes[13] + "." + bytes[14] + "." + bytes[15];
             } else {
                 // ipv6
@@ -1161,13 +1132,12 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * Cuts this request loose from the µWS response it arrived on, keeping the two things only
+     * Cuts this request loose from the uWS response it arrived on, keeping the two things only
      * that response could answer.
      *
-     * A websocket upgrade hands the request to the socket, which outlives the response by the
-     * whole life of the connection. Reading the peer address through the freed response is not
-     * an error but a use after free, so the values are taken while it is still alive and an
-     * inert stand-in answers anything that asks later.
+     * A websocket upgrade hands the request to the socket, which outlives the response. Reading the
+     * peer address through the freed response is a use after free, so the values are taken while it
+     * is still alive and an inert stand-in answers later.
      */
     _detachFromResponse() {
         const uwsRes = this._res;
@@ -1374,12 +1344,12 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * The request headers as node presents them: lowercased names, and repeats folded the way
-     * node folds them. Set-Cookie stays an array, Cookie is joined with "; ", the fields listed in
-     * discardedDuplicates keep only the first value, and everything else is joined with ", ".
+     * The request headers as node presents them: lowercased names, and repeats folded the way node
+     * folds them. Set-Cookie stays an array, Cookie is joined with "; ", the fields listed in
+     * discardedDuplicates keep only the first value, everything else is joined with ", ".
      *
-     * Built on first read and cached, since the raw entries are what routing works from and most
-     * requests never ask for this at all.
+     * Built on first read and cached: routing works from the raw entries and most requests never
+     * ask for this.
      *
      * @returns {Record<string, any>}
      */
