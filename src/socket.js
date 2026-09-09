@@ -24,9 +24,8 @@ const { kShapeMode } = require("./response-utils.js");
 
 class Socket extends EventEmitter {
     /**
-     * The Socket's own error listener, shared across sockets: an error on the stand-in closes it,
-     * which is the close the connection trackers wait for. EventEmitter calls it with this = the
-     * emitter.
+     * The Socket's error listener, shared across sockets: an error closes the stand-in, which is
+     * the close connection trackers wait for. EventEmitter calls it with this = the emitter.
      *
      * @this {any}
      * @param {any} err
@@ -36,8 +35,8 @@ class Socket extends EventEmitter {
     }
 
     /**
-     * Enough of a node socket for the middleware that reaches for one. There is no socket object
-     * in uWS to hand over, so this stands in and forwards what it can to the response.
+     * Enough of a node socket for the middleware that reaches for one. uWS has no socket object to
+     * hand over, so this stands in and forwards what it can to the response.
      *
      * @param {any} response
      */
@@ -62,7 +61,7 @@ class Socket extends EventEmitter {
         return !this.response.finished;
     }
 
-    /** The peer, as node reports it. Reading it out of µWS is slow, so the request caches it. */
+    /** The peer, as node reports it. Reading it out of uWS is slow, so the request caches it. */
     get remoteAddress() {
         return this.response.req.parsedIp;
     }
@@ -73,10 +72,9 @@ class Socket extends EventEmitter {
     }
 
     /**
-     * node's socket carries these three and applications call them on a request they mean to hold
-     * open, almost always to take the timeout off. µWS has no per socket timeout reachable from
-     * javascript, so they do nothing and hand the socket back the way node's do. n8n's chat trigger
-     * calls setTimeout on every webhook, and without it the workflow answered 500.
+     * node's socket carries these three, usually called to take the timeout off. uWS has no per
+     * socket timeout reachable from javascript, so they do nothing and return the socket. n8n's
+     * chat trigger calls setTimeout on every webhook, and without it the workflow answered 500.
      * @returns {this}
      */
     setTimeout() {
@@ -103,8 +101,8 @@ class Socket extends EventEmitter {
     }
 
     /**
-     * What a server side socket answers about itself. µWS owns the connection, so these follow the
-     * response: it is open until the response is over, and it was never a socket being dialled.
+     * What a server side socket answers about itself. uWS owns the connection, so these follow the
+     * response.
      */
     get destroyed() {
         return this.response.finished === true;
@@ -126,7 +124,7 @@ class Socket extends EventEmitter {
     }
 
     /**
-     * The end of the connection node reports here. There is no address to read back from µWS, so
+     * The end of the connection node reports here. There is no address to read back from uWS, so
      * this is the port the application bound and the family the peer arrived on.
      * @returns {{address: string|undefined, family: string, port: number|undefined}}
      */
@@ -140,9 +138,8 @@ class Socket extends EventEmitter {
     }
 
     /**
-     * Drops the connection, which is what an application does to a client it will not serve. node
-     * takes an error and re-emits it; this closes and says so through 'close', since there is no
-     * socket underneath to carry an error of its own.
+     * Drops the connection. node takes an error and re-emits it, this closes and says so through
+     * 'close', since there is no socket underneath to carry an error of its own.
      * @returns {this}
      */
     destroy() {
@@ -157,8 +154,8 @@ class Socket extends EventEmitter {
     }
 
     /**
-     * Holds and resumes the body arriving on this connection, which is the only half of node's
-     * pause() that means anything here: the response is written when the application writes it.
+     * Holds and resumes the body arriving on this connection. The other half of node's pause()
+     * means nothing here, the response is written when the application writes it.
      * @returns {this}
      */
     pause() {
@@ -173,9 +170,8 @@ class Socket extends EventEmitter {
     }
 
     /**
-     * node writes these bytes past the response, straight onto the connection. There is no way
-     * past µWS's framing here, so they go through the response instead, which is what the
-     * middleware writing to a socket means by it.
+     * node writes these bytes straight onto the connection. There is no way past uWS's framing
+     * here, so they go through the response instead.
      *
      * @param {any} chunk
      * @param {any} [encoding]

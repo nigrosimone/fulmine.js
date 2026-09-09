@@ -16,37 +16,27 @@ limitations under the License.
 
 // express.serverTiming(): Server-Timing, with the two things only this framework can put in it.
 //
-// A stopwatch middleware is nothing new, and there are several on npm. What none of them can add
-// is how the request was routed, because in every other framework there is only one way:
+// What no other stopwatch middleware can add is how the request was routed:
 //
 //     Server-Timing: route;desc="native", hdr;desc="not copied", total;dur=0.42
 //
-// `route;desc="native"` means µWS matched the path in C++ and handed over a chain worked out at
+// `route;desc="native"` means uWS matched the path in C++ and handed over a chain worked out at
 // startup. `route;desc="router"` means this request was matched here, in javascript, layer by
-// layer. That is the difference between the two halves of this project, per request, in the
-// browser's network panel, for someone who would never run a CLI.
+// layer. A handler compiled into a response never enters javascript, so there is nothing to time
+// on it: `npx fulmine profile` counts those.
 //
-// What it cannot show is the route that is faster still: a handler compiled into a response never
-// enters javascript, so no middleware runs on it and there is nothing to time. `npx fulmine
-// profile` is where those are counted.
-//
-// The other field only this framework can write is `work`, which names what the request was made to
-// build: the folded headers object, the parsed query, the body, the Readable, the Writable, the
-// socket stand-in. A fast request builds none of them and the field is absent, so it appears
-// exactly when something is worth looking at. See src/work.js.
+// `work` names what the request was made to build: folded headers, parsed query, body, Readable,
+// Writable, socket stand-in. A fast request builds none and the field is absent. See src/work.js.
 //
 // The duration ends where the header does. Server-Timing goes out with the head, so `total` covers
-// everything up to the moment the answer starts leaving, and not the body after it, and `work` has
-// the same boundary: a stream built by the write that carries the head is built after this is
-// written. Every stopwatch middleware has that boundary; this one says so.
+// everything up to the moment the answer starts leaving, and `work` has the same boundary.
 
 "use strict";
 
 const { work, names } = require("./work.js");
 
 /**
- * A duration in milliseconds, as Server-Timing writes them: two decimals, which is a hundredth of
- * a millisecond and finer than anything above it is worth.
+ * A duration in milliseconds, as Server-Timing writes them: two decimals.
  *
  * @param {bigint} nanoseconds
  * @returns {string}
@@ -88,9 +78,8 @@ function serverTiming(options) {
         const marks = [];
 
         /**
-         * Adds a mark of the caller's own, which is what the rest of Server-Timing is for: the
-         * query, the upstream call, the render. A duration is optional, since a mark with only a
-         * description is a legal entry and is how a cache hit is usually reported.
+         * Adds a mark of the caller's own: the query, the upstream call, the render. The duration
+         * is optional, a mark with only a description is a legal entry.
          *
          * @param {string} name a token: letters, digits, dash and underscore
          * @param {number} [duration] milliseconds
@@ -110,8 +99,8 @@ function serverTiming(options) {
         };
 
         /**
-         * Times a piece of work under a name, whatever it is: the value comes back, and a promise
-         * is timed to where it settles.
+         * Times a piece of work under a name. The value comes back, and a promise is timed to
+         * where it settles.
          *
          * @param {string} name
          * @param {() => any} work
@@ -155,8 +144,7 @@ function serverTiming(options) {
             written = true;
             const entries = [];
             if (routing) {
-                // what the router decided about the route this request ran, which is the same
-                // verdict npx fulmine profile prints for it
+                // the same verdict npx fulmine profile prints for this route
                 const native = req.route?._native;
                 entries.push(`route;desc=${describe(native ? "native" : "router")}`);
                 if (native) {
@@ -167,10 +155,9 @@ function serverTiming(options) {
                 }
             }
             if (wantsWork) {
-                // what this one request made the framework build, which the route verdict above
-                // cannot say: a native route still folds the headers if a middleware reads them,
-                // and that is per request, not per route. Read at the head, so it covers the
-                // chain and not the body written after it, the same boundary as the total.
+                // what this request made the framework build, which the route verdict cannot say:
+                // a native route still folds the headers if a middleware reads them. Read at the
+                // head, so it covers the chain and not the body, the same boundary as the total.
                 const listed = names(work(req, res));
                 if (listed.length !== 0) {
                     entries.push(`work;desc=${describe(listed.join(", "))}`);

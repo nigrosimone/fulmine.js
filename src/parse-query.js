@@ -37,9 +37,9 @@ const plusRegex = /\+/g;
  * `capture` collects the decoded pairs flat, key then value, so a caller can replay the stores
  * without scanning again; a repeated key marks it invalid instead. See `get query`.
  *
- * `separatorLimit` refuses a body with that many "&" separators the way body-parser's
- * parameterCount does, but inside this scan instead of a scan of its own: the overflow flag on
- * the function is set, the partial result is to be discarded, and the caller answers 413.
+ * `separatorLimit` refuses a body with that many "&" separators like body-parser's parameterCount,
+ * inside this scan: the overflow flag is set, the partial result is discarded, the caller answers
+ * 413.
  *
  * @param {string} input
  * @param {string[] & {invalid?: boolean}} [capture]

@@ -25,21 +25,17 @@ const READABLE_OPTIONS = { highWaterMark: 128 * 1024 };
 /**
  * A Readable that has not been built yet.
  *
- * Every request pays for the stream and almost none of them use it: a GET carries no body, and the
- * bodies that do arrive are collected by µWS and handed to the parsers without the stream being
- * touched. Measured on this machine, running Readable's constructor costs about 90ns of the 900ns
- * a hello-world request costs in total, which is a tenth of it for a facility nobody asked for.
+ * Every request pays for the stream and almost none use it: a GET carries no body, and the bodies
+ * that arrive are collected by uWS and handed to the parsers without touching the stream. Measured
+ * on this machine, Readable's constructor is about 90ns of the 900ns a hello-world request costs.
  *
  * So the chain says Readable and the constructor does not run. `Request extends LazyReadable`, and
- * LazyReadable's prototype is Readable's, which keeps `req instanceof Readable` true and every
- * Readable method reachable; what is missing is `_readableState`, and that is built on the first
- * touch. A derived class cannot skip its super() call, but a base class with nothing in it costs
- * nothing to call.
+ * LazyReadable's prototype is Readable's, so `req instanceof Readable` stays true and every
+ * Readable method is reachable. What is missing is `_readableState`, built on the first touch.
  *
- * The wrapping below is generated rather than written out, and deliberately: every own member of
- * Readable's prototype gets a version that materialises first, so there is no list to keep in step
- * and no door left unguarded. Missing one would not be a slow path, it would be a TypeError on
- * `undefined._readableState` in whatever corner of a stream nobody tested.
+ * The wrapping below is generated, not written out: every own member of Readable's prototype gets a
+ * version that materialises first, so there is no list to keep in step. Missing one would be a
+ * TypeError on `undefined._readableState`, not a slow path.
  */
 class LazyReadableBase {}
 Object.setPrototypeOf(LazyReadableBase.prototype, Readable.prototype);

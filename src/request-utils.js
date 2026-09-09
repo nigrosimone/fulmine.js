@@ -19,17 +19,14 @@ limitations under the License.
 
 const { isIP } = require("node:net");
 
-// accepts, type-is, proxy-addr and fresh all declare a node IncomingMessage and read nothing off
-// it but .headers. This request is deliberately not one, so it is handed over as itself and the
-// declared shape is stepped around at each call.
+// accepts, type-is, proxy-addr and fresh declare a node IncomingMessage but read only .headers off
+// it. This request is not one, so it is passed as itself and the declared type is stepped around.
 const asMessage = (req) => /** @type {any} */ (req);
 
 /**
- * Writes an address the way node writes socket.remoteAddress, which is inet_ntop's output and so
- * RFC 5952: leading zeros dropped from each group, the longest run of two or more zero groups
- * written as "::", and the last four bytes written in dotted form for the addresses that carry an
- * IPv4 one. uWS hands over the sixteen bytes, and writing them out in full gave req.ip
- * "0000:0000:0000:0000:0000:0000:0000:0001" where Express says "::1".
+ * Writes an address like node's socket.remoteAddress, which is inet_ntop and so RFC 5952: leading
+ * zeros dropped, the longest zero run written "::", the last four bytes dotted for a mapped IPv4.
+ * Printed in full, req.ip was "0000:0000:0000:0000:0000:0000:0000:0001" where Express says "::1".
  *
  * @param {number[]} groups the eight 16-bit groups, most significant first
  * @returns {string}
@@ -79,9 +76,8 @@ function formatIPv6(groups) {
 }
 
 /**
- * Whether these sixteen bytes are an IPv4-mapped address, ::ffff:0:0/96: ten zero bytes and then
- * 0xffff. Ten comparisons rather than a loop, because this runs on every address that is read and
- * the first mismatch answers immediately for a real IPv6 peer.
+ * Whether these sixteen bytes are an IPv4-mapped address, ::ffff:0:0/96: ten zero bytes then
+ * 0xffff. Ten comparisons rather than a loop, this runs on every address that is read.
  *
  * @param {Uint8Array} bytes exactly sixteen of them
  * @returns {boolean}
@@ -104,10 +100,9 @@ function isMappedIPv4(bytes) {
 }
 
 /**
- * Whether node would report an IPv4 peer of this app in mapped form, "::ffff:a.b.c.d". Node maps
- * it whenever the listener is dual stack, which is every listen() not given an IPv4 address to
- * bind. uWS already hands mapped peers over as sixteen bytes; four bytes only reach req.ip from a
- * v4-bound native listener or through the node shim, whose server supertest binds dual stack.
+ * Whether node would report an IPv4 peer of this app in mapped form, "::ffff:a.b.c.d". Node maps it
+ * whenever the listener is dual stack, which is every listen() without an IPv4 address. uWS already
+ * gives mapped peers as sixteen bytes, four bytes come only from a v4 listener or the node shim.
  *
  * @param {any} app the application the request arrived at
  * @returns {boolean}
@@ -141,21 +136,18 @@ const discardedDuplicates = new Set([
     "user-agent"
 ]);
 
-// The methods node's parser accepts, which is the set a request can arrive with behind Express and
-// the set a route can be registered for here. µWS accepts any token, so without this a line like
-// `{"a":1}GET /path HTTP/1.1` is a request to it, with `{"A":1}GET` as the method. See _mustRefuse.
+// The methods node's parser accepts, so the set a request can arrive with behind Express. uWS takes
+// any token, so without this `{"a":1}GET /path HTTP/1.1` is a request with `{"A":1}GET` as the
+// method. See _mustRefuse.
 const KNOWN_METHODS = new Set(require("http").METHODS);
 
 /**
- * Whether a request target is bytes node's parser would have accepted, which is printable ASCII
- * and nothing else.
+ * Whether a request target is bytes node's parser would have accepted, printable ASCII only.
  *
- * µWS takes the target as it finds it and decodes it as UTF-8, so `GET /cafÃ©` arrives here
- * as a path with an é in it and the overlong encoding of a slash arrives as replacement
- * characters. Node refuses both with a 400 before any application sees them, and it has to: what
- * reaches req.url otherwise is not what is on the wire, and a proxy in front reading the same
- * bytes can disagree with this server about which path was asked for. Control characters are µWS's
- * own to refuse and it does, so the test is one comparison per character rather than two.
+ * uWS takes the target as it finds it and decodes it as UTF-8, so `GET /cafÃ©` arrives with an é in
+ * it and an overlong slash arrives as replacement characters. Node answers 400 instead, and it has
+ * to: a proxy in front reading the same bytes would disagree about which path was asked for.
+ * Control characters are uWS's own to refuse, so this is one comparison per character.
  *
  * @param {string} target the path or the query string, as µWS decoded it
  * @returns {boolean}
@@ -170,14 +162,12 @@ function isAsciiTarget(target) {
 }
 
 /**
- * Whether a transfer-encoding leaves the body's length knowable, which is RFC 9112's rule that
- * `chunked` comes last. `gzip, chunked` is fine and `chunked, gzip` is not: with a coding applied
- * after the framing one, nothing can say where the body ends, and node answers 400 rather than
- * guess. µWS guesses, and what it guesses wrong becomes the next request on the connection.
+ * Whether a transfer-encoding leaves the body's length knowable, RFC 9112's rule that `chunked`
+ * comes last. `gzip, chunked` is fine, `chunked, gzip` is not, and node answers 400 rather than
+ * guess. uWS guesses, and what it guesses wrong becomes the next request on the connection.
  *
- * Read per header rather than over the joined value, so a request splitting the list across two
- * transfer-encoding headers is refused even when the codings would be legal joined up. That is
- * stricter than node by a hair, on a shape nothing sends, and stricter is the safe direction here.
+ * Read per header, not over the joined value, so a request splitting the list across two headers is
+ * refused too. Stricter than node by a hair, on a shape nothing sends.
  *
  * @param {string} value one transfer-encoding header, as uWS hands it over
  * @returns {boolean}
@@ -190,8 +180,7 @@ function endsWithChunked(value) {
         return false;
     }
     // and only once. "chunked, chunked" ends with it and is still nonsense: a sender may not frame
-    // a body twice, and where node refuses the request outright µWS frames it as one chunked body
-    // and reads whatever follows as the next request on the connection
+    // a body twice, and uWS reads whatever follows as the next request on the connection
     const codings = value.split(",");
     let chunkedCount = 0;
     for (const coding of codings) {
@@ -206,13 +195,12 @@ function endsWithChunked(value) {
 /**
  * Whether a Connection header says the connection ends with this response.
  *
- * It is a list, and "keep-alive, close" closes as much as "close" alone does. Compared against an
- * exact "close", this server kept a connection the client had said it was done with, and then read
- * the bytes after it as another request: node closes there, so the two disagreed on how many
- * requests the same bytes carried, which is what a desync is.
+ * It is a list, and "keep-alive, close" closes as much as "close" alone. Compared against an exact
+ * "close", this server kept a connection the client was done with and read the bytes after it as
+ * another request, which is a desync.
  *
- * Written as a scan rather than a split and a lowercase, because almost every request that carries
- * this header carries "keep-alive", and both of those allocate per request.
+ * A scan rather than a split and a lowercase: almost every request carries "keep-alive" here, and
+ * both of those allocate per request.
  *
  * @param {string} value as µWS hands it over
  * @returns {boolean}
@@ -258,9 +246,8 @@ function saysClose(value) {
  * The path of the url a request carries right now, without the query.
  *
  * Express reads it off req.url on every access, so a middleware that assigns req.url is seen by
- * whatever runs next, the callback after it in the same route included: the router only takes a
- * rewrite over at its next hop. The cached field answers while the two agree, which is every read
- * of a request nobody rewrote.
+ * whatever runs next, the callback after it in the same route included. The cached field answers
+ * while the two agree.
  *
  * @param {any} req
  * @returns {string}
@@ -277,10 +264,8 @@ function currentPath(req) {
 /**
  * Whether a content-length is a plain count of bytes, which is the only thing RFC 9112 allows.
  *
- * uWS trims the spaces around the value and then takes whatever is left, so "", "abc", "+1", "-1",
- * "0x10" and "1e2" all arrive here. Every one of them makes uWS frame the request as carrying no
- * body, and what the client sent as a body is then read as the next request on the connection.
- * Node's parser refuses all of them outright, and so does this.
+ * uWS trims the value and takes whatever is left, so "", "abc", "+1", "-1", "0x10" and "1e2" all
+ * arrive here, and each one makes uWS frame the request as carrying no body. Node refuses them all.
  *
  * @param {string} value as uWS hands it over
  * @returns {boolean}
@@ -295,9 +280,8 @@ function isByteCount(value) {
             return false;
         }
     }
-    // A count nothing can represent is not a count. Node refuses one that overflows, and µWS framed
-    // the request as if it had said something else, which put the bytes after it in a request of
-    // their own. The length test first, so an ordinary value never parses.
+    // A count nothing can represent is not a count. Node refuses one that overflows, uWS framed the
+    // request as something else. The length test first, so an ordinary value never parses.
     if (value.length > 15 && Number(value) > Number.MAX_SAFE_INTEGER) {
         return false;
     }

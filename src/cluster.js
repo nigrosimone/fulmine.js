@@ -16,16 +16,12 @@ limitations under the License.
 
 // express({ cluster: "auto" }): one process per core, all on the same port.
 //
-// A node process runs the application on one core, and the other fifteen sit there. The usual
-// answer is the cluster module, where the primary holds the listening socket and hands each
-// accepted connection to a worker over an IPC channel. µWS does not need that: it can bind with
-// the port marked shared, which is SO_REUSEPORT, and then every worker has its own listening
-// socket on the same port and the kernel picks which one gets each connection. No primary in the
-// path, no handle to pass, nothing serialised between processes.
+// The usual answer is the cluster module, where the primary holds the listening socket and passes
+// each accepted connection to a worker over IPC. uWS does not need that: it binds with the port
+// marked shared, which is SO_REUSEPORT, so every worker has its own listening socket on the same
+// port and the kernel picks who gets each connection. No primary in the path, nothing serialised.
 //
-// The flag has been passed for a while, see Application#listen: a worker binds shared and a lone
-// process binds exclusive. What was missing is the fork, which every application had to write for
-// itself, and an application that does not write it uses one core.
+// Application#listen already passes the flag. What was missing is the fork.
 
 "use strict";
 
@@ -54,8 +50,7 @@ function parallelism() {
  * The CPU quota a cgroup puts on this process, in cores, or undefined where there is none.
  *
  * This is the number that matters in a container: os.availableParallelism() reports the machine,
- * not the share of it the orchestrator gave away, so a 2-core pod on a 64-core node would fork 64
- * processes that fight over two cores. Both cgroup layouts are read, v2 first.
+ * so a 2-core pod on a 64-core node would fork 64 processes. Both cgroup layouts are read, v2 first.
  *
  * @param {(file: string) => string} [read] the file reader, for a test that has no cgroup
  * @returns {number|undefined}
@@ -103,8 +98,8 @@ function availableCores(read = readFile, cores = parallelism) {
  * How many workers a `cluster` setting asks for. Zero means the setting is off and the process
  * serves by itself, which is the default.
  *
- * A value nobody can read is a throw rather than a quiet zero: `cluster: "atuo"` running on one
- * core in production, with nothing said about it, is the failure this whole thing is against.
+ * A value nobody can read throws instead of quietly meaning zero: `cluster: "atuo"` would run on
+ * one core in production and say nothing about it.
  *
  * @param {boolean|number|"auto"|undefined} setting
  * @param {number} [cores] counted only when the setting asks for it: every application calls this,
@@ -124,9 +119,8 @@ function workerCount(setting, cores) {
     throw new TypeError(`cluster must be "auto", a boolean or a positive number, not ${JSON.stringify(setting)}`);
 }
 
-// Whether this process has forked workers, and so serves nothing itself. An application carries
-// the setting, but the answer is about the process: an entry with a second app on a TLS port would
-// otherwise bind that one here, exclusively, and every worker would fail on it.
+// Whether this process forked workers and serves nothing itself. About the process, not the app:
+// an entry with a second app on a TLS port would bind that one here and every worker would fail.
 let supervising = false;
 
 /**
@@ -141,9 +135,8 @@ function isSupervising() {
 /**
  * Says this process is the primary of a clustered application, before it has forked anything.
  *
- * Written when the application is constructed and not when it listens, because the order is the
- * application's to choose: an entry that listens on its TLS port first would otherwise have taken
- * that port here, exclusively, a line before the fork.
+ * Written when the application is constructed, not when it listens: an entry that listens on its
+ * TLS port first would take that port here, exclusively, one line before the fork.
  *
  * @returns {void}
  */
@@ -154,10 +147,8 @@ function becomeSupervisor() {
 /**
  * Forks the workers and keeps that many of them alive.
  *
- * A worker that dies is replaced, and there is nothing to rebuild when it comes back: it binds the
- * shared port again and the kernel starts handing it connections. A signal that reaches the
- * primary alone, which is what a container sends, is passed on rather than leaving the workers
- * running with nobody watching them.
+ * A dead worker is replaced and has nothing to rebuild, it binds the shared port again. A signal
+ * that reaches only the primary, which is what a container sends, is passed on to the workers.
  *
  * @param {number} count
  * @returns {{stop: () => void}}
@@ -187,8 +178,8 @@ function forkWorkers(count) {
     for (const signal of ["SIGTERM", "SIGINT"]) {
         process.on(signal, () => {
             stop();
-            // the primary exits on its own once the last IPC channel closes; this only makes sure
-            // it does, and being unref'd it never keeps the process up by itself
+            // the primary exits on its own once the last IPC channel closes, this only makes sure
+            // it does. Unref'd, so it never keeps the process up by itself
             const done = setInterval(() => {
                 if (Object.keys(cluster.workers ?? {}).length === 0) {
                     clearInterval(done);

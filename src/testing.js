@@ -16,15 +16,12 @@ limitations under the License.
 
 // express.testing: what listen() decided about each route, as something a test can assert on.
 //
-// A route is answered by µWS itself only while it stays eligible, and eligibility is not a property
-// of the route alone: a `const` in the wrong place, a middleware that reads a header, a new route
-// written above an old one, and it quietly falls back to the ordinary router. The answer is still
-// correct, which is why nothing complains. What changes is the throughput, and by the time anyone
-// notices, the commit that did it is three weeks back.
+// A route is answered by uWS itself only while it stays eligible: a `const` in the wrong place, a
+// middleware that reads a header, a new route above an old one, and it falls back to the ordinary
+// router. The answer stays correct, so nothing complains, only the throughput changes.
 //
-// `npx fulmine profile` prints the same verdicts for a human to read. This is the half a test can
-// hold on to, so a pull request that loses the fast path fails in CI with the reason written out
-// instead of being found in production.
+// `npx fulmine profile` prints the same verdicts for a human. This is the half a test can hold on
+// to, so a pull request that loses the fast path fails in CI.
 
 "use strict";
 
@@ -68,9 +65,8 @@ function compileOnce(app) {
 /**
  * What compiling the routes decided, one entry per route, in the order they were registered.
  *
- * This is the primitive the two assertions below are written on, and it is exported because an
- * application with rules of its own is better served asserting them itself: how many routes may
- * fall back, which ones may read headers, that the one route carrying the traffic is declarative.
+ * The primitive the two assertions below are written on. Exported so an application with rules of
+ * its own can assert them directly.
  *
  * @param {any} app an application, listening or not
  * @returns {{method: string, path: string, native: boolean, declarative: boolean, skipHeaders: boolean,
@@ -94,8 +90,8 @@ function routeReport(app) {
 /**
  * Whether one of the patterns given names this route.
  *
- * A pattern is a path as it was registered, not a URL: "/api/items/:id" and not "/api/items/7". It
- * may carry the method, "GET /health", and it may end in "*" to name everything under a prefix.
+ * A pattern is a path as registered, not a URL: "/api/items/:id", not "/api/items/7". It may carry
+ * the method, "GET /health", and may end in "*" for everything under a prefix.
  *
  * @param {{method: string, path: string}} entry
  * @param {string} pattern
@@ -118,8 +114,8 @@ function names(entry, pattern) {
 }
 
 /**
- * The routes the patterns name, refusing a pattern that names none: a test that asserts about a
- * route it misspelled has to fail rather than pass on an empty list.
+ * The routes the patterns name. A pattern that names none throws, so a misspelled route fails
+ * instead of passing on an empty list.
  *
  * @param {any} app
  * @param {string|string[]} patterns
@@ -152,10 +148,8 @@ function select(app, patterns, caller) {
 }
 
 /**
- * Throws unless every route named is answered by µWS itself.
- *
- * The message is the point: it names each route that fell back and why, in the same words
- * `npx fulmine profile` uses, so the failure says what to change.
+ * Throws unless every route named is answered by uWS itself. The message names each route that
+ * fell back and why, in the same words `npx fulmine profile` uses.
  *
  * @param {any} app
  * @param {string|string[]} patterns paths as they were registered, "GET /path" to pin the method,
@@ -174,10 +168,10 @@ function expectNative(app, patterns) {
 }
 
 /**
- * Why a route µWS already matches is still not compiled into a response.
+ * Why a route uWS already matches is still not compiled into a response.
  *
  * The handler is the last answer, not the first: three refusals come before it, and blaming the
- * handler for one of those sends the reader to rewrite something that was already simple enough.
+ * handler sends the reader to rewrite something that was already simple enough.
  *
  * @param {any} app
  * @param {{path: string}} entry
@@ -200,8 +194,8 @@ function whyNotCompiled(app, entry) {
 }
 
 /**
- * Throws unless every route named is answered from a response written at startup, which is the
- * step past native: µWS answers it without entering javascript at all.
+ * Throws unless every route named is answered from a response written at startup. One step past
+ * native: uWS answers it without entering javascript.
  *
  * @param {any} app
  * @param {string|string[]} patterns as in expectNative
@@ -236,20 +230,18 @@ function workReport(req, res) {
     return work(req, res);
 }
 
-// The work a fast request does none of, which is what expectLazy is about. The route verdict is
-// not in here: expectNative and expectDeclarative are what assert on that.
+// The work a fast request does none of. The route verdict is not here, expectNative and
+// expectDeclarative assert on that.
 const LAZY = ["headers", "query", "body", "requestStream", "responseStream", "socket"];
 
 /**
  * Throws if this request built anything it did not have to.
  *
- * The route verdict is a property of the application and holds for every request; this is the
- * other half, which holds for one. A route can stay native and still slow down request by request,
- * because a middleware read `req.headers.host` or piped instead of sending: the answer stays
- * correct, the route report stays green, and the throughput does not.
+ * The route verdict holds for every request, this holds for one. A native route still slows down
+ * request by request if a middleware reads `req.headers.host` or pipes instead of sending.
  *
- * `allow` names what is fine here, which is most of the point: a route that parses a body is
- * asserted as one that parses a body and nothing else.
+ * `allow` names what is fine here: a route that parses a body is asserted as one that parses a
+ * body and nothing else.
  *
  * @param {any} req
  * @param {any} res

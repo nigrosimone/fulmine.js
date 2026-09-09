@@ -20,19 +20,17 @@ limitations under the License.
 const { Writable } = require("stream");
 
 /**
- * A Writable that has not built its state yet, the mirror of LazyReadable in request.js and there
- * for the same reason: a response is a Writable because middleware expects one, and the ordinary
- * one never uses it. `send()` reaches `end()`, which is overridden here and goes straight to
- * _finish, so the WritableState is allocated for every response and read by nobody. It is needed
- * only by res.write(), by a stream piped into the response, by cork and by the writableX getters.
+ * A Writable that has not built its state yet, the mirror of LazyReadable and for the same reason:
+ * a response is a Writable because middleware expects one, and the ordinary one never uses it.
+ * `send()` reaches `end()`, which is overridden here and goes straight to _finish, so the
+ * WritableState was allocated for every response and read by nobody. Only res.write(), a pipe,
+ * cork and the writableX getters need it.
  *
  * `Response extends LazyWritable`, whose prototype is Writable's, so `res instanceof Writable`
- * stays true and every Writable method is reachable; what is missing is `_writableState`, built on
- * the first touch. Measured at 45 nanoseconds a response on the machine this was written on.
+ * stays true. `_writableState` is built on the first touch. Measured at 45ns a response.
  *
- * As on the Readable side the wrapping is generated rather than written out: every own member of
- * Writable's prototype gets a version that materialises first, so there is no list to keep in step.
- * Missing one would not be a slow path, it would be a TypeError on `undefined._writableState`.
+ * As on the Readable side the wrapping is generated: every own member of Writable's prototype gets
+ * a version that materialises first, so there is no list to keep in step.
  */
 class LazyWritableBase {}
 Object.setPrototypeOf(LazyWritableBase.prototype, Writable.prototype);

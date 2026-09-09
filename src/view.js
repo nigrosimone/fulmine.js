@@ -73,9 +73,8 @@ module.exports = class View {
     }
 
     /**
-     * The first of the configured roots that actually holds this template, or undefined when none
-     * of them does. `views` may be a single directory or a list, and the list is searched in order,
-     * so an application can put its own templates in front of a package's.
+     * The first configured root that holds this template, or undefined. `views` may be one
+     * directory or a list, and the list is searched in order.
      *
      * @param {string} name template file name, relative to a root
      * @returns {string|undefined} absolute path to the file that exists
@@ -100,10 +99,9 @@ module.exports = class View {
     /**
      * Renders the template through its engine.
      *
-     * The callback is always delivered asynchronously, even when the engine answers on the spot.
-     * `sync` is still true only if the engine called back before this function returned, and in
-     * that case the callback is pushed to the next tick, so a caller never has to handle both
-     * orders. Express normalises it the same way.
+     * The callback is always delivered asynchronously, even when the engine answers on the spot:
+     * `sync` is true only if the engine called back before this returned, and then the callback
+     * goes to the next tick. Express does the same.
      *
      * @param {Record<string, any>} options locals and engine options, passed through untouched
      * @param {Function} callback called with whatever the engine passed, which is normally

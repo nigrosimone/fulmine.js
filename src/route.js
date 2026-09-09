@@ -25,9 +25,8 @@ const SYNC_LIMIT = 100;
 /**
  * The handlers registered for one path, and the walk over them.
  *
- * Express exports this, and code that builds a route by hand rather than through a router uses it:
- * `new Route(path)`, a handler per verb, then `dispatch(req, res, done)`. It does no matching, the
- * caller having decided the route is the right one; all it knows is which verb a handler answers.
+ * Express exports this, and code that builds a route by hand uses it: `new Route(path)`, a handler
+ * per verb, then `dispatch(req, res, done)`. It does no matching, only which verb a handler answers.
  */
 class Route {
     /**

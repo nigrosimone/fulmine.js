@@ -26,10 +26,9 @@ const symbols = Object.getOwnPropertySymbols(outgoingMessage);
 // if a future node renames it, fall back to a private symbol rather than writing a property
 // literally named "undefined", which is what indexing with undefined would do
 const kOutHeaders = symbols.find((s) => s.toString() === "Symbol(kOutHeaders)") ?? Symbol("kOutHeaders");
-// node's emitters tombstone a removed listener's slot instead of deleting it when this flag is
-// set, which is what keeps _events in a stable shape. EventEmitter.init sets it, and never runs
-// for the lazily-materialized response, so it is set by hand; a future rename degrades to the
-// delete, not to an error
+// node's emitters tombstone a removed listener's slot instead of deleting it when this flag is set,
+// which keeps _events in a stable shape. EventEmitter.init sets it and never runs for the lazily
+// materialized response, so it is set by hand. A future rename degrades to the delete
 const kShapeMode =
     Object.getOwnPropertySymbols(new EventEmitter()).find((s) => s.toString() === "Symbol(shapeMode)") ??
     Symbol("shapeMode");
@@ -37,10 +36,9 @@ const kShapeMode =
 // request are one Map hit. Insert-only after validation, bounded; only setHeader may insert,
 // the never-throwing readers keep their plain toLowerCase
 const VALIDATED_HEADER_NAMES = new Map();
-// The names and values that recur on every response, kept as Buffers for the uWS crossing: a
-// Buffer is memcpy'd as it is, a string pays a UTF-8 scan and copy per call. A header that is
-// not here just misses the lookup and crosses as the string it was. Names must stay lowercase,
-// which is how writeHeaders receives them.
+// The names and values that recur on every response, kept as Buffers for the uWS crossing: a Buffer
+// is memcpy'd as it is, a string pays a UTF-8 scan and copy per call. A header that is not here
+// crosses as the string it was. Names must stay lowercase, as writeHeaders receives them.
 const HEADER_NAME_BUF = { __proto__: null };
 const HEADER_VALUE_BUF = { __proto__: null };
 for (const s of ["connection", "keep-alive", "content-type", "vary", "x-powered-by", "content-encoding"]) {

@@ -16,16 +16,12 @@ limitations under the License.
 
 // npx fulmine verify
 //
-// Whether this machine, and the image it will be deployed in, can run the thing at all. Not
-// whether the application behaves the same, which is what the test suite and `differences` are
-// for: this is the question that comes before it, and it is the one that costs an hour when the
-// answer is no and nobody asked.
+// Whether this machine, and the image it will be deployed in, can run the thing at all. Not whether
+// the application behaves the same, which is the test suite's job.
 //
-// There is a µWebSockets.js binary underneath, and a binary has requirements a package does not:
-// it is built per platform, per architecture and per node ABI, and it is linked against glibc. An
-// Alpine image, a node version the pinned build has no binary for, a musl base chosen by a
-// Dockerfile written before any of this: each one fails at require time, in a container, in CI,
-// with a message about a missing module that says nothing about what to do.
+// There is a uWebSockets.js binary underneath, built per platform, per architecture and per node
+// ABI, and linked against glibc. An Alpine image, a node version with no binary for it, a musl
+// base: each one fails at require time with a message about a missing module.
 //
 // Thirty seconds here instead.
 
@@ -34,7 +30,7 @@ limitations under the License.
 const fs = require("fs");
 const path = require("path");
 
-// The oldest glibc the pinned µWS binaries are built against. A runtime older than this loads the
+// The oldest glibc the pinned uWS binaries are built against. A runtime older than this loads the
 // file and then fails on a symbol, which is a worse error than not finding it at all.
 const MIN_GLIBC = "2.38";
 
@@ -44,8 +40,8 @@ const MIN_NODE = require("../package.json").engines.node.replace(/[^0-9.]/g, "")
 const MIN_NODE_MAJOR = MIN_NODE.split(".")[0];
 const SWAP_IMAGE = `node:${MIN_NODE_MAJOR}-trixie-slim`;
 
-// What a project may carry that needs a different API here rather than none. Everything that just
-// works, and everything that only wants a faster built-in, is `npx fulmine migrate`'s business.
+// What a project may carry that needs a different API here. Everything that just works is
+// `npx fulmine migrate`'s business.
 const NEEDS_A_LOOK = {
     "socket.io": "attach it with io.attachApp(app.uwsApp), not io.attach(server): there is no node socket to take over",
     ws: "the websocket server is µWS's own, through app.ws(path, behavior)",
@@ -55,9 +51,8 @@ const NEEDS_A_LOOK = {
 };
 
 /**
- * One line of the report. Three levels, and only one of them is a failure: an image that cannot
- * load the binary stops the deployment, while a dependency that wants a different call is
- * something to read, not something to fail a pipeline over.
+ * One line of the report. Only "no" is a failure: an image that cannot load the binary stops the
+ * deployment, a dependency that wants a different call does not.
  *
  * @param {"ok"|"note"|"no"} level
  * @param {string} what
@@ -92,9 +87,8 @@ function atLeast(version, minimum) {
 /**
  * The node this is running on, against what the package asks for.
  *
- * The version arrives as an argument rather than being read here, so the answer for a node this
- * machine is not running is testable from the machine it is not running on. Every check below
- * takes what it judges for the same reason.
+ * The version is an argument rather than read here, so a node this machine is not running is still
+ * testable. Every check below takes what it judges for the same reason.
  *
  * @param {string} [running] defaults to the node running this
  * @param {string} [required] defaults to what package.json asks for
@@ -121,9 +115,8 @@ function currentGlibc() {
 /**
  * Whether the C library is the one the binaries are linked against. Only linux has two of them.
  *
- * Both arguments are required, and deliberately: undefined is the answer that means musl, and a
- * default parameter fires on an explicit undefined, so a default here would quietly turn the musl
- * case into whatever this machine happens to run. Reading the machine is the caller's job.
+ * Both arguments are required on purpose: undefined means musl, and a default parameter fires on
+ * an explicit undefined, so a default would turn the musl case into whatever this machine runs.
  *
  * @param {string} platform
  * @param {string|undefined} glibc the runtime glibc, absent on musl
@@ -152,9 +145,8 @@ function checkLibc(platform, glibc) {
 }
 
 /**
- * Whether there is a µWebSockets.js binary for this platform, architecture and node ABI, which is
- * the failure that greets everyone who tries an unusual combination. The file is named rather than
- * loaded first, so the answer says which of the three does not line up.
+ * Whether there is a uWebSockets.js binary for this platform, architecture and node ABI. The file
+ * is named rather than loaded, so the answer says which of the three does not line up.
  *
  * @param {string} [platform]
  * @param {string} [arch]
@@ -218,8 +210,7 @@ function abiToNode(abi) {
 }
 
 /**
- * The base images a Dockerfile names, which is where the musl question is usually answered without
- * anybody meaning to.
+ * The base images a Dockerfile names, which is where the musl question is usually answered.
  *
  * @param {string} dir the project being verified
  * @returns {ReturnType<typeof result>[]}
@@ -309,8 +300,7 @@ function verify(argv) {
             console.log(`        ${detail}`);
         }
     }
-    // only a blocked start is a failure. A dependency that wants a different call is worth
-    // reading and is not worth failing a pipeline over
+    // only a blocked start is a failure, a dependency that wants a different call is not
     const blocking = results.filter((entry) => entry.level === "no").length;
     const notes = results.filter((entry) => entry.level === "note").length;
     console.log(
