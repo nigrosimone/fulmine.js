@@ -72,6 +72,9 @@ const PRECOMPRESSED = [
     { encoding: "gzip", suffix: ".gz", flag: ENCODING_GZIP }
 ];
 
+/** @typedef {import("./request.js")} Request */
+/** @typedef {import("./response.js")} Response */
+
 // The failures express.static answers by moving on to the next handler rather than by reporting
 // them, when fallthrough is on. They all mean the same thing: the request is not a file here.
 //
@@ -205,10 +208,10 @@ function decodeBody(buf, encoding) {
  * Runs the caller's verify hook the way body-parser does, an empty body included; a throw becomes
  * the 403 entity.verify.failed error. Answers whether parsing may continue.
  *
- * @param {any} req
- * @param {any} res
+ * @param {Request} req
+ * @param {Response} res
  * @param {(err?: any) => void} next
- * @param {any} options
+ * @param {any} options the parser options, settled by createBodyParser
  * @param {Buffer} buf
  * @returns {boolean}
  */
@@ -293,7 +296,7 @@ function bodyError(message, status, type, extra) {
  * its stack and any property the thrower put on it are all still there when the application
  * reads it.
  *
- * @param {any} err
+ * @param {any} err whatever was thrown, which need not be an Error
  * @param {number} status
  * @param {string} type body-parser's own name for the kind of failure
  * @param {object} [extra] anything else body-parser puts on that particular error

@@ -120,7 +120,7 @@ function detectManager(dir, pkg) {
 /**
  * Reads a nested key, and answers undefined rather than throwing on a missing level.
  *
- * @param {any} object
+ * @param {any} object parsed JSON, so its shape is whatever the file held
  * @param {string[]} keys
  * @returns {any}
  */
@@ -136,9 +136,9 @@ function readPath(object, keys) {
 /**
  * Writes a nested key, making the levels above it as it goes.
  *
- * @param {any} object
+ * @param {any} object parsed JSON, so its shape is whatever the file held
  * @param {string[]} keys
- * @param {any} value
+ * @param {any} value whatever belongs at that key
  * @returns {void}
  */
 function writePath(object, keys, value) {

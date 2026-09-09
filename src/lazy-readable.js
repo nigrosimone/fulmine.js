@@ -52,7 +52,7 @@ const LazyReadable = /** @type {typeof Readable} */ (/** @type {unknown} */ (Laz
  * EventEmitter's init keeps an _events that is already there, so listeners added before this
  * survive it.
  *
- * @param {any} stream
+ * @param {any} stream the Request pretending to be one, before its state exists
  */
 function materialise(stream) {
     if (stream._readableState === undefined) {

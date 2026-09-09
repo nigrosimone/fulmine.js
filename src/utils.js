@@ -811,7 +811,7 @@ function normalizeType(type) {
  * unicode escapes, so a string in the body cannot close a script tag in an HTML page that embeds
  * the response.
  *
- * @param {any} value
+ * @param {any} value whatever the handler passed to res.json
  * @param {any} [replacer] the "json replacer" setting
  * @param {string|number} [spaces] the "json spaces" setting
  * @param {boolean} [escape] the "json escape" setting
@@ -1042,7 +1042,7 @@ function cachedStat(file, ttl) {
 /**
  * A duration setting as milliseconds: false is off, a string is read by ms, a number is itself.
  *
- * @param {any} value
+ * @param {any} value the setting as the application wrote it
  * @param {string} name for the error, which names the setting the application wrote
  * @returns {number}
  */
@@ -1505,7 +1505,7 @@ function headerError(message, code) {
  * Refuses a header name that is not an HTTP token, the way node's setHeader does and with its
  * error, so an application catching ERR_INVALID_HTTP_TOKEN behind Express catches it here.
  *
- * @param {any} name
+ * @param {any} name whatever a caller passed as a header name, which is what is being checked
  * @returns {void}
  * @throws {TypeError} if the name is not a token, which includes not being a string
  */
@@ -1557,7 +1557,7 @@ function validateHeaderValue(name, value) {
  * again is what turns one bad header into a dead process.
  *
  * @param {string} name
- * @param {any} value
+ * @param {any} value whatever a caller passed as a header value
  * @returns {boolean}
  */
 function headerIsWritable(name, value) {
@@ -1602,7 +1602,7 @@ function httpError(status) {
  *
  * The error itself is returned rather than a new one, so its errno, code, syscall and path survive.
  *
- * @param {any} err
+ * @param {any} err the fs error, which carries its errno and path
  * @returns {any} the same error
  */
 function asStatError(err) {

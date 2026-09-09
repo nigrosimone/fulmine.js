@@ -216,7 +216,7 @@ function registerWebSocketRoutes(app) {
  * used: a handler under a misspelled name would otherwise never run and never say why.
  *
  * @param {string} path
- * @param {any} behavior
+ * @param {any} behavior uWS's WebSocketBehavior, whose shipped typings do not describe it
  */
 function checkBehavior(path, behavior) {
     if (typeof path !== "string") {

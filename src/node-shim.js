@@ -389,7 +389,7 @@ class NodeHttpResponse {
 
 /**
  * Whether these are node's own request and response rather than this project's.
- * @param {any} req
+ * @param {any} req anything a caller handed the router, which is the point of the check
  */
 function isNodeRequest(req) {
     return req instanceof IncomingMessage;
@@ -398,7 +398,7 @@ function isNodeRequest(req) {
 /**
  * Serves a request that arrived through node's HTTP server with the given router or app.
  *
- * @param {any} router
+ * @param {any} router the router or application serving this request
  * @param {import("http").IncomingMessage} nodeReq
  * @param {import("http").ServerResponse} nodeRes
  * @param {(err?: any) => void} [next] called when nothing in the router answered

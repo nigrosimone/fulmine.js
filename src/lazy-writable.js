@@ -47,7 +47,7 @@ const LazyWritable = /** @type {typeof Writable} */ (/** @type {unknown} */ (Laz
  * EventEmitter's init keeps an _events that is already there, so both the shape the constructor
  * wrote and any listener added before this survive it.
  *
- * @param {any} stream
+ * @param {any} stream the Response pretending to be one, before its state exists
  */
 function materialiseWritable(stream) {
     if (stream._writableState === undefined) {

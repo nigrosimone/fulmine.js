@@ -231,8 +231,8 @@ function analyze(fn) {
  * Walks every node, handing each its parent. Arrays and nested objects are entered, nothing
  * is interpreted: the judging happens in the visitor.
  *
- * @param {any} node
- * @param {any} parent
+ * @param {any} node an acorn AST node. acorn ships no useful node types, and every shape here is checked by hand
+ * @param {any} parent its parent node, or null at the root
  * @param {(node: any, parent: any) => void} visit
  */
 function walk(node, parent, visit) {

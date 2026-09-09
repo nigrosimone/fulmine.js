@@ -252,7 +252,7 @@ module.exports = class Response extends LazyWritable {
      * aborted uWS response is a use after free. writableEnded reads true after this, where node
      * leaves it false until end() is called.
      *
-     * @param {any} [error]
+     * @param {any} [error] whatever the caller is destroying the response with
      * @returns {this}
      */
     destroy(error) {
@@ -410,7 +410,7 @@ module.exports = class Response extends LazyWritable {
      * said how much there would be. Backpressure comes back as onWritable, which is what defers the
      * callback rather than dropping the chunk.
      *
-     * @param {any} chunk
+     * @param {any} chunk whatever a Writable was handed, which node does not narrow
      * @param {BufferEncoding} encoding
      * @param {(err?: Error|null) => void} callback
      */
@@ -645,7 +645,7 @@ module.exports = class Response extends LazyWritable {
     }
 
     /**
-     * @param {any} [data]
+     * @param {any} [data] the last body piece, or the callback in node's two-argument shape
      * @param {any} [cb]
      * @returns {this}
      */
@@ -683,7 +683,7 @@ module.exports = class Response extends LazyWritable {
      * The corked tail of end(): status, headers, body and the finish events. Split out so a
      * synchronous answer calls it straight, already inside uWS's own cork.
      *
-     * @param {any} data
+     * @param {any} data the last body piece
      * @param {any} cb
      */
     _finish(data, cb) {
@@ -1439,7 +1439,7 @@ module.exports = class Response extends LazyWritable {
      * node's `assignSocket`, which the http server uses when a response is
      * handed a raw socket. There is no such socket here.
      *
-     * @param {any} [socket]
+     * @param {any} [socket] node takes one here and there is none to take
      * @returns {void}
      */
     assignSocket(socket) {}
@@ -1447,7 +1447,7 @@ module.exports = class Response extends LazyWritable {
     /**
      * node's `detachSocket`, which the http server uses when a response is
      * handed a raw socket. There is no such socket here.
-     * @param {any} [socket]
+     * @param {any} [socket] node takes one here and there is none to take
      * @returns {void}
      */
     detachSocket(socket) {}
@@ -1552,7 +1552,7 @@ module.exports = class Response extends LazyWritable {
     /**
      * The Express name for set(), including the charset it adds to a content-type.
      * @param {any} field a header name, or an object of them
-     * @param {any} [value]
+     * @param {any} [value] the header value, or nothing when the first argument is an object
      * @returns {this}
      */
     header(field, value) {

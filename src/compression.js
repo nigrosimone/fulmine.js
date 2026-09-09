@@ -14,6 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+/** @typedef {import("./request.js")} Request */
+/** @typedef {import("./response.js")} Response */
+
 // express.compression(), which answers with a compressed body when the client asked for one.
 //
 // The options, the defaults and the order the decision is taken in are the compression module's,
@@ -70,7 +73,7 @@ const NO_TRANSFORM = /(?:^|,)\s*?no-transform\s*?(?:,|$)/;
  * Says the answer depends on Accept-Encoding. res.vary() parses what is there and merges, which on
  * the usual response is parsing an absent header: only a response that already varies pays for it.
  *
- * @param {any} res
+ * @param {Response} res
  */
 function addVary(res) {
     if (res.getHeader("Vary") === undefined) {
@@ -193,8 +196,8 @@ function reusableCompressor(create, finishFlag, oneShot) {
  * The default filter: whether the content type is worth compressing at all. A response with no
  * type is left alone, since nothing says what its bytes are.
  *
- * @param {any} req
- * @param {any} res
+ * @param {Request} req
+ * @param {Response} res
  * @returns {boolean}
  */
 function shouldCompress(req, res) {
@@ -212,7 +215,7 @@ const isCompressible = memoizeByString((type) => compressible(type) === true);
 /**
  * How many bytes a chunk is, which is what the threshold is compared against.
  *
- * @param {any} chunk
+ * @param {any} chunk a body piece, in whatever shape the caller wrote it
  * @param {BufferEncoding} [encoding]
  * @returns {number}
  */
@@ -226,7 +229,7 @@ function chunkLength(chunk, encoding) {
 /**
  * The bytes of a chunk, whatever it arrived as.
  *
- * @param {any} chunk
+ * @param {any} chunk a body piece, in whatever shape the caller wrote it
  * @param {BufferEncoding} [encoding]
  * @returns {Buffer}
  */

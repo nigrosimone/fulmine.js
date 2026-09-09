@@ -361,7 +361,7 @@ function findSpecifiers(source, seen) {
  * Visits every node. acorn produces plain objects, so the shape is walked rather than dispatched
  * on: a table of node types would have to be kept in step with the parser, and being out of step
  * would mean silently skipping an import.
- * @param {any} node
+ * @param {any} node an acorn AST node. acorn ships no useful node types, and every shape here is checked by hand
  * @param {(node: any) => void} visit
  */
 function walk(node, visit) {
@@ -809,7 +809,7 @@ function printSummary(routes, native, declarative) {
 }
 
 /**
- * @param {any} app
+ * @param {any} app the application the entry file built
  * @param {boolean} several whether to say which application this is
  */
 function printProfile(app, several) {

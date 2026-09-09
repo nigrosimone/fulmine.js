@@ -89,7 +89,7 @@ const understoodNodeTypes = new Set([
  * Every node type in the tree. Walks all the keys instead of named edges, so the answer does not
  * depend on the walk being complete.
  *
- * @param {any} node
+ * @param {any} node an acorn AST node. acorn ships no useful node types, and every shape here is checked by hand
  * @param {Set<string>} types
  */
 function collectNodeTypes(node, types) {
@@ -112,7 +112,7 @@ function collectNodeTypes(node, types) {
 /**
  * The key a property writes. Only a plain name or a literal, never computed, a getter or a spread.
  *
- * @param {any} property
+ * @param {any} property an acorn Property node
  * @returns {string|null} null when the shape is not one of those
  */
 function literalKeyOf(property) {
@@ -129,8 +129,8 @@ function literalKeyOf(property) {
  * The value of a literal expression, for the shapes known at registration time. Anything else
  * throws, and the catch around the compiler turns it into ordinary routing.
  *
- * @param {any} node
- * @returns {any}
+ * @param {any} node an acorn AST node. acorn ships no useful node types, and every shape here is checked by hand
+ * @returns {any} whatever the literal denotes
  */
 function literalValue(node) {
     switch (node.type) {
@@ -869,7 +869,7 @@ module.exports = function compileDeclarative(cb, app) {
  * Every node matching the predicate, in the order of the named edges below. The edges are written
  * by hand, which is why compileDeclarative first refuses any node type not on the understood list.
  *
- * @param {any} node
+ * @param {any} node an acorn AST node. acorn ships no useful node types, and every shape here is checked by hand
  * @param {(node: any) => boolean} fn
  * @returns {any[]}
  */

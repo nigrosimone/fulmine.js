@@ -85,7 +85,7 @@ class Walk {
      * Leaves the rest of this route, with the error if there is one, and carries on with the route
      * after it.
      *
-     * @param {any} [err]
+     * @param {any} [err] whatever was thrown, which need not be an Error
      */
     stepOutOfRoute(err) {
         if (err) {
@@ -439,7 +439,7 @@ class Walk {
      * One hop, which is what next() does: with nothing, run the route's next callback; with "route",
      * leave the route; with anything else, remember it as the error and carry on.
      *
-     * @param {any} thingamabob
+     * @param {any} thingamabob what next() was called with: nothing, "route", or an error
      */
     step(thingamabob) {
         const req = this.req;

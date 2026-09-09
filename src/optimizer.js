@@ -53,7 +53,7 @@ const {
 let Router;
 
 /**
- * @param {any} cls
+ * @param {any} cls the Router class, passed in to keep this module out of its require cycle
  */
 function useRouterClass(cls) {
     Router = cls;
@@ -216,7 +216,7 @@ function optimizeRoute(router, route, routes) {
  * routers and carrying their prefix down. Runs once, when the app starts listening, since it
  * needs every route to have been registered first.
  *
- * @param {any} root
+ * @param {any} root the application whose routes are being compiled
  */
 function compileOptimizedRoutes(root) {
     if (!root.uwsApp) {

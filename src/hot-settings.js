@@ -47,9 +47,9 @@ class HotSettings {
  */
 const settingsWriteTraps = {
     /**
-     * @param {any} target
+     * @param {any} target the settings object itself, whose keys are the application's
      * @param {string|symbol} key
-     * @param {any} value
+     * @param {any} value whatever the application is setting
      */
     set(target, key, value) {
         target[key] = value;
@@ -57,7 +57,7 @@ const settingsWriteTraps = {
         return true;
     },
     /**
-     * @param {any} target
+     * @param {any} target the settings object itself
      * @param {string|symbol} key
      */
     deleteProperty(target, key) {
@@ -66,7 +66,7 @@ const settingsWriteTraps = {
         return true;
     },
     /**
-     * @param {any} target
+     * @param {any} target the settings object itself
      * @param {string|symbol} key
      * @param {any} descriptor
      */

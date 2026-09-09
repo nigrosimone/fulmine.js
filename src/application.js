@@ -161,11 +161,13 @@ class Application extends Router {
         // was an allocation on every request
         this._request = class extends Request {
             /**
-             * @param {any} req
-             * @param {any} res
-             * @param {any} app
-             * @param {any} [preset]
-             * @param {any} [skipHolder]
+             * The base constructor's arguments, written out rather than spread. See Request.
+             *
+             * @param {any} req uWS request
+             * @param {any} res uWS response
+             * @param {any} app the application this request arrived at
+             * @param {any} [preset] a literal registration's constants
+             * @param {any} [skipHolder] where a granted header skip lives
              */
             constructor(req, res, app, preset, skipHolder) {
                 super(req, res, app, preset, skipHolder);
@@ -173,9 +175,11 @@ class Application extends Router {
         };
         this._response = class extends Response {
             /**
-             * @param {any} res
-             * @param {any} req
-             * @param {any} app
+             * The base constructor's arguments, written out rather than spread. See Response.
+             *
+             * @param {any} res uWS response
+             * @param {any} req the Request, already built
+             * @param {any} app the application this request arrived at
              */
             constructor(res, req, app) {
                 super(res, req, app);

@@ -30,7 +30,7 @@ class Socket extends EventEmitter {
      * the close connection trackers wait for. EventEmitter calls it with this = the emitter.
      *
      * @this {any}
-     * @param {any} err
+     * @param {any} err whatever the response reported, which need not be an Error
      */
     static _onError(err) {
         this.emit("close");
@@ -96,7 +96,7 @@ class Socket extends EventEmitter {
     /**
      * Finishes the response through the socket, which is how the middleware that only knows
      * about sockets ends one.
-     * @param {any} [body]
+     * @param {any} [body] whatever node's socket.end() would take
      */
     end(body) {
         this.response.end(body);
@@ -177,7 +177,7 @@ class Socket extends EventEmitter {
      *
      * @param {any} chunk
      * @param {any} [encoding]
-     * @param {any} [callback]
+     * @param {any} [callback] node's write signature, which takes all three loosely
      * @returns {boolean}
      */
     write(chunk, encoding, callback) {
