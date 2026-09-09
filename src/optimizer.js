@@ -71,10 +71,9 @@ function optimizeRoute(router, route, routes) {
     // a route with a parameter matches paths its own text does not, so what an earlier route
     // could answer is compared shape against shape and not against that text
     const withParams = typeof route.path === "string" && route.path.includes(":");
-    // under insensitive routing two paths that differ only in case answer the same requests,
-    // so the text comparisons below run on the folded form. µWS itself still matches bytes:
-    // a request in the registered case takes the chain, any other case takes the fallback,
-    // and both answer as express would as long as the chain agrees with registration order
+    // under insensitive routing two paths that differ only in case answer the same requests, so
+    // the text comparisons below run on the folded form. uWS still matches bytes: a request in the
+    // registered case takes the chain, any other case takes the fallback
     const caseSensitive = router._caseSensitive();
     const routePathFolded = caseSensitive || typeof route.path !== "string" ? route.path : route.path.toLowerCase();
     // whether this route answers only the path as written, or the one with a trailing slash too
@@ -94,15 +93,11 @@ function optimizeRoute(router, route, routes) {
         if (!r.all && r.method !== route.method) {
             // check if the methods are compatible (GET and HEAD)
             if (!(r.method === "HEAD" && route.method === "GET")) {
-                // A mount is registered ALL, because what lives under it can answer any
-                // method, and this chain is computed once for all of them. So an earlier
-                // route of some other method is not irrelevant here the way it is for a
-                // plain route: it belongs in the chain of the leaves that share its method
-                // and in no other, and one chain cannot say that. µWS would then jump
-                // straight to a leaf and answer as though the earlier route did not exist,
-                // which is what let a literal route inside a mounted router beat a parameter
-                // route written before the mount. Leave the mount to ordinary dispatch,
-                // where express's own order is what decides.
+                // A mount is registered ALL, because what lives under it can answer any method,
+                // and this chain is computed once for all of them. So an earlier route of another
+                // method belongs in the chain of the leaves that share its method and in no other,
+                // which one chain cannot say: uWS would jump to a leaf as if the earlier route did
+                // not exist. Leave the mount to ordinary dispatch, where express's order decides.
                 if (route.use && typeof route.path === "string" && couldAnswer(r, route.path)) {
                     return false;
                 }
@@ -110,12 +105,10 @@ function optimizeRoute(router, route, routes) {
             }
         }
 
-        // The same rule as the one just above, which a route of another method reaches by
-        // another road. A mount's chain is inherited by every path under it, and a route that
-        // is not itself a mount answers the mount point rather than the subtree: in the chain
-        // it ran for the whole of it, so router.all("/:p1") answered the /posts/a-b that
-        // belongs to the router mounted at /posts. guardsInside is written for this: only
-        // layers with more segments than the mount path are asked about a leaf.
+        // The same rule as above, reached by another road. A mount's chain is inherited by every
+        // path under it, and a route that is not a mount answers the mount point rather than the
+        // subtree: in the chain it ran for the whole of it, so router.all("/:p1") answered the
+        // /posts/a-b of the router mounted at /posts. guardsInside is written for this.
         if (route.use && !r.use && typeof route.path === "string" && couldAnswer(r, route.path)) {
             return false;
         }
@@ -161,11 +154,9 @@ function optimizeRoute(router, route, routes) {
             continue;
         }
         // Without strict routing this registration answers "/x/" as well as "/x". An earlier
-        // pattern matching only the second answers part of what the registration takes and not
-        // the rest, which the chain has no way to say: it runs what is in it without matching
-        // again. Both spellings used to put the route in whole, so app.all("/:p0/{:o1}/{:o2}")
-        // answered a GET /list/Mixed that belonged to the route written after it. An ordinary
-        // pattern answers both spellings, so only an optional group or a wildcard reaches here.
+        // pattern matching only the second answers part of what the registration takes, which the
+        // chain cannot say: it runs what is in it without matching again. So
+        // app.all("/:p0/{:o1}/{:o2}") answered a GET /list/Mixed belonging to the route after it.
         if (regexCanMatch && !strictHere && r.pattern.test(route.path + "/")) {
             return false;
         }
@@ -204,11 +195,9 @@ function optimizeRoute(router, route, routes) {
             return false;
         }
         // that argument is about bytes. Under insensitive routing "/POSTS" byte-matches no
-        // registration of "/posts", so µWS hands it here instead, where this chain would
-        // answer as if the earlier route did not exist. The literal is remembered so the
-        // registration can send those requests to the generic router, which is the only place
-        // express's own order can decide; a path with no letter in it has no other case to
-        // arrive in and needs no guard
+        // registration of "/posts", so uWS hands it here, where this chain would answer as if the
+        // earlier route did not exist. The literal is remembered so the registration can send those
+        // requests to the generic router. A path with no letter has no other case to arrive in
         if (!caseSensitive && HAS_LETTER.test(r.path)) {
             (caseGuards ??= []).push(r.path);
         }
@@ -230,10 +219,9 @@ function compileOptimizedRoutes(root) {
     if (!root.uwsApp) {
         return;
     }
-    // Everything below is what makes this framework fast, and every one of its decisions is a
-    // claim that µWS answering by itself is the same answer the chain would have given. Turned
-    // off, the claim is not made and the chain answers everything. Serving one application both
-    // ways and comparing the answers is what tests those claims: `npm run fuzz -- --self`.
+    // Everything below is what makes this framework fast, and every decision it takes claims that
+    // uWS answering by itself gives the same answer the chain would. Turned off, the claim is not
+    // made. `npm run fuzz -- --self` serves one application both ways and compares the answers.
     if (root.get("native routes") === false) {
         return;
     }
@@ -244,9 +232,8 @@ function compileOptimizedRoutes(root) {
         for (const route of router._routes) {
             if (route.use) {
                 // only sole-callback mounts. Case rules do not gate the walk: each level's
-                // _optimizeRoute guards its own routes under its own setting, and a request
-                // in any other case than the registered one takes the fallback, which
-                // honours the child's setting on its own
+                // _optimizeRoute guards its own routes under its own setting, and a request in
+                // another case takes the fallback, which honours the child's setting
                 if (
                     !route.complex &&
                     canBeOptimized(route.path) &&
@@ -300,13 +287,11 @@ function compileOptimizedRoutes(root) {
             } else if (
                 // parameters that are whole segments are matched by µWS the same way
                 (canBeOptimized(route.path) || canBeOptimizedWithParams(route.path)) &&
-                // Inside a mounted router, only when nothing after it could answer the same
-                // path. This used to be asked of parameter routes alone, and a literal one
-                // needs it just as much: µWS picks by specificity where Express picks by
-                // registration order, and a chain carries only what runs in front of its
-                // route, so `router.get("/a", (req, res, next) => next())` followed by
-                // `router.get("/:x", ...)` left the mount instead of reaching the second
-                // route, and answered 404 where Express answers it. Found by the fuzzer,
+                // Inside a mounted router, only when nothing after it could answer the same path.
+                // Asked of literal routes too, not only parameter ones: uWS picks by specificity
+                // where Express picks by registration order, and a chain carries only what runs in
+                // front of its route, so `router.get("/a", (req, res, next) => next())` before
+                // `router.get("/:x", ...)` left the mount and answered 404. Found by the fuzzer,
                 // replay with --seed 221940161 --rounds 1.
                 (!pathPrefix || !router._isFollowedByAnOverlap(route, router._routes)) &&
                 supportedUwsMethods.has(route.method)
@@ -357,10 +342,9 @@ function compileOptimizedRoutes(root) {
                         registered._caseGuards = route._caseGuards.map((p) => pathPrefix + p);
                     }
                     root._registerUwsRoute(registered, chain);
-                    // the chain holds the original object, so the request-time guard has to
-                    // find the computed fields there, or a mounted param route extracts its
-                    // params twice. The names match: the prefix is static, so the copy's path
-                    // adds no parameter of its own
+                    // the chain holds the original object, so the request-time guard has to find
+                    // the computed fields there, or a mounted param route extracts its params
+                    // twice. The names match: the prefix is static and adds no parameter
                     route.optimizedParams = registered.optimizedParams;
                     route.optimizedPath = registered.optimizedPath;
                     // and what was decided about it, for the same reason: the copy is thrown
@@ -408,10 +392,9 @@ function registerUwsRoute(router, route, optimizedPath) {
         ? route._caseGuards.map((p) => (needsConversionToRegex(p) ? patternToRegex(p, false, false) : p.toLowerCase()))
         : null;
     const makeHandler = (chain, preset, skips, wireMethod) => {
-        // the mutable object a granted skip lives on, so a middleware arriving after
-        // listen can take it back: a literal registration's preset doubles as it, and a
-        // parameterised one, which has no preset, gets a holder of its own. It also carries
-        // the registration's method, so the constructor settles it with one compare
+        // the mutable object a granted skip lives on, so a middleware arriving after listen can
+        // take it back: a literal registration's preset doubles as it, a parameterised one gets a
+        // holder of its own. It carries the method too, so the constructor settles it in one compare
         let skipHolder = preset;
         if (skipHolder === undefined && (skips.skipHeaders || skips.skipQuery || wireMethod !== null)) {
             skipHolder = {
@@ -490,17 +473,14 @@ function registerUwsRoute(router, route, optimizedPath) {
     // registering that path here is the only way it could
     const strictHere = (route.owner ?? router)._strictRouting();
 
-    // Whether requests served by this registration may skip the header copy: GET and its
-    // HEAD twins only, no error middleware may exist anywhere (a throw hands the request to
-    // code the analysis never saw), and every callback in the chain has to pass the source
-    // analysis in usage.js, whose default answer is no.
+    // Whether requests served by this registration may skip the header copy: GET and its HEAD twins
+    // only, no error middleware anywhere (a throw hands the request to code the analysis never
+    // saw), and every callback in the chain has to pass usage.js, whose default answer is no.
     //
-    // The etag setting is not one of the conditions. It used to be, on the grounds that send
-    // consults freshness, but the skip branch reads if-none-match and if-modified-since by
-    // name whatever the setting, see the comment at request.js:527, and
-    // req.fresh reads nothing else off the request. Requiring etag off as well cost the copy
-    // to every application that left it on, which is every application that did not go
-    // looking for the setting.
+    // The etag setting is not a condition. It used to be, because send consults freshness, but the
+    // skip branch reads if-none-match and if-modified-since by name whatever the setting, see the
+    // comment in request.js, and req.fresh reads nothing else. Requiring etag off as well cost the
+    // copy to every application that left it on.
     const NO_SKIPS = { skipHeaders: false, skipQuery: false };
     let getSkips = NO_SKIPS;
     let headSkips = NO_SKIPS;

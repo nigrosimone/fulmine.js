@@ -15,12 +15,12 @@ limitations under the License.
 */
 
 // A uWS-shaped request and response backed by node's own, so an app can serve what arrived through
-// http.createServer. Nothing on this path is fast, and it is not meant to be: it is what lets
-// supertest and http.createServer(app) work, which is what an app has to be a function for.
+// http.createServer. Nothing here is fast and it does not need to be: it is what makes supertest
+// and http.createServer(app) work.
 //
-// Request and Response ask uWS for eighteen things and this answers all eighteen. Where the two
-// models disagree node's gives way: cork only runs its callback, and a status is remembered rather
-// than sent, since node writes the head with the first byte of body.
+// Request and Response ask uWS for eighteen things and this answers all eighteen. Where the models
+// disagree node's gives way: cork only runs its callback, and a status is remembered rather than
+// sent, since node writes the head with the first byte of body.
 
 const { IncomingMessage } = require("http");
 
@@ -92,9 +92,8 @@ function toArrayBuffer(chunk) {
 /**
  * What uWS calls an HttpRequest, over node's IncomingMessage.
  *
- * Only valid for as long as the response is, which here is longer than uWS allows: node keeps the
- * headers alive, so nothing has to be copied out in a hurry. Request copies them anyway, since it
- * cannot tell which kind of request it is holding.
+ * Valid as long as the response is, which is longer than uWS allows: node keeps the headers alive.
+ * Request copies them anyway, since it cannot tell which kind of request it is holding.
  */
 class NodeHttpRequest {
     /** @param {import("http").IncomingMessage} req */
@@ -162,9 +161,8 @@ class NodeHttpRequest {
 /**
  * What uWS calls an HttpResponse, over node's ServerResponse.
  *
- * The status and the headers are held until node writes the head on its own, which it does when the
- * first byte of body goes out. That is why writeStatus only remembers: sending it here would send
- * the headers too, before the ones still to come had been set.
+ * The status and the headers are held until node writes the head, which it does with the first byte
+ * of body. So writeStatus only remembers: sending it here would send the headers too early.
  */
 class NodeHttpResponse {
     /**

@@ -17,15 +17,14 @@ limitations under the License.
 // The two commands that edit a config file rather than source: `npx fulmine.js override` and
 // `npx fulmine.js angular`.
 //
-// `migrate` rewrites `require("express")` in your own files, which is all an application needs. The
-// two cases it cannot reach are both a line in a JSON file that nobody remembers the shape of:
+// `migrate` rewrites `require("express")` in your own files. The two cases it cannot reach are
+// both a line in a JSON file:
 //
-//   override   A framework built on Express does not require it in your code, it requires it in its
-//              own, so there is no specifier to rewrite. Every package manager can answer `express`
-//              with this package instead, for the whole tree, and each one spells it differently.
+//   override   A framework built on Express requires it in its own code, so there is no specifier
+//              to rewrite. Every package manager can answer `express` with this package instead,
+//              and each one spells it differently.
 //   angular    An Angular server bundle is built with esbuild, which inlines every dependency and
-//              cannot load µWS's native binary. Two names in `externalDependencies` fix it, and
-//              nothing in the error message it fails with says so.
+//              cannot load uWS's native binary. Two names in `externalDependencies` fix it.
 
 "use strict";
 
@@ -72,9 +71,9 @@ function indentOf(source) {
 /**
  * Reads a JSON file, or explains why it could not be read rather than throwing a parser error.
  *
- * The read is attempted rather than guarded by an existence check. Both commands go on to write the
- * file they read, and a check on a path followed by a write to the same path is the shape of a race
- * whatever the odds of losing it. `code` is what a caller names the missing file by.
+ * The read is attempted rather than guarded by an existence check: both commands write the file
+ * they read, and a check followed by a write to the same path is a race. `code` is what a caller
+ * names the missing file by.
  *
  * @param {string} file
  * @returns {{data: any, source: string}|{error: string, code: string|undefined}}
@@ -155,9 +154,7 @@ function writePath(object, keys, value) {
  * npx fulmine.js override [dir] [--dry-run]
  *
  * Puts the substitution in package.json where this project's package manager reads it, and says
- * what to run next. It deliberately does not run the install: the reinstall throws away
- * node_modules, and that is not something a command should do to somebody's working tree without
- * being watched.
+ * what to run next. It does not run the install itself: that throws away node_modules.
  *
  * @param {string[]} argv everything after the command name
  * @returns {number} exit code
@@ -235,9 +232,8 @@ function override(argv) {
 /**
  * Every build target in an angular.json that produces a server bundle.
  *
- * A browser-only build has nothing to declare external: the bundle it makes never loads µWS. What
- * marks a server build is `ssr`, `server` or `outputMode` in its options, which is what `ng add
- * @angular/ssr` writes.
+ * A browser-only build never loads uWS. What marks a server build is `ssr`, `server` or
+ * `outputMode` in its options, which is what `ng add @angular/ssr` writes.
  *
  * @param {any} config the parsed angular.json
  * @returns {{name: string, options: any}[]}
@@ -257,8 +253,8 @@ function serverBuilds(config) {
 /**
  * npx fulmine.js angular [dir] [--dry-run]
  *
- * Declares this package and µWebSockets.js external in every server build, which is what stops
- * esbuild trying to inline a native binary it cannot read.
+ * Declares this package and uWebSockets.js external in every server build, which stops esbuild
+ * trying to inline a native binary it cannot read.
  *
  * @param {string[]} argv everything after the command name
  * @returns {number} exit code
@@ -267,11 +263,9 @@ function angular(argv) {
     const dryRun = argv.includes("--dry-run");
     const given = path.resolve(argv.find((arg) => !arg.startsWith("--")) ?? ".");
 
-    // The argument is either the file or the directory holding it, and which one comes out of
-    // reading it rather than out of a stat: a directory reads as EISDIR and a missing path as
-    // ENOENT, and in both cases the file to look for is angular.json inside it. Asked this way
-    // round because this function goes on to write the file it read, and a check on a path followed
-    // by a write to the same path is the shape of a race whatever the odds of losing it.
+    // The argument is either the file or the directory holding it, told apart by reading it and not
+    // by a stat: a directory reads EISDIR, a missing path ENOENT, and in both cases the file to
+    // look for is angular.json inside it. A stat followed by a write to the same path is a race.
     let file = given;
     let read = readJson(file);
     if ("error" in read && (read.code === "EISDIR" || read.code === "ENOENT")) {

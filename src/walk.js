@@ -32,11 +32,10 @@ const {
  * One walk of one router's routes, for one request.
  *
  * next() is made once here instead of once per hop. As a closure per hop it captured eleven
- * bindings, one of them mutable, which is a context on the heap every time a middleware hands over.
- * The hop's own state is three fields on this instead.
+ * bindings, one of them mutable, so a heap context every time a middleware handed over. The hop's
+ * own state is three fields on this instead.
  *
- * A nested router gets its own walk, through its own _routeRequest, so req.next belongs to whoever
- * is running the request at that moment.
+ * A nested router gets its own walk, so req.next belongs to whoever is running the request.
  */
 class Walk {
     /**
@@ -68,15 +67,13 @@ class Walk {
         // bound, not wrapped in an arrow: an arrow forwarding into step() is one more call on every
         // hop, and it measured 495 microseconds per thousand requests of nothing else
         this.next = this.step.bind(this);
-        // What res.sendFile reports a failure to. Express hands it req.next, which is the router
-        // next and not the route one, so a file that cannot be served leaves the route and its
-        // error reaches the router error handlers rather than a four argument handler written
-        // inside the route. req.next itself is left alone: making it mean this everywhere is what
-        // express does, and it breaks express own res.format and app.routes.error tests here, so
-        // that stays open rather than half done.
+        // What res.sendFile reports a failure to. Express hands it req.next, the router next and
+        // not the route one, so a file that cannot be served leaves the route and its error reaches
+        // the router error handlers. req.next itself is left alone: making it mean this everywhere
+        // breaks express own res.format and app.routes.error tests here.
         //
-        // Null here and bound on the first route that has more than one callback, which is the
-        // only shape that ever reads it: a request that never meets one paid a bind for nothing
+        // Null here and bound on the first route with more than one callback, the only shape that
+        // reads it: a request that never meets one paid a bind for nothing
         this.leaveRoute = null;
     }
 
@@ -129,11 +126,9 @@ class Walk {
             }
         }
         if (!this.skipCheck) {
-            // express matches a layer's path before it looks at the method, and decodes the
-            // parameters there, so a malformed escape answers 400 even when no route of this
-            // method exists. Only a path carrying a percent can produce one, and that check keeps
-            // every other request from matching routes it could never run. Scanned once per
-            // rewrite and kept on the request: a middleware-heavy chain scanned it per hop
+            // express matches a layer's path before the method and decodes the parameters there, so
+            // a malformed escape answers 400 even when no route of this method exists. Only a path
+            // with a percent can produce one. Scanned once per rewrite and kept on the request
             const mayFailDecode = (req._mayFailDecode ??= req._originalPath.indexOf("%") !== -1);
             // frozen here, once per scan: _pathMatches reads the two flags as bare fields, and
             // calling this per route measured 0.45us of a scan of four hundred
@@ -153,9 +148,8 @@ class Walk {
                     // A HEAD request enters a route whose path matched even when its verb cannot
                     // serve one: express exempts HEAD from the method check ("if (!hasMethod &&
                     // method !== 'HEAD')" in router/index.js), so the layer's parameters are
-                    // captured and its param() callbacks run before the route is dropped. Only
-                    // asked when the router has callbacks to run, since entering a route to step
-                    // straight back out of it is otherwise pure cost. runRoute steps over it.
+                    // captured and its param() callbacks run first. Only asked when the router has
+                    // callbacks to run. runRoute steps over it.
                     if (!(
                         r.all ||
                         r.method === method ||
@@ -256,10 +250,9 @@ class Walk {
     }
 
     /**
-     * Takes over a req.method a middleware assigned, which method-override is written to do. The
-     * ordinary scan reads req.method per route and is right from the next hop on; a compiled chain
-     * was chosen by the method µWS dispatched on, so ordinary routing takes over from the top the
-     * way a url rewrite does.
+     * Takes over a req.method a middleware assigned, which method-override does. The ordinary scan
+     * reads req.method per route and is right from the next hop. A compiled chain was chosen by the
+     * method uWS dispatched on, so ordinary routing takes over from the top.
      *
      * @param {number} startIndex where dispatch was about to resume
      * @returns {boolean} whether this rerouted the walk itself
@@ -293,9 +286,8 @@ class Walk {
         const req = this.req;
         const route = this.route;
         // A compiled chain walks into a mount rather than entering it, so the rule above needs
-        // saying here as well: everything after this marker is inside the mount, and a mount is
-        // stepped over while an error is in flight. Leaving the chain is what running out of it
-        // already means, and ordinary routing takes over after the mount.
+        // saying here too: everything after this marker is inside the mount, and a mount is stepped
+        // over while an error is in flight. Ordinary routing takes over after the mount.
         if (route.keepMount === true && req._error) {
             return this.dispatch(this.routes.length);
         }
@@ -328,8 +320,7 @@ class Walk {
         req.next = this.next;
         // the same step when the route has one callback, and then it has to be the same object:
         // express hands res.format's handlers the next its own layer received, and its test asserts
-        // that identity. With more than one callback the two differ for real, and what express
-        // hands over is the one that leaves the route
+        // that identity. With more than one callback express hands over the one that leaves the route
         req._leaveRoute = route.callbacks.length > 1 ? (this.leaveRoute ??= this.stepOutOfRoute.bind(this)) : this.next;
         if (continueRoute === "route") {
             this.step("route");
@@ -350,11 +341,10 @@ class Walk {
     errorHop(kind, callback) {
         const req = this.req;
         const route = this.route;
-        // A four argument handler written inside a route only ever sees what that route raised:
-        // express skips a route layer entirely while an error is in flight, so an error from a
-        // middleware before it, or out of a mount, walks past to the router's own error handlers.
-        // Middleware error handlers keep the ordinary rule, which is that they catch what was
-        // raised before them.
+        // A four argument handler written inside a route only sees what that route raised: express
+        // skips a route layer while an error is in flight, so an error from a middleware before it,
+        // or out of a mount, walks past to the router's own error handlers. Middleware error
+        // handlers keep the ordinary rule.
         const reachable = route.use
             ? route.routeKey >= req._errorKey
             : route.routeKey === req._errorKey || (route.group !== undefined && route.group === req._errorGroup);
@@ -414,10 +404,9 @@ class Walk {
         }
         if (isRouter) {
             if (this.skipCheck) {
-                // on a compiled chain, leaving the router is what running out of chain
-                // already means: ordinary routing takes over after the mount. With no
-                // mount in the chain the router being left is the app's own, and nothing
-                // of it may run afterwards, not even a middleware registered later
+                // on a compiled chain, leaving the router is what running out of chain already
+                // means: ordinary routing takes over after the mount. With no mount in the chain
+                // the router being left is the app's own, and nothing of it may run afterwards
                 if (this.skipUntil?.keepMount) {
                     return this.dispatch(this.routes.length);
                 }
@@ -469,10 +458,9 @@ class Walk {
             return this.step(undefined);
         }
         // A mounted router or application is stepped over while an error is in flight. Its handle
-        // takes three arguments, so express's Layer#handleError hands the error straight on without
-        // entering it: what a mount catches is what it raised itself. Entering it ran the error
-        // handlers written inside the mount, and left req.app pointing at a mounted application,
-        // whose settings then answered. A 500 carried an ETag under app.set("etag", false).
+        // takes three arguments, so express's Layer#handleError hands the error straight on: what a
+        // mount catches is what it raised itself. Entering it left req.app pointing at the mounted
+        // application, whose settings answered, and a 500 carried an ETag under etag false.
         if (kind === CALLBACK_ROUTER && !req._error) {
             if (callback._isApplication) {
                 rememberApp(this, route, req);
@@ -559,9 +547,8 @@ class Walk {
                 const out = callback(req, res, this.next);
                 if (out instanceof Promise) {
                     // Express 5 forwards a rejected handler promise to the error middleware on its
-                    // own, so there is nothing left for the "catch async errors" setting or for
-                    // express-async-errors to opt into. A bare rejection carries no error, and
-                    // express invents this one for it
+                    // own, so there is nothing for "catch async errors" or express-async-errors to
+                    // opt into. A bare rejection carries no error, and express invents this one
                     out.catch((err) => {
                         req._error = err || new Error("Rejected promise");
                         req._errorKey = route.routeKey;

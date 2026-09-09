@@ -17,22 +17,19 @@ limitations under the License.
 // express.compression(), which answers with a compressed body when the client asked for one.
 //
 // The options, the defaults and the order the decision is taken in are the compression module's,
-// so a front that already uses it can drop the require and change nothing else. Two things are
-// different, and both only ever turn a worse answer into a better one:
+// so a front that already uses it can drop the require and change nothing else. Three things are
+// different, and each one only turns a worse answer into a better one:
 //
 //   - a response that arrives whole, which is every res.send() and res.json(), is compressed in
-//     one call instead of through a transform stream, and goes out with a Content-Length. The
-//     bytes are the same bytes: zlib.gzipSync and a createGzip that receives the same body in one
-//     write produce the same deflate output.
-//   - partial content is left alone. The compression module compresses a 206 as well, and the
-//     result is a byte range of the file described as gzip, which no client can decode.
-//   - zstd is on offer, which the compression module cannot do at all. It is ranked below brotli,
-//     so a client that takes both is answered exactly as it was before, and above gzip, which it
-//     beats on ratio and on time. A Node whose zlib has no zstd never offers it.
+//     one call instead of through a transform stream, and goes out with a Content-Length. Same
+//     bytes: zlib.gzipSync and a createGzip fed the same body in one write agree.
+//   - partial content is left alone. The compression module compresses a 206 too, and the result
+//     is a byte range of the file described as gzip, which no client can decode.
+//   - zstd is on offer, which the compression module cannot do. Ranked below brotli and above
+//     gzip, so a client that takes both is answered as before. A Node with no zstd never offers it.
 //
-// The streaming half is the module's own design, because it is the right one: a transform stream,
-// its output written as it comes, and the drain listeners moved onto it so a pipe that fills up
-// hears from the compressor rather than from a socket that is no longer what it is waiting for.
+// The streaming half is the module's own design: a transform stream, its output written as it
+// comes, and the drain listeners moved onto it so a pipe that fills up hears from the compressor.
 
 "use strict";
 
@@ -95,28 +92,24 @@ if (HAS_ZSTD) {
     ENFORCEABLE.add("zstd");
 }
 
-// Up to this many bytes a whole body is compressed on this thread, and above it on the libuv pool.
-// One call either way; what changes is who waits. A small body pays more for the hop onto the pool
-// than the compression costs, and a large one is worth handing over, since the pool has four
-// threads and the loop has everyone else to serve: measured with gzip at the default level, sync
-// wins by 43% at 1.4KB and by 22% at 16KB, and loses by 32% at 32KB and by 90% at 78KB.
+// Up to this many bytes a whole body is compressed on this thread, above it on the libuv pool. One
+// call either way, what changes is who waits. Measured with gzip at the default level: sync wins by
+// 43% at 1.4KB and by 22% at 16KB, and loses by 32% at 32KB and by 90% at 78KB.
 const SYNC_LIMIT = 24 * 1024;
 
 const noop = () => {};
 
 /**
  * A whole-body compressor that keeps one stream instead of letting zlib build and throw one away
- * per call, which on a body under the sync limit costs more than the compression does. Same bytes,
- * a third of the time.
+ * per call, which under the sync limit costs more than the compression does. Same bytes, a third
+ * of the time.
  *
- * It is private node, and two things have to be held in place for it: close, because the FINISH
- * that ends the member would otherwise take the binding with it, and the handle, which that same
- * FINISH drops off the stream before returning. The probe then compresses each body twice and
- * gives the whole thing up unless every answer matches `oneShot` exactly, so a node that does any
- * of this differently gets the public API back and loses nothing but the speed.
+ * It is private node, and two things have to be held in place: close, because the FINISH that ends
+ * the member would take the binding with it, and the handle, which the same FINISH drops off the
+ * stream. The probe compresses each body twice and gives up unless every answer matches `oneShot`,
+ * so a node that does this differently gets the public API back.
  *
- * Only for the deflate formats. A brotli stream carries context across a reset and answers the
- * second body with bytes that depend on the first.
+ * Only for the deflate formats. A brotli stream carries context across a reset.
  *
  * @param {() => any} create
  * @param {number} finishFlag
@@ -263,10 +256,8 @@ function toBuffer(chunk, encoding) {
  * @param {object} [options.zstd] zstd options, `params` included, node's own defaults otherwise.
  * @param {string[]} [options.encodings] the encodings this middleware may answer with, out of
  *   "br", "zstd", "gzip" and "deflate". What is not named is never used, however the client ranks
- *   it: a server that prefers cheap gzip over brotli passes ["gzip", "deflate"], one that would
- *   rather answer zstd than brotli passes ["zstd", "gzip"]. An uncompressed answer is always on
- *   offer, and enforceEncoding stays its own explicit choice, outside this list. This option is
- *   fulmine's own, the compression module has no equivalent.
+ *   it. An uncompressed answer is always on offer, and enforceEncoding is outside this list. This
+ *   option is fulmine's own, the compression module has no equivalent.
  * @param {number} [options.level] zlib compression level, for gzip and deflate.
  * @param {number} [options.chunkSize] zlib chunk size.
  * @param {number} [options.memLevel] zlib memory level.
@@ -384,14 +375,10 @@ function compression(options) {
     }
 
     return function compression(req, res, next) {
-        // Negotiated here rather than when the body arrives, because the answer to "could this
-        // request take a compressed body at all" decides how much of this middleware the response
-        // has to carry. Most requests to most routes cannot: a client that sent no Accept-Encoding,
-        // one that refused everything, a HEAD. Those get the Vary and nothing else, since the
-        // answer still depends on the header even when this particular client did not ask.
-        // straight from the raw entries where this request keeps them: reading req.headers here
-        // built the whole object for one name. Folded, so a repeated Accept-Encoding still reads
-        // as the joined list the headers object would have shown
+        // Negotiated here rather than when the body arrives: whether this request could take a
+        // compressed body at all decides how much of this middleware the response has to carry.
+        // Most requests cannot, and those get the Vary and nothing else. Read straight from the raw
+        // entries, folded: reading req.headers here built the whole object for one name
         const accept =
             typeof req._foldedHeader === "function"
                 ? req._foldedHeader("accept-encoding")
@@ -458,10 +445,9 @@ function compression(options) {
         }
 
         /**
-         * Whether this response is compressed, and how. Taken once, when the first byte of the
-         * body arrives, which is also when the headers are decided: everything read here is set
-         * by then. The order is the compression module's, and so is the Vary, which is added even
-         * when the answer goes out uncompressed because the answer still depends on the header.
+         * Whether this response is compressed, and how. Taken once, when the first byte of body
+         * arrives, which is also when the headers are decided. The order is the compression
+         * module's, and so is the Vary, added even when the answer goes out uncompressed.
          *
          * @param {number} [length] the size of the body, when end() already has all of it
          * @returns {string} the encoding chosen, "" to send the body as it is
@@ -510,9 +496,8 @@ function compression(options) {
         function startStream(method) {
             stream = compressStream(method);
             // The parked listeners, and the list itself stays rather than being emptied: res.on
-            // reads it to know that a drain listener belongs on the compressor from here on. That
-            // matters because a pipe registers its own the first time write() tells it to slow
-            // down, which is after this, and from here on the compressor is what fills up.
+            // reads it to know a drain listener belongs on the compressor from here on. A pipe
+            // registers its own the first time write() says to slow down, which is after this
             for (const listener of /** @type {any[][]} */ (listeners)) {
                 stream.on(listener[0], listener[1]);
             }

@@ -21,7 +21,7 @@ const { canBeOptimizedWithParams, decodeParam, NullObject } = require("./utils.j
 // the parameter names in a path, in the order µWS numbers them
 const PARAM = /:(\w+)/g;
 
-// Handlers µWS calls with the socket. Everything else in a behavior object is a µWS setting
+// Handlers uWS calls with the socket. Everything else in a behavior object is a uWS setting
 // (maxPayloadLength, idleTimeout, compression, ...) and rides through untouched.
 const SOCKET_HANDLERS = ["open", "message", "dropped", "drain", "close", "ping", "pong", "subscription"];
 
@@ -46,9 +46,8 @@ function joinPaths(prefix, path) {
 /**
  * Every websocket route reachable from this router, with the mount paths already applied.
  *
- * Walked separately from the HTTP routes: those fall back to ordinary routing when µWS cannot
- * match them, and a websocket has no fallback to fall back to, so an unmountable one has to be
- * refused out loud instead.
+ * Walked separately from the HTTP routes: those fall back to ordinary routing when uWS cannot
+ * match them, a websocket has no fallback, so an unmountable one is refused out loud.
  *
  * @param {any} router
  * @param {string|null} prefix the mount path accumulated so far, or null once a mount was a
@@ -97,9 +96,8 @@ function collectRoutes(router, prefix, out, seen) {
 }
 
 /**
- * The µWS upgrade handler for one route: it builds this project's request and response, offers
- * them to the application's own `upgrade` hook, and completes the handshake unless that hook
- * answered the request itself.
+ * The uWS upgrade handler for one route: builds this project's request and response, offers them
+ * to the application's own `upgrade` hook, and completes the handshake unless that hook answered.
  *
  * @param {any} app the application whose request and response classes serve this route
  * @param {string} path the composed path, whose parameters are read back by index
@@ -111,7 +109,7 @@ function makeUpgradeHandler(app, path, behavior) {
     const userUpgrade = behavior.upgrade;
 
     return (res, req, context) => {
-        // read off the µWS request before anything can await: it is neutered on return, and the
+        // read off the uWS request before anything can await: it is neutered on return, and the
         // handshake needs these three even when the upgrade is decided asynchronously
         const key = req.getHeader("sec-websocket-key");
         const protocol = req.getHeader("sec-websocket-protocol");
@@ -169,17 +167,16 @@ function makeUpgradeHandler(app, path, behavior) {
             return;
         }
 
-        // an async hook (a session lookup, a token check) outlives this callback, so µWS has to
-        // be told who to call if the client leaves first. Registered now, still inside the
-        // handler, which is the only place µWS accepts it
+        // an async hook outlives this callback, so uWS has to be told who to call if the client
+        // leaves first. Registered now, inside the handler, the only place uWS accepts it
         res.onAborted(() => {
             aborted = true;
             // and on the response too, so a hook that is still awaiting can see the client left
             // rather than working on towards a handshake nobody is waiting for
             response.aborted = true;
         });
-        // and whatever the hook writes now lands outside the cork µWS holds for this callback,
-        // so the response opens its own, exactly as a route handler answering late does
+        // whatever the hook writes now lands outside the cork uWS holds for this callback, so the
+        // response opens its own, exactly as a route handler answering late does
         response._corkNeeded = true;
         decision.then(accept, (err) => {
             if (!aborted && !response.finished) {
@@ -193,9 +190,8 @@ function makeUpgradeHandler(app, path, behavior) {
 }
 
 /**
- * Hands every websocket route this application can reach to µWS. Called from listen(), before
- * the catch-all goes on: µWS routes an upgrade to the websocket route even when a catch-all
- * covers the same path, so the two live side by side.
+ * Hands every websocket route to uWS. Called from listen(), before the catch-all: uWS routes an
+ * upgrade to the websocket route even when a catch-all covers the same path.
  *
  * @param {any} app
  */

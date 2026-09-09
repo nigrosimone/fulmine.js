@@ -23,10 +23,9 @@ const acorn = require("acorn");
 // GET alone (and a GET that declares a body falls back to the full header copy).
 const kGetSafe = Symbol("fulmine.getSafe");
 
-// What a handler may do with `req` and still let the header copy be skipped: members whose
-// reads never reach a header. Anything else, computed access included, keeps the copy.
-// req.res and req.app are deliberately absent: the walk judges only the member directly on
-// the parameter, so anything that can reach another object could reach headers through it.
+// What a handler may do with `req` and still let the header copy be skipped: members whose reads
+// never reach a header. Anything else, computed access included, keeps the copy. req.res and
+// req.app are absent because they could reach headers through another object.
 const REQ_OK = new Set(["query", "params", "body", "method", "path", "url", "baseUrl", "originalUrl", "route"]);
 
 // Reading any of these needs the query string fetched: req.url and req.originalUrl carry it
@@ -70,9 +69,8 @@ const QUERY = 8; // reads req.query, req.url or req.originalUrl
 const verdicts = new WeakMap();
 
 /**
- * What one callback provably does, as a mask of the facts above. The default is UNKNOWN: any
- * shape this walk does not understand and any alias of req, res or next could do anything.
- * That inversion is what makes source analysis sound to act on.
+ * What one callback provably does, as a mask of the facts above. The default is UNKNOWN: any shape
+ * this walk does not understand, and any alias of req, res or next, could do anything.
  *
  * @param {Function} fn
  * @returns {number}
@@ -135,9 +133,8 @@ function analyze(fn) {
     const resName = params[1] ? params[1].name : null;
     const nextName = params[2] ? params[2].name : null;
 
-    // Every appearance of the three names in the whole body is judged, nested functions
-    // included: an inner binding that shadows one of them only makes this stricter, never
-    // looser, so scope tracking is not needed for soundness.
+    // Every appearance of the three names is judged, nested functions included. An inner binding
+    // that shadows one only makes this stricter, so no scope tracking is needed.
     let mask = 0;
     walk(root.body, null, (node, parent) => {
         if (mask & UNKNOWN) {
@@ -192,11 +189,10 @@ function analyze(fn) {
             return;
         }
         if (name === nextName) {
-            // calling next is how a chain advances, and past its end or with an error the
-            // request lands in the framework's own final answer, which the constructor's
-            // accept pre-read covers. Anything but a direct call aliases the continuation,
-            // and an argument that could be the string "route" would leave the chain for
-            // routes nobody analyzed, so only shapes that cannot be a string pass.
+            // calling next is how a chain advances, and past its end the request lands in the
+            // framework's own final answer, which the constructor's accept pre-read covers.
+            // Anything but a direct call aliases the continuation, and an argument that could be
+            // the string "route" would leave the chain, so only non-string shapes pass.
             if (!parent || parent.type !== "CallExpression" || parent.callee !== node) {
                 mask |= UNKNOWN;
                 return;
@@ -265,10 +261,9 @@ function walk(node, parent, visit) {
  * What a native route's whole chain provably never does, so the request constructor may leave
  * that work undone: skipHeaders spares the header copy, skipQuery the query fetch.
  *
- * A callback that calls next() bare passes anywhere but in the terminal route, where it would
- * fall out of the chain: there it only passes when the caller established that no later route
- * could catch the fall-through. The framework's own 404 answers with the path alone, so the
- * fall-through itself needs neither headers nor query.
+ * A bare next() passes anywhere but in the terminal route, where it falls out of the chain: there
+ * it passes only when no later route could catch the fall-through. The framework's own 404 answers
+ * from the path alone.
  *
  * @param {any[]} chain the routes the native handler runs, in order, this route last
  * @param {boolean} allowTerminalNext whether a fall-through past the chain lands only in the
