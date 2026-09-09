@@ -75,14 +75,12 @@ const PRECOMPRESSED = [
 // The failures express.static answers by moving on to the next handler rather than by reporting
 // them, when fallthrough is on. They all mean the same thing: the request is not a file here.
 //
-// serve-static decides this by remembering whether send got as far as settling on a file, and
-// forwards everything after that point. The list is the same thing said from the other side, since
-// by the time this hands over, the file has been found and stat'ed already: what is left to fail
-// is a dotfile rule or a path that will not decode.
+// serve-static decides this by remembering whether send got as far as settling on a file. The list
+// says the same from the other side: by the time this hands over the file has been found and
+// stat'ed, so what is left to fail is a dotfile rule or a path that will not decode.
 //
-// A 412 and a 416 are not on it, and that is the point of the list. Both are about a file that
-// exists and about conditions the client itself set, and falling through swallowed them: a Range
-// Not Satisfiable came back as a 404, which tells the client its file is gone when it is not.
+// A 412 and a 416 are not on it. Both are about a file that exists and about conditions the client
+// itself set, and falling through swallowed them: a Range Not Satisfiable came back as a 404.
 const FALLTHROUGH_STATUSES = new Set([400, 403, 404]);
 
 /**
@@ -236,10 +234,9 @@ function runVerify(req, res, next, options, buf) {
  * The message a strict violation gets, which is the one V8 would have produced had the body been
  * invalid JSON rather than merely not an object.
  *
- * body-parser goes to some trouble over this: it builds a string that is the body up to the
- * offending character followed by placeholder characters, asks JSON.parse to fail on that, and
- * then puts the real characters back into whatever V8 said. The point is that an application
- * showing err.message reads the same sentence either way, naming the character and its position.
+ * body-parser builds a string that is the body up to the offending character followed by
+ * placeholders, asks JSON.parse to fail on that, and puts the real characters back into what V8
+ * said, so an application showing err.message reads the same sentence either way.
  *
  * @param {string} text the body as sent
  * @param {string|undefined} char the first character that is neither whitespace nor { nor [
@@ -361,12 +358,12 @@ function twinsOf(filePath, ttl) {
  * The compressed twin of a file to serve in its place, or undefined when the client would rather
  * have the file itself or the twin is not there.
  *
- * The stat comes back with it, and is what sendFile then answers from: the ETag and the
- * Last-Modified of a variant are its own, which is the whole point. Two bodies sharing one ETag is
- * how a shared cache ends up handing brotli to a client that cannot read it.
+ * The stat comes back with it, and is what sendFile then answers from: the ETag and Last-Modified
+ * of a variant are its own. Two bodies sharing one ETag is how a shared cache ends up handing
+ * brotli to a client that cannot read it.
  *
- * One stat when the answer is a twin, and none at all when the last request already found there is
- * no twin to have. See twinCache above for what is remembered and what is not.
+ * One stat when the answer is a twin, none when the last request already found there is no twin.
+ * See twinCache above for what is remembered.
  *
  * @param {string} filePath absolute path of the file that was asked for
  * @param {string|undefined} accept the request's Accept-Encoding
@@ -555,12 +552,11 @@ function serveStatic(root, options) {
         // Joined against the root and not normalised on its own first, which is the difference
         // between "/mount/../package.json" being refused and being served: a ".." has to climb
         // relative to the root so the check below can see it leave, and normalizing the url alone
-        // clamps it at "/" where nothing has left anywhere. Absolute because resolvedRoot is, so
-        // nothing here resolves against the working directory per request either.
-        // and without the trailing separator join keeps and resolve does not, because statTarget
-        // below puts it back only where it belongs: linux refuses a file asked for as a directory,
-        // so a mount whose root is a file answers nothing at all if the separator stays here.
-        // Windows stats it either way, which is why only the CI said so.
+        // clamps it at "/". Absolute because resolvedRoot is, so nothing resolves against the
+        // working directory per request.
+        // Without the trailing separator join keeps and resolve does not, because statTarget below
+        // puts it back only where it belongs: linux refuses a file asked for as a directory, so a
+        // mount whose root is a file would answer nothing. Windows stats it either way
         let fullpath = path.join(resolvedRoot, url);
         if (fullpath.length > resolvedRoot.length && fullpath.endsWith(path.sep)) {
             fullpath = fullpath.slice(0, -1);
@@ -570,12 +566,11 @@ function serveStatic(root, options) {
         let filePath = fullpath;
         // What serve-static hands send is this path, except that a bare "/" under a mount the
         // request did not write with one becomes "": without that rule a mount whose root is a file
-        // would ask the disk for a directory and could never answer at all.
+        // would ask the disk for a directory and could never answer.
         //
-        // Send then stats `normalize(join(root, path))`, and both of those keep a trailing
-        // separator where `resolve` takes it off. The separator is not decoration: the disk refuses
-        // a file that is asked for as a directory, and the name inside the error carries it, which
-        // is what an error handler prints when fallthrough is off.
+        // Send then stats `normalize(join(root, path))`, and both keep a trailing separator where
+        // `resolve` takes it off. The disk refuses a file asked for as a directory, and the name
+        // inside the error carries it, which is what an error handler prints
         const mountRelative = rawPath === "/" && !req.endsWithSlash ? "" : url;
         const statTarget = mountRelative.endsWith("/") && !fullpath.endsWith(path.sep) ? fullpath + path.sep : fullpath;
         if (root && !fullpath.startsWith(resolvedRoot)) {
@@ -586,14 +581,10 @@ function serveStatic(root, options) {
         }
 
         // Before the stat, because send judges the path before it looks at the disk: a hidden
-        // segment anywhere in a path that does not exist answers what the dotfiles rule says and
-        // not the ENOENT the disk would have given. sendFile applies the same rule below, and
-        // reaches it only for paths that do exist.
-        // normalized first, as send normalizes before it judges: a ".." segment is not a hidden
-        // file, and resolving it away is what tells the two apart
-        // and these are the segments path.normalize(url) would have produced, taken off the joined
-        // path rather than walked again: the check above has just proved it starts with the root,
-        // so what follows the root is the url in normal form
+        // segment in a path that does not exist answers what the dotfiles rule says and not the
+        // ENOENT the disk would have given. Normalized first, as send normalizes before it judges:
+        // a ".." segment is not a hidden file. These are the segments path.normalize(url) would
+        // have produced, taken off the joined path rather than walked again
         if (containsDotFile(fullpath.slice(resolvedRoot.length).split(/[\\/]/))) {
             const refusal = options.dotfiles === "deny" ? 403 : options.dotfiles === "allow" ? 0 : 404;
             if (refusal !== 0 && !(options.dotfiles === "ignore_files" && !path.basename(url).startsWith("."))) {
@@ -689,13 +680,11 @@ function serveStatic(root, options) {
         if (stat.isDirectory() || req.endsWithSlash) {
             if (!req.endsWithSlash) {
                 if (options.redirect) {
-                    // The query goes along, and the leading slashes are collapsed. Both were
-                    // wrong: "/docs?page=3" redirected to "/docs/" and lost the page, and a
-                    // request for "//assets" answered "Location: //assets/", which a browser
-                    // reads as a protocol-relative URL and follows to the host "assets". A
-                    // redirect that leaves this server is not a redirect this server meant.
-                    // serve-static locks its redirect page down the way it locks an error page:
-                    // the body names the target, and the target came from the request
+                    // The query goes along and the leading slashes are collapsed. Both were wrong:
+                    // "/docs?page=3" redirected to "/docs/" and lost the page, and "//assets"
+                    // answered "Location: //assets/", which a browser reads as protocol-relative
+                    // and follows to the host "assets". serve-static locks its redirect page down
+                    // the way it locks an error page: the body names a target the request supplied
                     res.setHeader("Content-Security-Policy", "default-src 'none'");
                     res.setHeader("X-Content-Type-Options", "nosniff");
                     return res.redirect(301, collapseLeadingSlashes(req._originalPath + "/") + req.urlQuery, true);
@@ -813,10 +802,9 @@ function createInflate(contentEncoding) {
 }
 
 /**
- * Builds one of the body parsers. All four share the same work, which is deciding whether this
- * request has a body worth reading, collecting it within the size limit, decompressing it and
- * handing the bytes over; they differ only in the content type they claim by default and in what
- * they turn the bytes into.
+ * Builds one of the body parsers. All four share the same work: deciding whether this request has
+ * a body worth reading, collecting it within the size limit, decompressing it and handing the
+ * bytes over. They differ in the content type they claim and in what they turn the bytes into.
  *
  * @param {string} defaultType the type matched when the caller names none
  * @param {(...args: any[]) => any} beforeReturn turns the collected bytes into req.body. Called
@@ -881,12 +869,12 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
         // Whether a content-type is one this parser claims, remembered per parser.
         //
         // Only reached when the caller asked for a wildcard or a list, since a plain type takes the
-        // simpleType shortcut above and never calls type-is at all. For those callers type-is was
-        // 513 ns to reach the same answer about the same string on every request, against 4 ns for
-        // an answer already worked out. The header is the client's, so the memo needs its ceiling.
+        // simpleType shortcut above. For those callers type-is was 513ns to reach the same answer
+        // about the same string on every request, against 4ns for one already worked out. The
+        // header is the client's, so the memo needs its ceiling.
         //
         // typeis.is and not typeis(req, ...): the request form first checks that there is a body,
-        // and the caller below has established that already.
+        // which the caller below has established.
         const claimsType = memoizeByString(
             (contentType) => !!typeis.is(contentType, /** @type {string[]} */ (options.type))
         );
@@ -908,12 +896,10 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             }
 
             // The property goes on the request before anything is decided, and its value stays
-            // undefined: body-parser's read() does exactly this, and the two halves both matter.
-            // Undefined, so a handler can still tell "nothing parsed this" from "the body was
-            // empty", which seeding an empty object would lose. Present, because `"body" in req`
-            // is how a library asks whether a parser has run at all: Apollo's express middleware
-            // refuses the request with a 500 when the property is missing, and tRPC's adapter
-            // reads the body itself when it is, so getting either half wrong breaks one of them.
+            // undefined: body-parser's read() does the same, and both halves matter. Undefined, so
+            // a handler can tell "nothing parsed this" from "the body was empty". Present, because
+            // `"body" in req` is how a library asks whether a parser has run: Apollo's express
+            // middleware answers 500 when it is missing, and tRPC's adapter reads the body itself
             if (!("body" in req)) {
                 req.body = undefined;
             }
@@ -1046,11 +1032,9 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             next = bindContext(next);
 
             // with nothing to decompress, uWS can collect the whole body in native code: one
-            // callback instead of one per chunk, the limit enforced before any byte reaches JS,
-            // and no copy at all - the parsers turn the bytes into req.body before the callback
-            // returns, so a view over uWS's own memory is enough. A declared length was the
-            // original case; a chunked body accumulates in the same native vector and only loses
-            // the length check, since there is no declaration to hold it to
+            // callback instead of one per chunk, the limit enforced before any byte reaches JS, and
+            // no copy at all, since the parsers turn the bytes into req.body before the callback
+            // returns. A chunked body uses the same native vector and only loses the length check
             const declared = lengthNumber;
             const declaresLength = !Number.isNaN(declared) && declared > 0;
             if (!req.receivedData && !inflate && req._res.collectBody && (declaresLength || isNaN(declared))) {
@@ -1092,12 +1076,10 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             }
 
             // uWS neuters its ArrayBuffer after the callback, so every chunk has to be copied out of
-            // it - and then Buffer.concat copied the whole body a second time. when content-length is
-            // known and we aren't inflating, the final size is known up front, so chunks can go
-            // straight into one buffer and the body is copied once.
-            // the cap means a client that declares a body and never sends it costs no more than one
-            // that actually sends a body that size, and content-length above limit was
-            // already rejected above
+            // it, and then Buffer.concat copied the whole body a second time. When content-length is
+            // known and we are not inflating, the final size is known up front, so chunks go
+            // straight into one buffer and the body is copied once. The cap means a client that
+            // declares a body and never sends it costs no more than one that sends it
             const abs = [];
             const declaredLength = inflate ? -1 : Number(length);
             let target =
@@ -1116,11 +1098,10 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             /**
              * A zlib throw becomes the 400 body-parser answers a corrupt body with.
              *
-             * zlib reports it twice: process() throws, and the stream emits 'error' a tick
-             * later. fast-zlib removes its own listeners on the way out, so that second one
-             * lands on nothing, and an unhandled 'error' event ends the process: a corrupt
-             * gzip body was enough to take the server down. The listener goes on after the
-             * throw, since process() would have removed it.
+             * zlib reports it twice: process() throws, and the stream emits 'error' a tick later.
+             * fast-zlib removes its own listeners on the way out, so that second one lands on
+             * nothing, and an unhandled 'error' event ends the process. The listener goes on after
+             * the throw, since process() would have removed it.
              *
              * @param {any} err what inflate.process threw
              */

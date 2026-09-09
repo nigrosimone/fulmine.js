@@ -306,11 +306,10 @@ class Application extends Router {
 
     /**
      * A small file through the worker pool, with two things on top: concurrent asks for the same
-     * path share one read, and the bytes of an unchanged file come from a bounded cache,
-     * validated against the stat the caller already paid for, so a touched file is re-read.
-     * A hit completes on a macrotask, which is when a worker's answer would have arrived; code
-     * that passed the suites against worker timing keeps passing against this.
-     * `app.set("file cache", false)` turns the cache off; the shared read stays.
+     * path share one read, and the bytes of an unchanged file come from a bounded cache, validated
+     * against the stat the caller already paid for, so a touched file is re-read. A hit completes
+     * on a macrotask, which is when a worker's answer would have arrived.
+     * `app.set("file cache", false)` turns the cache off, the shared read stays.
      *
      * @param {string} fullpath
      * @param {import("fs").Stats} stat
@@ -407,12 +406,11 @@ class Application extends Router {
             }
             value = value == null ? undefined : value.map((m) => m.toUpperCase());
         } else if (key === "etag") {
-            // The skips are not taken back here. They used to be, because send consults freshness
-            // and the skip branch looked like it had not copied the headers for it, but that
-            // branch reads if-none-match, if-modified-since and cache-control by name whatever
-            // this setting says, see request.js:527, and req.fresh reads nothing else off the
-            // request. Registering a route or a middleware after listen still takes them back,
-            // see router.js:1615: that is a different question, about code the analysis never saw.
+            // The skips are not taken back here. They used to be, because send consults freshness,
+            // but that branch reads if-none-match, if-modified-since and cache-control by name
+            // whatever this setting says, and req.fresh reads nothing else off the request.
+            // Registering a route after listen still takes them back: that is a different
+            // question, about code the analysis never saw
             if (typeof value === "function") {
                 this._settings["etag fn"] = value;
             } else {
@@ -551,9 +549,8 @@ class Application extends Router {
      *
      * Returns the app and not an `http.Server`, since there is no node server underneath. The app
      * carries `address()`, `close()`, `listening` and the 'listening' and 'close' events; anything
-     * needing a real server, socket.io being the usual case, wants `app.uwsApp`. The callback runs
-     * on the next tick with the bind error, if there was one. A path instead of a port is a unix
-     * socket.
+     * needing a real server, socket.io being the usual case, wants `app.uwsApp`. A path instead of
+     * a port is a unix socket.
      *
      * @param {number|string} [port] port, or a unix socket path; 0 picks a free port
      * @param {string} [host] interface to bind; every interface when omitted
@@ -563,14 +560,12 @@ class Application extends Router {
      */
     listen(port, host, backlog, callback) {
         // With { cluster } the primary has nothing to bind. Each worker binds this same port with
-        // µWS's shared flag, which is SO_REUSEPORT, so the kernel hands each connection to one of
-        // them and the primary is not in the path at all: it forks, replaces a worker that dies,
-        // and nothing else. Everything below this runs in the workers, listen callback included,
-        // so it runs once per worker rather than once.
+        // uWS's shared flag, SO_REUSEPORT, so the kernel hands each connection to one of them and
+        // the primary only forks and replaces a worker that dies. Everything below this runs in the
+        // workers, listen callback included, so once per worker rather than once.
         //
-        // The test is the process and not this app: a second app on a TLS port, one without a
-        // cluster setting of its own, would otherwise take that port here, exclusively, and every
-        // worker would fail on it.
+        // The test is the process and not this app: a second app on a TLS port, without a cluster
+        // setting of its own, would take that port here exclusively and every worker would fail
         if (cluster.isPrimary && isSupervising()) {
             if (this._clusterWorkers > 0 && !this._clusterHandle) {
                 this._clusterHandle = forkWorkers(this._clusterWorkers);
@@ -758,10 +753,8 @@ class Application extends Router {
      * `res.render()` is the one that responds.
      *
      * `app.locals` and `options._locals` are merged into the options, in that order, so a
-     * per-request local wins over an application-wide one. Caching follows the "view cache"
-     * setting unless `options.cache` says otherwise.
-     *
-     * A function in the options position is taken as the callback.
+     * per-request local wins. Caching follows the "view cache" setting unless `options.cache` says
+     * otherwise. A function in the options position is taken as the callback.
      *
      * @param {string} name view name, resolved against the "views" setting
      * @param {Record<string, any>} [options] locals for the view
@@ -844,15 +837,13 @@ class Application extends Router {
     /**
      * Stops accepting connections, lets in-flight requests finish, then emits 'close'.
      *
-     * Node's server.close(), which Express hands back from listen(), only closes the listen
-     * socket and waits for what is being served; uWS's close() forcefully terminates every
-     * connection, so calling it first aborted whatever a graceful shutdown was waiting for.
-     * It still runs, but only once the last pending response is done, to drop the idle
-     * keep-alive connections nothing else would close.
+     * Node's server.close() only closes the listen socket and waits for what is being served; uWS's
+     * close() terminates every connection, so calling it first aborted whatever a graceful shutdown
+     * was waiting for. It still runs, but only once the last pending response is done, to drop the
+     * idle keep-alive connections nothing else would close.
      *
-     * The callback is the first 'close' listener, so it runs before any added afterwards. Closing
-     * a server that was not listening still calls back, with an ERR_SERVER_NOT_RUNNING error, the
-     * way node does.
+     * The callback is the first 'close' listener. Closing a server that was not listening still
+     * calls back with ERR_SERVER_NOT_RUNNING, the way node does.
      *
      * @param {(err?: Error) => void} [callback] called once closed
      * @returns {this} the app, for chaining
@@ -932,10 +923,9 @@ class Application extends Router {
 // carries. Middleware that takes a whole app and calls it, vhost being the one everybody meets, was
 // given something it could not call.
 //
-// This was tried once before and reverted the same day, because a callable app broke supertest:
-// `request(app)` reads `typeof app === "function"` and wraps whatever it finds in
-// http.createServer, and there was nothing underneath that could serve node's IncomingMessage, so
-// every call timed out. src/node-shim.js is what closes that hole, and it is why this is safe now.
+// Tried once before and reverted the same day, because a callable app broke supertest: `request(app)`
+// reads `typeof app === "function"` and wraps what it finds in http.createServer, and there was
+// nothing underneath that could serve node's IncomingMessage. src/node-shim.js closes that hole.
 module.exports = function (options) {
     return new Application(options)._asCallable();
 };

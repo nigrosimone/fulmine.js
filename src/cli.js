@@ -18,26 +18,25 @@ limitations under the License.
 // npx fulmine migrate [dir]
 //
 // Rewrites the module specifier and nothing else. An Express 5 app is a Fulmine app already, so
-// there is no code to translate: what there is instead is a short list of things that behave
-// differently, printed at the end, because no rewrite can find those for you.
+// there is no code to translate. The short list of things that behave differently is printed at
+// the end, because no rewrite can find those for you.
 //
 // npx fulmine profile [entry]
 //
-// Prints what listen() worked out about each route and normally keeps to itself: which ones µWS
-// answers on its own, which ones fell back to the ordinary router and why, and which ones were
-// compiled all the way down to a response written at startup.
+// Prints what listen() worked out about each route: which ones uWS answers on its own, which ones
+// fell back to the ordinary router and why, and which ones were compiled into a response.
 //
 // npx fulmine verify [dir]
 //
 // Whether this machine and this project can run it at all: the node version, the C library, the
-// µWebSockets.js binary, the base image a Dockerfile names. See src/verify.js.
+// uWebSockets.js binary, the base image a Dockerfile names. See src/verify.js.
 //
 // npx fulmine override [dir]
 // npx fulmine angular [dir]
 //
-// The two things a project needs that are a line in a JSON file rather than a specifier in a source
-// file: the package manager substitution, for a framework that requires express in its own code,
-// and angular.json's externalDependencies. See src/adopt.js.
+// The two things a project needs that are a line in a JSON file rather than a specifier in a
+// source file: the package manager substitution, for a framework that requires express in its own
+// code, and angular.json's externalDependencies. See src/adopt.js.
 
 const fs = require("fs");
 const path = require("path");
@@ -146,14 +145,12 @@ function collectFiles(dir) {
  * A reader for the .ts files of the project being migrated, or null when it has no TypeScript.
  *
  * acorn cannot read TypeScript, and shipping a parser that can would put megabytes into this
- * package for a command most people run once. A TypeScript project already has the compiler, so
- * it is resolved from there. A project without one is told its .ts files were left alone rather
- * than having them quietly skipped, which is what happened before they were looked at at all.
+ * package for a command most people run once. A TypeScript project already has the compiler, so it
+ * is resolved from there. A project without one is told its .ts files were left alone.
  *
- * typescript 7 is the compiler rewritten in Go, and it publishes no JavaScript parser any more:
- * require("typescript") gives back a version number and nothing else. Its scanner survives, on an
- * ESM-only subpath that require() reads on every node this package supports, so 7 gets the token
- * walk and 6 keeps the tree.
+ * typescript 7 is the compiler rewritten in Go and publishes no JavaScript parser any more:
+ * require("typescript") gives back a version number and nothing else. Its scanner survives on an
+ * ESM-only subpath that require() reads, so 7 gets the token walk and 6 keeps the tree.
  *
  * @param {string} target directory being migrated
  * @returns {((source: string, fileName: string, seen?: Set<string>) => {start: number, end: number}[])|null}
@@ -453,14 +450,13 @@ function findEntry(given) {
 /**
  * Every build of this library the application could load, as the prototype that owns listen().
  *
- * The command runs from its own copy, and the application loads whichever one resolves from its
- * own directory. That is usually the same file and sometimes is not: a global install, an
- * `npx fulmine.js@version`, a workspace that hoisted a second copy, or the `express` name pointing
- * here through an override. Patching only this command's copy leaves the application's own listen()
- * to bind the port, and the command then reports that the file built nothing.
+ * The command runs from its own copy, and the application loads whichever one resolves from its own
+ * directory. That is usually the same file and sometimes not: a global install, an
+ * `npx fulmine.js@version`, a hoisted second copy, or `express` pointing here through an override.
+ * Patching only this command's copy leaves the application's own listen() to bind the port.
  *
- * An app is a callable, so its own prototype is not the one that carries the methods: walk up to
- * whichever link owns listen.
+ * An app is a callable, so its own prototype does not carry the methods: walk up to whichever link
+ * owns listen.
  *
  * @param {string} entry
  * @returns {any[]} the prototypes to stub, this command's copy first
@@ -580,14 +576,13 @@ ${error.stack ?? error}`);
 /**
  * Ends the file-reading threads that building an application started.
  *
- * An Application starts one per `threads` in its constructor, and these commands only ever read
- * what compiling the routes decided: nothing here serves a file, so nothing here needs a thread.
- * They are unref'd, so leaving them would not hang the process, but they are threads holding the
- * library the application loaded, and this command is often not the whole process. It also stops
- * them outliving the directory they were loaded from, which is how a test that profiles a copy and
- * then removes it saw "Cannot find module .../src/worker.js" arrive after it had finished.
+ * An Application starts one per `threads` in its constructor, and these commands only read what
+ * compiling the routes decided. They are unref'd, so leaving them would not hang the process, but
+ * they hold the library the application loaded, and this command is often not the whole process.
+ * It also stops them outliving the directory they were loaded from, which is how a test that
+ * profiles a copy and then removes it saw "Cannot find module .../src/worker.js".
  *
- * Best effort throughout: a build with no workers, or a worker already gone, is not an error here.
+ * Best effort throughout: a build with no workers, or a worker already gone, is not an error.
  *
  * @param {any[]} apps
  * @returns {void}
@@ -765,8 +760,7 @@ function matchesWanted(full, method, wanted) {
  *
  * There is no score here on purpose. A percentage of routes is not a percentage of traffic: an
  * application with a thousand cold routes and one hot one that fell back would score well and
- * serve badly. What is printed instead is counted rather than judged, and the advice is only
- * printed for the reasons somebody can actually act on.
+ * serve badly. What is printed is counted rather than judged.
  *
  * @param {any[]} routes
  * @param {any[]} native

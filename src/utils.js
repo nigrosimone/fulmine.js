@@ -231,11 +231,9 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true, strict 
     let lastWildcardEnd = -1;
     // What path-to-regexp calls the wildcard backtrack: the literal text written since the last
     // wildcard. Once a wildcard has eaten slashes, a later one in the same path is held to a single
-    // segment, or the two would divide the path between them in more than one way and the regex
-    // would have to backtrack to find out which. /*a/*b against /x/y/ is the case that shows it:
-    // express refuses it under strict routing, and a second greedy wildcard accepts it.
-    // the text written since the last capture of any kind, and the text written since the last
-    // wildcard, which are the two path-to-regexp weighs
+    // segment, or the two would divide the path in more than one way and the regex would have to
+    // backtrack. /*a/*b against /x/y/ shows it: express refuses it under strict routing.
+    // Two counters: text since the last capture of any kind, and text since the last wildcard
     let backtrack = "";
     let wildcardBacktrack = "";
     let lastCaptureWasWildcard = false;
@@ -405,16 +403,13 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true, strict 
             i++;
 
             // When a :parameter precedes this group, that parameter is the one that gives ground
-            // while backtracking, so this one must not swallow the separator as well. Express
-            // splits /a.b.c against /:file{.:ext} as file=a.b, ext=c, which only works if ext
-            // cannot contain a dot. After static text there is nothing to give ground, so the
-            // parameter takes everything: /file{.:ext} against /file.tar.gz gives ext=tar.gz.
-            // The whole of it, not its first character: /:foo{abc:bar} against /123abcabc splits as
-            // foo=123 and bar=abc on express, and reading the separator as "a" left bar unable to
-            // match its own text, so the group never matched and foo took the segment whole. More
-            // than one character cannot go in a class, so it is written as a lookahead, and either
-            // way the parameter is still allowed to be exactly the separator, as path-to-regexp
-            // writes it.
+            // while backtracking, so this one must not swallow the separator too. Express splits
+            // /a.b.c against /:file{.:ext} as file=a.b, ext=c, which only works if ext cannot
+            // contain a dot. After static text nothing gives ground, so the parameter takes
+            // everything: /file{.:ext} against /file.tar.gz gives ext=tar.gz.
+            // The whole separator, not its first character: /:foo{abc:bar} against /123abcabc
+            // splits as foo=123 and bar=abc on express, and reading it as "a" left bar unable to
+            // match its own text. More than one character cannot go in a class, so it is a lookahead
             const colon = groupContent.indexOf(":");
             const separator = lastTokenWasParam && colon > 0 ? groupContent.slice(0, colon) : "";
             const escapedSeparator = separator.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -445,13 +440,11 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true, strict 
                 }
             }
             if (lastWildcard && lastWildcardEnd === regexPattern.length) {
-                // A wildcard immediately before the group. `(?<w>[^]+)(?:group)?` can never let
-                // the group match, because the wildcard is greedy and the group may be empty, and
-                // making the wildcard lazy is not the same thing either: it gives the trailing
-                // slash away, and /*path{.:ext} against /a/b/ then loses the empty last segment.
-                // path-to-regexp writes the two branches out instead, group first and the
-                // wildcard greedy in both, so that is what goes here. The second branch captures
-                // the same parameter under a name of its own, which is what uniqueGroupName is for.
+                // A wildcard immediately before the group. `(?<w>[^]+)(?:group)?` can never let the
+                // group match, because the wildcard is greedy and the group may be empty, and a
+                // lazy wildcard is not the same thing either: it gives the trailing slash away, and
+                // /*path{.:ext} against /a/b/ loses the empty last segment. path-to-regexp writes
+                // the two branches out instead, group first and the wildcard greedy in both
                 const second = uniqueGroupName(lastWildcard.name);
                 wildcardNames.push(second);
                 const withWildcard = regexPattern.slice(lastWildcard.start);
@@ -619,13 +612,13 @@ const NOT_A_LITERAL = /[:*{}\\]/;
  *
  * The answer is structural: no position where two different literals meet, and, when neither path
  * can change length, the same number of segments. `/orders/:id` and `/invoices/:id` cannot both
- * match, `/users/:id` and `/users/me` can. The caller reads "do not know" as yes, so every doubt
- * answers true: saying two paths overlap only costs a native registration, while missing one lets
- * µWS answer a request that belonged to an earlier route.
+ * match, `/users/:id` and `/users/me` can. The caller reads "do not know" as yes: saying two paths
+ * overlap only costs a native registration, while missing one lets uWS answer a request that
+ * belonged to an earlier route.
  *
  * A parameter is not the only shape that matches more than itself. A wildcard and an optional group
- * do too, and reading `{:opt}` or `*splat` as the literal text it is written as reported "cannot
- * overlap" for a route that plainly could, which took the earlier route's turn away.
+ * do too, and reading `{:opt}` or `*splat` as literal text reported "cannot overlap" for a route
+ * that plainly could.
  *
  * @param {string} a
  * @param {string} b
@@ -759,11 +752,8 @@ function acceptParams(str) {
 //
 // The keys are media types, so an application uses a handful and the ceiling is never approached.
 // It is here because application code is free to hand res.type() something a client sent, and an
-// unbounded map keyed on that is a leak the client controls.
-//
-// Clearing beats evicting one entry at a time: the few types an application really uses are back
-// within a few requests, whereas refusing new entries once full would let a flood of invented
-// values lock the real ones out for the life of the process.
+// unbounded map keyed on that is a leak the client controls. Clearing beats evicting one at a
+// time: refusing new entries once full would let a flood of invented values lock the real ones out.
 const MEMO_LIMIT = 512;
 
 /**
@@ -855,14 +845,12 @@ const ENCODING_ANY = ENCODING_BR | ENCODING_GZIP | ENCODING_DEFLATE | ENCODING_Z
 /**
  * The encoding to answer with, read straight off Accept-Encoding rather than through negotiator:
  * the header is a short list of names with an optional q, and building a Negotiator per response
- * to read it costs more than the scan does.
+ * costs more than the scan does. The tie-break is negotiator's, for the list the compression module
+ * hands it: brotli first, then gzip, then deflate, and identity last.
  *
- * The tie-break is negotiator's, for the list the compression module hands it: brotli first, then
- * gzip, then deflate, and identity last.
- *
- * Only the encodings named in `allowed` are on offer, since the caller may not be able to
- * produce all three: express.static offers the two it can have lying on disk. An uncompressed
- * answer is always on offer, and is what an empty header ends up choosing.
+ * Only the encodings named in `allowed` are on offer, since the caller may not produce all three:
+ * express.static offers the two it can have lying on disk. An uncompressed answer is always on
+ * offer, and is what an empty header chooses.
  *
  * @param {string} accept the header, or "" when the request carried none
  * @param {number} allowed ENCODING_BR, ENCODING_ZSTD, ENCODING_GZIP and ENCODING_DEFLATE, or'd
@@ -989,12 +977,10 @@ const defaultSettings = {
     // The native µWS router matches bytes, so the compiler in _compileOptimizedRoutes only hands
     // it routes whose earlier siblings it can prove agree under either case rule.
     "declarative responses": true,
-    // on. Off hands every request to the ordinary chain instead of letting µWS match what it can,
+    // on. Off hands every request to the ordinary chain instead of letting uWS match what it can,
     // which is slower and answers the same. Not a tuning knob: it exists so one application can be
-    // served both ways and the two sets of answers compared, which tests the optimizer against the
-    // rest of the framework without a second framework to compare with. See
-    // `npm run fuzz -- --self`. A compiled response needs a native registration to hang on, so this
-    // takes "declarative responses" with it.
+    // served both ways and the answers compared, see `npm run fuzz -- --self`. A compiled response
+    // needs a native registration to hang on, so this takes "declarative responses" with it
     "native routes": true,
     // off: with a window set, the size and mtime of a file served by sendFile are remembered for
     // it, which is one syscall less per request and a file that can be served as it was a moment
@@ -1489,10 +1475,9 @@ const HEADER_VALUE = /[^\t\x20-\x7e\x80-\xff]/;
  * One of node's header errors, built the way node builds it.
  *
  * Assigning the code is not the whole of it. Node also puts the code in the first line of the
- * stack, by naming the error "TypeError [THE_CODE]" while V8 formats that line and then taking
- * the name back off. Whatever prints a stack therefore says which code it was, and the default
- * error page prints exactly that: without this, the same refusal reads "TypeError:" here and
- * "TypeError [ERR_INVALID_CHAR]:" behind Express. Found by fuzzing against express.
+ * stack, by naming the error "TypeError [THE_CODE]" while V8 formats that line and then taking the
+ * name back off. The default error page prints exactly that: without this, the same refusal reads
+ * "TypeError:" here and "TypeError [ERR_INVALID_CHAR]:" behind Express. Found by fuzzing.
  *
  * @param {string} message
  * @param {string} code
