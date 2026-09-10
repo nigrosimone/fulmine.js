@@ -823,10 +823,10 @@ module.exports = function compileDeclarative(cb, app) {
         if (!connection && advertise) {
             decRes = decRes.writeHeader("connection", "keep-alive");
         }
-        // not when the handler is closing: Keep-Alive describes a connection that stays open, and
-        // the ordinary path leaves it out for the same reason
-        const closing = typeof connection?.[1] === "string" && connection[1].toLowerCase() === "close";
-        if (advertise && !closing && !headers.some((header) => header[0].toLowerCase() === "keep-alive")) {
+        // not when the route wrote its own Connection, whatever it says: node writes the two as a
+        // pair and writes neither once the response has set Connection, and the ordinary path
+        // leaves it out for the same reason
+        if (advertise && !connection && !headers.some((header) => header[0].toLowerCase() === "keep-alive")) {
             decRes = decRes.writeHeader("keep-alive", "timeout=10");
         }
 

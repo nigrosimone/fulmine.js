@@ -77,6 +77,10 @@ const COALESCE_BELOW = 4 * 1024;
 const HIGH_WATERMARK = 128 * 1024;
 // the exact string json() writes, so send() can skip recomputing the charset on it
 const JSON_UTF8 = "application/json; charset=utf-8";
+
+// The Keep-Alive every response is seeded with, kept as a constant so setHeader can tell it apart
+// from one the application set itself.
+const SEEDED_KEEP_ALIVE = "timeout=10";
 // send's ceiling for maxAge, one year in milliseconds. Anything larger is clamped to it rather
 // than written out, since a year is already longer than any cache will honour.
 const MAX_MAXAGE = 60 * 60 * 24 * 365 * 1000;
@@ -187,7 +191,7 @@ module.exports = class Response extends LazyWritable {
                 ? {}
                 : {
                       connection: "keep-alive",
-                      "keep-alive": "timeout=10"
+                      "keep-alive": SEEDED_KEEP_ALIVE
                   };
         // the client asked for the connection to be closed, and uWS closes it, so saying otherwise
         // would be telling the client something the transport contradicts. A declarative response
@@ -1329,6 +1333,14 @@ module.exports = class Response extends LazyWritable {
         // catch it
         const out = Array.isArray(value) ? value.map(String) : String(value);
         validateHeaderValue(field, out);
+        // node writes Connection and Keep-Alive as a pair, and writes neither once the response has
+        // set Connection itself, so the seeded Keep-Alive goes with it. Anything that opens an
+        // event stream sets Connection: the MCP transport does, and so does every SSE library.
+        if (key === "connection" && this.headers["keep-alive"] === SEEDED_KEEP_ALIVE) {
+            // through an index signature: the seeded pair is not optional in what the constructor
+            // infers, so a plain delete of it is a type error
+            delete (/** @type {Record<string, string|string[]>} */ (this.headers)["keep-alive"]);
+        }
         this.headers[key] = out;
         return this;
     }
