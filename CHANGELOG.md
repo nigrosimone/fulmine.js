@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.19.6](https://github.com/nigrosimone/fulmine.js/compare/v5.19.5...v5.19.6) (2026-09-10)
+
+### Bug Fixes
+
+* **body-parser:** the limit counts the inflated bytes, not the length a compressed body declares ([8eec999](https://github.com/nigrosimone/fulmine.js/commit/8eec999592472d7cda6747fdda11148caa7c8f01))
+* **response:** name the code in the stack of a refused chunk, as node does ([6028902](https://github.com/nigrosimone/fulmine.js/commit/6028902baa86653ac09ccc3a967c0e2c081f3617))
+* **response:** send(undefined) after a write ends the response, it does not refuse the head ([2ac579e](https://github.com/nigrosimone/fulmine.js/commit/2ac579ee46f886a675f2fccbc553d9c16441082a))
+
 ## [5.19.5](https://github.com/nigrosimone/fulmine.js/compare/v5.19.4...v5.19.5) (2026-09-10)
 
 ### Bug Fixes
