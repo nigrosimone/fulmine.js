@@ -648,17 +648,28 @@ module.exports = class Response extends LazyWritable {
 
     /**
      * @param {string|Buffer|Uint8Array|null|(() => void)} [data] the last body piece, or the callback in
+     *   node's one-argument shape
+     * @param {BufferEncoding|(() => void)} [encoding] how a string body is encoded, or the callback in
      *   node's two-argument shape
-     * @param {(() => void)|string} [cb] the callback; an encoding in that position is dropped
+     * @param {() => void} [cb]
      * @returns {this}
      */
-    end(data, cb) {
+    end(data, encoding, cb) {
         if (typeof data === "function") {
             cb = data;
             data = undefined;
+            encoding = undefined;
+        } else if (typeof encoding === "function") {
+            cb = encoding;
+            encoding = undefined;
         }
         if (typeof cb !== "function") {
-            cb = undefined; // silence the error?
+            cb = undefined;
+        }
+        // uWS takes a string as utf-8 and nothing else, so any other encoding is applied here, the
+        // way write() applies it: res.end(data, "binary") is how old code sends an image
+        if (typeof data === "string" && encoding !== undefined && encoding !== "utf8" && encoding !== "utf-8") {
+            data = Buffer.from(data, encoding);
         }
 
         if (this.writingChunk) {

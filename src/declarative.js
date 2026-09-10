@@ -314,6 +314,11 @@ function readBody(callExprs, headers, body, app, queries, params) {
             if (call.obj.propertyName !== "end") {
                 bodyFromSend = true;
             }
+            // one argument at most: res.end(data, encoding) and res.end(data, cb) are shapes a
+            // compiled response cannot stand for, and stood for them as if the extra were not there
+            if (call.arguments.length > 1) {
+                return null;
+            }
             const arg = call.arguments[0];
 
             if (call.obj.propertyName === "json") {
