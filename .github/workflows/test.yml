@@ -168,6 +168,24 @@ jobs:
             - name: Fuzz against Express on a random seed
               run: npm run fuzz -- --rounds 20
 
+            # The optimizer against the chain it stands in for. No oracle in it, so it reaches the
+            # shapes Express has no opinion about, and it is the arm that covers the compiled
+            # responses the generated handlers now reach.
+            - name: Fuzz against itself with the optimizer off
+              run: npm run fuzz -- --self --rounds 20
+
+            # The three surfaces fuzz.js cannot reach through fetch. Each is short: the point is
+            # that a push touching framing, a header writer or connection reuse is not merged
+            # without the tool that sits under it having run at all.
+            - name: Fuzz the request bytes against node's parser
+              run: npm run fuzz:wire -- --rounds 150
+
+            - name: Fuzz the header writers
+              run: npm run fuzz:headers
+
+            - name: Fuzz a sequence down one connection
+              run: npm run fuzz:session -- --rounds 40
+
     # The frameworks that build on Express, each serving the same application twice: once on
     # Express and once on this, with the two outputs compared byte for byte. Same rule as the
     # comparison suite, and a job of its own because these dependencies are frameworks rather than
