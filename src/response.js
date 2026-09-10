@@ -49,6 +49,35 @@ const { isAbsolute } = require("path");
 const fs = require("fs");
 const Path = require("path");
 const statuses = require("statuses");
+
+/**
+ * The TypeError node throws for a chunk that is not a string, a Buffer or a Uint8Array, named the
+ * way node names it: a primitive by type and value, an object by its constructor.
+ *
+ * @param {unknown} chunk what end() was handed, known here not to be a string or a Uint8Array
+ * @returns {NodeJS.ErrnoException}
+ */
+function invalidChunkError(chunk) {
+    let received;
+    if (chunk === null) {
+        received = "null";
+    } else if (typeof chunk === "object" || typeof chunk === "function") {
+        const name = /** @type {any} */ (chunk).constructor?.name;
+        received = name ? `an instance of ${name}` : "an instance of Object";
+    } else if (typeof chunk === "bigint") {
+        received = `type bigint (${chunk}n)`;
+    } else if (typeof chunk === "symbol") {
+        received = `type symbol (${String(chunk)})`;
+    } else {
+        received = `type ${typeof chunk} (${chunk})`;
+    }
+    /** @type {NodeJS.ErrnoException} */
+    const err = new TypeError(
+        `The "chunk" argument must be of type string or an instance of Buffer or Uint8Array. Received ${received}`
+    );
+    err.code = "ERR_INVALID_ARG_TYPE";
+    return err;
+}
 const { sign } = require("cookie-signature");
 const ms = require("ms");
 const Socket = require("./socket.js");
@@ -539,7 +568,17 @@ module.exports = class Response extends LazyWritable {
             throw headersSentError("write");
         }
         this.statusCode = statusCode;
-        const reason = applyWriteHead(this, statusMessage, headers);
+        let reason;
+        try {
+            reason = applyWriteHead(this, statusMessage, headers);
+        } catch (err) {
+            // node fixes the phrase before it reads the headers and keeps it, so a 500 after a
+            // writeHead that threw goes out as "500 OK"
+            if (!this.statusText) {
+                this.statusText = typeof statusMessage === "string" ? statusMessage : statuses.message[statusCode];
+            }
+            throw err;
+        }
         if (reason !== undefined) {
             this.statusText = reason;
         }
@@ -668,6 +707,15 @@ module.exports = class Response extends LazyWritable {
         }
         if (typeof cb !== "function") {
             cb = undefined;
+        }
+        // node refuses a chunk that is not a string, a Buffer or a Uint8Array, and writes it only
+        // `if (chunk)`, so end(0) sends nothing. A number reached uWS and answered nothing at all.
+        // The typeof goes first so a string body, which is nearly every body, leaves on it alone
+        if (typeof data !== "string" && data !== undefined && !(data instanceof Uint8Array)) {
+            if (data) {
+                throw invalidChunkError(data);
+            }
+            data = undefined;
         }
         // uWS takes a string as utf-8 and nothing else, so any other encoding is applied here, the
         // way write() applies it: res.end(data, "binary") is how old code sends an image
@@ -810,6 +858,16 @@ module.exports = class Response extends LazyWritable {
         // that happens to be empty: no content-type and no ETag for send(), both for send(null)
         // and send("").
         if (body === undefined) {
+            // still through freshness and the bodiless statuses, as every express send is: a 204
+            // answered with json(undefined) loses the type json had set
+            if (this.req.fresh) {
+                this.status(304);
+            }
+            if (this.statusCode === 204 || this.statusCode === 304) {
+                delete this.headers["content-type"];
+                delete this.headers["content-length"];
+                delete this.headers["transfer-encoding"];
+            }
             return this.end("");
         }
         // null is an object as far as Express's switch is concerned, so it becomes the empty
@@ -827,8 +885,15 @@ module.exports = class Response extends LazyWritable {
             return this.json(body);
         } else if (typeof body === "boolean") {
             return this.json(body);
-        } else if (!isBuffer) {
-            body = String(body);
+        } else if (!isBuffer && typeof body !== "string") {
+            // a symbol, a bigint or a function: express sizes it with byteLength or from(), and
+            // neither takes it, so what node throws is the answer. A string never gets here: it
+            // is the common body, and measuring it twice cost 157us per thousand requests
+            const generateETag = !this.headers["etag"] && typeof this.app._hot().etagFn === "function";
+            if (!generateETag && body.length < 1000) {
+                Buffer.byteLength(body, "utf8");
+            }
+            Buffer.from(body, "utf8");
         }
         if (typeof body === "string" && !isBuffer) {
             const contentType = this.headers["content-type"];
