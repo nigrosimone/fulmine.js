@@ -811,6 +811,53 @@ function serveStatic(root, options) {
 }
 
 /**
+ * A zlib throw as the 400 body-parser answers a corrupt body with. zlib reports it twice, and the
+ * 'error' a tick later would land on nothing and end the process, so the listener goes back on.
+ *
+ * @param {Inflater} inflate
+ * @param {HttpError} err what inflate.process threw
+ * @returns {HttpError} the same error, carrying its status
+ */
+function inflateError(inflate, err) {
+    inflate.instance?.on?.("error", () => {});
+    err.status = 400;
+    err.statusCode = 400;
+    err.expose = true;
+    return err;
+}
+
+/**
+ * What a Content-Encoding means here: the decompressor to run, or the 415 it is refused with. An
+ * empty body is judged the same way, so both callers share this.
+ *
+ * @param {string|undefined} rawContentEncoding
+ * @param {any} options the parser's options, read loosely: only inflate is looked at
+ * @returns {{inflate?: Inflater, error?: HttpError}}
+ */
+function encodingFor(rawContentEncoding, options) {
+    if (!options.inflate) {
+        const contentEncoding = (rawContentEncoding || "identity").toLowerCase();
+        if (contentEncoding !== "identity") {
+            return {
+                error: bodyError("content encoding unsupported", 415, "encoding.unsupported", {
+                    encoding: contentEncoding
+                })
+            };
+        }
+        return {};
+    }
+    const inflate = createInflate(rawContentEncoding);
+    if (inflate === false) {
+        return {
+            error: bodyError('unsupported content encoding "' + rawContentEncoding + '"', 415, "encoding.unsupported", {
+                encoding: rawContentEncoding
+            })
+        };
+    }
+    return { inflate };
+}
+
+/**
  * The decompressor for a Content-Encoding, or undefined when the body is not compressed. An
  * encoding nobody knows throws, since decoding it wrong is worse than refusing.
  *
@@ -986,8 +1033,11 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 }
             }
 
-            // the charset is settled before anything is read, as body-parser settles it: a bad one
-            // answers 415 even for an empty body, and before the verify hook can run
+            // The charset is settled before anything is read, as body-parser settles it: a bad one
+            // answers 415 even for an empty body, and before the verify hook can run. Its two
+            // halves sit on either side of the encoding, which is the order body-parser reads
+            // them in: the charset this parser accepts at all, then the Content-Encoding, then
+            // whether iconv knows the charset.
             let encoding;
             if (charsetPolicy) {
                 encoding = charsetOf(type) ?? defaultCharset;
@@ -997,9 +1047,16 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 ) {
                     return next(charsetError(encoding));
                 }
-                if (!BUFFER_CHARSETS.has(encoding) && !loadIconv().encodingExists(encoding)) {
-                    return next(charsetError(encoding));
-                }
+            }
+
+            const encoded = encodingFor(req._rawHeader("content-encoding"), options);
+            if (encoded.error) {
+                return next(encoded.error);
+            }
+            const inflate = encoded.inflate;
+
+            if (encoding !== undefined && !BUFFER_CHARSETS.has(encoding) && !loadIconv().encodingExists(encoding)) {
+                return next(charsetError(encoding));
             }
 
             // an empty body still has to produce this parser's empty value the way express does -
@@ -1008,7 +1065,17 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             // and the verify hook still runs first: webhook signature checks rely on that
             if (lengthNumber === 0) {
                 req.bodyRead = true;
-                const empty = Buffer.alloc(0);
+                /** @type {Buffer<ArrayBufferLike>} what the parser is handed: zlib's tail is wider */
+                let empty = Buffer.alloc(0);
+                if (inflate) {
+                    // nothing to inflate is a stream cut short for zlib, and body-parser answers
+                    // that with a 400 rather than with the empty value
+                    try {
+                        empty = inflate.process(EMPTY_BUFFER, inflate._finishFlag);
+                    } catch (e) {
+                        return next(inflateError(inflate, /** @type {HttpError} */ (e)));
+                    }
+                }
                 if (!runVerify(req, res, next, options, empty, encoding)) {
                     return;
                 }
@@ -1039,33 +1106,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 return next();
             }
 
-            /** @type {Inflater|false|undefined} */
-            let inflate;
             let totalSize = 0;
-            const rawContentEncoding = req._rawHeader("content-encoding");
-            const contentEncoding = (rawContentEncoding || "identity").toLowerCase();
-            if (!options.inflate && contentEncoding !== "identity") {
-                return next(
-                    bodyError("content encoding unsupported", 415, "encoding.unsupported", {
-                        encoding: contentEncoding
-                    })
-                );
-            }
-            if (options.inflate) {
-                inflate = createInflate(rawContentEncoding);
-                if (inflate === false) {
-                    return next(
-                        bodyError(
-                            'unsupported content encoding "' + rawContentEncoding + '"',
-                            415,
-                            "encoding.unsupported",
-                            {
-                                encoding: rawContentEncoding
-                            }
-                        )
-                    );
-                }
-            }
 
             // From here the body really gets read, and uWS delivers it on native callbacks that
             // carry no async context, so this is the one continuation that has to be bound: an
@@ -1137,24 +1178,16 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             let finished = false;
 
             /**
-             * A zlib throw becomes the 400 body-parser answers a corrupt body with.
-             *
-             * zlib reports it twice: process() throws, and the stream emits 'error' a tick later.
-             * fast-zlib removes its own listeners on the way out, so that second one lands on
-             * nothing, and an unhandled 'error' event ends the process. The listener goes on after
-             * the throw, since process() would have removed it.
+             * A zlib throw becomes the 400 body-parser answers a corrupt body with, and what was
+             * kept of the body goes.
              *
              * @param {HttpError} err what inflate.process threw
              */
             function failInflate(err) {
-                /** @type {Inflater} */ (inflate).instance?.on?.("error", () => {});
                 finished = true;
                 abs.length = 0;
                 target = null;
-                err.status = 400;
-                err.statusCode = 400;
-                err.expose = true;
-                next(err);
+                next(inflateError(/** @type {Inflater} */ (inflate), err));
             }
 
             /**
