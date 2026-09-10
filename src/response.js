@@ -1199,10 +1199,13 @@ module.exports = class Response extends LazyWritable {
                 }
 
                 if (ranges === -1) {
-                    // the header goes on the response itself, as send writes it before raising
-                    // the error, and the status stays on the error for the handler to apply
-                    this.headers["content-range"] = `bytes */${len}`;
-                    return done(httpError(416));
+                    // on the response as send writes it, and on the error too: the error page
+                    // drops the content headers and writes back only what the error carries
+                    const unsatisfiable = `bytes */${len}`;
+                    this.headers["content-range"] = unsatisfiable;
+                    const err = httpError(416);
+                    err.headers = { "Content-Range": unsatisfiable };
+                    return done(err);
                 }
                 if (ranges !== -2 && ranges.length === 1) {
                     this.status(206);

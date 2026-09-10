@@ -930,13 +930,21 @@ module.exports = class Router extends EventEmitter {
             }
             return;
         }
-        if (response.statusCode === 200) {
-            // the status the error carries, as express's own final handler reads it: a body that
-            // was too large or a request cut short is the client's 4xx, not a 500 from here
-            const status = err?.status ?? err?.statusCode;
-            response.statusCode = Number.isInteger(status) && status >= 400 && status <= 599 ? status : 500;
+        // the status express's final handler picks: the error's own when it is an error status,
+        // else the response's when that is one, else 500
+        const own = [err?.status, err?.statusCode].find((s) => typeof s === "number" && s >= 400 && s < 600);
+        let carried;
+        if (own !== undefined) {
+            response.statusCode = own;
+            // only with a status of its own does the error's headers go out, and only after the
+            // page drops the content ones: a 416 carries the Content-Range it wants kept
+            if (err.headers && typeof err.headers === "object") {
+                carried = err.headers;
+            }
+        } else if (!(response.statusCode >= 400 && response.statusCode <= 599)) {
+            response.statusCode = 500;
         }
-        this._sendErrorPage(request, response, err, true);
+        this._sendErrorPage(request, response, err, true, carried);
     }
 
     /**
@@ -1390,13 +1398,21 @@ module.exports = class Router extends EventEmitter {
      * @param {Response} response
      * @param {unknown} err whatever was thrown, which need not be an Error
      * @param {boolean} [checkEnv] whether production should redact it
+     * @param {Record<string, any>} [carried] the headers the error asked for, written last
      */
-    _sendErrorPage(request, response, err, checkEnv = false) {
+    _sendErrorPage(request, response, err, checkEnv = false, carried = undefined) {
         err = this._generateErrorPage(err, response.statusCode, checkEnv);
         request.noEtag = true;
         // a header that cannot be written is what brought the request here in the first place when
         // the throw came out of the flush, and writing it again would throw with nobody left
         response._dropUnwritableHeaders();
+        // the content headers a handler set before failing describe a body that is not this one
+        response.removeHeader("Content-Encoding");
+        response.removeHeader("Content-Language");
+        response.removeHeader("Content-Range");
+        for (const name in carried) {
+            response.setHeader(name, carried[name]);
+        }
         response.setHeader("Content-Type", "text/html; charset=utf-8");
         response.setHeader("X-Content-Type-Options", "nosniff");
         response.setHeader("Content-Security-Policy", "default-src 'none'");
