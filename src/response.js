@@ -1843,11 +1843,14 @@ module.exports = class Response extends LazyWritable {
      * @returns {this}
      */
     json(body) {
+        const hot = this.app._hot();
+        // serialised before the type is set, as express orders it: a body JSON.stringify refuses,
+        // a BigInt for one, throws out of here with the response's headers as they were
+        const json = stringify(body, hot.jsonReplacer, hot.jsonSpaces, hot.jsonEscape);
         if (!this.headers["content-type"]) {
             this.headers["content-type"] = JSON_UTF8;
         }
-        const hot = this.app._hot();
-        return this.send(stringify(body, hot.jsonReplacer, hot.jsonSpaces, hot.jsonEscape));
+        return this.send(json);
     }
 
     /**
