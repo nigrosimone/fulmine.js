@@ -18,6 +18,8 @@ limitations under the License.
 
 const acorn = require("acorn");
 
+/** @typedef {import("./router-utils.js").RouteEntry} RouteEntry */
+
 // Marks a middleware the analysis may trust on a GET request without reading its source: the
 // body parsers set it, whose prologue only reads body-framing headers and leaves a bodyless
 // GET alone (and a GET that declares a body falls back to the full header copy).
@@ -107,7 +109,7 @@ function analyze(fn) {
         // class methods and native functions do not parse alone, and unread code is unknown code
         return UNKNOWN;
     }
-    let root = /** @type {any} */ (tree.body[0]);
+    let root = /** @type {import("acorn").AnyNode} */ (tree.body[0]);
     if (!root) {
         return UNKNOWN;
     }
@@ -122,7 +124,8 @@ function analyze(fn) {
         return UNKNOWN;
     }
 
-    const params = /** @type {any[]} */ (root.params);
+    // checked by the loop below, which answers UNKNOWN for anything else
+    const params = /** @type {import("acorn").Identifier[]} */ (root.params);
     // rest or destructured parameters alias the objects somewhere the walk cannot follow
     for (const p of params) {
         if (p.type !== "Identifier") {
@@ -231,9 +234,11 @@ function analyze(fn) {
  * Walks every node, handing each its parent. Arrays and nested objects are entered, nothing
  * is interpreted: the judging happens in the visitor.
  *
- * @param {any} node an acorn AST node. acorn ships no useful node types, and every shape here is checked by hand
+ * @param {any} node an acorn node, or an array or a scalar under one: walked by key, so no shape
+ *   is assumed
  * @param {any} parent its parent node, or null at the root
- * @param {(node: any, parent: any) => void} visit
+ * @param {(node: any, parent: any) => void} visit handed every node, loose because the visitor
+ *   reads edges of its own off each
  */
 function walk(node, parent, visit) {
     if (!node || typeof node.type !== "string") {
@@ -265,7 +270,7 @@ function walk(node, parent, visit) {
  * it passes only when no later route could catch the fall-through. The framework's own 404 answers
  * from the path alone.
  *
- * @param {any[]} chain the routes the native handler runs, in order, this route last
+ * @param {RouteEntry[]} chain the routes the native handler runs, in order, this route last
  * @param {boolean} allowTerminalNext whether a fall-through past the chain lands only in the
  *   framework's own final answer
  * @returns {{skipHeaders: boolean, skipQuery: boolean}}

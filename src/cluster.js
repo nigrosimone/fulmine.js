@@ -156,7 +156,7 @@ function becomeSupervisor() {
 function forkWorkers(count) {
     let stopping = false;
     supervising = true;
-    /** @param {any} worker @param {number} code @param {string} signal */
+    /** @param {import("cluster").Worker} worker @param {number} code @param {string} signal */
     const onExit = (worker, code, signal) => {
         if (!stopping) {
             console.error(`worker ${worker.process.pid} exited (${signal || code}), starting another`);
@@ -172,7 +172,7 @@ function forkWorkers(count) {
         supervising = false;
         cluster.off("exit", onExit);
         for (const id of Object.keys(cluster.workers ?? {})) {
-            /** @type {any} */ (cluster.workers)[id]?.kill();
+            /** @type {NodeJS.Dict<import("cluster").Worker>} */ (cluster.workers)[id]?.kill();
         }
     };
     for (const signal of ["SIGTERM", "SIGINT"]) {

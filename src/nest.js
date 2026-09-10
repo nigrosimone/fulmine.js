@@ -47,7 +47,8 @@ const fulmine = require("./index.js");
  */
 class FulmineExpressAdapter extends ExpressAdapter {
     /**
-     * @param {any} [instance] an application from `fulmine()`; one is created when omitted
+     * @param {import("fulmine.js").FulmineApplication} [instance] an application from `fulmine()`; one is
+     *   created when omitted
      */
     constructor(instance) {
         super(instance || fulmine());
@@ -61,7 +62,7 @@ class FulmineExpressAdapter extends ExpressAdapter {
     /**
      * The app is the server. Nest calls this once, from NestApplication's constructor.
      *
-     * @param {any} [options] the options NestFactory.create was given
+     * @param {import("@nestjs/common").NestApplicationOptions} [options] the options NestFactory.create was given
      * @returns {void}
      */
     initHttpServer(options) {

@@ -106,7 +106,7 @@ module.exports = class Response extends LazyWritable {
     /** Whether a flush is already booked for the end of this turn. */
     #flushBooked = false;
 
-    /** @type {any} */
+    /** @type {Response["headers"]|null} */
     #outHeaders = null;
 
     /**
@@ -127,10 +127,9 @@ module.exports = class Response extends LazyWritable {
      * two that describe the connection, since every response carries them, and x-powered-by only
      * when the setting asks for it.
      *
-     * @param {any} res the uWS response
-     * @param {any} req the Request, already built. Loose because the per-app subclass in
-     *   application.js inherits this constructor and its own shape has to stay assignable
-     * @param {any} app the application or router this request arrived at
+     * @param {import("uWebSockets.js").HttpResponse} res the uWS response
+     * @param {InstanceType<typeof import("./request.js")>} req the Request, already built
+     * @param {import("./application.js").Application} app the application this request arrived at
      */
     constructor(res, req, app) {
         super();
@@ -139,6 +138,7 @@ module.exports = class Response extends LazyWritable {
         // the order node's own Writable constructor lays down, so the hidden class is the one every
         // other stream in the process has, and node's init keeps this object when the state is
         // finally built
+        /** @type {Record<string, Function|undefined>} */
         this._events = {
             close: undefined,
             error: undefined,
@@ -191,7 +191,7 @@ module.exports = class Response extends LazyWritable {
         this.body = undefined;
         // what was handed to uWS, kept so a caller asking for content-length after the fact can be
         // answered, see get(). Undefined until the response ends, and for one that sends no body
-        /** @type {string|Buffer|undefined} */
+        /** @type {string|Buffer|Uint8Array|undefined} */
         this._sentBody = undefined;
         // false while the uWS route handler is still in its synchronous window, where uWS holds
         // the socket corked itself; the two uWS entry points flip it once that window closes
@@ -206,8 +206,7 @@ module.exports = class Response extends LazyWritable {
         //
         // The condition is the safety of it: a fresh response has no listeners, so both slots are
         // free, and anything else falls back to on(), which finds what this wrote.
-        // cast because _events and _eventsCount are EventEmitter's own bookkeeping and have no type
-        const self = /** @type {any} */ (this);
+        const self = this;
         const events = self._events;
         if (
             self._eventsCount === 0 &&
@@ -252,7 +251,7 @@ module.exports = class Response extends LazyWritable {
      * aborted uWS response is a use after free. writableEnded reads true after this, where node
      * leaves it false until end() is called.
      *
-     * @param {any} [error] whatever the caller is destroying the response with
+     * @param {Error} [error] whatever the caller is destroying the response with
      * @returns {this}
      */
     destroy(error) {
@@ -282,7 +281,7 @@ module.exports = class Response extends LazyWritable {
             return;
         }
         this._pendingLinked = false;
-        const pending = /** @type {any} */ (this)._pendingIn;
+        const pending = /** @type {{_pendingIn?: {head: Response|null}}} */ (this)._pendingIn;
         const prev = this._pendingPrev;
         const next = this._pendingNext;
         if (prev) {
@@ -337,7 +336,7 @@ module.exports = class Response extends LazyWritable {
      * over, as node's does; the request's `socket` is the same object and stays, so it comes
      * through here instead.
      *
-     * @returns {any}
+     * @returns {Socket}
      */
     _socketShim() {
         if (!this.#socket) {
@@ -512,8 +511,9 @@ module.exports = class Response extends LazyWritable {
      * @sveltejs/adapter-node included, so the charset was added to pages nobody asked it for.
      *
      * @param {number} statusCode
-     * @param {string|Record<string, any>|any[]} [statusMessage] the reason phrase, or the headers
-     * @param {Record<string, any>|any[]} [headers]
+     * @param {string|import("http").OutgoingHttpHeaders|import("http").OutgoingHttpHeader[]} [statusMessage] the
+     *   reason phrase, or the headers
+     * @param {import("http").OutgoingHttpHeaders|import("http").OutgoingHttpHeader[]} [headers]
      * @returns {this}
      */
     writeHead(statusCode, statusMessage, headers) {
@@ -525,7 +525,9 @@ module.exports = class Response extends LazyWritable {
             if (!statusMessage) return this;
             // the two-argument shape, where what looked like a reason phrase is the headers. A
             // string reaching here was already taken as the phrase above and simply has no keys.
-            headers = /** @type {Record<string, any>} */ (statusMessage);
+            headers = /** @type {import("http").OutgoingHttpHeaders|import("http").OutgoingHttpHeader[]} */ (
+                statusMessage
+            );
         }
         if (Array.isArray(headers)) {
             // node takes a flat list here, name then value, and not a list of pairs. An odd length
@@ -537,7 +539,7 @@ module.exports = class Response extends LazyWritable {
                 throw err;
             }
             for (let i = 0; i < headers.length; i += 2) {
-                this.setHeader(headers[i], headers[i + 1]);
+                this.setHeader(/** @type {string} */ (headers[i]), headers[i + 1]);
             }
             return this;
         }
@@ -645,8 +647,9 @@ module.exports = class Response extends LazyWritable {
     }
 
     /**
-     * @param {any} [data] the last body piece, or the callback in node's two-argument shape
-     * @param {any} [cb]
+     * @param {string|Buffer|Uint8Array|null|(() => void)} [data] the last body piece, or the callback in
+     *   node's two-argument shape
+     * @param {(() => void)|string} [cb] the callback; an encoding in that position is dropped
      * @returns {this}
      */
     end(data, cb) {
@@ -683,8 +686,8 @@ module.exports = class Response extends LazyWritable {
      * The corked tail of end(): status, headers, body and the finish events. Split out so a
      * synchronous answer calls it straight, already inside uWS's own cork.
      *
-     * @param {any} data the last body piece
-     * @param {any} cb
+     * @param {string|Buffer|Uint8Array|null|undefined} data the last body piece
+     * @param {(() => void)|undefined} cb
      */
     _finish(data, cb) {
         // read before the head is written below, which is what sets the flag: what matters further
@@ -739,7 +742,7 @@ module.exports = class Response extends LazyWritable {
             if (this.req.method === "HEAD") {
                 const length = Buffer.byteLength(data ?? "");
                 this.headers["content-length"] = String(length);
-                this._res.endWithoutBody(length.toString(), closeConnection);
+                this._res.endWithoutBody(length, closeConnection);
             } else {
                 // remembered rather than measured: only a caller that asks for content-length pays
                 // for it, and uWS is measuring the same bytes for the wire anyway
@@ -877,7 +880,8 @@ module.exports = class Response extends LazyWritable {
      * "ignore"), `acceptRanges`, `cacheControl`, `immutable`, `etag` and `setHeaders`.
      *
      * @param {string} path
-     * @param {import("./options").SendFileOptions} [options]
+     * @param {import("./options").SendFileOptions|((err?: Error) => void)} [options] or the callback in
+     *   its place
      * @param {(err?: Error) => void} [callback] called once sent, or with the error
      */
     sendFile(path, options = new NullObject(), callback) {
@@ -890,7 +894,7 @@ module.exports = class Response extends LazyWritable {
             throw new TypeError("path must be a string to res.sendFile");
         }
         if (typeof options === "function") {
-            callback = /** @type {any} */ (options);
+            callback = options;
             options = new NullObject();
         }
         if (!options) options = new NullObject();
@@ -900,7 +904,7 @@ module.exports = class Response extends LazyWritable {
         // The router's next and not the route's: express reports a file it could not serve past the
         // rest of the route, so a four argument handler inside the route never sees it
         const next = this.req._leaveRoute ?? this.req.next;
-        const done = /** @type {(err?: any) => void} */ (
+        const done = /** @type {(err?: NodeJS.ErrnoException) => void} */ (
             (err) => {
                 if (callback) return callback(err);
                 if (err && err.code === "EISDIR") return next();
@@ -914,7 +918,9 @@ module.exports = class Response extends LazyWritable {
         // the branch that is already a number: ms() answers undefined for a duration it cannot
         // read, and Number.isNaN(undefined) is false, so an unreadable string reached it as NaN
         const maxAge = Number(
-            typeof options.maxAge === "string" ? ms(/** @type {any} */ (options.maxAge)) : options.maxAge
+            typeof options.maxAge === "string"
+                ? ms(/** @type {import("ms").StringValue} */ (options.maxAge))
+                : options.maxAge
         );
         options.maxAge = Number.isNaN(maxAge) ? 0 : Math.min(Math.max(0, maxAge), MAX_MAXAGE);
         if (typeof options.lastModified === "undefined") {
@@ -1005,14 +1011,15 @@ module.exports = class Response extends LazyWritable {
             } catch (err) {
                 // the fs error itself, carrying its errno and path, with send's status written on
                 // it: a missing file is the request's 404, an unreadable one is the server's 500
-                return done(asStatError(/** @type {any} */ (err)));
+                return done(asStatError(/** @type {import("./utils.js").HttpError} */ (err)));
             }
             if (stat.isDirectory()) {
                 // Express reports a directory as an EISDIR with no status, because send tells it
                 // apart from an error: it emits "directory", and res.sendFile has no listener for
                 // one. So this is not a 404, and an error handler reading err.code sees the code
                 // it expects. Without a callback, done() turns it into a plain next().
-                const err = /** @type {any} */ (new Error("EISDIR, read"));
+                /** @type {NodeJS.ErrnoException} */
+                const err = new Error("EISDIR, read");
                 err.code = "EISDIR";
                 return done(err);
             }
@@ -1041,7 +1048,7 @@ module.exports = class Response extends LazyWritable {
             }
         }
         if (options.setHeaders) {
-            options.setHeaders(/** @type {any} */ (this), fullpath, stat);
+            options.setHeaders(this, fullpath, stat);
         }
 
         // etag, from the stat and never from the app's "etag fn". send computes this itself with
@@ -1149,7 +1156,8 @@ module.exports = class Response extends LazyWritable {
                         // ECONNABORTED to a callback and never to next(), so aborts stay out of
                         // the error middleware.
                         if (this.aborted && callback) {
-                            const err = /** @type {any} */ (new Error("Request aborted"));
+                            /** @type {NodeJS.ErrnoException} */
+                            const err = new Error("Request aborted");
                             err.code = "ECONNABORTED";
                             callback(err);
                         }
@@ -1267,7 +1275,8 @@ module.exports = class Response extends LazyWritable {
      * what a media type is. res.set does that, and is what Express code should use.
      *
      * @param {string} field
-     * @param {any} value an array sends the header once per entry
+     * @param {number|string|readonly string[]|undefined} value an array sends the header once per
+     *   entry; undefined is refused, as node refuses it
      * @returns {this}
      * @throws {Error} once the headers have gone out
      * @throws {TypeError} if the name is not a token, the value is undefined, or the value holds a
@@ -1439,7 +1448,7 @@ module.exports = class Response extends LazyWritable {
      * node's `assignSocket`, which the http server uses when a response is
      * handed a raw socket. There is no such socket here.
      *
-     * @param {any} [socket] node takes one here and there is none to take
+     * @param {import("net").Socket} [socket] node takes one here and there is none to take
      * @returns {void}
      */
     assignSocket(socket) {}
@@ -1447,7 +1456,7 @@ module.exports = class Response extends LazyWritable {
     /**
      * node's `detachSocket`, which the http server uses when a response is
      * handed a raw socket. There is no such socket here.
-     * @param {any} [socket] node takes one here and there is none to take
+     * @param {import("net").Socket} [socket] node takes one here and there is none to take
      * @returns {void}
      */
     detachSocket(socket) {}
@@ -1508,10 +1517,10 @@ module.exports = class Response extends LazyWritable {
         const key = name.toLowerCase();
         const current = this.headers[key];
         if (current === undefined) {
-            return this.setHeader(name, /** @type {any} */ (value));
+            return this.setHeader(name, value);
         }
-        const merged = [].concat(/** @type {any} */ (current), /** @type {any} */ (value));
-        return this.setHeader(name, /** @type {any} */ (merged));
+        const merged = /** @type {string[]} */ ([]).concat(current, value);
+        return this.setHeader(name, merged);
     }
 
     /**
@@ -1526,15 +1535,15 @@ module.exports = class Response extends LazyWritable {
         if (typeof Headers === "function" && headers instanceof Headers) {
             for (const name of new Set([...headers.keys()])) {
                 if (name === "set-cookie") {
-                    this.setHeader(name, /** @type {any} */ (headers.getSetCookie()));
+                    this.setHeader(name, headers.getSetCookie());
                 } else {
-                    this.setHeader(name, /** @type {any} */ (headers.get(name)));
+                    this.setHeader(name, /** @type {string} */ (headers.get(name)));
                 }
             }
             return this;
         }
         for (const [name, value] of headers) {
-            this.setHeader(name, /** @type {any} */ (value));
+            this.setHeader(name, value);
         }
         return this;
     }
@@ -1551,8 +1560,8 @@ module.exports = class Response extends LazyWritable {
 
     /**
      * The Express name for set(), including the charset it adds to a content-type.
-     * @param {any} field a header name, or an object of them
-     * @param {any} [value] the header value, or nothing when the first argument is an object
+     * @param {string|object} field a header name, or an object of them
+     * @param {string|string[]} [value] the header value, or nothing when the first argument is an object
      * @returns {this}
      */
     header(field, value) {
@@ -1677,12 +1686,13 @@ module.exports = class Response extends LazyWritable {
      * Renders a view and sends it. With a callback the result goes to the callback instead, and
      * nothing is sent. A function in the options position is taken as the callback.
      * @param {string} view view name
-     * @param {Record<string, any>} [options] locals for the view
+     * @param {Record<string, any>|((err: Error|null, html?: string) => void)} [options] locals for the
+     *   view, or the callback in its place
      * @param {(err: Error|null, html?: string) => void} [callback]
      */
     render(view, options, callback) {
         if (typeof options === "function") {
-            callback = /** @type {any} */ (options);
+            callback = /** @type {(err: Error|null, html?: string) => void} */ (options);
             options = {};
         }
         if (!options) {
@@ -1720,7 +1730,7 @@ module.exports = class Response extends LazyWritable {
         const opt = { ...(options ?? {}) }; // create a new ref because we change original object (https://github.com/dimdenGD/ultimate-express/issues/68)
         // cookie-parser hangs the secret on the request, so it is read off it rather than
         // declared here: without that middleware there is none, which is what this checks
-        const req = /** @type {any} */ (this.req);
+        const req = /** @type {{secret?: string}} */ (this.req);
         if (opt.signed && !req.secret) {
             // the message has to read like this: it is the one Express throws, and it names the
             // thing that is actually missing rather than the library that noticed
@@ -1739,7 +1749,7 @@ module.exports = class Response extends LazyWritable {
             delete opt.maxAge;
         }
         if (opt.signed) {
-            val = "s:" + sign(val, req.secret);
+            val = "s:" + sign(val, /** @type {string} */ (req.secret));
         }
 
         if (opt.path == null) {
@@ -1784,7 +1794,7 @@ module.exports = class Response extends LazyWritable {
      * Answers according to the Accept header, calling the handler whose key matches best. A
      * `default` key catches everything else; without one an unmatched request gets 406.
      * Sets Vary: Accept.
-     * @param {Record<string, any>} object handlers keyed by extension or mime type
+     * @param {Record<string, Function>} object handlers keyed by extension or mime type
      * @returns {this}
      */
     format(object) {
@@ -1878,7 +1888,7 @@ module.exports = class Response extends LazyWritable {
 
     /**
      * Adds to the Link header, one entry per key, the key being the rel.
-     * @param {Record<string, any>} links rel to url
+     * @param {Record<string, string>} links rel to url
      * @returns {this}
      */
     links(links) {
@@ -2001,7 +2011,7 @@ module.exports = class Response extends LazyWritable {
     vary(field) {
         // the vary package decides: it throws when there is no field at all, and does nothing at
         // all for an empty list, which is not the same thing and used to be refused here as well
-        vary(/** @type {any} */ (this), field);
+        vary(/** @type {import("http").ServerResponse} */ (/** @type {unknown} */ (this)), field);
         return this;
     }
 
@@ -2036,4 +2046,5 @@ module.exports = class Response extends LazyWritable {
 
 // res.contentType is res.type under express's other name. On the prototype rather than an instance
 // field, which wrote one own property per response in the constructor.
-/** @type {any} */ (module.exports.prototype).contentType = module.exports.prototype.type;
+/** @type {{contentType?: typeof module.exports.prototype.type}} */ (module.exports.prototype).contentType =
+    module.exports.prototype.type;

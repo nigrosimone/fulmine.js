@@ -113,7 +113,7 @@ module.exports = class View {
         this.engine(
             this.path,
             options,
-            /** @this {any} */ function onRender() {
+            /** @this {unknown} */ function onRender() {
                 if (!sync) {
                     return callback.apply(this, arguments);
                 }

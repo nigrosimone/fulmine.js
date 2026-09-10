@@ -20,6 +20,12 @@ const { canBeOptimizedWithParams, decodeParam, NullObject } = require("./utils.j
 
 /** @typedef {import("./router.js")} Router */
 /** @typedef {import("./application.js").Application} Application */
+/** @typedef {import("./request.js")} Request */
+/** @typedef {import("./response.js")} Response */
+/** @typedef {import("./router-utils.js").WsRoute} WsRoute */
+/** @typedef {import("uWebSockets.js").HttpRequest} UwsRequest */
+/** @typedef {import("uWebSockets.js").HttpResponse} UwsResponse */
+/** @typedef {import("uWebSockets.js").us_socket_context_t} UwsContext */
 
 // the parameter names in a path, in the order µWS numbers them
 const PARAM = /:(\w+)/g;
@@ -55,8 +61,8 @@ function joinPaths(prefix, path) {
  * @param {Router} router
  * @param {string|null} prefix the mount path accumulated so far, or null once a mount was a
  *   shape µWS cannot match, which makes everything below it unreachable
- * @param {any[]} out
- * @param {Set<any>} seen routers already walked, since a router may be mounted twice
+ * @param {WsRoute[]} out
+ * @param {Set<Router>} seen routers already walked, since a router may be mounted twice
  */
 function collectRoutes(router, prefix, out, seen) {
     if (seen.has(router)) {
@@ -102,14 +108,17 @@ function collectRoutes(router, prefix, out, seen) {
  * The uWS upgrade handler for one route: builds this project's request and response, offers them
  * to the application's own `upgrade` hook, and completes the handshake unless that hook answered.
  *
- * @param {Application} app the application whose request and response classes serve this route
+ * @param {Router} app the router whose request and response classes serve this route
  * @param {string} path the composed path, whose parameters are read back by index
- * @param {any} behavior what the caller registered
- * @returns {(res: any, req: any, context: any) => void}
+ * @param {Record<string, unknown>} behavior what the caller registered
+ * @returns {(res: UwsResponse, req: UwsRequest, context: UwsContext) => void}
  */
 function makeUpgradeHandler(app, path, behavior) {
     const paramNames = [...path.matchAll(PARAM)].map((match) => match[1]);
-    const userUpgrade = behavior.upgrade;
+    // a function, checked by checkBehavior where it was registered
+    const userUpgrade = /** @type {((req: Request, res: Response) => void|Promise<void>)|undefined} */ (
+        behavior.upgrade
+    );
 
     return (res, req, context) => {
         // read off the uWS request before anything can await: it is neutered on return, and the
@@ -122,7 +131,7 @@ function makeUpgradeHandler(app, path, behavior) {
         if (paramNames.length) {
             const params = new NullObject();
             for (let i = 0; i < paramNames.length; i++) {
-                params[paramNames[i]] = decodeParam(req.getParameter(i));
+                params[paramNames[i]] = decodeParam(/** @type {string} */ (req.getParameter(i)));
             }
             request.params = params;
         }
@@ -216,7 +225,7 @@ function registerWebSocketRoutes(app) {
  * used: a handler under a misspelled name would otherwise never run and never say why.
  *
  * @param {string} path
- * @param {any} behavior uWS's WebSocketBehavior, whose shipped typings do not describe it
+ * @param {unknown} behavior whatever was passed as one, which is what is being checked
  */
 function checkBehavior(path, behavior) {
     if (typeof path !== "string") {

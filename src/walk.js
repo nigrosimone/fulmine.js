@@ -31,6 +31,7 @@ const {
 /** @typedef {import("./request.js")} Request */
 /** @typedef {import("./response.js")} Response */
 /** @typedef {import("./router.js")} Router */
+/** @typedef {import("./router-utils.js").RouteEntry} RouteEntry */
 
 /**
  * One walk of one router's routes, for one request.
@@ -46,12 +47,12 @@ class Walk {
      * @param {Router} router
      * @param {Request} req
      * @param {Response} res
-     * @param {any[]} routes the route table being walked, see createRoute in router.js
+     * @param {RouteEntry[]} routes the route table being walked, see createRoute in router.js
      * @param {boolean} skipCheck take the route at the index without matching it, which is how an
      *   already-decided chain is walked
-     * @param {any} skipUntil route to resume after when this chain runs out, or undefined
-     * @param {(value: any) => void} resolve
-     * @param {(err: any) => void} reject
+     * @param {RouteEntry|undefined} skipUntil route to resume after when this chain runs out, or undefined
+     * @param {(value: RouteEntry|false) => void} resolve
+     * @param {(err: unknown) => void} reject
      */
     constructor(router, req, res, routes, skipCheck, skipUntil, resolve, reject) {
         this.router = router;
@@ -85,7 +86,7 @@ class Walk {
      * Leaves the rest of this route, with the error if there is one, and carries on with the route
      * after it.
      *
-     * @param {any} [err] whatever was thrown, which need not be an Error
+     * @param {unknown} [err] whatever was thrown, which need not be an Error
      */
     stepOutOfRoute(err) {
         if (err) {
@@ -289,7 +290,7 @@ class Walk {
      * Enters the route the walk is on: a mount adjusts req.url, req.path and the mount stack on the
      * way in, and then the route's callbacks run one after another through next().
      *
-     * @param {any} continueRoute what _preprocessRequest decided: true to run, "route" to skip
+     * @param {true|"route"} continueRoute what _preprocessRequest decided: true to run, "route" to skip
      */
     runRoute(continueRoute) {
         const req = this.req;
@@ -439,7 +440,7 @@ class Walk {
      * One hop, which is what next() does: with nothing, run the route's next callback; with "route",
      * leave the route; with anything else, remember it as the error and carry on.
      *
-     * @param {any} thingamabob what next() was called with: nothing, "route", or an error
+     * @param {unknown} thingamabob what next() was called with: nothing, "route", or an error
      */
     step(thingamabob) {
         const req = this.req;

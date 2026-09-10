@@ -19,6 +19,7 @@ limitations under the License.
 
 /** @typedef {import("./router.js")} Router */
 /** @typedef {import("./router-utils.js").RouteEntry} RouteEntry */
+/** @typedef {import("./application.js").Application} Application */
 
 const {
     patternToRegex,
@@ -53,7 +54,7 @@ const {
 let Router;
 
 /**
- * @param {any} cls the Router class, passed in to keep this module out of its require cycle
+ * @param {typeof import("./router.js")} cls the Router class, passed in to keep this module out of its require cycle
  */
 function useRouterClass(cls) {
     Router = cls;
@@ -66,8 +67,8 @@ function useRouterClass(cls) {
  *
  * @param {Router} router
  * @param {RouteEntry} route
- * @param {any[]} routes every route of this router, in registration order
- * @returns {any[]|false} the chain, ending in the route itself
+ * @param {RouteEntry[]} routes every route of this router, in registration order
+ * @returns {RouteEntry[]|false} the chain, ending in the route itself
  */
 function optimizeRoute(router, route, routes) {
     const optimizedPath = [];
@@ -216,7 +217,8 @@ function optimizeRoute(router, route, routes) {
  * routers and carrying their prefix down. Runs once, when the app starts listening, since it
  * needs every route to have been registered first.
  *
- * @param {any} root the application whose routes are being compiled
+ * @param {Router} root the application whose routes are being compiled. A plain router, which has
+ *   no uwsApp, is left alone
  */
 function compileOptimizedRoutes(root) {
     if (!root.uwsApp) {
@@ -376,7 +378,7 @@ function compileOptimizedRoutes(root) {
  *
  * @param {Router} router
  * @param {RouteEntry} route
- * @param {any[]} optimizedPath the routes to run, in order, ending with this one
+ * @param {RouteEntry[]} optimizedPath the routes to run, in order, ending with this one
  */
 function registerUwsRoute(router, route, optimizedPath) {
     let method = route.method.toLowerCase();
@@ -428,7 +430,7 @@ function registerUwsRoute(router, route, optimizedPath) {
             // this one
             if (caseGuards !== null && anyGuardHits(caseGuards, req.getUrl())) {
                 // an application is what registers native routes, and only it serves
-                return /** @type {any} */ (router)._serveGeneric(res, req);
+                return /** @type {Application} */ (router)._serveGeneric(res, req);
             }
             const request = router.handleRequest(res, req, preset, skipHolder);
             const response = request.res;
@@ -526,7 +528,7 @@ function registerUwsRoute(router, route, optimizedPath) {
 
     // the response prototype the route will really run under: its own app's, which sees a
     // method patched there or inherited from a parent app, falling back to the registering app
-    const responseProto = /** @type {any} */ (route.owner)?.response ?? /** @type {any} */ (router).response;
+    const responseProto = route.owner?.response ?? /** @type {Application} */ (router).response;
     // check if route is declarative
     if (
         optimizedPath.length === 1 && // must not have middlewares

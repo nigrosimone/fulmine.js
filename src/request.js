@@ -47,7 +47,7 @@ const {
 let currentRequest = null;
 
 module.exports = class Request extends LazyReadable {
-    /** @type {Record<string, any>|null} */
+    /** @type {import("http").IncomingHttpHeaders|null} */
     #cachedHeaders = null;
 
     /** @type {Record<string, string[]>|null} */
@@ -182,7 +182,7 @@ module.exports = class Request extends LazyReadable {
     /**
      * next() as the router means it: the rest of the route is skipped. res.sendFile reports its
      * failures here, because express reports them to the router and not to the route.
-     * @type {((err?: any) => void)|undefined}
+     * @type {((err?: unknown) => void)|undefined}
      */
     _leaveRoute;
 
@@ -268,13 +268,16 @@ module.exports = class Request extends LazyReadable {
      * through the request. Declared rather than left to appear on assignment: runRoute sets it
      * on every request, and an undeclared property is a shape change on each one.
      *
+     * Typed loosely for the same reason as `res`: it is set by runRoute rather than here, and the
+     * honest `|undefined` would put a check in front of every call.
+     *
      * @type {any}
      */
     next;
 
     /**
      * What the chain threw or passed to next(err), waiting for an error handler.
-     * @type {any}
+     * @type {unknown}
      */
     _error;
 
@@ -302,14 +305,15 @@ module.exports = class Request extends LazyReadable {
      * because uWS only lends them for this call, everything derived from them waits until something
      * asks, and the body is subscribed to only for the methods that carry one.
      *
-     * @param {any} req the uWS request, readable only during this call
-     * @param {any} res the uWS response
-     * @param {any} app the application or router this request arrived at
-     * @param {any} [preset] a literal native registration's constants: uWS matched the URL byte for
-     *   byte against that exact pattern and dispatched by method, so path, method and what derives
-     *   from them are known without asking
-     * @param {any} [skipHolder] where a granted header skip lives: the preset itself for a
-     *   literal registration, a holder of its own for a parameterised one
+     * @param {import("uWebSockets.js").HttpRequest} req the uWS request, readable only during this call
+     * @param {import("uWebSockets.js").HttpResponse} res the uWS response
+     * @param {import("./application.js").Application} app the application this request arrived at
+     * @param {import("./router-utils.js").NativePreset} [preset] a literal native registration's
+     *   constants: uWS matched the URL byte for byte against that exact pattern and dispatched by
+     *   method, so path, method and what derives from them are known without asking
+     * @param {import("./router-utils.js").SkipHolder} [skipHolder] where a granted header skip
+     *   lives: the preset itself for a literal registration, a holder of its own for a
+     *   parameterised one
      */
     constructor(req, res, app, preset, skipHolder) {
         // nothing: the stream is built on the first touch, see LazyReadable
@@ -495,7 +499,7 @@ module.exports = class Request extends LazyReadable {
         // A body exists on the wire only when the request declares one, content-length or
         // transfer-encoding, whatever the verb, and that was spotted during the header copy. The
         // verb list this used to read said nothing the headers had not already said
-        if (/** @type {any} */ (this)._declaresBody) {
+        if (this._declaresBody) {
             this._subscribeBody();
         } else {
             this.receivedData = true;
@@ -547,7 +551,8 @@ module.exports = class Request extends LazyReadable {
      */
     _rawHeader(name) {
         if (this.#cachedHeaders !== null) {
-            return this.#cachedHeaders[name];
+            // a string for every name but set-cookie, which the callers never ask for
+            return /** @type {string|undefined} */ (this.#cachedHeaders[name]);
         }
         const entries = this.#rawHeadersEntries;
         for (let i = 0, len = entries.length; i < len; i += 2) {
@@ -568,7 +573,7 @@ module.exports = class Request extends LazyReadable {
      */
     _foldedHeader(name) {
         if (this.#cachedHeaders !== null) {
-            return this.#cachedHeaders[name];
+            return /** @type {string|undefined} */ (this.#cachedHeaders[name]);
         }
         const entries = this.#rawHeadersEntries;
         let value;
@@ -761,7 +766,7 @@ module.exports = class Request extends LazyReadable {
     /**
      * The authority, port included, from Host or from X-Forwarded-Host behind a trusted proxy.
      * `hostname` is the same value without the port.
-     * @returns {string}
+     * @returns {string|undefined} undefined when the request carries no Host
      */
     get host() {
         return this.#authority;
@@ -769,7 +774,7 @@ module.exports = class Request extends LazyReadable {
 
     /**
      * The host without the port.
-     * @returns {string}
+     * @returns {string|undefined}
      */
     get hostname() {
         return this.#host;
@@ -840,7 +845,8 @@ module.exports = class Request extends LazyReadable {
         if (!trust(this.parsedIp, 0)) {
             return proto;
         }
-        const header = this.headers["x-forwarded-proto"] || proto;
+        // folded to one string, as every header but set-cookie is
+        const header = /** @type {string|undefined} */ (this.headers["x-forwarded-proto"]) || proto;
         const index = header.indexOf(",");
 
         return index !== -1 ? header.slice(0, index).trim() : header.trim();
@@ -1109,7 +1115,7 @@ module.exports = class Request extends LazyReadable {
         return ip;
     }
 
-    /** @type {object|null} */
+    /** @type {import("./socket.js")|null} */
     #cachedConnection = null;
 
     /**
@@ -1117,7 +1123,7 @@ module.exports = class Request extends LazyReadable {
      * stand-in for the pair, as node has one socket for both. Built on first read and kept, so it
      * keeps its identity across reads, and kept here as well so that it still answers once the
      * response is over and `res.socket` has gone null.
-     * @returns {any}
+     * @returns {import("./socket.js")}
      */
     get connection() {
         return (this.#cachedConnection ??= this.res._socketShim());
@@ -1146,18 +1152,21 @@ module.exports = class Request extends LazyReadable {
         }
         const remotePort = uwsRes.getRemotePort();
         const rawIp = this.rawIp;
-        this._res = {
-            getRemoteAddress: () => rawIp,
-            // whatever a preamble said is already in rawIp, and asking again is the use after free
-            // this method exists to avoid
-            getProxiedRemoteAddress: () => emptyAddress,
-            getRemotePort: () => remotePort,
-            // a body cannot arrive on an upgraded socket, and a stray reader must not reach µWS
-            onData() {},
-            pause() {},
-            resume() {},
-            close() {}
-        };
+        // a stand-in with the members a detached request still asks for, told to the checker once
+        this._res = /** @type {import("uWebSockets.js").HttpResponse} */ (
+            /** @type {unknown} */ ({
+                getRemoteAddress: () => rawIp,
+                // whatever a preamble said is already in rawIp, and asking again is the use after free
+                // this method exists to avoid
+                getProxiedRemoteAddress: () => emptyAddress,
+                getRemotePort: () => remotePort,
+                // a body cannot arrive on an upgraded socket, and a stray reader must not reach µWS
+                onData() {},
+                pause() {},
+                resume() {},
+                close() {}
+            })
+        );
     }
 
     /**
@@ -1241,7 +1250,7 @@ module.exports = class Request extends LazyReadable {
      *   acceptable type when called with no arguments
      */
     accepts(...types) {
-        return accepts(asMessage(this)).types(.../** @type {any} */ (types));
+        return accepts(asMessage(this)).types(.../** @type {string[]} */ (types));
     }
 
     /**
@@ -1250,7 +1259,7 @@ module.exports = class Request extends LazyReadable {
      * @returns {string|string[]|false}
      */
     acceptsCharsets(...charsets) {
-        return accepts(asMessage(this)).charsets(.../** @type {any} */ (charsets));
+        return accepts(asMessage(this)).charsets(.../** @type {string[]} */ (charsets));
     }
 
     /**
@@ -1259,7 +1268,7 @@ module.exports = class Request extends LazyReadable {
      * @returns {string|string[]|false}
      */
     acceptsEncodings(...encodings) {
-        return accepts(asMessage(this)).encodings(.../** @type {any} */ (encodings));
+        return accepts(asMessage(this)).encodings(.../** @type {string[]} */ (encodings));
     }
 
     /**
@@ -1268,7 +1277,7 @@ module.exports = class Request extends LazyReadable {
      * @returns {string|string[]|false}
      */
     acceptsLanguages(...languages) {
-        return accepts(asMessage(this)).languages(.../** @type {any} */ (languages));
+        return accepts(asMessage(this)).languages(.../** @type {string[]} */ (languages));
     }
 
     /**
@@ -1351,7 +1360,7 @@ module.exports = class Request extends LazyReadable {
      * Built on first read and cached: routing works from the raw entries and most requests never
      * ask for this.
      *
-     * @returns {Record<string, any>}
+     * @returns {import("http").IncomingHttpHeaders}
      */
     get headers() {
         // https://nodejs.org/api/http.html#messageheaders
@@ -1362,6 +1371,7 @@ module.exports = class Request extends LazyReadable {
         // half-filled object cached. A plain object because node's is one and inspect prints the
         // difference; Object.hasOwn keeps a header named "constructor" or "toString" from finding
         // Object.prototype's member and folding a first value into it.
+        /** @type {import("http").IncomingHttpHeaders} */
         const headers = {};
         const entries = this.#rawHeadersEntries;
         for (let index = 0, len = entries.length; index < len; index += 2) {
@@ -1377,7 +1387,7 @@ module.exports = class Request extends LazyReadable {
                 if (key === "cookie") {
                     headers[key] += "; " + value;
                 } else if (key === "set-cookie") {
-                    headers[key].push(value);
+                    /** @type {string[]} */ (headers[key]).push(value);
                 } else {
                     headers[key] += ", " + value;
                 }
@@ -1465,4 +1475,5 @@ module.exports = class Request extends LazyReadable {
 
 // req.header is req.get under Express's other name. On the prototype rather than an instance
 // field, which wrote one own property per request in the constructor.
-/** @type {any} */ (module.exports.prototype).header = module.exports.prototype.get;
+/** @type {{header?: typeof module.exports.prototype.get}} */ (module.exports.prototype).header =
+    module.exports.prototype.get;

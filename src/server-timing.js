@@ -35,6 +35,8 @@ limitations under the License.
 
 const { work, names } = require("./work.js");
 
+/** @typedef {import("./response.js")} Response */
+
 /**
  * A duration in milliseconds, as Server-Timing writes them: two decimals.
  *
@@ -63,7 +65,8 @@ function describe(text) {
  *   true. Nothing is written for a request that built none of it, which is the usual one.
  * @param {boolean} [options.total] whether to report the time up to the head. Default true.
  * @param {string} [options.name] what the total is called. Default "total".
- * @returns {(req: any, res: any, next: (err?: any) => void) => void}
+ * @returns {(req: any, res: any, next: (err?: unknown) => void) => void} the middleware. The pair is
+ *   loose because the two methods below are added to the response here
  */
 function serverTiming(options) {
     const opts = options || {};
@@ -84,7 +87,7 @@ function serverTiming(options) {
          * @param {string} name a token: letters, digits, dash and underscore
          * @param {number} [duration] milliseconds
          * @param {string} [description]
-         * @returns {any} the response, so calls chain
+         * @returns {Response} the response, so calls chain
          */
         res.timing = function timing(name, duration, description) {
             let mark = String(name).replace(/[^\w-]/g, "");
@@ -118,11 +121,11 @@ function serverTiming(options) {
             }
             if (value && typeof value.then === "function") {
                 return value.then(
-                    /** @param {any} resolved */ (resolved) => {
+                    /** @param {unknown} resolved */ (resolved) => {
                         done();
                         return resolved;
                     },
-                    /** @param {any} err */ (err) => {
+                    /** @param {unknown} err */ (err) => {
                         done();
                         throw err;
                     }

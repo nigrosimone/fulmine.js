@@ -54,7 +54,7 @@ function work(req, res) {
     const native = req.route?._native;
     // cast for the three the classes do not declare: `body` is deliberately not a field of
     // Request, and the two stream states are node's own, written when a lazy stream is built
-    const loose = /** @type {any} */ (req);
+    const loose = /** @type {{body?: unknown, _readableState?: unknown}} */ (req);
     return {
         native: Boolean(native),
         declarative: Boolean(native?.declarative),
@@ -62,7 +62,7 @@ function work(req, res) {
         query: req._queryParsed,
         body: loose.body !== undefined,
         requestStream: loose._readableState !== undefined,
-        responseStream: /** @type {any} */ (res)._writableState !== undefined,
+        responseStream: /** @type {{_writableState?: unknown}} */ (res)._writableState !== undefined,
         socket: req._socketBuilt || res._socketBuilt
     };
 }
@@ -86,7 +86,7 @@ const NAMES = [
 function names(done) {
     const listed = [];
     for (const [key, name] of NAMES) {
-        if (/** @type {any} */ (done)[key]) {
+        if (done[key]) {
             listed.push(name);
         }
     }

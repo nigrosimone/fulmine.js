@@ -74,7 +74,7 @@ for (const member of [
         const inner = descriptor.value;
         Object.defineProperty(LazyReadableBase.prototype, member, {
             ...descriptor,
-            /** @this {any} @param {...any} args */
+            /** @this {import("stream").Readable} @param {...unknown} args */
             value: function (...args) {
                 materialise(this);
                 return inner.apply(this, args);
@@ -86,13 +86,13 @@ for (const member of [
         Object.defineProperty(LazyReadableBase.prototype, member, {
             ...descriptor,
             get: innerGet
-                ? /** @this {any} */ function () {
+                ? /** @this {import("stream").Readable} */ function () {
                       materialise(this);
                       return innerGet.call(this);
                   }
                 : undefined,
             set: innerSet
-                ? /** @this {any} @param {any} value */ function (value) {
+                ? /** @this {import("stream").Readable} @param {unknown} value */ function (value) {
                       materialise(this);
                       innerSet.call(this, value);
                   }
@@ -110,19 +110,21 @@ const nodeReadable = /** @type {PropertyDescriptor} */ (
 Object.defineProperty(LazyReadableBase.prototype, "readable", {
     configurable: true,
     enumerable: false,
+    // `this` is loose in both: node's state field, which its typings do not declare, and this
+    // project's own flag
     /** @this {any} */
     get: function () {
         return this._readableState === undefined
             ? this._readableFlag === true
-            : /** @type {any} */ (nodeReadable.get).call(this);
+            : /** @type {() => boolean} */ (nodeReadable.get).call(this);
     },
-    /** @this {any} @param {any} value */
+    /** @this {any} @param {unknown} value */
     set: function (value) {
         if (this._readableState === undefined) {
             this._readableFlag = !!value;
             return;
         }
-        /** @type {any} */ (nodeReadable.set).call(this, value);
+        /** @type {(value: unknown) => void} */ (nodeReadable.set).call(this, value);
     }
 });
 

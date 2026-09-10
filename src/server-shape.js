@@ -34,6 +34,8 @@ limitations under the License.
 const http = require("http");
 const net = require("net");
 
+/** @typedef {import("./application.js").Application} Application */
+
 // what marks an application, read by the instanceof hook below. A symbol, so no plain field name
 // can be mistaken for it
 const kIsApplication = Symbol.for("fulmine.application");
@@ -45,20 +47,20 @@ const kIsApplication = Symbol.for("fulmine.application");
  * @param {Function} klass http.Server or net.Server
  */
 function acceptApplications(klass) {
-    const previous = /** @type {any} */ (klass)[Symbol.hasInstance];
+    const previous = klass[Symbol.hasInstance];
     // already taught, which happens when two copies of this package share one process
-    if (/** @type {any} */ (klass)[kIsApplication] === true) {
+    if (klass[kIsApplication] === true) {
         return;
     }
     Object.defineProperty(klass, Symbol.hasInstance, {
-        /** @param {any} value @returns {boolean} */
+        /** @param {unknown} value @returns {boolean} */
         value: function (value) {
             if (previous.call(this, value)) {
                 return true;
             }
             // an application is a function and a property read works on one. The guard is for the
             // primitives and nulls that reach any instanceof
-            return value != null && /** @type {any} */ (value)[kIsApplication] === true;
+            return value != null && value[kIsApplication] === true;
         },
         configurable: true,
         writable: true
@@ -73,7 +75,8 @@ acceptApplications(net.Server);
  * The net.Server members Express's API does not give, on the application prototype. Each one
  * answers for uWS, not for a node socket.
  *
- * @param {any} prototype Application.prototype
+ * @param {any} prototype Application.prototype, loose because the members are written here and not
+ *   declared on the class
  */
 function addServerMembers(prototype) {
     Object.defineProperty(prototype, kIsApplication, { value: true, configurable: true });
@@ -97,13 +100,14 @@ function addServerMembers(prototype) {
      * A handle this does not own: uWS's loop keeps the process alive and a caller cannot unref it.
      * Both are no-ops returning the server, so a chain written against node's API keeps working.
      *
-     * @returns {any}
+     * @this {Application}
+     * @returns {Application}
      */
     prototype.ref = function ref() {
         return this;
     };
 
-    /** @returns {any} */
+    /** @this {Application} @returns {Application} */
     prototype.unref = function unref() {
         return this;
     };
@@ -112,10 +116,10 @@ function addServerMembers(prototype) {
      * Registers the callback like node's does and remembers the value, which is all a caller can
      * observe. The timeout belongs to uWS and is set through uwsOptions.idleTimeout.
      *
-     * @this {any}
+     * @this {Application & {timeout?: number}}
      * @param {number} [msecs]
      * @param {() => void} [callback]
-     * @returns {any}
+     * @returns {Application}
      */
     prototype.setTimeout = function setTimeout(msecs, callback) {
         this.timeout = msecs;
@@ -127,7 +131,7 @@ function addServerMembers(prototype) {
 
     // The numbers node's http.Server carries. Inert here, but declared rather than left undefined:
     // a library reads `server.keepAliveTimeout` to work out what it is talking to.
-    for (const [name, value] of /** @type {[string, any][]} */ ([
+    for (const [name, value] of /** @type {[string, number|null][]} */ ([
         ["timeout", 0],
         ["keepAliveTimeout", 5000],
         ["headersTimeout", 60000],

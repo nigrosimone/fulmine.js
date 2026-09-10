@@ -70,7 +70,7 @@ class Route {
      *
      * @param {any} req a Request, or whatever a caller that built this Route by hand is serving
      * @param {any} res the matching response
-     * @param {(err?: any) => void} done called when the route is finished with the request, with
+     * @param {(err?: unknown) => void} done called when the route is finished with the request, with
      *   whatever error it ended on
      */
     dispatch(req, res, done) {
@@ -113,7 +113,7 @@ class Route {
                 return done(err);
             }
 
-            const handle = /** @type {any} */ (layer).handle;
+            const handle = /** @type {{handle: Function}} */ (layer).handle;
             // an error only reaches the four-argument handlers, and everything else only runs
             // while there is no error, which is the same rule ordinary dispatch follows
             if (err) {
@@ -146,7 +146,7 @@ class Route {
  * Refuses a handler that could never be called, worded as express words it.
  *
  * @param {string} method the verb this was registered for, for the message
- * @param {any[]} handlers
+ * @param {unknown[]} handlers
  */
 function checkRouteHandlers(method, handlers) {
     for (const handle of handlers) {

@@ -67,7 +67,7 @@ for (const member of [
         const inner = descriptor.value;
         Object.defineProperty(LazyWritableBase.prototype, member, {
             ...descriptor,
-            /** @this {any} @param {...any} args */
+            /** @this {import("stream").Writable} @param {...unknown} args */
             value: function (...args) {
                 materialiseWritable(this);
                 return inner.apply(this, args);
@@ -79,13 +79,13 @@ for (const member of [
         Object.defineProperty(LazyWritableBase.prototype, member, {
             ...descriptor,
             get: innerGet
-                ? /** @this {any} */ function () {
+                ? /** @this {import("stream").Writable} */ function () {
                       materialiseWritable(this);
                       return innerGet.call(this);
                   }
                 : undefined,
             set: innerSet
-                ? /** @this {any} @param {any} value */ function (value) {
+                ? /** @this {import("stream").Writable} @param {unknown} value */ function (value) {
                       materialiseWritable(this);
                       innerSet.call(this, value);
                   }

@@ -67,6 +67,12 @@ const {
 } = require("./router-utils.js");
 
 /** @typedef {import("./router-utils.js").RouteEntry} RouteEntry */
+/** @typedef {import("./router-utils.js").SkipHolder} SkipHolder */
+/** @typedef {import("./router-utils.js").NativePreset} NativePreset */
+/** @typedef {import("./router-utils.js").Layer} Layer */
+/** @typedef {import("./router-utils.js").WsRoute} WsRoute */
+/** @typedef {import("uWebSockets.js").HttpRequest} UwsRequest */
+/** @typedef {import("uWebSockets.js").HttpResponse} UwsResponse */
 
 // hands out one number per app.route(), so the routes it creates know they belong together
 let routeGroups = 0;
@@ -76,7 +82,7 @@ let routeKey = 0;
 module.exports = class Router extends EventEmitter {
     /**
      * The router or application this one is mounted on, undefined until it is.
-     * @type {any}
+     * @type {Router|undefined}
      */
     parent;
 
@@ -165,11 +171,11 @@ module.exports = class Router extends EventEmitter {
         this._routes = [];
         // websocket routes, kept apart from the HTTP ones: µWS serves them itself and listen()
         // hands them over whole, mount paths and all
-        /** @type {any[]|null} */
+        /** @type {WsRoute[]|null} */
         this._wsRoutes = null;
         // the native presets allowed to skip the header copy, so a late middleware or an etag
         // arriving after listen can take the permission back; null until one is granted
-        /** @type {Set<any>|null} */
+        /** @type {Set<SkipHolder>|null} */
         this._skipPresets = null;
         /** @type {boolean|undefined} */
         this._hasErrMwCache = undefined;
@@ -226,13 +232,13 @@ module.exports = class Router extends EventEmitter {
      *
      * @param {any} req a Request, or the plain object express's own router tests drive it with
      * @param {any} res a Response, or whatever the caller is serving with
-     * @param {(err?: any) => void} [next]
+     * @param {(err?: unknown) => void} [next]
      * @returns {Promise<void>}
      */
     async handle(req, res, next) {
         // a request from node's own server, which is what http.createServer(app) delivers
         if (isNodeRequest(req)) {
-            return serveNodeRequest(this, req, /** @type {any} */ (res), next);
+            return serveNodeRequest(this, req, res, next);
         }
         // an app taking over a request becomes that request's app, as it does when mounted, so
         // req.app.get("view engine") inside a sub-app reads the sub-app's settings. A plain router
@@ -562,7 +568,7 @@ module.exports = class Router extends EventEmitter {
      * splicing one out moves nothing. The layer objects are kept, so identities compare across two
      * reads the way they do in Express.
      *
-     * @returns {any[]}
+     * @returns {Layer[]}
      */
     get stack() {
         const layers = [];
@@ -585,9 +591,11 @@ module.exports = class Router extends EventEmitter {
      * anything not comparable as a string is compiled to a regular expression and marked complex.
      *
      * @param {string} method HTTP method, or USE for a mount
-     * @param {any} path one path or several
-     * @param {any} [parent] what to return, so chaining lands on the app rather than the router
-     * @param {...any} callbacks
+     * @param {string|RegExp|(string|RegExp)[]} path one path or several
+     * @param {any} [parent] what to return, so chaining lands on the app rather than the router.
+     *   Loose because it is also the builder app.route() hands back
+     * @param {...any} callbacks handlers, or arrays of them at any depth, flattened below. Loose
+     *   because a parameter keeps its declared type through that reassignment
      * @returns {any} parent
      */
     createRoute(method, path, parent = this, ...callbacks) {
@@ -706,7 +714,7 @@ module.exports = class Router extends EventEmitter {
                 stack,
                 // the route as a request sees it, which is the route itself unless the path was
                 // normalised. Written into the literal so every route keeps one shape
-                exposed: /** @type {any} */ (undefined),
+                exposed: /** @type {RouteEntry|undefined} */ (undefined),
                 routeKey: routeKey++,
                 // which app.route() this came from, when it came from one, so the routes it built
                 // count as one route where an error is concerned. undefined for every other route
@@ -768,8 +776,8 @@ module.exports = class Router extends EventEmitter {
      * as a method because a mounted router is asked for its own through it.
      *
      * @param {RouteEntry} route
-     * @param {any[]} routes every route of this router, in registration order
-     * @returns {any[]|false} the chain, ending in the route itself
+     * @param {RouteEntry[]} routes every route of this router, in registration order
+     * @returns {RouteEntry[]|false} the chain, ending in the route itself
      */
     _optimizeRoute(route, routes) {
         return optimizeRoute(this, route, routes);
@@ -788,12 +796,12 @@ module.exports = class Router extends EventEmitter {
      * request does whichever path serves it. The response rides back as request.res: returning
      * a `{ request, response }` pair was one throwaway object per request.
      *
-     * @param {any} res uWS response, which the shipped typings do not describe
-     * @param {any} req uWS request, readable only during this call
-     * @param {any} [preset] a literal registration's constants, see nativePreset
-     * @param {any} [skipHolder] the object a granted header skip lives on: the preset itself
+     * @param {UwsResponse} res uWS response
+     * @param {UwsRequest} req uWS request, readable only during this call
+     * @param {NativePreset} [preset] a literal registration's constants, see nativePreset
+     * @param {SkipHolder} [skipHolder] the object a granted header skip lives on: the preset itself
      *   for a literal registration, a holder of its own for a parameterised one
-     * @returns {any} the request, with the response reachable as request.res
+     * @returns {Request} the request, with the response reachable as request.res
      */
     handleRequest(res, req, preset, skipHolder) {
         const request = new this._request(req, res, this, preset, skipHolder);
@@ -830,7 +838,7 @@ module.exports = class Router extends EventEmitter {
      * for a response that outlives its handler callback: the native handler arms it in its
      * finally when the answer is still pending, which on a synchronous route it never is.
      *
-     * @param {any} res uWS response, which the shipped typings do not describe
+     * @param {UwsResponse} res uWS response
      * @param {Response} response
      */
     _armAbort(res, response) {
@@ -846,7 +854,7 @@ module.exports = class Router extends EventEmitter {
      * are compared segment by segment.
      *
      * @param {RouteEntry} route
-     * @param {any[]} routes every route of the router this one belongs to
+     * @param {RouteEntry[]} routes every route of the router this one belongs to
      * @returns {boolean}
      */
     _isFollowedByAnOverlap(route, routes) {
@@ -881,7 +889,7 @@ module.exports = class Router extends EventEmitter {
      * the optimizer tests replace it to see which routes went native.
      *
      * @param {RouteEntry} route
-     * @param {any[]} optimizedPath the chain the route was optimized with
+     * @param {RouteEntry[]} optimizedPath the chain the route was optimized with
      */
     _registerUwsRoute(route, optimizedPath) {
         registerUwsRoute(this, route, optimizedPath);
@@ -926,7 +934,7 @@ module.exports = class Router extends EventEmitter {
      * The HTML for an error, which in production says only what the status means rather than what
      * went wrong, so a stack trace does not reach the client.
      *
-     * @param {any} err whatever was thrown, which need not be an Error
+     * @param {unknown} err whatever was thrown, which need not be an Error
      * @param {number} statusCode
      * @param {boolean} [checkEnv] whether production should redact it
      * @returns {string}
@@ -1223,7 +1231,7 @@ module.exports = class Router extends EventEmitter {
 
     /**
      * Resolves with the route that answered, or false when nothing matched.
-     * @returns {Promise<any>}
+     * @returns {Promise<RouteEntry|false>}
      */
     _routeRequest(req, res, startIndex = 0, routes = this._routes, skipCheck = false, skipUntil) {
         return new Promise((resolve, reject) => {
@@ -1289,7 +1297,8 @@ module.exports = class Router extends EventEmitter {
                 settingsEpoch.n++;
             }
         }
-        this.createRoute("USE", path, this, ...callbacks);
+        // a handler in the path position was moved to the callbacks above
+        this.createRoute("USE", /** @type {string|RegExp|(string|RegExp)[]} */ (path), this, ...callbacks);
         return this;
     }
 
@@ -1314,7 +1323,7 @@ module.exports = class Router extends EventEmitter {
      * });
      *
      * @param {string} path a literal path, or one whose parameters are whole segments
-     * @param {object} behavior uWS's WebSocketBehavior, plus the optional `upgrade` above
+     * @param {Record<string, unknown>} behavior uWS's WebSocketBehavior, plus the optional `upgrade` above
      * @returns {this}
      */
     ws(path, behavior) {
@@ -1350,7 +1359,7 @@ module.exports = class Router extends EventEmitter {
             this._pendingGroupMethods = groupMethods;
             this._pendingGroupStack = groupStack;
             try {
-                return this.createRoute(method, path, /** @type {any} */ (fns), ...callbacks);
+                return this.createRoute(method, path, fns, ...callbacks);
             } finally {
                 this._pendingGroup = undefined;
                 this._pendingGroupMethods = undefined;
@@ -1370,7 +1379,7 @@ module.exports = class Router extends EventEmitter {
      *
      * @param {Request} request
      * @param {Response} response
-     * @param {any} err whatever was thrown, which need not be an Error
+     * @param {unknown} err whatever was thrown, which need not be an Error
      * @param {boolean} [checkEnv] whether production should redact it
      */
     _sendErrorPage(request, response, err, checkEnv = false) {

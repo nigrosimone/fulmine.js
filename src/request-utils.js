@@ -23,7 +23,8 @@ const { isIP } = require("node:net");
 
 // accepts, type-is, proxy-addr and fresh declare a node IncomingMessage but read only .headers off
 // it. This request is not one, so it is passed as itself and the declared type is stepped around.
-const asMessage = (req) => /** @type {any} */ (req);
+/** @param {Request} req @returns {import("http").IncomingMessage} */
+const asMessage = (req) => /** @type {import("http").IncomingMessage} */ (/** @type {unknown} */ (req));
 
 /**
  * Writes an address like node's socket.remoteAddress, which is inet_ntop and so RFC 5952: leading
@@ -106,7 +107,7 @@ function isMappedIPv4(bytes) {
  * whenever the listener is dual stack, which is every listen() without an IPv4 address. uWS already
  * gives mapped peers as sixteen bytes, four bytes come only from a v4 listener or the node shim.
  *
- * @param {any} app the application the request arrived at
+ * @param {import("./application.js").Application} app the application the request arrived at
  * @returns {boolean}
  */
 function mapsIPv4Peer(app) {

@@ -74,6 +74,26 @@ const PRECOMPRESSED = [
 
 /** @typedef {import("./request.js")} Request */
 /** @typedef {import("./response.js")} Response */
+/** @typedef {import("./utils.js").HttpError} HttpError */
+/** @typedef {import("./options").BodyParserOptions} BodyParserOptions */
+/**
+ * A decompressor from fast-zlib, carrying the flag its final flush passes, see createInflate.
+ * @typedef {(import("fast-zlib").Inflate|import("fast-zlib").Gunzip|import("fast-zlib").BrotliDecompress)
+ *   & {_finishFlag?: number}} Inflater
+ */
+/**
+ * What a parser does with the collected bytes: turns them into req.body and carries on. `body` is
+ * deliberately not a field of Request, see the comment there, so it is added here. The charset is
+ * undefined only for raw, which never decodes: the others settle it before a byte is read.
+ * @typedef {(
+ *   req: Request & {body?: unknown},
+ *   res: Response,
+ *   next: (err?: unknown) => void,
+ *   options: BodyParserOptions,
+ *   buf: Buffer,
+ *   encoding: string|undefined
+ * ) => void} BodyHandler
+ */
 
 // The failures express.static answers by moving on to the next handler rather than by reporting
 // them, when fallthrough is on. They all mean the same thing: the request is not a file here.
@@ -123,7 +143,7 @@ let iconv;
  * iconv-lite, loaded only when a request names a charset the Buffer cannot decode, so the common
  * utf-8 request never pays for it.
  *
- * @returns {any}
+ * @returns {typeof import("iconv-lite")}
  */
 function loadIconv() {
     if (!iconv) iconv = require("iconv-lite");
@@ -200,7 +220,7 @@ function decodeBody(buf, encoding) {
         case "iso-8859-1":
             return buf.toString("latin1");
         default:
-            return loadIconv().decode(buf, encoding);
+            return loadIconv().decode(buf, /** @type {import("iconv-lite").Encoding} */ (encoding));
     }
 }
 
@@ -210,7 +230,7 @@ function decodeBody(buf, encoding) {
  *
  * @param {Request} req
  * @param {Response} res
- * @param {(err?: any) => void} next
+ * @param {(err?: unknown) => void} next
  * @param {any} options the parser options, settled by createBodyParser
  * @param {Buffer} buf
  * @returns {boolean}
@@ -223,7 +243,7 @@ function runVerify(req, res, next, options, buf) {
         options.verify(req, res, buf);
         return true;
     } catch (e) {
-        const err = /** @type {any} */ (e);
+        const err = /** @type {HttpError} */ (e);
         next(
             asBodyError(err, err.status ?? err.statusCode ?? 403, err.type ?? "entity.verify.failed", {
                 body: buf
@@ -255,7 +275,7 @@ function strictSyntaxMessage(text, char) {
         JSON.parse(partial);
     } catch (e) {
         // put the real characters back where the placeholders were named
-        return /** @type {any} */ (e).message.replace(/#+/g, (/** @type {string} */ placeholder) =>
+        return /** @type {SyntaxError} */ (e).message.replace(/#+/g, (/** @type {string} */ placeholder) =>
             text.substring(index, index + placeholder.length)
         );
     }
@@ -283,7 +303,8 @@ const BODY_ERROR_NAMES = {
  * @returns {Error}
  */
 function bodyError(message, status, type, extra) {
-    const err = /** @type {any} */ (new Error(message));
+    /** @type {HttpError} */
+    const err = new Error(message);
     if (BODY_ERROR_NAMES[status]) {
         err.name = BODY_ERROR_NAMES[status];
     }
@@ -296,7 +317,7 @@ function bodyError(message, status, type, extra) {
  * its stack and any property the thrower put on it are all still there when the application
  * reads it.
  *
- * @param {any} err whatever was thrown, which need not be an Error
+ * @param {HttpError} err the error the fields go on: JSON.parse's SyntaxError, or a verify hook's own
  * @param {number} status
  * @param {string} type body-parser's own name for the kind of failure
  * @param {object} [extra] anything else body-parser puts on that particular error
@@ -411,7 +432,7 @@ function pickPrecompressed(filePath, accept, ttl, statTtl) {
  *
  * @param {string} dir the directory to look in
  * @param {string[]} indexList the index names, in order
- * @returns {{stat: any, name: string, candidate: string}|null} the file to serve, or null
+ * @returns {{stat: import("fs").Stats, name: string, candidate: string}|null} the file to serve, or null
  */
 function findIndexFile(dir, indexList) {
     let lastError;
@@ -445,7 +466,7 @@ function findIndexFile(dir, indexList) {
  *
  * @param {string} root directory to serve from
  * @param {import("./options").StaticOptions} [options]
- * @returns {(req: any, res: any, next: (err?: any) => void) => any}
+ * @returns {(req: Request, res: Response, next: (err?: unknown) => void) => void}
  */
 function serveStatic(root, options) {
     // serve-static's own messages, thrown where the middleware is written rather than where a
@@ -483,16 +504,14 @@ function serveStatic(root, options) {
     // nothing under any traffic at all. { cache: false } asks the disk on every request.
     let twinTtl = 0;
     if (options.preCompressed) {
-        const cache = /** @type {any} */ (
-            typeof options.preCompressed === "object" ? options.preCompressed.cache : undefined
-        );
+        const cache = typeof options.preCompressed === "object" ? options.preCompressed.cache : undefined;
         twinTtl =
             cache === undefined
                 ? 1000
                 : cache === false
                   ? 0
                   : typeof cache === "string"
-                    ? ms(/** @type {any} */ (cache))
+                    ? ms(/** @type {import("ms").StringValue} */ (cache))
                     : cache;
         if (typeof twinTtl !== "number" || !(twinTtl >= 0)) {
             throw new TypeError("option preCompressed.cache must be a duration");
@@ -662,7 +681,7 @@ function serveStatic(root, options) {
                     // error handler with its errno, code, syscall and path still on it, and an
                     // error handler doing res.send(err) sends those as JSON. Passing the string
                     // sent an HTML page instead.
-                    return next(asStatError(statError));
+                    return next(asStatError(/** @type {HttpError} */ (statError)));
                 } else return next();
             }
         }
@@ -707,7 +726,7 @@ function serveStatic(root, options) {
                         res.status(404);
                         // the fs error, as above: the index file is missing and the error handler
                         // is told which one and where
-                        return next(asStatError(err));
+                        return next(asStatError(/** @type {HttpError} */ (err)));
                     } else return next();
                 }
                 if (found === null) {
@@ -778,7 +797,7 @@ function serveStatic(root, options) {
  * encoding nobody knows throws, since decoding it wrong is worse than refusing.
  *
  * @param {string|undefined} contentEncoding
- * @returns {any|undefined}
+ * @returns {Inflater|false|undefined}
  */
 function createInflate(contentEncoding) {
     const encoding = (contentEncoding || "identity").toLowerCase();
@@ -799,7 +818,7 @@ function createInflate(contentEncoding) {
             return false;
     }
     // the flag the final flush passes, so a truncated stream errors instead of resolving empty
-    /** @type {any} */ (stream)._finishFlag =
+    /** @type {Inflater} */ (stream)._finishFlag =
         encoding === "br" ? zlib.constants.BROTLI_OPERATION_FINISH : zlib.constants.Z_FINISH;
     return stream;
 }
@@ -810,9 +829,9 @@ function createInflate(contentEncoding) {
  * bytes over. They differ in the content type they claim and in what they turn the bytes into.
  *
  * @param {string} defaultType the type matched when the caller names none
- * @param {(...args: any[]) => any} beforeReturn turns the collected bytes into req.body. Called
- *   with the request, the response, next, the options, the body and its charset
- * @param {(options: any) => void} [checkOptions] whatever this parser alone has to check
+ * @param {BodyHandler} beforeReturn turns the collected bytes into req.body. Called with the
+ *   request, the response, next, the options, the body and its charset
+ * @param {(options: BodyParserOptions) => void} [checkOptions] whatever this parser alone has to check
  * @param {string} [charsetPolicy] which charsets this parser accepts, as body-parser draws the
  *   lines: "utf" (json, utf-* only), "urlencoded" (utf-8 and iso-8859-1), "any" (anything iconv
  *   knows), or undefined for a parser that never decodes (raw)
@@ -1002,6 +1021,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 return next();
             }
 
+            /** @type {Inflater|false|undefined} */
             let inflate;
             let totalSize = 0;
             const rawContentEncoding = req._rawHeader("content-encoding");
@@ -1106,10 +1126,10 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
              * nothing, and an unhandled 'error' event ends the process. The listener goes on after
              * the throw, since process() would have removed it.
              *
-             * @param {any} err what inflate.process threw
+             * @param {HttpError} err what inflate.process threw
              */
             function failInflate(err) {
-                /** @type {any} */ (inflate).instance?.on?.("error", () => {});
+                /** @type {Inflater} */ (inflate).instance?.on?.("error", () => {});
                 finished = true;
                 abs.length = 0;
                 target = null;
@@ -1162,7 +1182,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
              * finished flag matters: uWS goes on delivering chunks after an oversized body has
              * been refused, and without it every further chunk would answer the request again.
              *
-             * @param {any} buf a Buffer, or an ArrayBuffer straight from uWS
+             * @param {Buffer|ArrayBuffer} buf a Buffer, or an ArrayBuffer straight from uWS
              */
             function onData(buf) {
                 if (finished) {
@@ -1177,7 +1197,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                     } catch (e) {
                         // a body that does not decompress is the client's mistake, and zlib
                         // throwing here used to escape into whatever called us
-                        return failInflate(e);
+                        return failInflate(/** @type {HttpError} */ (e));
                     }
                 }
 
@@ -1198,7 +1218,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                     try {
                         tail = inflate.process(EMPTY_BUFFER, inflate._finishFlag);
                     } catch (e) {
-                        return failInflate(e);
+                        return failInflate(/** @type {HttpError} */ (e));
                     }
                     if (tail.length && !keepChunk(tail)) {
                         return;
@@ -1274,7 +1294,7 @@ const json = createBodyParser(
         // either: it decodes through iconv, which strips it, so by the time the first character is
         // looked at the mark is gone. JSON.parse would refuse it, so without this a body saved by
         // an editor that writes a BOM is answered 400 here and 200 by Express.
-        const text = stripBom(decodeBody(buf, encoding));
+        const text = stripBom(decodeBody(buf, /** @type {string} */ (encoding)));
 
         // "strict" means only an object or an array is a body, which is body-parser's default and
         // was not honoured here at all: the check read req.body before this function had parsed
@@ -1302,7 +1322,7 @@ const json = createBodyParser(
         } catch (e) {
             // V8's own error, which is what body-parser hands on: its message says where the parse
             // gave up, and it is still the SyntaxError an application may be testing for
-            const err = /** @type {any} */ (e);
+            const err = /** @type {SyntaxError} */ (e);
             return next(asBodyError(err, 400, "entity.parse.failed", { body: text }));
         }
 
@@ -1329,7 +1349,7 @@ const text = createBodyParser(
     "text/plain",
     function (req, res, next, options, buf, encoding) {
         try {
-            req.body = decodeBody(buf, encoding);
+            req.body = decodeBody(buf, /** @type {string} */ (encoding));
         } catch (e) {
             return next(e);
         }
@@ -1371,7 +1391,7 @@ const urlencoded = createBodyParser(
     "application/x-www-form-urlencoded",
     function (req, res, next, options, buf, encoding) {
         try {
-            const body = decodeBody(buf, encoding);
+            const body = decodeBody(buf, /** @type {string} */ (encoding));
             // Express 5 defaults extended to false, so nested keys need opting in
             const extended = typeof options.extended !== "undefined" ? options.extended : false;
             // qs has to know the charset itself for anything but utf-8, and the sentinel options
@@ -1387,7 +1407,8 @@ const urlencoded = createBodyParser(
                 }
                 req.body = parsed;
             } else {
-                const count = parameterCount(body, options.parameterLimit);
+                // settled by the check below the parser, so it is a number by the time a body arrives
+                const count = parameterCount(body, /** @type {number} */ (options.parameterLimit));
                 if (count === undefined) {
                     return next(bodyError("too many parameters", 413, "parameters.too.many"));
                 }
@@ -1401,7 +1422,7 @@ const urlencoded = createBodyParser(
                         arrayLimit: Math.max(100, count + 1),
                         charsetSentinel: options.charsetSentinel,
                         interpretNumericEntities: options.interpretNumericEntities,
-                        charset: encoding,
+                        charset: /** @type {"utf-8"|"iso-8859-1"} */ (encoding),
                         parameterLimit: options.parameterLimit
                     };
                     req.body = needsQs
@@ -1419,7 +1440,7 @@ const urlencoded = createBodyParser(
                             strictDepth: true,
                             charsetSentinel: options.charsetSentinel,
                             interpretNumericEntities: options.interpretNumericEntities,
-                            charset: encoding,
+                            charset: /** @type {"utf-8"|"iso-8859-1"} */ (encoding),
                             parameterLimit: options.parameterLimit
                         })
                     );

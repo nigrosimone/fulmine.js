@@ -31,6 +31,7 @@ const { work, names: workNames } = require("./work.js");
 /** @typedef {import("./response.js")} Response */
 /** @typedef {import("./router.js")} Router */
 /** @typedef {import("./application.js").Application} Application */
+/** @typedef {import("./router-utils.js").RouteEntry} RouteEntry */
 
 /**
  * Every route of an application and of the routers mounted under it, each with the path it answers
@@ -38,8 +39,8 @@ const { work, names: workNames } = require("./work.js");
  *
  * @param {Router} router
  * @param {string} prefix
- * @param {any[]} [into]
- * @returns {{route: any, full: string}[]}
+ * @param {{route: RouteEntry, full: string}[]} [into]
+ * @returns {{route: RouteEntry, full: string}[]}
  */
 function collectRoutes(router, prefix, into = []) {
     for (const route of router._routes ?? []) {
@@ -263,7 +264,7 @@ function expectLazy(req, res, options) {
     const done = work(req, res);
     const unwanted = { ...done };
     for (const field of allowed) {
-        /** @type {any} */ (unwanted)[field] = false;
+        unwanted[field] = false;
     }
     const listed = workNames(unwanted);
     if (listed.length === 0) {

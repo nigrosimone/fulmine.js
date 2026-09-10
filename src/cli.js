@@ -46,6 +46,9 @@ const { collectRoutes } = require("./testing.js");
 const { verify } = require("./verify.js");
 const { override, angular } = require("./adopt.js");
 
+/** @typedef {import("./application.js").Application} Application */
+/** @typedef {import("./router-utils.js").RouteEntry} RouteEntry */
+
 const FROM = "express";
 const TO = "fulmine.js";
 
@@ -187,7 +190,7 @@ function loadTypeScript(target) {
  *
  * @param {string} source
  * @param {string} fileName decides whether JSX is allowed, so a .tsx angle bracket is not a cast
- * @param {any} ts the compiler
+ * @param {typeof import("typescript")} ts the compiler
  * @param {Set<string>} [seen] as in findSpecifiers
  * @returns {{start: number, end: number}[]}
  */
@@ -202,7 +205,7 @@ function findSpecifiersTypeScript(source, fileName, ts, seen) {
 
     /** @type {{start: number, end: number}[]} */
     const found = [];
-    /** @param {any} node a string literal naming a module */
+    /** @param {import("typescript").StringLiteral} node a string literal naming a module */
     const take = (node) => {
         if (node.text === FROM) {
             found.push({ start: node.getStart(sourceFile), end: node.getEnd() });
@@ -249,7 +252,8 @@ function findSpecifiersTypeScript(source, fileName, ts, seen) {
  *
  * @param {string} source
  * @param {string} fileName decides whether JSX is allowed, as above
- * @param {any} ts the scanner and the two enums loadTypeScript kept
+ * @param {any} ts the scanner and the two enums loadTypeScript kept, from typescript 7's unstable
+ *   API, which the typings this project compiles against do not describe
  * @param {Set<string>} [seen] as in findSpecifiers
  * @returns {{start: number, end: number}[]}
  */
@@ -300,7 +304,7 @@ function findSpecifiersScanner(source, fileName, ts, seen) {
  * @returns {{start: number, end: number}[]|null} null when the file does not parse
  */
 function findSpecifiers(source, seen) {
-    /** @type {any} */
+    /** @type {import("acorn").Program|null|undefined} */
     let tree;
     // A file is either a module or a script and the parser has to be told which. Try module first,
     // since it also accepts everything a script can contain except a bare `return`.
@@ -308,7 +312,7 @@ function findSpecifiers(source, seen) {
         try {
             tree = acorn.parse(source, {
                 ecmaVersion: "latest",
-                sourceType: /** @type {any} */ (sourceType),
+                sourceType: /** @type {"module"|"script"} */ (sourceType),
                 allowReturnOutsideFunction: true,
                 allowAwaitOutsideFunction: true,
                 allowHashBang: true
@@ -324,7 +328,7 @@ function findSpecifiers(source, seen) {
 
     /** @type {{start: number, end: number}[]} */
     const found = [];
-    /** @param {any} node a string literal naming a module */
+    /** @param {import("acorn").Literal & {value: string}} node a string literal naming a module */
     const record = (node) => {
         if (node.value === FROM) {
             found.push({ start: node.start, end: node.end });
@@ -361,8 +365,10 @@ function findSpecifiers(source, seen) {
  * Visits every node. acorn produces plain objects, so the shape is walked rather than dispatched
  * on: a table of node types would have to be kept in step with the parser, and being out of step
  * would mean silently skipping an import.
- * @param {any} node an acorn AST node. acorn ships no useful node types, and every shape here is checked by hand
- * @param {(node: any) => void} visit
+ * @param {any} node an acorn node, or an array or a scalar under one: walked by key, so no shape
+ *   is assumed
+ * @param {(node: any) => void} visit handed every node, loose because the visitor reads edges of
+ *   its own off each
  */
 function walk(node, visit) {
     if (!node || typeof node !== "object") return;
@@ -459,7 +465,7 @@ function findEntry(given) {
  * owns listen.
  *
  * @param {string} entry
- * @returns {any[]} the prototypes to stub, this command's copy first
+ * @returns {object[]} the prototypes to stub, this command's copy first
  */
 function listenOwners(entry) {
     const builds = new Set([require("./index.js")]);
@@ -507,7 +513,7 @@ function listenOwners(entry) {
  *
  * @param {string[]} argv
  * @param {string} command the word for the message when there is nothing to load
- * @returns {{apps: any[], entry: string}|null} null once the reason has been printed
+ * @returns {{apps: Application[], entry: string}|null} null once the reason has been printed
  */
 function loadApps(argv, command) {
     const entry = findEntry(argv.find((arg) => !arg.startsWith("--")));
@@ -539,7 +545,7 @@ function loadApps(argv, command) {
     try {
         require(entry);
     } catch (e) {
-        const error = /** @type {any} */ (e);
+        const error = /** @type {Error} */ (e);
         restore();
         console.error(`${path.relative(process.cwd(), entry)} could not be loaded:
 ${error.stack ?? error}`);
@@ -584,7 +590,7 @@ ${error.stack ?? error}`);
  *
  * Best effort throughout: a build with no workers, or a worker already gone, is not an error.
  *
- * @param {any[]} apps
+ * @param {Application[]} apps
  * @returns {void}
  */
 function stopFileWorkers(apps) {
@@ -762,9 +768,9 @@ function matchesWanted(full, method, wanted) {
  * application with a thousand cold routes and one hot one that fell back would score well and
  * serve badly. What is printed is counted rather than judged.
  *
- * @param {any[]} routes
- * @param {any[]} native
- * @param {any[]} declarative
+ * @param {{route: RouteEntry, full: string}[]} routes
+ * @param {{route: RouteEntry, full: string}[]} native
+ * @param {{route: RouteEntry, full: string}[]} declarative
  */
 function printSummary(routes, native, declarative) {
     console.log("\nWhat this adds up to\n");
@@ -809,7 +815,7 @@ function printSummary(routes, native, declarative) {
 }
 
 /**
- * @param {any} app the application the entry file built
+ * @param {Application} app the application the entry file built
  * @param {boolean} several whether to say which application this is
  */
 function printProfile(app, several) {

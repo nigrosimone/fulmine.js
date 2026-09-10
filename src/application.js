@@ -163,11 +163,11 @@ class Application extends Router {
             /**
              * The base constructor's arguments, written out rather than spread. See Request.
              *
-             * @param {any} req uWS request
-             * @param {any} res uWS response
-             * @param {any} app the application this request arrived at
-             * @param {any} [preset] a literal registration's constants
-             * @param {any} [skipHolder] where a granted header skip lives
+             * @param {import("uWebSockets.js").HttpRequest} req uWS request
+             * @param {import("uWebSockets.js").HttpResponse} res uWS response
+             * @param {Application} app the application this request arrived at
+             * @param {import("./router-utils.js").NativePreset} [preset] a literal registration's constants
+             * @param {import("./router-utils.js").SkipHolder} [skipHolder] where a granted header skip lives
              */
             constructor(req, res, app, preset, skipHolder) {
                 super(req, res, app, preset, skipHolder);
@@ -177,9 +177,9 @@ class Application extends Router {
             /**
              * The base constructor's arguments, written out rather than spread. See Response.
              *
-             * @param {any} res uWS response
-             * @param {any} req the Request, already built
-             * @param {any} app the application this request arrived at
+             * @param {import("uWebSockets.js").HttpResponse} res uWS response
+             * @param {Request} req the Request, already built
+             * @param {Application} app the application this request arrived at
              */
             constructor(res, req, app) {
                 super(res, req, app);
@@ -190,8 +190,8 @@ class Application extends Router {
              * automatic OPTIONS reply can refuse to add headers after it, as express's does.
              *
              * @param {number} statusCode
-             * @param {string|Record<string, any>} [statusMessage]
-             * @param {Record<string, any>} [headers]
+             * @param {string|import("http").OutgoingHttpHeaders|import("http").OutgoingHttpHeader[]} [statusMessage]
+             * @param {import("http").OutgoingHttpHeaders|import("http").OutgoingHttpHeader[]} [headers]
              * @returns {this}
              */
             writeHead(statusCode, statusMessage, headers) {
@@ -253,9 +253,9 @@ class Application extends Router {
         // stores where a Set paid identity hashing and table upkeep per request. A holder object
         // rather than a bare field, because the callable app copies own scalars by value and two
         // copies of a head would disagree; an object rides by reference, the way the Set did
-        this._pending = /** @type {{ head: any }} */ ({ head: null });
+        this._pending = /** @type {{ head: Response|null }} */ ({ head: null });
         // on the per-app prototype layer, not per response, same as the Set was
-        /** @type {any} */ (this.response)._pendingIn = this._pending;
+        /** @type {{_pendingIn?: {head: Response|null}}} */ (this.response)._pendingIn = this._pending;
         this._draining = false;
         // read here, at construction, the way express does; an empty NODE_ENV means development,
         // which the ?? in the shared default would miss
@@ -285,8 +285,8 @@ class Application extends Router {
      * message carries data and not closures. The counter wraps rather than growing without bound,
      * a million tasks being far more than can be outstanding at once.
      *
-     * @param {(value: any) => void} resolve
-     * @param {(err: any) => void} reject
+     * @param {(value: Buffer) => void} resolve
+     * @param {(err: Error) => void} reject
      * @returns {number} the key to send to the worker
      */
     createWorkerTask(resolve, reject) {
@@ -493,12 +493,14 @@ class Application extends Router {
      * is held in a set until it finishes, so close() knows when the last one is done. Native
      * routes and the catch-all both come through here, since both call it on the app.
      *
-     * @param {any} res uWS response
-     * @param {any} req uWS request, readable only during this call
-     * @param {any} [preset] a literal registration's constants, see nativePreset in the router
-     * @param {any} [skipHolder] where a granted header skip lives, forwarded whole: dropping
-     *   it here silently turned every skip off, since the native closures call this override
-     * @returns {any} the request, with the response reachable as request.res
+     * @param {import("uWebSockets.js").HttpResponse} res uWS response
+     * @param {import("uWebSockets.js").HttpRequest} req uWS request, readable only during this call
+     * @param {import("./router-utils.js").NativePreset} [preset] a literal registration's constants,
+     *   see nativePreset in the router
+     * @param {import("./router-utils.js").SkipHolder} [skipHolder] where a granted header skip lives,
+     *   forwarded whole: dropping it here silently turned every skip off, since the native closures
+     *   call this override
+     * @returns {Request} the request, with the response reachable as request.res
      */
     handleRequest(res, req, preset, skipHolder) {
         const request = super.handleRequest(res, req, preset, skipHolder);
@@ -532,8 +534,8 @@ class Application extends Router {
      * what the catch-all runs, and also what a native registration falls back to when it sees a
      * request it must not answer itself, see the case guard in Router#_registerUwsRoute.
      *
-     * @param {any} res the uWS response
-     * @param {any} req the uWS request
+     * @param {import("uWebSockets.js").HttpResponse} res the uWS response
+     * @param {import("uWebSockets.js").HttpRequest} req the uWS request
      */
     _serveGeneric(res, req) {
         const request = this.handleRequest(res, req);
@@ -768,13 +770,14 @@ class Application extends Router {
      * otherwise. A function in the options position is taken as the callback.
      *
      * @param {string} name view name, resolved against the "views" setting
-     * @param {Record<string, any>} [options] locals for the view
+     * @param {Record<string, any>|((err: Error|null, html?: string) => void)} [options] locals for
+     *   the view, or the callback in its place
      * @param {(err: Error|null, html?: string) => void} [callback] receives the rendered view. It
      *   is what render is for, so leaving it out throws, as it does in Express
      */
     render(name, options, callback) {
         if (typeof options === "function") {
-            callback = /** @type {any} */ (options);
+            callback = /** @type {(err: Error|null, html?: string) => void} */ (options);
             options = new NullObject();
         }
         // render exists to hand the result somewhere, so there is always a callback by this point:

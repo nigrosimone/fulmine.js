@@ -30,6 +30,18 @@ const { Stats } = require("fs");
 
 /** @typedef {import("./request.js")} Request */
 /** @typedef {import("./response.js")} Response */
+/**
+ * An error with the http-errors fields on it, which are what `res.status(err.status || 500)`, the
+ * error page and the body parsers read. None is required: a plain throw carries none of them.
+ * @typedef {Error & {
+ *   status?: number,
+ *   statusCode?: number,
+ *   expose?: boolean,
+ *   code?: string,
+ *   type?: string,
+ *   types?: string[]
+ * }} HttpError
+ */
 
 const EMPTY_REGEX = new RegExp(``);
 
@@ -765,8 +777,9 @@ const MEMO_LIMIT = 512;
  * The wrapped function must never answer undefined, since that is what the cache reads as a miss.
  * The mime lookups here answer false for something they do not know, which caches correctly.
  *
- * @param {(key: string) => any} fn
- * @returns {(key: string) => any}
+ * @template T
+ * @param {(key: string) => T} fn
+ * @returns {(key: string) => T}
  */
 function memoizeByString(fn) {
     const cache = new Map();
@@ -811,7 +824,7 @@ function normalizeType(type) {
  * unicode escapes, so a string in the body cannot close a script tag in an HTML page that embeds
  * the response.
  *
- * @param {any} value whatever the handler passed to res.json
+ * @param {unknown} value whatever the handler passed to res.json
  * @param {any} [replacer] the "json replacer" setting
  * @param {string|number} [spaces] the "json spaces" setting
  * @param {boolean} [escape] the "json escape" setting
@@ -1042,13 +1055,17 @@ function cachedStat(file, ttl) {
 /**
  * A duration setting as milliseconds: false is off, a string is read by ms, a number is itself.
  *
- * @param {any} value the setting as the application wrote it
+ * @param {string|number|boolean|undefined} value the setting as the application wrote it
  * @param {string} name for the error, which names the setting the application wrote
  * @returns {number}
  */
 function durationSetting(value, name) {
     const parsed =
-        value === false || value === undefined ? 0 : typeof value === "string" ? ms(/** @type {any} */ (value)) : value;
+        value === false || value === undefined
+            ? 0
+            : typeof value === "string"
+              ? ms(/** @type {import("ms").StringValue} */ (value))
+              : value;
     if (typeof parsed !== "number" || !(parsed >= 0)) {
         throw new TypeError(`${name} must be a duration`);
     }
@@ -1129,8 +1146,9 @@ function deprecated(oldMethod, newMethod, full = false) {
  * request, each time picking up after the route it just ran, and Array.findIndex has no way to
  * start anywhere but the beginning.
  *
- * @param {any[]} arr
- * @param {(item: any, index: number, arr: any[]) => boolean} fn
+ * @template T
+ * @param {T[]} arr
+ * @param {(item: T, index: number, arr: T[]) => boolean} fn
  * @param {number} [index] where to start
  * @returns {number} the index, or -1
  */
@@ -1165,7 +1183,7 @@ function decode(path) {
  *
  * @param {string} value
  * @returns {string}
- * @throws {any} carrying status 400 when the value cannot be decoded
+ * @throws {HttpError} carrying status 400 when the value cannot be decoded
  */
 function decodeParam(value) {
     // the common case, and worth the check: a parameter is usually a number or a word, and
@@ -1178,7 +1196,8 @@ function decodeParam(value) {
     } catch {
         // a URIError, not an Error: express throws what decodeURIComponent threw, so an error
         // handler written as `err instanceof URIError` has to keep working here
-        const err = /** @type {any} */ (new URIError(`Failed to decode param '${value}'`));
+        /** @type {HttpError} */
+        const err = new URIError(`Failed to decode param '${value}'`);
         err.status = 400;
         err.statusCode = 400;
         err.expose = true;
@@ -1335,7 +1354,7 @@ function statTag(stat, weak) {
  * ETag comes from its size and mtime while a body's comes from its contents.
  *
  * @param {{weak: boolean}} options
- * @returns {(body: any, encoding?: BufferEncoding) => string}
+ * @returns {(body: string|Buffer|import("fs").Stats, encoding?: BufferEncoding) => string}
  */
 function createETagGenerator(options) {
     return function generateETag(body, encoding) {
@@ -1362,14 +1381,15 @@ function createETagGenerator(options) {
  * @returns {boolean}
  */
 function isRangeFresh(req, res) {
-    const ifRange = req.headers["if-range"];
+    // folded to one string, as every header but set-cookie is
+    const ifRange = /** @type {string|undefined} */ (req.headers["if-range"]);
     if (!ifRange) {
         return true;
     }
 
     // if-range as etag
     if (ifRange.indexOf('"') !== -1) {
-        const etag = res.get("etag");
+        const etag = /** @type {string|undefined} */ (res.get("etag"));
         return Boolean(etag && ifRange.indexOf(etag) !== -1);
     }
 
@@ -1496,7 +1516,7 @@ function headerError(message, code) {
     void err.stack;
     // back to the prototype's "TypeError", which is what node leaves behind. Cast because Error
     // declares name as always present, and this deletes the own property to uncover it again
-    delete (/** @type {any} */ (err).name);
+    delete (/** @type {{name?: string}} */ (err).name);
     err.code = code;
     return err;
 }
@@ -1505,7 +1525,7 @@ function headerError(message, code) {
  * Refuses a header name that is not an HTTP token, the way node's setHeader does and with its
  * error, so an application catching ERR_INVALID_HTTP_TOKEN behind Express catches it here.
  *
- * @param {any} name whatever a caller passed as a header name, which is what is being checked
+ * @param {unknown} name whatever a caller passed as a header name, which is what is being checked
  * @returns {void}
  * @throws {TypeError} if the name is not a token, which includes not being a string
  */
@@ -1579,11 +1599,12 @@ const STAT_ERROR_STATUS = { ENAMETOOLONG: 404, ENOTDIR: 404, ENOENT: 404 };
  * of that handler as 500. The message is the status's own name, as http-errors writes it.
  *
  * @param {number} status
- * @returns {any}
+ * @returns {HttpError}
  */
 function httpError(status) {
     const message = statuses.message[status] ?? "Error";
-    const err = /** @type {any} */ (new Error(message));
+    /** @type {HttpError} */
+    const err = new Error(message);
     // http-errors names these BadRequestError, ForbiddenError and so on, and the name is what the
     // error page shows: an application looking at a 400 sees the same word Express shows it. Set
     // before anything reads the stack, which V8 formats on first read
@@ -1602,8 +1623,8 @@ function httpError(status) {
  *
  * The error itself is returned rather than a new one, so its errno, code, syscall and path survive.
  *
- * @param {any} err the fs error, which carries its errno and path
- * @returns {any} the same error
+ * @param {HttpError} err the fs error, which carries its errno and path
+ * @returns {HttpError} the same error
  */
 function asStatError(err) {
     err.expose = false;
@@ -1616,8 +1637,7 @@ function asStatError(err) {
 // A constructor whose instances have no prototype, so a key from a request body or a query string
 // cannot reach Object.prototype. Typed as returning a plain record: without that, assigning one
 // reads as assigning `any`, which resets narrowing instead of removing undefined from it.
-/** @type {new () => Record<string, any>} */
-const NullObject = /** @type {any} */ (function () {});
+const NullObject = /** @type {new () => Record<string, any>} */ (/** @type {unknown} */ (function () {}));
 NullObject.prototype = Object.create(null);
 
 module.exports = {

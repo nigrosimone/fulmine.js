@@ -109,7 +109,8 @@ function checkNode(running = process.versions.node, required = require("../packa
  * @returns {string|undefined}
  */
 function currentGlibc() {
-    return /** @type {any} */ (process.report.getReport()).header.glibcVersionRuntime;
+    return /** @type {{header: {glibcVersionRuntime?: string}}} */ (process.report.getReport()).header
+        .glibcVersionRuntime;
 }
 
 /**
@@ -206,7 +207,7 @@ function checkBinary(platform = process.platform, arch = process.arch, abi = pro
  */
 function abiToNode(abi) {
     const known = { 108: "18", 115: "20", 127: "22", 131: "23", 137: "24", 147: "26" };
-    return /** @type {any} */ (known)[abi] ?? `ABI ${abi}`;
+    return known[abi] ?? `ABI ${abi}`;
 }
 
 /**
@@ -269,7 +270,7 @@ function checkDependencies(dir) {
     const installed = { ...pkg.dependencies, ...pkg.devDependencies };
     for (const name of Object.keys(NEEDS_A_LOOK)) {
         if (installed[name]) {
-            results.push(result("note", `${name} needs a different API here`, /** @type {any} */ (NEEDS_A_LOOK)[name]));
+            results.push(result("note", `${name} needs a different API here`, NEEDS_A_LOOK[name]));
         }
     }
     return results;

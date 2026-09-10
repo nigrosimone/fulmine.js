@@ -30,6 +30,48 @@ const { METHODS } = require("http");
  * would be a second copy of createRoute that nothing keeps in step.
  * @typedef {any} RouteEntry
  */
+/**
+ * What nativePreset builds for a literal registration: the constants every request to that route
+ * shares, read off the preset instead of the URL.
+ * @typedef {object} NativePreset
+ * @property {string} path
+ * @property {string} method
+ * @property {boolean} endsWithSlash
+ * @property {string} opPath
+ * @property {boolean} isOptions
+ * @property {boolean} isHead
+ * @property {boolean} skipHeaders written at registration, and taken back by a middleware added
+ *   after listen, see _skipPresets
+ * @property {boolean} skipQuery the same, for the query
+ */
+/**
+ * Where a granted header skip lives: the preset itself for a literal registration, a holder of its
+ * own for a parameterised one, see makeHandler in optimizer.js.
+ * @typedef {object} SkipHolder
+ * @property {boolean} skipHeaders
+ * @property {boolean} skipQuery
+ * @property {string|null} [method]
+ * @property {boolean} [isOptions]
+ * @property {boolean} [isHead]
+ */
+/**
+ * An earlier registration a mount is guarded by, see guardsInside.
+ * @typedef {{path: string, use: boolean, method: string, all: boolean}} MountGuard
+ */
+/**
+ * A layer as express shapes it, which is what app.stack and router.stack hand out.
+ * @typedef {object} Layer
+ * @property {Function} handle
+ * @property {string} name
+ * @property {undefined} params
+ * @property {undefined} path
+ * @property {never[]} keys
+ * @property {RouteEntry|undefined} route
+ */
+/**
+ * A websocket registration, kept until listen() hands it to µWS.
+ * @typedef {{path: string, behavior: Record<string, unknown>, owner: Router}} WsRoute
+ */
 
 // whether a registered path could be asked for in another case, which is what decides whether the
 // native router can be trusted to prefer it, see _optimizeRoute
@@ -100,8 +142,9 @@ for (const method of resDecMethods) {
  * them off the handle.
  *
  * @param {RouteEntry} route
- * @param {any} callback a handler, or a mounted router, which is callable and carries _routes
- * @returns {any} the layer object, which is express's shape and not one of ours
+ * @param {Function & {_routes?: RouteEntry[], _isApplication?: boolean}} callback a handler, or a
+ *   mounted router, which is callable and carries _routes
+ * @returns {Layer} the layer object, which is express's shape and not one of ours
  */
 function layerFor(route, callback) {
     const layer = {
@@ -129,7 +172,7 @@ function layerFor(route, callback) {
  * that name.
  *
  * @param {RouteEntry} route
- * @returns {any} the layer object, which is express's shape and not one of ours
+ * @returns {Layer} the layer object, which is express's shape and not one of ours
  */
 function routeLayer(route) {
     const handle = function handle(req, res, next) {
@@ -326,7 +369,7 @@ const EMPTY_INDICES = /** @type {number[]} */ ([]);
  * patterns are pure literals, everything else, "/*" included, stays in alwaysVisit and is still
  * matched per request by _pathMatches.
  *
- * @param {any[]} routes the router's own table
+ * @param {RouteEntry[]} routes the router's own table
  * @param {boolean} caseFlag the frozen case-sensitivity flag
  * @returns {{map: Map<string, number[]>, alwaysVisit: number[]}}
  */
@@ -513,7 +556,7 @@ function logError(router, err) {
 /**
  * The uWS onAborted handler, bound to the response: a closure here captured two locals and cost
  * a context plus a function per request, for a path that only ever runs on a client abort.
- * @this {any} the response, with the request linked as this.req
+ * @this {Response} the response, with the request linked as this.req
  */
 function onNativeAborted() {
     const response = this;
@@ -620,7 +663,7 @@ const CALLBACK_ROUTER = 2;
  *
  * @param {Request} req
  * @param {RouteEntry} route
- * @param {any} err whatever decoding threw
+ * @param {unknown} err whatever decoding threw
  */
 function raiseDecodeFailure(req, route, err) {
     if (req._error) {
@@ -686,7 +729,7 @@ function stepsOver(route, req) {
     // it would answer a GET differently from express. See the same seeding in middlewares.js
     if (!("body" in req)) {
         // cast because `body` is deliberately not a field of Request, see the comment there
-        /** @type {any} */ (req).body = undefined;
+        /** @type {{body?: unknown}} */ (req).body = undefined;
     }
     return true;
 }
@@ -740,10 +783,10 @@ function shadowsLeaf(guard, leafPath, leaf) {
  * @param {Router} router the router the mount belongs to
  * @param {RouteEntry} mount
  * @param {string} pathPrefix what the mounts above this one consumed
- * @param {any[]} chain the layers that always run before the mount, which need no guard
- * @param {any[]} inherited the guards from further out, since a mount two levels down is under
+ * @param {RouteEntry[]} chain the layers that always run before the mount, which need no guard
+ * @param {MountGuard[]} inherited the guards from further out, since a mount two levels down is under
  *   everything written before either of them
- * @returns {any[]|null} null when a path cannot be read segment by segment, which leaves the mount
+ * @returns {MountGuard[]|null} null when a path cannot be read segment by segment, which leaves the mount
  *   to ordinary dispatch rather than guessing about it
  */
 function guardsInside(router, mount, pathPrefix, chain, inherited) {
@@ -809,10 +852,13 @@ function restoreApp(route, req) {
 /**
  * useApp
  * @param {Request} req
- * @param {any} app the application taking the request over
+ * @param {Router & {request?: object, response?: object}} app the application taking the request
+ *   over. Typed as a router because the callers hold one, and only an application carries the two
+ *   prototype layers read below
  */
 function useApp(req, app) {
-    req.app = app;
+    // only an application takes a request over, see rememberApp
+    req.app = /** @type {import("./application.js").Application} */ (app);
     if (req.res) {
         req.res.app = app;
     }
@@ -864,7 +910,7 @@ function callablePrototypeFor(classPrototype) {
     prototype = Object.create(classPrototype);
     for (const name of ["apply", "call", "toString"]) {
         Object.defineProperty(prototype, name, {
-            value: /** @type {any} */ (Function.prototype)[name],
+            value: Function.prototype[name],
             writable: true,
             configurable: true,
             enumerable: false

@@ -25,6 +25,8 @@ const uWS = require("uWebSockets.js");
 const uWSAny = /** @type {any} */ (uWS);
 const statuses = require("statuses");
 
+/** @typedef {import("./application.js").Application} Application */
+
 const parser = acorn.Parser;
 
 const allowedResMethods = [
@@ -89,7 +91,8 @@ const understoodNodeTypes = new Set([
  * Every node type in the tree. Walks all the keys instead of named edges, so the answer does not
  * depend on the walk being complete.
  *
- * @param {any} node an acorn AST node. acorn ships no useful node types, and every shape here is checked by hand
+ * @param {any} node an acorn node, or an array or a scalar under one: walked by key, so no shape
+ *   is assumed
  * @param {Set<string>} types
  */
 function collectNodeTypes(node, types) {
@@ -112,7 +115,7 @@ function collectNodeTypes(node, types) {
 /**
  * The key a property writes. Only a plain name or a literal, never computed, a getter or a spread.
  *
- * @param {any} property an acorn Property node
+ * @param {import("acorn").AnyNode} property an acorn node, a Property when it is one this reads
  * @returns {string|null} null when the shape is not one of those
  */
 function literalKeyOf(property) {
@@ -129,8 +132,8 @@ function literalKeyOf(property) {
  * The value of a literal expression, for the shapes known at registration time. Anything else
  * throws, and the catch around the compiler turns it into ordinary routing.
  *
- * @param {any} node an acorn AST node. acorn ships no useful node types, and every shape here is checked by hand
- * @returns {any} whatever the literal denotes
+ * @param {import("acorn").AnyNode} node
+ * @returns {unknown} whatever the literal denotes
  */
 function literalValue(node) {
     switch (node.type) {
@@ -187,8 +190,9 @@ function literalValue(node) {
  * The status and the headers the calls set, in the order they were first written. null when one
  * of them is not a literal this can read.
  *
- * @param {any[]} callExprs the res calls, in run order
- * @param {any[]} headers written to, so the caller keeps the array the body reader also uses
+ * @param {any[]} callExprs the res calls, in run order, each carrying what readResCalls read off
+ *   its callee as `obj`; loose because the arguments are taken as whatever literal they hold
+ * @param {[string, string][]} headers written to, so the caller keeps the array the body reader also uses
  * @returns {{statusCode: number, sendStatusUsed: boolean}|null}
  */
 function readStatusAndHeaders(callExprs, headers) {
@@ -286,10 +290,10 @@ function readStatusAndHeaders(callExprs, headers) {
  * The body parts the calls write, pushed into `body`, with the content-type decisions they imply
  * pushed into `headers`. null when one of the calls writes something this cannot read.
  *
- * @param {any[]} callExprs the res calls, in run order
- * @param {any[]} headers the headers read so far, written to
- * @param {any[]} body the body parts, written to
- * @param {any} app the application, for the json settings
+ * @param {any[]} callExprs the res calls, in run order, as readStatusAndHeaders takes them
+ * @param {[string, string][]} headers the headers read so far, written to
+ * @param {any[]} body the body parts, written to; loose because a literal's value is kept as it is
+ * @param {Application} app the application, for the json settings
  * @param {string[]} queries names bound by a destructured req.query
  * @param {string[]} params names bound by a destructured req.params
  * @returns {{sendUsed: boolean, bodyFromSend: boolean}|null}
@@ -420,7 +424,8 @@ function readBody(callExprs, headers, body, app, queries, params) {
                      * Reads a chain of string concatenations right to left. Each side must be a literal or a
                      * param or query value, anything else makes the whole handler fall back.
                      *
-                     * @param {any} node a BinaryExpression
+                     * @param {any} node a BinaryExpression, read loosely: the literal on either
+                     *   side is kept as it is
                      * @returns {boolean}
                      */
                     function check(node) {
@@ -479,7 +484,7 @@ function readBody(callExprs, headers, body, app, queries, params) {
  * through, too few parameters, or a return that is not the last statement.
  *
  * @param {Function} cb
- * @returns {{fn: any, args: string[]}|null}
+ * @returns {{fn: import("acorn").FunctionDeclaration|import("acorn").ArrowFunctionExpression, args: string[]}|null}
  */
 function readHandler(cb) {
     let code = cb.toString();
@@ -491,7 +496,7 @@ function readHandler(cb) {
     // Anything not understood returns false and falls back to ordinary routing. Widening the
     // list below is not worth it: over the 1113 handlers in tests, demo and benchmark, 42.6%
     // call something that is not res, `const` would unlock 7 (0.6%), a conditional 0.1% more.
-    /** @type {any[]} */
+    /** @type {any[]} the tokens, loose because acorn's Token type leaves out value */
     const tokens = [...acorn.tokenizer(code, { ecmaVersion: "latest" })];
 
     if (
@@ -520,7 +525,7 @@ function readHandler(cb) {
         return null;
     }
 
-    /** @type {any[]} */
+    /** @type {any[]} the statements, read loosely: what a parameter may be is checked by hand in readParamNames */
     const parsed = parser.parse(code, { ecmaVersion: "latest" }).body;
     let fn = parsed[0];
 
@@ -564,13 +569,24 @@ function readHandler(cb) {
 }
 
 /**
+ * What readParamNames found: the two parameter names, and what a destructured req bound.
+ * @typedef {object} ParamNames
+ * @property {string} req
+ * @property {string} res
+ * @property {string|undefined} queryName
+ * @property {string|undefined} paramsName
+ * @property {string[]} queries
+ * @property {string[]} params
+ */
+
+/**
  * The names a destructured `req` binds for query and params, so the body reader can tell one of
  * them from an identifier it must refuse. null when the pattern is one this cannot read.
  *
- * @param {any} fn the handler's AST
+ * @param {any} fn the handler's AST, read loosely: a destructured parameter is checked shape by
+ *   shape, and anything else throws into the fallback
  * @param {string[]} args its parameter names
- * @returns {{req: string, res: string, queryName: string|undefined, paramsName: string|undefined,
- *   queries: string[], params: string[]}|null}
+ * @returns {ParamNames|null}
  */
 function readParamNames(fn, args) {
     const [req, res] = args;
@@ -615,9 +631,10 @@ function readParamNames(fn, args) {
  * Every call the handler makes, in the order they run, cut after the one that writes the body.
  * null when it calls anything but `res`, or a method a compiled response cannot stand for.
  *
- * @param {any} fn the handler's AST
+ * @param {import("acorn").FunctionDeclaration|import("acorn").ArrowFunctionExpression} fn the handler's AST
  * @param {string} res the name its second parameter was given
- * @returns {any[]|null}
+ * @returns {any[]|null} the call nodes, each carrying what was read off its callee as `obj`; loose
+ *   because the readers take their arguments as whatever literal they hold
  */
 function readResCalls(fn, res) {
     // check if it calls any other function other than the one in `res`
@@ -698,9 +715,9 @@ function readResCalls(fn, res) {
 /**
  * Whether every identifier in the handler is one a compiled response can stand for.
  *
- * @param {any} fn the handler's AST
+ * @param {import("acorn").FunctionDeclaration|import("acorn").ArrowFunctionExpression} fn the handler's AST
  * @param {string[]} args its parameter names
- * @param {any} names what a destructured req bound, from readParamNames
+ * @param {ParamNames} names what a destructured req bound, from readParamNames
  * @returns {boolean}
  */
 function identifiersAllowed(fn, args, names) {
@@ -869,9 +886,10 @@ module.exports = function compileDeclarative(cb, app) {
  * Every node matching the predicate, in the order of the named edges below. The edges are written
  * by hand, which is why compileDeclarative first refuses any node type not on the understood list.
  *
- * @param {any} node an acorn AST node. acorn ships no useful node types, and every shape here is checked by hand
- * @param {(node: any) => boolean} fn
- * @returns {any[]}
+ * @param {any} node an acorn node, walked along the named edges below, so nothing is assumed
+ *   about its shape
+ * @param {(node: import("acorn").AnyNode) => boolean} fn
+ * @returns {any[]} the matching nodes, as loose as the input
  */
 function filterNodes(node, fn) {
     const filtered = [];

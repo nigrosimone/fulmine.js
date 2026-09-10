@@ -389,7 +389,7 @@ class NodeHttpResponse {
 
 /**
  * Whether these are node's own request and response rather than this project's.
- * @param {any} req anything a caller handed the router, which is the point of the check
+ * @param {unknown} req anything a caller handed the router, which is the point of the check
  */
 function isNodeRequest(req) {
     return req instanceof IncomingMessage;
@@ -398,14 +398,19 @@ function isNodeRequest(req) {
 /**
  * Serves a request that arrived through node's HTTP server with the given router or app.
  *
- * @param {any} router the router or application serving this request
+ * @param {import("./router.js")} router the router or application serving this request
  * @param {import("http").IncomingMessage} nodeReq
  * @param {import("http").ServerResponse} nodeRes
- * @param {(err?: any) => void} [next] called when nothing in the router answered
+ * @param {(err?: unknown) => void} [next] called when nothing in the router answered
  */
 function serveNodeRequest(router, nodeReq, nodeRes, next) {
-    const shimRes = new NodeHttpResponse(nodeReq, nodeRes);
-    const shimReq = new NodeHttpRequest(nodeReq);
+    // the shims stand in for uWS's pair, and the checker is told so once, here
+    const shimRes = /** @type {import("uWebSockets.js").HttpResponse} */ (
+        /** @type {unknown} */ (new NodeHttpResponse(nodeReq, nodeRes))
+    );
+    const shimReq = /** @type {import("uWebSockets.js").HttpRequest} */ (
+        /** @type {unknown} */ (new NodeHttpRequest(nodeReq))
+    );
     const request = router.handleRequest(shimRes, shimReq);
     const response = request.res;
     // the shim's onAborted rides node's own close event, needed on every request here

@@ -16,6 +16,10 @@ limitations under the License.
 
 /** @typedef {import("./request.js")} Request */
 /** @typedef {import("./response.js")} Response */
+/**
+ * What res.on was given, parked until there is a compressor to hang it on.
+ * @typedef {Parameters<import("stream").Writable["on"]>} OnArgs
+ */
 
 // express.compression(), which answers with a compressed body when the client asked for one.
 //
@@ -114,7 +118,8 @@ const noop = () => {};
  *
  * Only for the deflate formats. A brotli stream carries context across a reset.
  *
- * @param {() => any} create
+ * @param {() => any} create makes the stream. Loose because what is checked below is node's zlib
+ *   internals, which its typings do not declare
  * @param {number} finishFlag
  * @param {(body: Buffer) => Buffer} oneShot
  * @returns {(body: Buffer) => Buffer}
@@ -251,7 +256,7 @@ function toBuffer(chunk, encoding) {
  * @param {object} [options]
  * @param {number|string} [options.threshold] the smallest body worth compressing, bytes or "1kb".
  *   Default 1024. A response whose size is not known in advance is compressed whatever its size.
- * @param {(req: any, res: any) => boolean} [options.filter] whether this response should be
+ * @param {(req: Request, res: Response) => boolean} [options.filter] whether this response should be
  *   compressed at all. The default says yes to any compressible content type.
  * @param {string} [options.enforceEncoding] what to use when the request carries no
  *   Accept-Encoding at all. Default "identity", which is to say nothing is compressed.
@@ -266,17 +271,19 @@ function toBuffer(chunk, encoding) {
  * @param {number} [options.memLevel] zlib memory level.
  * @param {number} [options.strategy] zlib strategy.
  * @param {number} [options.windowBits] zlib window size.
- * @returns {(req: any, res: any, next: (err?: any) => void) => void} the middleware
+ * @returns {(req: any, res: any, next: (err?: unknown) => void) => void} the middleware. The pair is
+ *   loose because this is written against node's end() and write() shapes, which this project's
+ *   own narrow
  */
 function compression(options) {
     const opts = options || {};
     // the whole bag goes to zlib, as the compression module does: level, memLevel, strategy,
     // windowBits and chunkSize arrive under their own names and zlib ignores the rest
-    const zlibOptions = /** @type {any} */ (opts);
+    const zlibOptions = /** @type {import("zlib").ZlibOptions} */ (opts);
     const brotliOptions = { ...opts.brotli };
     brotliOptions.params = {
         [zlib.constants.BROTLI_PARAM_QUALITY]: 4,
-        ...(opts.brotli && /** @type {any} */ (opts.brotli).params)
+        ...(opts.brotli && /** @type {import("zlib").BrotliOptions} */ (opts.brotli).params)
     };
     // node's default level, unlike brotli above: zstd at its default is already in the band where
     // this middleware wants to be, and dropping it further buys nothing worth the ratio
@@ -285,7 +292,7 @@ function compression(options) {
     const enforceEncoding = opts.enforceEncoding || "identity";
     // bytes.parse reads "1kb" and hands back null for anything it cannot, an absent option
     // included, which is where the default comes in
-    const threshold = bytes.parse(/** @type {any} */ (opts.threshold)) ?? 1024;
+    const threshold = bytes.parse(/** @type {string|number} */ (opts.threshold)) ?? 1024;
     // the mask handed to the negotiation, built once here: a name nobody knows is a config
     // mistake and throws now rather than serving the wrong bytes later
     let allowed = ENCODING_DEFAULT;
@@ -362,7 +369,8 @@ function compression(options) {
 
     /**
      * @param {string} method
-     * @returns {any} the transform stream for a body that arrives in pieces
+     * @returns {import("stream").Transform & import("zlib").Zlib} the transform stream for a body that
+     *   arrives in pieces
      */
     function compressStream(method) {
         if (method === "gzip") {
@@ -416,13 +424,13 @@ function compression(options) {
         const _on = res.on;
 
         /** drain listeners parked until there is a compressor to hang them on, see res.on below */
-        let listeners = /** @type {any[][]|null} */ ([]);
-        /** @type {any} */
+        let listeners = /** @type {OnArgs[]|null} */ ([]);
+        /** @type {(import("stream").Transform & import("zlib").Zlib)|null} */
         let stream = null;
         let decided = false;
         let ended = false;
         /** what end() was given to call back, held until the compressor has finished */
-        let endCallback = /** @type {any} */ (undefined);
+        let endCallback = /** @type {(() => void)|undefined} */ (undefined);
 
         // the compression module adds this, and code written against it calls it: an SSE feed
         // pushes its event out with res.flush(). Nothing to flush before there is a compressor
@@ -497,25 +505,26 @@ function compression(options) {
          * @param {string} method
          */
         function startStream(method) {
-            stream = compressStream(method);
+            // the closures below read the local: inside them the checker forgets the field is set
+            const compressor = (stream = compressStream(method));
             // The parked listeners, and the list itself stays rather than being emptied: res.on
             // reads it to know a drain listener belongs on the compressor from here on. A pipe
             // registers its own the first time write() says to slow down, which is after this
-            for (const listener of /** @type {any[][]} */ (listeners)) {
-                stream.on(listener[0], listener[1]);
+            for (const listener of /** @type {OnArgs[]} */ (listeners)) {
+                compressor.on(listener[0], listener[1]);
             }
-            stream.on("data", (chunk) => {
+            compressor.on("data", (chunk) => {
                 if (_write.call(res, chunk) === false) {
-                    stream.pause();
+                    compressor.pause();
                 }
             });
-            stream.on("end", () => {
+            compressor.on("end", () => {
                 _end.call(res, endCallback);
             });
-            _on.call(res, "drain", () => stream.resume());
+            _on.call(res, "drain", () => compressor.resume());
             // an aborted response never reaches the end of the stream, and the zlib context behind
             // it is native memory that a garbage collector is in no hurry to reach
-            _on.call(res, "close", () => stream.destroy());
+            _on.call(res, "close", () => compressor.destroy());
         }
 
         res.write = function write(chunk, encoding, callback) {

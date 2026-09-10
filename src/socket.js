@@ -29,8 +29,8 @@ class Socket extends EventEmitter {
      * The Socket's error listener, shared across sockets: an error closes the stand-in, which is
      * the close connection trackers wait for. EventEmitter calls it with this = the emitter.
      *
-     * @this {any}
-     * @param {any} err whatever the response reported, which need not be an Error
+     * @this {Socket}
+     * @param {unknown} err whatever the response reported, which need not be an Error
      */
     static _onError(err) {
         this.emit("close");
@@ -96,7 +96,7 @@ class Socket extends EventEmitter {
     /**
      * Finishes the response through the socket, which is how the middleware that only knows
      * about sockets ends one.
-     * @param {any} [body] whatever node's socket.end() would take
+     * @param {string|Buffer|Uint8Array} [body] whatever node's socket.end() would take
      */
     end(body) {
         this.response.end(body);
