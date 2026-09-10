@@ -503,6 +503,9 @@ function serveStatic(root, options) {
     if (options.setHeaders !== undefined && typeof options.setHeaders !== "function") {
         throw new TypeError("option setHeaders must be function");
     }
+    // serve-static's own option, which res.sendFile does not take, so it goes down under a name
+    // only this middleware writes, see sendFile
+    options._setHeaders = options.setHeaders;
     // How long express.static remembers which twins a path has. A second is short enough that a
     // deploy is picked up while it is still going out, and long enough that the lookup costs
     // nothing under any traffic at all. { cache: false } asks the disk on every request.

@@ -891,7 +891,7 @@ module.exports = class Response extends LazyWritable {
      * options position is the callback.
      *
      * Options: `root`, `maxAge`, `lastModified`, `headers`, `dotfiles` ("allow", "deny" or
-     * "ignore"), `acceptRanges`, `cacheControl`, `immutable`, `etag` and `setHeaders`.
+     * "ignore"), `acceptRanges`, `cacheControl`, `immutable` and `etag`.
      *
      * @param {string} path
      * @param {import("./options").SendFileOptions|((err?: Error) => void)} [options] or the callback in
@@ -1061,8 +1061,10 @@ module.exports = class Response extends LazyWritable {
                 this.setHeader(header, options.headers[header]);
             }
         }
-        if (options.setHeaders) {
-            options.setHeaders(this, fullpath, stat);
+        // express.static's setHeaders, which res.sendFile does not take: express ignores it here,
+        // so it travels under a name only the middleware writes
+        if (options._setHeaders) {
+            options._setHeaders(this, fullpath, stat);
         }
 
         // etag, from the stat and never from the app's "etag fn". send computes this itself with

@@ -42,8 +42,8 @@ export interface SendFileOptions {
     dotfiles?: "allow" | "deny" | "ignore" | "ignore_files";
     /** Extra headers for the response. */
     headers?: Record<string, string>;
-    /** Called before the file goes out, to set headers from the path or its stat. */
-    setHeaders?: (res: any, path: string, stat: any) => void;
+    /** Internal: express.static's setHeaders, which res.sendFile itself does not take. */
+    _setHeaders?: (res: any, path: string, stat: any) => void;
     /** First byte of the window to send. */
     start?: number;
     /** Last byte of the window to send. */
@@ -68,6 +68,8 @@ export interface StaticOptions extends SendFileOptions {
     fallthrough?: boolean;
     /** Extensions tried when the path names no file, or false to try none. */
     extensions?: string[] | false;
+    /** Called before the file goes out, to set headers from the path or its stat. */
+    setHeaders?: (res: any, path: string, stat: any) => void;
     /**
      * Serve `file.br` or `file.gz` in place of `file` when one is on disk and the client takes it.
      * Off by default. Vary: Accept-Encoding is sent whether or not a variant is found, and the
