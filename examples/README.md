@@ -18,6 +18,7 @@ node websocket.js
 | [cluster.js](./cluster.js)                           | `express({ cluster: "auto" })`: one worker per core, all on the same port                                       |
 | [websocket.js](./websocket.js)                       | `app.ws()`, with the upgrade deciding whether the socket opens                                                  |
 | [socket-io.js](./socket-io.js)                       | socket.io through `io.attachApp(app.uwsApp)`, since the upgrade never reaches node                              |
+| [mcp.js](./mcp.js)                                   | an MCP server on the official SDK, a session per client, and what a held-open stream needs here                 |
 | [static-precompressed.js](./static-precompressed.js) | `express.static({ preCompressed: true })`: the `.br` and `.gz` twins on disk                                    |
 | [compression.js](./compression.js)                   | `express.compression()`, which Express has none of                                                              |
 | [server-timing.js](./server-timing.js)               | `express.serverTiming()`: how the request was routed, in the browser's own tools                                |

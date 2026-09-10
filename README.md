@@ -989,6 +989,10 @@ suite, so what is compared is what their own build produces.
 - ✅ [Apollo Server](https://www.apollographql.com/docs/apollo-server) through
   [`@as-integrations/express5`](https://www.npmjs.com/package/@as-integrations/express5)
 - ✅ [tRPC](https://trpc.io) through `@trpc/server/adapters/express`
+- ✅ [MCP](https://modelcontextprotocol.io) through
+  [`@modelcontextprotocol/sdk`](https://www.npmjs.com/package/@modelcontextprotocol/sdk) on the
+  Streamable HTTP transport, with the body read off the stream or handed over by `express.json()`.
+  Runnable: [`examples/mcp.js`](./examples/mcp.js)
 - ✅ [Angular SSR](#angular-ssr), which is an ordinary Express `server.ts` plus one line of build
   configuration
 
@@ -1010,10 +1014,11 @@ Any Express view engine should work. Here's list of engines we include in our te
 ## Examples
 
 [`examples/`](./examples/README.md) has one runnable file per thing this does that Express does not:
-the cluster option, `app.ws()`, socket.io through `attachApp`, the pre-compressed twins,
-`express.compression()`, `express.serverTiming()`, TLS through `uwsOptions`, the PROXY protocol,
-what `listen()` decided about each route, and the app answering as an `http.Server`. What an
-Express application already does is documented by Express and is not repeated there.
+the cluster option, `app.ws()`, socket.io through `attachApp`, an MCP server on the official SDK,
+the pre-compressed twins, `express.compression()`, `express.serverTiming()`, TLS through
+`uwsOptions`, the PROXY protocol, what `listen()` decided about each route, and the app answering as
+an `http.Server`. What an Express application already does is documented by Express and is not
+repeated there.
 
 ```sh
 cd examples
