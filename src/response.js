@@ -79,6 +79,9 @@ const JSON_UTF8 = "application/json; charset=utf-8";
 // than written out, since a year is already longer than any cache will honour.
 const MAX_MAXAGE = 60 * 60 * 24 * 365 * 1000;
 
+// what send takes as a range request: the bytes unit, checked on the header's text before parsing
+const BYTES_RANGE = /^ *bytes=/;
+
 module.exports = class Response extends LazyWritable {
     /** @type {Socket|null} */
     #socket = null;
@@ -1108,7 +1111,10 @@ module.exports = class Response extends LazyWritable {
 
         // range requests
         if (options.acceptRanges) {
-            if (this.req.headers.range) {
+            // only the bytes unit, and send checks the header's text for it before parsing:
+            // "items=0-1" or "Bytes=0-1" is not a range request, and answers the whole file
+            const rangeHeader = this.req.headers.range;
+            if (rangeHeader !== undefined && BYTES_RANGE.test(rangeHeader)) {
                 // the branch above established the header is there, so range() cannot answer
                 // the undefined it uses to mean "no Range header"
                 let ranges = /** @type {ReturnType<typeof import("range-parser")>} */ (
