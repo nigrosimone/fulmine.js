@@ -76,6 +76,12 @@ function invalidChunkError(chunk) {
         `The "chunk" argument must be of type string or an instance of Buffer or Uint8Array. Received ${received}`
     );
     err.code = "ERR_INVALID_ARG_TYPE";
+    // node stamps the code into the stack's first line and then puts the name back, so err.name
+    // reads TypeError while the error page, which prints the stack, shows the bracketed form
+    err.name = "TypeError [ERR_INVALID_ARG_TYPE]";
+    void err.stack;
+    // through the index signature: name is not optional on Error, so a plain delete is a type error
+    delete (/** @type {Record<string, unknown>} */ (/** @type {unknown} */ (err)).name);
     return err;
 }
 const { sign } = require("cookie-signature");

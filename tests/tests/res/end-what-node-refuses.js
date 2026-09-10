@@ -20,7 +20,14 @@ const app = express();
 for (const [name, chunk] of Object.entries(chunks)) {
     app.get("/" + name, (req, res) => res.end(chunk));
 }
-app.use((err, req, res, next) => res.status(500).type("txt").send(`${err.code}: ${err.message}`));
+// the stack's first line too: node names the code in it and leaves err.name alone, and the
+// default error page prints the stack
+app.use((err, req, res, next) =>
+    res
+        .status(500)
+        .type("txt")
+        .send(`${err.name} | ${err.code} | ${String(err.stack).split("\n")[0]} | ${err.message}`)
+);
 
 app.listen(13333, async () => {
     console.log("Server is running on port 13333");
