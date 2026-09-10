@@ -1,5 +1,15 @@
 # Changelog
 
+## [5.19.5](https://github.com/nigrosimone/fulmine.js/compare/v5.19.4...v5.19.5) (2026-09-10)
+
+### Bug Fixes
+
+* **body-parser:** judge the Content-Encoding before the empty body, as body-parser does ([abe7136](https://github.com/nigrosimone/fulmine.js/commit/abe713647e1559538dec9e90c3714fa6a3fb1231))
+* **errors:** the final handler answers with the status and the headers express gives it ([d4b0f42](https://github.com/nigrosimone/fulmine.js/commit/d4b0f429b6432a707fdc8682777d36d75f788d02))
+* **response:** refuse the chunks node refuses in send and end, and keep the writeHead phrase ([6c05ac8](https://github.com/nigrosimone/fulmine.js/commit/6c05ac8eb8dd20c0b347f8fa9ecb70506d67de84))
+* **response:** resolve a Content-Type through the mime database in res.set, as express does ([8c3eb7a](https://github.com/nigrosimone/fulmine.js/commit/8c3eb7a0c27addebb24f7dc539871802302009c4))
+* **response:** write Keep-Alive only with a Connection of our own, as node does ([f8957f5](https://github.com/nigrosimone/fulmine.js/commit/f8957f5dfdd6cea13b5470a82b7760ca9f0b5f4c))
+
 ## [5.19.4](https://github.com/nigrosimone/fulmine.js/compare/v5.19.3...v5.19.4) (2026-09-10)
 
 ### Bug Fixes
