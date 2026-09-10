@@ -1,5 +1,17 @@
 # Changelog
 
+## [5.19.4](https://github.com/nigrosimone/fulmine.js/compare/v5.19.3...v5.19.4) (2026-09-10)
+
+### Bug Fixes
+
+* **body-parser:** hand the verify hook the charset, as body-parser does ([99df618](https://github.com/nigrosimone/fulmine.js/commit/99df618f2038f1da1f2cacda628175a7c4960082))
+* **body-parser:** shape what a verify hook throws as http-errors does ([e65692c](https://github.com/nigrosimone/fulmine.js/commit/e65692cc1b76d5d78ebdff613a80126535bffbad))
+* **response:** apply the encoding res.end is given, and keep such a call out of the compiled path ([b4fe4a1](https://github.com/nigrosimone/fulmine.js/commit/b4fe4a11ab2cbb62c0ecc4389510067460918ab3))
+* **response:** serialise before setting the type in res.json, as express does ([af9bbc5](https://github.com/nigrosimone/fulmine.js/commit/af9bbc56c2e76711799c157e5965ad1e16d41554))
+* **response:** settle the head at writeHead, as node does ([ab3e53e](https://github.com/nigrosimone/fulmine.js/commit/ab3e53e84d7ddc6d3e44a49e4d842dcfa6029c54))
+* **send-file:** honour setHeaders in express.static only, as express does ([b57cc40](https://github.com/nigrosimone/fulmine.js/commit/b57cc40b077814f9b68840056b58b2fb536479c6))
+* **send-file:** take only a bytes Range as a range request, as send does ([29a7782](https://github.com/nigrosimone/fulmine.js/commit/29a7782ca3015f1c4b4d4ef56fba234d523c5df6))
+
 ## [5.19.3](https://github.com/nigrosimone/fulmine.js/compare/v5.19.2...v5.19.3) (2026-09-09)
 
 ### Performance Improvements
