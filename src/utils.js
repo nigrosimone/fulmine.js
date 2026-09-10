@@ -39,7 +39,8 @@ const { Stats } = require("fs");
  *   expose?: boolean,
  *   code?: string,
  *   type?: string,
- *   types?: string[]
+ *   types?: string[],
+ *   headers?: Record<string, any>
  * }} HttpError
  */
 
@@ -806,6 +807,16 @@ const lookupType = memoizeByString((type) => mime.lookup(type) || "application/o
  * @returns {string}
  */
 const contentTypeFor = memoizeByString((type) => mime.contentType(type) || "application/octet-stream");
+
+/**
+ * The content-type res.set stores for a value, which is what express stores: an extension resolved
+ * to its media type with the charset the database gives it, and false when it resolves to nothing.
+ * A false there is falsy for every default below it, so send() and json() write their own.
+ *
+ * @param {string} value
+ * @returns {string|false}
+ */
+const contentTypeSet = memoizeByString((value) => mime.contentType(value));
 
 /**
  * A media type from either spelling: "html" is looked up in the mime database, while anything
@@ -1740,6 +1751,7 @@ module.exports = {
     entityTag,
     statTag,
     contentTypeFor,
+    contentTypeSet,
     negotiateEncoding,
     ENCODING_BR,
     ENCODING_GZIP,

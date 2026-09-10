@@ -18,7 +18,7 @@ limitations under the License.
 */
 
 const acorn = require("acorn");
-const { stringify, withDefaultCharset, withUtf8Charset, contentTypeFor } = require("./utils.js");
+const { stringify, contentTypeSet, withUtf8Charset, contentTypeFor } = require("./utils.js");
 // H3App, DeclarativeResponse and _cfg exist at runtime but are missing from the .d.ts the
 // package ships, so the module is read through a loose alias
 const uWS = require("uWebSockets.js");
@@ -250,10 +250,16 @@ function readStatusAndHeaders(callExprs, headers) {
 
             for (let [header, value] of pairs) {
                 const name = String(header).toLowerCase();
-                // res.set adds a charset to a content-type, res.setHeader does not: setHeader
-                // is node's and node does not know what a media type is
+                // res.set resolves a content-type through the mime database, res.setHeader does
+                // not: setHeader is node's and node does not know what a media type is
                 if (call.obj.propertyName !== "setHeader" && name === "content-type") {
-                    value = withDefaultCharset(value);
+                    const resolved = contentTypeSet(String(value));
+                    if (resolved === false) {
+                        // res.set stores false for it and the body method writes its own type
+                        // instead; left to the ordinary path rather than worked out twice here
+                        return null;
+                    }
+                    value = resolved;
                 }
                 const index = headers.findIndex((entry) => String(entry[0]).toLowerCase() === name);
                 if (index === -1) {

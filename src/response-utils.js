@@ -57,7 +57,10 @@ for (const s of [
     "gzip",
     "br",
     "deflate",
-    "zstd"
+    "zstd",
+    // res.set("Content-Type", x) stores false when the mime database knows nothing about x, the
+    // way express does, and the lookup below turns that back into the bytes node writes for it
+    "false"
 ]) {
     HEADER_VALUE_BUF[s] = Buffer.from(s);
 }

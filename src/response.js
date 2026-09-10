@@ -34,13 +34,13 @@ const {
     validateHeaderName,
     validateHeaderValue,
     headerIsWritable,
-    withDefaultCharset,
     withUtf8Charset,
     asStatError,
     httpError,
     headersSentError,
     applyWriteHead,
     contentTypeFor,
+    contentTypeSet,
     statTag,
     cachedStat,
     NullObject
@@ -1621,9 +1621,17 @@ module.exports = class Response extends LazyWritable {
                 if (Array.isArray(out)) {
                     throw new TypeError("Content-Type cannot be set to an Array");
                 }
-                // every type the mime database gives a charset, not a list of three. The list was
-                // missing application/manifest+json among others, which Express does charset.
-                out = withDefaultCharset(out);
+                // an extension becomes its media type here, charset included
+                const resolved = contentTypeSet(out);
+                if (resolved === false) {
+                    // what the mime database knows nothing about is stored as the false express
+                    // stores, so send() and json() read it as unset and write their own type.
+                    // Through setHeader first, for the checks, then the boolean over the string
+                    this.setHeader(field, "false");
+                    this.headers[name] = /** @type {any} */ (false);
+                    return this;
+                }
+                out = resolved;
             }
             // the name as it was written, not the lowercased one: setHeader lowercases it itself,
             // and it is the name that a refused header is reported by, which Express takes from
@@ -2028,7 +2036,8 @@ module.exports = class Response extends LazyWritable {
 
     /**
      * Sets Content-Type. An extension is looked up as a mime type and gets a charset; anything
-     * containing a slash is used as written. Also available as `contentType()`.
+     * containing a slash is used as written. An extension the database does not know falls back
+     * to octet-stream here, which res.set does not do. Also available as `contentType()`.
      * @param {string} type
      * @returns {this}
      */
