@@ -26,8 +26,14 @@ npm run fuzz                        # a few hundred rounds on a seed nobody chos
 npm run fuzz -- --rounds 500        # longer
 npm run fuzz -- --seed 12345 --rounds 1   # replay exactly what a past run did
 npm run fuzz -- --keep-going        # do not stop at the first divergence
+npm run fuzz -- --no-shrink         # every request a round disagreed on, and the round as drawn
+npm run fuzz -- --port 17000        # where the arms bind, for a second run beside the first
 npm run fuzz -- --self              # against itself with the optimizer off, not against Express
 ```
+
+`--no-shrink` is for triage rather than for a case: shrinking one divergence takes longer than the
+round that found it, and a run with `--keep-going` is easier to read grouped by what differs. Take
+the seed from it and replay that one round with shrinking on.
 
 `--self` swaps the Express arm for a second copy of this framework with `native routes` off, so
 every request there walks the ordinary chain. Every native registration, compiled response and
@@ -49,14 +55,33 @@ something. Nothing is blocked by it: read the seed, replay it locally, and decid
 bug or something the fuzzer needs taught. Every divergence it has reported so far was a real bug.
 
 What it draws from: route shapes including the 161 patterns lifted from `path-to-regexp`'s own test
-cases, mounted routers three deep, sub-apps, `app.route()`, settings, body parsers, static mounts,
-view engines, ranges, proxies, declarative-compiled routes, and the routes the usage analysis can
-grant skips to. Every round asks `GET` and `HEAD` plus one drawn verb, `QUERY` and `PATCH` included,
-since those two are the ones whose body handling is least like the rest. A round that puts a body
-parser in front draws one body from several shapes per parser, the empty one, the one that cannot be
-parsed, a charset nobody can decode and a type the parser must leave alone among them. Handlers
-cover the response methods as well as the routing: `append`, `attachment`, cookies with options,
-`clearCookie`, arrays through `res.set`, buffers, `204`, and a body written in chunks.
+cases, routes written as a `RegExp`, mounted routers three deep, sub-apps, `app.route()`, settings,
+body parsers, static mounts, view engines, ranges, proxies, declarative-compiled routes, and the
+routes the usage analysis can grant skips to. Every round asks `GET` and `HEAD` plus one drawn verb,
+`QUERY` and `PATCH` included, since those two are the ones whose body handling is least like the
+rest. A round that puts a body parser in front draws its options too, the limit, the strict mode,
+the type matcher, the verify hook and the inflate switch, and one body from several shapes per
+parser, the empty one, the one that cannot be parsed, a charset nobody can decode and a type the
+parser must leave alone among them. A body also rides on some rounds that have no parser at all,
+and goes out under a drawn `Content-Encoding`, one nobody can inflate and one that lies about the
+bytes under it included. Handlers cover the response methods as well as the routing: `append`,
+`attachment`, cookies with options, `clearCookie`, arrays through `res.set`, buffers, `204`, and a
+body written in chunks.
+
+**A third of the handlers are drawn as source rather than picked from that list**, statement by
+statement, and built with `new Function` so the two arms run the same text. That is what reaches
+the declarative compiler and the usage analysis, both of which read a handler by parsing it: a
+fixed list of six literal shapes only ever asked them the same six questions. The statements are
+drawn from where those two have their borders, a destructured `({ query, params }, res)`, a
+template or a concatenation with a piece of the request in it, a header set twice in two casings,
+a number where a string was expected, a status after the body, an `end` with an encoding, a call
+after the one that answered. They shrink one statement at a time, so a printed case carries only
+the calls the divergence needs. Two shapes are never drawn, because Express dies of them instead
+of answering: a body written after `end()`, and an `end()` with an encoding node does not know.
+
+A few rounds ask their requests **in flight together** rather than one after another. It is the
+only way here to two requests sharing a server at the same instant, which is what a file read in
+flight, a cache filling and a response pending while another answers all need.
 
 A third of the rounds also install one or two third-party middlewares in front of everything: `cors`,
 `helmet`, `cookie-parser`, `method-override`, `compression`, `response-time`, `morgan` and
@@ -69,6 +94,28 @@ instead of calling `next`, and a response stream somebody else writes. The heade
 `access-control-*`, helmet's set and `www-authenticate`, are compared here on top of the suite's
 list, since injecting a middleware whose whole output is headers nobody looks at would prove
 nothing.
+
+What is compared, beyond the status and the body: **every response header** except the four that
+differ by design, `x-powered-by`, `content-length`, `transfer-encoding` and `x-response-time`. It
+used to be a fixed list, and the headers the generated handlers wrote themselves were never looked
+at. `date` and `keep-alive` are compared by presence, as in the suite.
+
+Three things that are not a header comparison and each hid a bug:
+
+- **No answer is an answer.** A hang, a reset, or a response the client cannot parse is a line
+  like any other now, so it is compared instead of being skipped as a request nobody could read.
+  One retry absorbs the reset that belongs to keep-alive rather than to the answer.
+- **The framing is checked rather than compared**, since `content-length` cannot be compared: a
+  length on a 204 or a 304, a length and a chunked framing together, a length over the bytes that
+  came. Those are what a client reads as the start of the next answer.
+- **The default error page is compared**, on the rounds with no error handler of ours. Both arms
+  run under `env` `test` and the stack is masked down to its first line, which is what the suite
+  does with the same page. That is how the status and the headers Express's own final handler
+  decides came under comparison at all.
+
+An exception nobody caught is kept and named. Express dies of one, so a run that died with it lost
+every round after: one from this framework is a finding, one from Express is a shape the generator
+must stop drawing, and the round is skipped since its server may be wedged.
 
 What it deliberately does not: aborted requests, TLS, and pipelined connection reuse. Nor the
 middleware whose answer cannot be the same twice: `express-session` and `cookie-session` draw a
@@ -107,6 +154,15 @@ serving a request node refused, is reported: that is the desync smuggling is mad
 is µWS refusing something, which is safe, and is only listed under `--verbose`. A blind diff would
 drown in the third case, since µWS is a different parser and is allowed to be stricter.
 
+Two things beside the count. The log records **how many body bytes each handler was given**, so the
+same requests framed with different bodies is a finding too: one parser gave the handler bytes the
+other gave to nobody, or to the next request. Only where both bodies ended, since a request this
+framework answers nothing for never ends its body either, and that is the refusing direction. And
+some cases go out as **two writes with a pause between**, cut anywhere, inside a header name or one
+byte into a chunk size: everything else here arrives in one packet, and a parser keeps state only
+across a cut. The literal paths are registered on their own ahead of the catch-all, so the refusals
+a native handler makes before any routing are reached as well.
+
 Checked by putting a known bug back: with the framing refusal reverted, `--seed 5000 --rounds 120`
 reports the appended request being served where node reads one message.
 
@@ -135,6 +191,13 @@ methods that write a header nobody typed: `res.cookie`, `res.location`, `res.red
 `res.attachment`, `res.download`, `res.vary`, `res.links`, `res.type` and the jsonp callback name
 all compute one out of something the request carried. A CRLF getting through any of them ends the
 header and writes what follows as a header of its own.
+
+The **name** side is swept too, which nothing did while the values were: the same values through
+`res.set`, `res.append`, `res.setHeader`, `res.removeHeader`, the object form of `res.set` and
+`res.writeHead`, as the name rather than the value. A name that is not a token has to be refused by
+node's rule whichever method carries it, and nothing under a refused name may reach the block. A
+chunked body is read back as the bytes it carried, since a length against chunks is the one framing
+difference `tests/helpers.js` records as by design.
 
 Raw sockets on both sides, because `fetch` parses the answer and an injected line is a header to
 undici rather than a finding. The cross product is a few hundred cases, so it sweeps rather than
@@ -166,6 +229,13 @@ set of matched verbs or a response's locals kept one request too long.
 
 The connection really is one: an agent with `maxSockets: 1` and keep-alive on, and the sockets are
 counted, so a round that quietly opened a second one is reported rather than passed.
+
+What the plan carries beside the routes: a **router mounted on a prefix** holding some of them,
+since the base url and the stack of prefixes a mount leaves behind are the kind of thing kept one
+request too long; the npm **compression**, which patches `write` and `end` and keeps a stream of
+its own per answer; and **headers sent twice**, `x-dup` and `cookie` and now and then
+`content-type`, which node joins by its own rules, with a comma for most and a semicolon for
+cookie, and keeps the first for `content-type`.
 
 Checked by putting a known bug back: with `res.locals` made one object for the whole process,
 `--rounds 20` reports STATE in three of them. It found `res.sendStatus(204)` answering with a

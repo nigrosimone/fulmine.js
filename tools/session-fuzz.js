@@ -35,6 +35,7 @@ const http = require("http");
 const path = require("path");
 
 const realExpress = require("express");
+const compression = require("compression");
 const fulmine = require(path.join(__dirname, "..", "src", "index.js"));
 
 /** @param {number} seed @returns {() => number} the same sequence for the same seed */
@@ -84,8 +85,16 @@ const METHODS = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "DELETE"];
 function handlerFor(kind, id) {
     switch (kind) {
         case "echo-headers":
+            // a header sent twice is joined by node's rule, ", " for most and "; " for cookie,
+            // and content-type keeps the first: what a request left in the map shows here
             return (req, res) =>
-                res.json({ id, probe: req.headers["x-probe"] ?? null, ct: req.headers["content-type"] ?? null });
+                res.json({
+                    id,
+                    probe: req.headers["x-probe"] ?? null,
+                    ct: req.headers["content-type"] ?? null,
+                    dup: req.headers["x-dup"] ?? null,
+                    cookie: req.headers.cookie ?? null
+                });
         case "echo-query":
             return (req, res) => res.json({ id, query: req.query });
         case "echo-params":
@@ -136,6 +145,13 @@ function drawPlan(rng) {
     const pick = (list) => list[Math.floor(rng() * list.length)];
     const chance = (p) => rng() < p;
 
+    // a router mounted on a prefix, carrying some of the routes: the base url and the stack of
+    // prefixes a mount leaves on the request are the kind of thing kept one request too long
+    const mount = chance(0.35);
+    // the npm compression on both arms, which patches write and end on the response and keeps a
+    // stream of its own per answer
+    const compression = chance(0.3);
+
     const routes = [];
     const count = 2 + Math.floor(rng() * 4);
     for (let i = 0; i < count; i++) {
@@ -143,30 +159,53 @@ function drawPlan(rng) {
             method: chance(0.7) ? "get" : pick(["all", "post", "put", "delete"]),
             path: pick(PATHS),
             kind: pick(KINDS),
+            mounted: mount && chance(0.5),
             id: "r" + i
         });
     }
     // a route under a second verb on a path another route already answers, which is what the
     // automatic OPTIONS reply collects
     if (chance(0.5)) {
-        routes.push({ method: "put", path: routes[0].path, kind: "matched-verbs", id: "rp" });
+        routes.push({
+            method: "put",
+            path: routes[0].path,
+            kind: "matched-verbs",
+            mounted: routes[0].mounted,
+            id: "rp"
+        });
     }
 
     const requests = [];
     const requestCount = 2 + Math.floor(rng() * 4);
     for (let i = 0; i < requestCount; i++) {
         const target = pick(routes);
+        const body = chance(0.3) ? JSON.stringify({ n: i }) : null;
         requests.push({
             method: chance(0.65) ? (target.method === "all" ? "GET" : target.method.toUpperCase()) : pick(METHODS),
             // the route's own path with its parameters filled in, and sometimes a query
-            url: target.path.replace(/:[a-z]+/g, "v").replace(/\*rest/g, "deep/er") + (chance(0.4) ? "?q=" + i : ""),
+            url:
+                (target.mounted ? "/r" : "") +
+                target.path.replace(/:[a-z]+/g, "v").replace(/\*rest/g, "deep/er") +
+                (chance(0.4) ? "?q=" + i : ""),
             probe: chance(0.5) ? "probe-" + i : null,
+            // headers sent twice, which node joins by its own rules and this has to join alike
+            dup: chance(0.3) ? ["one-" + i, "two-" + i] : null,
+            cookies: chance(0.25) ? ["a=" + i, "b=" + i] : null,
+            typeTwice: body !== null && chance(0.2),
+            acceptGzip: compression,
             ifNoneMatch: chance(0.25),
-            body: chance(0.3) ? JSON.stringify({ n: i }) : null
+            body
         });
     }
 
-    return { routes, requests, bodyParser: chance(0.5), settings: chance(0.4) ? { etag: false } : {} };
+    return {
+        routes,
+        requests,
+        bodyParser: chance(0.5),
+        settings: chance(0.4) ? { etag: false } : {},
+        mount,
+        compression
+    };
 }
 
 /** The plan on one framework, listening. */
@@ -180,8 +219,15 @@ async function instantiate(plan, factory) {
         app.set("body methods", ["POST", "PUT", "PATCH", "QUERY", "DELETE", "OPTIONS", "GET", "HEAD"]);
         app.use(factory.json());
     }
+    if (plan.compression) {
+        app.use(compression({ threshold: 0 }));
+    }
+    const router = factory.Router();
     for (const route of plan.routes) {
-        app[route.method](route.path, handlerFor(route.kind, route.id));
+        (route.mounted ? router : app)[route.method](route.path, handlerFor(route.kind, route.id));
+    }
+    if (plan.mount) {
+        app.use("/r", router);
     }
     // express's own page prints its own frames, which can never match
     app.use((err, req, res, next) =>
@@ -211,11 +257,16 @@ async function instantiate(plan, factory) {
  */
 function ask(port, agent, request, etag) {
     return new Promise((resolve) => {
+        /** @type {Record<string, string|string[]>} an array goes out as the header repeated */
         const headers = { host: "x" };
         if (request.probe) headers["x-probe"] = request.probe;
+        if (request.dup) headers["x-dup"] = request.dup;
+        if (request.cookies) headers.cookie = request.cookies;
+        if (request.acceptGzip) headers["accept-encoding"] = "gzip";
         if (request.ifNoneMatch && etag) headers["if-none-match"] = etag;
         if (request.body) {
-            headers["content-type"] = "application/json";
+            // sent twice now and then: node keeps the first, and the parser has to read that one
+            headers["content-type"] = request.typeTwice ? ["application/json", "text/plain"] : "application/json";
             headers["content-length"] = String(Buffer.byteLength(request.body));
         }
 
@@ -293,11 +344,21 @@ function planToSource(plan) {
     for (const [key, value] of Object.entries(plan.settings))
         lines.push(`app.set(${JSON.stringify(key)}, ${JSON.stringify(value)});`);
     if (plan.bodyParser) lines.push("app.use(express.json());");
-    for (const route of plan.routes) lines.push(`app.${route.method}(${JSON.stringify(route.path)}, ${route.kind});`);
+    if (plan.compression) lines.push("app.use(compression({ threshold: 0 }));  // the npm package, on both arms");
+    if (plan.mount) lines.push("const router = express.Router();");
+    for (const route of plan.routes) {
+        lines.push(
+            `${route.mounted ? "router" : "app"}.${route.method}(${JSON.stringify(route.path)}, ${route.kind});`
+        );
+    }
+    if (plan.mount) lines.push('app.use("/r", router);');
     lines.push("// then, down one connection:");
     for (const request of plan.requests) {
         const notes = [];
         if (request.probe) notes.push(`x-probe: ${request.probe}`);
+        if (request.dup) notes.push(`x-dup twice: ${request.dup.join(", ")}`);
+        if (request.cookies) notes.push(`cookie twice: ${request.cookies.join(", ")}`);
+        if (request.typeTwice) notes.push("content-type twice, json then text");
         if (request.ifNoneMatch) notes.push("if-none-match from the answer before");
         if (request.body) notes.push(`body ${request.body}`);
         lines.push(`//   ${request.method} ${request.url}${notes.length ? "   (" + notes.join(", ") + ")" : ""}`);

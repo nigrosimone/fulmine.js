@@ -181,7 +181,9 @@ Add another only with the same evidence: a bare µWS application doing the same 
 and on this, and compares the answers. It is the highest-yield bug finder here. A divergence prints
 the seed that reproduces it and the case shrunk to the few lines worth keeping, and it replays with
 `--seed <n> --rounds 1`. Triage a run by grouping the divergences by which fields differ: one root
-cause usually accounts for most of them.
+cause usually accounts for most of them. `--keep-going --no-shrink` is the way to get that grouping:
+shrinking one case takes longer than the round that found it, so take the seeds first and shrink the
+one you mean to fix.
 
 What it finds gets fixed, with a comparison test under `tests/tests/` like any other fix. This holds
 for a divergence that has nothing to do with what you were working on: the round found it, and the
@@ -189,9 +191,10 @@ next run will only find it again. When it is not going to be fixed, open an issu
 diverges, the seed that replays it and the reason it was left, so the decision is written down
 somewhere other than a terminal that has scrolled.
 
-Twenty rounds on a **random seed** run on every push, so CI explores a different application every
-time. Red there is usually a real, pre-existing bug that the push merely exposed: read the shrunk
-case before assuming the last commit caused it.
+**All five run on every push**, each short and on a random seed, so CI explores different ground
+every time rather than repeating: twenty rounds against Express, twenty more with `--self`, and the
+wire, header and session fuzzers under them. Red there is usually a real, pre-existing bug that the
+push merely exposed: read the shrunk case before assuming the last commit caused it.
 
 `--self` is the fourth, and it is the only one with no oracle in it. Both `npm test -- --self` and
 `npm run fuzz -- --self` serve the same application twice with this framework, the reference arm
@@ -211,6 +214,12 @@ compute one, `res.cookie` and `res.location` and the rest, since `res.set` is th
 already guarded. `fuzz:session` asks the same sequence twice, down one keep-alive connection and
 down one connection each, so an answer that changed for having followed another request is a finding
 of its own rather than a difference from Express. Run the one that sits under what you changed.
+
+A third of the handlers `npm run fuzz` draws are written as source rather than picked from a list,
+which is what reaches the declarative compiler and the usage analysis: both read a handler by
+parsing it, so a fixed list of shapes asks them the same questions every round. If you change
+either, that is the arm that covers you, and `--self` is where its answer is checked against the
+chain it stands in for.
 
 Two differences must never be compared, because matching them would mean copying a fault:
 

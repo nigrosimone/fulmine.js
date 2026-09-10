@@ -101,7 +101,22 @@ const WRITERS = [
     { name: "jsonp", param: "callback", run: (res) => res.jsonp({ ok: 1 }) },
     // the door that is already guarded, kept as the control: it must keep refusing what it refuses
     { name: "set", run: (res, v) => res.set("X-Test", v).end("ok") },
-    { name: "append", run: (res, v) => res.append("X-Test", v).end("ok") }
+    { name: "append", run: (res, v) => res.append("X-Test", v).end("ok") },
+    // The name side, which nothing swept while the values were. A name that is not a token has to
+    // be refused whichever method carries it, and a key is a different door from an argument.
+    { name: "set-name", run: (res, v) => res.set(v, "x").end("ok") },
+    { name: "append-name", run: (res, v) => res.append(v, "x").end("ok") },
+    { name: "set-header-name", run: (res, v) => res.setHeader(v, "x").end("ok") },
+    {
+        name: "remove-header-name",
+        run: (res, v) => {
+            res.set("X-Test", "kept");
+            res.removeHeader(v);
+            res.end("ok");
+        }
+    },
+    { name: "write-head-name", run: (res, v) => res.writeHead(200, { [v]: "x" }).end("ok") },
+    { name: "header-object-name", run: (res, v) => res.set({ [v]: "x" }).end("ok") }
 ];
 
 /** The same application on either framework, one route per writer. */
@@ -174,9 +189,13 @@ const IGNORED = new Set(["x-powered-by", "content-length", "transfer-encoding", 
 function readAnswer(raw) {
     const end = raw.indexOf(CRLF + CRLF);
     const head = end === -1 ? raw : raw.slice(0, end);
-    const body = end === -1 ? "" : raw.slice(end + 4);
     const lines = head.split(CRLF);
     const status = lines.shift() ?? "";
+    // a body node framed in chunks is read back as the bytes it carried: a length against chunks
+    // is the one framing difference tests/helpers.js records as by design, and after writeHead it
+    // showed here as "2\r\nok\r\n0\r\n\r\n" against "ok"
+    const chunked = lines.some((line) => /^transfer-encoding:\s*chunked\s*$/i.test(line));
+    const body = end === -1 ? "" : chunked ? dechunk(raw.slice(end + 4)) : raw.slice(end + 4);
     const headers = lines
         .map((line) => {
             const colon = line.indexOf(":");
@@ -193,6 +212,27 @@ function readAnswer(raw) {
         // the head alone: an error page quoting the value back would otherwise count as one
         answers: (head.match(/HTTP\/1\.[01] \d{3}/g) || []).length
     };
+}
+
+/**
+ * The bytes a chunked body carries, joined. Anything that is not chunk framing is kept as it is,
+ * so a malformed body still shows.
+ *
+ * @param {string} body
+ * @returns {string}
+ */
+function dechunk(body) {
+    let out = "";
+    let at = 0;
+    for (;;) {
+        const lineEnd = body.indexOf(CRLF, at);
+        if (lineEnd === -1) return out + body.slice(at);
+        const size = parseInt(body.slice(at, lineEnd), 16);
+        if (Number.isNaN(size)) return out + body.slice(at);
+        if (size === 0) return out;
+        out += body.slice(lineEnd + 2, lineEnd + 2 + size);
+        at = lineEnd + 2 + size + 2;
+    }
 }
 
 /** The one line a case is worth, for the report. */

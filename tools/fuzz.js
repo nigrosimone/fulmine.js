@@ -20,9 +20,10 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const zlib = require("zlib");
 const realExpress = require(path.join(__dirname, "..", "node_modules", "express"));
 const fulmine = require(path.join(__dirname, "..", "src", "index.js"));
-const { COMPARED_HEADERS, PRESENCE_ONLY_HEADERS } = require(path.join(__dirname, "..", "tests", "helpers.js"));
+const { PRESENCE_ONLY_HEADERS } = require(path.join(__dirname, "..", "tests", "helpers.js"));
 const cors = require("cors");
 const helmet = require("helmet");
 const cookieParser = require("cookie-parser");
@@ -32,36 +33,11 @@ const responseTime = require("response-time");
 const morgan = require("morgan");
 const basicAuth = require("express-basic-auth");
 
-// x-powered-by, content-length and transfer-encoding stay out for the reasons tests/helpers.js
-// gives: the two servers differ there by design rather than by fault.
-
-// What the third party middleware below writes, compared on top of the suite's list. Injecting a
-// middleware whose whole output is headers nobody looks at would prove nothing, so these are here
-// rather than in tests/helpers.js: the suite compares them by printing them in the case that uses
-// them, and widening its list would rewrite every expected file for no gain.
-// x-response-time is deliberately absent: it is a clock reading.
-const MIDDLEWARE_HEADERS = [
-    "access-control-allow-origin",
-    "access-control-allow-credentials",
-    "access-control-allow-methods",
-    "access-control-allow-headers",
-    "access-control-expose-headers",
-    "access-control-max-age",
-    "www-authenticate",
-    "content-security-policy",
-    "cross-origin-embedder-policy",
-    "cross-origin-opener-policy",
-    "cross-origin-resource-policy",
-    "origin-agent-cluster",
-    "referrer-policy",
-    "strict-transport-security",
-    "x-content-type-options",
-    "x-dns-prefetch-control",
-    "x-download-options",
-    "x-frame-options",
-    "x-permitted-cross-domain-policies",
-    "x-xss-protection"
-];
+// Every response header is compared, except these: the first three for the reasons
+// tests/helpers.js gives, x-response-time because it is a clock reading. A fixed list was never
+// looking at what the drawn handlers write themselves, X-Lit and X-Param-Seen and the rest, so
+// every value a handler writes has to be ascii now. content-length is checked, see framingFault.
+const EXCLUDED_HEADERS = new Set(["x-powered-by", "content-length", "transfer-encoding", "x-response-time"]);
 
 // --self compares this framework against itself with the optimizer off instead of against Express.
 //
@@ -156,6 +132,83 @@ const BODIES_FOR = {
         { type: "text/plain", text: "bytes" }
     ]
 };
+const PARSER_KINDS = Object.keys(BODIES_FOR);
+
+// The options a parser is installed with, one set per round: the bare parser was the only shape
+// drawn, and the verify hook alone took three fixes in September 2026. A value that has to be a
+// function is written as its name, so the plan still prints as source and still shrinks.
+const PARSER_OPTIONS = {
+    json: [
+        {},
+        { strict: false },
+        { limit: "8b" },
+        { limit: 1024 },
+        { type: "application/*" },
+        { type: ["application/json", "text/plain"] },
+        { type: "fn:always" },
+        { type: "fn:never" },
+        { inflate: false },
+        { verify: "fn:verify-refuse" },
+        { verify: "fn:verify-string" },
+        { verify: "fn:verify-object" },
+        { verify: "fn:verify-charset" },
+        { reviver: "fn:reviver" }
+    ],
+    urlencoded: [
+        {},
+        { extended: false },
+        { parameterLimit: 2 },
+        { depth: 1 },
+        { limit: "8b" },
+        { type: "fn:always" },
+        { verify: "fn:verify-refuse" },
+        { verify: "fn:verify-charset" },
+        { inflate: false }
+    ],
+    text: [
+        {},
+        { defaultCharset: "iso-8859-1" },
+        { limit: "8b" },
+        { type: "*/*" },
+        { type: "fn:always" },
+        { verify: "fn:verify-string" },
+        { verify: "fn:verify-charset" }
+    ],
+    raw: [{}, { type: "*/*" }, { limit: "8b" }, { inflate: false }, { verify: "fn:verify-object" }]
+};
+
+// Option values that are functions, by the name the plan carries. A verify hook that throws a
+// number is deliberately absent: http-errors throws a TypeError over it and express dies.
+const OPTION_FUNCTIONS = {
+    "fn:always": () => true,
+    "fn:never": () => false,
+    "fn:verify-refuse": (req, res, buf) => {
+        if (buf.length > 3) {
+            const err = new Error("refused by verify");
+            err.status = 403;
+            throw err;
+        }
+    },
+    "fn:verify-string": () => {
+        throw "verify threw a string";
+    },
+    "fn:verify-object": () => {
+        throw { status: 422, message: "verify threw an object" };
+    },
+    // the charset the parser decided, which is the hook's fourth argument and was once left out
+    "fn:verify-charset": (req, res, buf, charset) => {
+        res.set("X-Verify-Charset", String(charset));
+    },
+    "fn:reviver": (key, value) => (typeof value === "number" ? value * 2 : value),
+    // serve-static's hook, which express honours there and not in res.sendFile
+    "fn:setHeaders": (res, filePath) => {
+        res.set("X-Static", path.basename(filePath));
+    }
+};
+
+// How a body goes out on the wire: as it is, compressed with a Content-Encoding the parser has
+// to inflate, with one it does not know, or with one that lies about the bytes under it
+const BODY_ENCODINGS = ["identity", "gzip", "deflate", "br", "unsupported", "lying"];
 
 // The middleware an application really installs, drawn into the plan and registered on both arms.
 //
@@ -468,24 +521,9 @@ function writeFiles() {
 // so without them the fuzzer tested every route except the ones µWS answers by itself.
 const LITERAL_KINDS = ["lit-send", "lit-json", "lit-status", "lit-header", "lit-end", "lit-type"];
 
-// the kinds that raise, which the skip-friendly mode leaves out: with no error handler of ours
-// the answer is express own error page, and its stack is its own frames
-// cookie-signed is here because a signed cookie without cookieParser's secret raises, which is
-// exactly what it is for: both must refuse it, and say the same thing about it
-const RAISES = new Set([
-    "throw",
-    "next-error",
-    "send-file",
-    "download",
-    "render-missing",
-    "render-callback",
-    "cookie-signed",
-    "throw-string",
-    "throw-status",
-    "throw-after-send",
-    "reject-async",
-    "send-file-options"
-]);
+// Nothing is kept out of the rounds that have no error handler of ours any more: an error there
+// reaches each framework's default page, whose stack withoutStack masks down to the message, so
+// the raising kinds, cookie-signed among them, are compared through finalhandler like the rest.
 
 const HANDLER_KINDS = [
     ...LITERAL_KINDS,
@@ -559,7 +597,75 @@ const HANDLER_KINDS = [
     "remove-header",
     "send-file-options",
     "download-callback",
-    "sendstatus-unknown"
+    "sendstatus-unknown",
+    // The shapes express's default handler decides on its own, compared now that the rounds
+    // without a handler of ours are compared too: the headers an error carries, a status set
+    // before the throw, and a thrown object with no stack.
+    "throw-headers",
+    "status-then-throw",
+    "throw-object",
+    // the callback form of write
+    "write-callback"
+];
+
+// Routes on a RegExp, which express 5 still takes: their parameters are numbered or named by the
+// group, their overlap with the literal routes cannot be read segment by segment, and the request
+// side prints the pattern. Kept as source in the plan, built with new RegExp on each arm.
+const REGEX_ROUTES = [
+    "^\\/re\\/(\\d+)$",
+    "^\\/re\\/(\\d+)(?:\\/(\\w+))?$",
+    "\\/anywhere",
+    "^\\/re\\/(?<name>[a-z]+)\\/?$",
+    "^\\/users\\/.*"
+];
+
+// The programs: what drawProgram writes a handler out of.
+// The statuses a handler sets, none below 200: undici waits past an informational answer for the
+// final one, and both arms would only time out
+const PROGRAM_STATUSES = [200, 201, 202, 203, 204, 205, 206, 300, 301, 302, 304, 400, 404, 418, 422, 500, 503, 599];
+// what sendStatus is handed, with one below 100 that node refuses and one statuses has no text for
+const SENDSTATUS_CODES = [200, 201, 204, 205, 304, 400, 404, 418, 499, 599, 700, 99];
+// Content-Length stays out: uWS frames the response itself, which tests/helpers.js records as a
+// difference by design, and every other name is a plain header the two must write alike
+const PROGRAM_HEADER_NAMES = [
+    "X-A",
+    "x-a",
+    "X-B",
+    "Content-Type",
+    "content-type",
+    "Vary",
+    "Cache-Control",
+    "ETag",
+    "Location"
+];
+// ASCII only, for the reason the header comment gives; the CRLF and the bad name are what
+// res.set must refuse, and both arms must refuse them the same way
+const PROGRAM_HEADER_VALUES = [
+    '"v"',
+    '""',
+    "5",
+    "true",
+    '["a", "b"]',
+    '"a, b"',
+    '"text/plain"',
+    '"application/json; charset=latin1"',
+    '"no-cache"',
+    '"a\\r\\nb"'
+];
+const PROGRAM_TYPES = [
+    "txt",
+    "json",
+    "html",
+    "xml",
+    "png",
+    ".html",
+    "text/plain",
+    "text/plain; charset=latin1",
+    "application/json",
+    "application/octet-stream",
+    "unknown/thing",
+    "weird",
+    ""
 ];
 
 /**
@@ -575,11 +681,11 @@ function drawPlan(rng) {
 
     // An application shaped so that the registration-time analysis may grant a route the right to
     // skip copying the headers or reading the query: etags off, and no error handler anywhere,
-    // which is what the analysis insists on. Nothing may raise either, since without a handler of
-    // ours an error would reach express's own page and print a stack that cannot match.
+    // which is what the analysis insists on.
     const skipFriendly = chance(0.3);
-    // serving a file raises too, on a range it cannot satisfy, so it is out of this mode as well
-    const kinds = skipFriendly ? HANDLER_KINDS.filter((kind) => !RAISES.has(kind)) : HANDLER_KINDS;
+    // no error handler of ours, so an error reaches each default page, its stack masked by
+    // withoutStack. A skip-friendly round is always one: the analysis refuses a skip otherwise.
+    const finalHandler = skipFriendly || chance(0.2);
 
     let paramCounter = 0;
     /** A path in path-to-regexp 8 syntax, with parameter names unique inside it. */
@@ -606,19 +712,28 @@ function drawPlan(rng) {
         return p;
     };
 
-    const drawRoute = (allowWildcard) => ({
-        // an error handler between the middleware and the handler, which either answers or hands on
-        errorArm: !skipFriendly && chance(0.15) ? pick(["answer", "forward"]) : null,
-        // how it is registered: the ordinary way, through app.route(), or as app.all()
-        shape: chance(0.12) ? pick(["route", "all"]) : null,
-        method: chance(0.75) ? "get" : pick(["post", "put", "delete", "all"]),
+    const drawRoute = (allowWildcard) => {
         // a quarter of the routes come from the library corpus, whose shapes nothing here invents
-        path: chance(0.25) && libraryRoutes.length > 0 ? pick(libraryRoutes) : drawPath(allowWildcard),
-        kind: pick(kinds),
-        // a middleware in front of the handler, which is where next() bookkeeping goes wrong
-        lead: chance(0.3) ? pick(["header", "rewrite", "params", "plain", "method", "baseurl", "leave-router"]) : null,
-        id: "r" + paramCounter++
-    });
+        const routePath = chance(0.25) && libraryRoutes.length > 0 ? pick(libraryRoutes) : drawPath(allowWildcard);
+        const id = "r" + paramCounter++;
+        // a third of the handlers are drawn as source, statement by statement, see drawProgram
+        const program = chance(0.35) ? drawProgram(rng, paramNamesOf(routePath), id) : null;
+        return {
+            // an error handler between the middleware and the handler, which either answers or hands on
+            errorArm: !skipFriendly && chance(0.15) ? pick(["answer", "forward"]) : null,
+            // how it is registered: the ordinary way, through app.route(), or as app.all()
+            shape: chance(0.12) ? pick(["route", "all"]) : null,
+            method: chance(0.75) ? "get" : pick(["post", "put", "delete", "all"]),
+            path: routePath,
+            kind: program ? "program" : pick(HANDLER_KINDS),
+            program,
+            // a middleware in front of the handler, which is where next() bookkeeping goes wrong
+            lead: chance(0.3)
+                ? pick(["header", "rewrite", "params", "plain", "method", "baseurl", "leave-router"])
+                : null,
+            id
+        };
+    };
 
     const settings = {};
     if (chance(0.35)) settings["strict routing"] = chance(0.7);
@@ -642,11 +757,12 @@ function drawPlan(rng) {
     if (chance(0.5)) settings["view engine"] = "html";
     if (chance(0.3)) settings["view cache"] = chance(0.5);
 
-    // a body parser in front of everything, with a body to match, so req.body is not always absent
-    // left out when nothing is there to catch an error: a body parser and a static mount both
-    // raise, and with no handler of ours the answer is express own error page, whose stack is its
-    // own frames and can never match
-    const bodyParser = !skipFriendly && chance(0.3) ? pick(["json", "urlencoded", "text", "raw"]) : null;
+    // A body parser in front of everything, with a body to match, so req.body is not always absent.
+    // Drawn in the skip-friendly rounds too: the parsers are the one middleware the analysis
+    // trusts without reading, and a body arriving on a route granted the header skip is where the
+    // constructor has to fetch by name what it left uncopied, a shape nothing drew before.
+    const bodyParser = chance(0.3) ? pick(PARSER_KINDS) : null;
+    const bodyParserOptions = bodyParser ? pick(PARSER_OPTIONS[bodyParser]) : null;
 
     // one or two third party middlewares in front of everything, the way an application installs
     // them. Out of the skip-friendly mode with the rest: an opaque use() is exactly what the usage
@@ -657,7 +773,11 @@ function drawPlan(rng) {
         for (let i = 0; i < count; i++) {
             const name = pick(MIDDLEWARE_NAMES);
             if (middlewares.some((m) => m.name === name)) continue;
-            middlewares.push({ name, options: MIDDLEWARE[name].draw(pick, chance) });
+            const options = MIDDLEWARE[name].draw(pick, chance);
+            // the default pages carry each framework's own stack, so their lengths differ, and
+            // a threshold between the two would compress one page and not the other
+            if (name === "compression" && finalHandler) options.threshold = 0;
+            middlewares.push({ name, options });
         }
     }
 
@@ -674,7 +794,13 @@ function drawPlan(rng) {
                       extensions: chance(0.3) ? ["html"] : false,
                       maxAge: chance(0.4) ? 3600000 : 0,
                       etag: !chance(0.2),
-                      lastModified: !chance(0.2)
+                      lastModified: !chance(0.2),
+                      // the rest of what serve-static reads: a hook that writes a header per
+                      // file, and the three that change Cache-Control and Accept-Ranges
+                      ...(chance(0.3) ? { setHeaders: "fn:setHeaders" } : {}),
+                      ...(chance(0.2) ? { immutable: true } : {}),
+                      ...(chance(0.15) ? { cacheControl: false } : {}),
+                      ...(chance(0.15) ? { acceptRanges: false } : {})
                   }
               }
             : null;
@@ -718,11 +844,27 @@ function drawPlan(rng) {
         : null;
 
     const routes = Array.from({ length: 2 + Math.floor(rng() * 5) }, () => drawRoute(true));
+    // a route on a RegExp among them, anywhere in the order
+    if (chance(0.15)) {
+        routes.splice(Math.floor(rng() * (routes.length + 1)), 0, {
+            errorArm: null,
+            shape: null,
+            method: chance(0.7) ? "get" : "all",
+            path: { regex: pick(REGEX_ROUTES), flags: chance(0.3) ? "i" : "" },
+            kind: pick(["params-echo", "url-echo", "lit-send", "send-json"]),
+            program: null,
+            lead: null,
+            id: "r" + paramCounter++
+        });
+    }
 
     // urls: the registered paths with their parameters filled in, plus noise around them
     const urls = [];
+    if (routes.some((r) => typeof r.path !== "string")) {
+        urls.push("/re/42", "/re/42/x", "/RE/42", "/re/abc", "/re/abc/", "/x/anywhere/y", "/users/1/anywhere");
+    }
     const everyPath = [
-        ...routes.map((r) => r.path),
+        ...routes.filter((r) => typeof r.path === "string").map((r) => r.path),
         ...routers.flatMap((r) => r.routes.map((x) => r.mount + x.path)),
         ...routers
             .filter((r) => r.nested)
@@ -754,7 +896,21 @@ function drawPlan(rng) {
     if (chance(0.2)) headers.referer = pick(["http://localhost/from", "/relative", "not a url"]);
     if (chance(0.15)) headers.authorization = "Bearer nothing";
     if (chance(0.2)) headers.cookie = "fuzz=earlier";
-    if (chance(0.35)) headers["x-forwarded-for"] = pick(["203.0.113.9", "203.0.113.9, 198.51.100.2", "::1"]);
+    // IPv6 among the forwarded addresses, mapped and bare: what req.ip prints of one is decided
+    // by a formatter of this project's own, which nothing else here reaches
+    if (chance(0.35)) {
+        headers["x-forwarded-for"] = pick([
+            "203.0.113.9",
+            "203.0.113.9, 198.51.100.2",
+            "::1",
+            "2001:db8::1",
+            "::ffff:203.0.113.9",
+            "203.0.113.9, ::ffff:198.51.100.2",
+            "fe80::1%eth0",
+            "not an ip",
+            "203.0.113.9,,198.51.100.2"
+        ]);
+    }
     if (chance(0.25)) headers["x-forwarded-proto"] = pick(["https", "http", "https, http"]);
     if (chance(0.2)) headers["x-forwarded-host"] = pick(["example.com", "a.b.example.com:8080"]);
     // the rest of the conditional family. if-none-match has its own pass below, made from the etag
@@ -797,12 +953,43 @@ function drawPlan(rng) {
 
     // a range now and then, which is the other half of what serving a file means
     if (chance(0.35)) {
-        headers.range = pick(["bytes=0-4", "bytes=5-", "bytes=-3", "bytes=0-", "bytes=900-999", "bytes=x-y"]);
+        headers.range = pick([
+            "bytes=0-4",
+            "bytes=5-",
+            "bytes=-3",
+            "bytes=0-",
+            "bytes=900-999",
+            "bytes=x-y",
+            // several ranges, two that combine into one, an empty one, a unit that is not bytes
+            "bytes=0-1,3-4",
+            "bytes=0-2,1-3",
+            "bytes=-0",
+            "bytes=0-0",
+            "items=0-1",
+            "bytes=5-2"
+        ]);
+        // what makes a range conditional: a validator that matches nothing here, or a date on
+        // either side of every mtime, and the range is then served whole or not at all
+        if (chance(0.4)) {
+            headers["if-range"] = pick([
+                '"nonsense"',
+                'W/"weak"',
+                "Thu, 01 Jan 1970 00:00:00 GMT",
+                "Tue, 01 Jan 2999 00:00:00 GMT"
+            ]);
+        }
     }
 
-    // drawn here rather than looked up when the request goes out, so the shrinker keeps it and the
-    // printed case says which body produced the divergence
-    const body = bodyParser ? pick(BODIES_FOR[bodyParser]) : null;
+    // Drawn here rather than looked up when the request goes out, so the shrinker keeps it and the
+    // printed case says which body produced the divergence. A body rides on some rounds that have
+    // no parser too: nothing reads it, and both must leave req.body absent and the connection
+    // clean. Then how it goes out on the wire.
+    const drawnBody = bodyParser
+        ? pick(BODIES_FOR[bodyParser])
+        : chance(0.3)
+          ? pick(BODIES_FOR[pick(PARSER_KINDS)])
+          : null;
+    const body = drawnBody ? { ...drawnBody, encoding: chance(0.3) ? pick(BODY_ENCODINGS) : "identity" } : null;
 
     // GET always, since most routes are GET. HEAD always too: it is answered by the GET route with
     // the body dropped, and what a server keeps of the head while dropping it - the length, the
@@ -819,11 +1006,222 @@ function drawPlan(rng) {
         headers,
         middlewares,
         bodyParser,
+        bodyParserOptions,
         body,
         staticMount,
         skipFriendly,
+        finalHandler,
+        // the round's requests in flight together rather than one after another, see runPlan
+        concurrent: chance(0.15),
         methods: [...new Set(methods)]
     };
+}
+
+/**
+ * The parameter names a path binds, `:name` and `*name` in path-to-regexp 8 syntax, in braces
+ * or not. A backslash before the marker escapes it.
+ *
+ * @param {string} path
+ * @returns {string[]}
+ */
+function paramNamesOf(path) {
+    return [...path.matchAll(/(?<!\\)[:*]([\p{L}\p{N}_$]+)/gu)].map((match) => match[1]);
+}
+
+/**
+ * A handler drawn as source, statement by statement. declarative.js and usage.js both read a
+ * handler's text, so the statements are drawn from their borders: a destructured request, a
+ * template with a parameter in it, a header set twice in two casings, a status after the body.
+ * They are kept as strings, so the shrinker drops them one at a time.
+ *
+ * Never drawn, because express dies of them: a body written after end(), and an end() with an
+ * encoding node does not know.
+ *
+ * @param {() => number} rng
+ * @param {string[]} paramNames what the route's path binds
+ * @param {string} id the route's name, written into the answer so the report says who answered
+ * @returns {{params: string, statements: string[]}}
+ */
+function drawProgram(rng, paramNames, id) {
+    const pick = (list) => list[Math.floor(rng() * list.length)];
+    const chance = (p) => rng() < p;
+    const text = JSON.stringify(id);
+    // a parameter the path binds, or one it does not, which both arms must read as undefined
+    const param = paramNames.length && chance(0.85) ? pick(paramNames) : "missing";
+
+    // The parameter list, and how the statements reach the request's params and query from it. A
+    // destructured request reaches nothing else on it, so `req` is absent there.
+    const shape = pick([
+        { params: "(req, res)", req: "req", res: "res", param: `req.params.${param}`, query: "req.query.q" },
+        { params: "(req, res)", req: "req", res: "res", param: `req.params.${param}`, query: "req.query.q" },
+        {
+            params: "(request, response)",
+            req: "request",
+            res: "response",
+            param: `request.params.${param}`,
+            query: "request.query.q"
+        },
+        {
+            params: "(req, res, next)",
+            req: "req",
+            res: "res",
+            next: "next",
+            param: `req.params.${param}`,
+            query: "req.query.q"
+        },
+        { params: "({ query, params }, res)", res: "res", param: `params.${param}`, query: "query.q" },
+        { params: `({ query: { q }, params: { ${param} } }, res)`, res: "res", param, query: "q" }
+    ]);
+    const { res, req } = shape;
+
+    // what a body is written from: literals of every shape json knows and some it does not, a
+    // template and a concatenation with a piece of the request in them, and the request itself
+    const bodies = [
+        text,
+        text,
+        '""',
+        `"${id} with \\"quotes\\" and \\\\ a backslash"`,
+        `"${id} caff\\u00e8 \\u2603"`,
+        `"<b>${id}</b>"`,
+        `"${id}\\nsecond line"`,
+        `"\\u0000${id}"`,
+        "0",
+        "204",
+        "-1",
+        "1.5",
+        "1e21",
+        "true",
+        "false",
+        "null",
+        "undefined",
+        `{ id: ${text}, n: -1, a: [1, "2", null], "k e y": { deep: true }, u: undefined }`,
+        `{ __proto__: { a: 1 }, id: ${text} }`,
+        `[1, ${text}, { x: null }]`,
+        "[]",
+        `Buffer.from(${JSON.stringify(id + " buffer")})`,
+        `\`${id} \${${shape.param}} \${${shape.query}}\``,
+        `\`${id} \${${shape.param}}\``,
+        `\`\${${shape.query}}\``,
+        `\`${id} \${1 + 1}\``,
+        `${text} + "-" + ${shape.param} + "-" + ${shape.query}`,
+        `${text} + ${shape.param}`,
+        `${shape.param} + ""`,
+        `"n:" + 1`,
+        shape.param,
+        shape.query,
+        ...(req ? [`${req}.query`, `${req}.params`, `${req}.body`] : []),
+        "1n",
+        'Symbol("s")'
+    ];
+    // what end() is handed: a string with and without its encoding, a buffer, a callback, and the
+    // shapes node refuses
+    const ends = [
+        "",
+        text,
+        `${text}, "latin1"`,
+        `"${id} caff\\u00e8", "latin1"`,
+        `${text}, "utf8"`,
+        `Buffer.from(${text})`,
+        `${text}, () => {}`,
+        "{ o: 1 }",
+        "null",
+        "123",
+        shape.param
+    ];
+
+    const setups = [
+        () => `${res}.status(${pick(PROGRAM_STATUSES)})`,
+        () => `${res}.set(${JSON.stringify(pick(PROGRAM_HEADER_NAMES))}, ${pick(PROGRAM_HEADER_VALUES)})`,
+        () =>
+            `${res}.set({ ${JSON.stringify(pick(PROGRAM_HEADER_NAMES))}: ${pick(PROGRAM_HEADER_VALUES)}, "X-Obj": ${text} })`,
+        () => `${res}.setHeader("Content-Type", "text/plain")`,
+        () => `${res}.setHeader("X-Node", ${text})`,
+        () => `${res}.header("X-H", ${text})`,
+        () => `${res}.type(${JSON.stringify(pick(PROGRAM_TYPES))})`,
+        () =>
+            `${res}.append(${JSON.stringify(pick(["Vary", "X-A", "Set-Cookie", "Link"]))}, ${pick(['"Accept"', text, '["x", "y"]'])})`,
+        () => `${res}.vary("Origin")`,
+        () => `${res}.links({ next: "/n/" + ${text} })`,
+        () => `${res}.location("/l/" + ${text})`,
+        () => `${res}.cookie("c", ${text})`,
+        () => `${res}.removeHeader("X-A")`,
+        () => `${res}.locals.v = ${text}`,
+        () => `${res}.statusCode = 201`,
+        () => `${res}.write("chunk ")`,
+        () => `${res}.writeHead(202, { "X-W": ${text} })`,
+        () => `${res}.set("X-Sent", ${res}.headersSent ? "y" : "n")`,
+        () => `${res}.set("X-Type", String(${res}.get("Content-Type")))`,
+        () => `${res}.set("X-Status", String(${res}.statusCode))`,
+        () => `${res}.set("bad name", "v")`,
+        () => `throw new Error("thrown by " + ${text})`
+    ];
+    // The request surface, written into headers so it is compared: every value is ASCII, the
+    // path and the url because they arrive percent-encoded, the two objects because they are
+    // encoded here, since a non-ascii header value is the one thing this must not compare.
+    const reads = req
+        ? [
+              () => `${res}.set("X-Method", ${req}.method)`,
+              () => `${res}.set("X-Path", ${req}.path)`,
+              () => `${res}.set("X-Url", ${req}.url)`,
+              () => `${res}.set("X-Base", ${req}.baseUrl)`,
+              () => `${res}.set("X-Orig", ${req}.originalUrl)`,
+              () => `${res}.set("X-Route", encodeURIComponent(String(${req}.route && ${req}.route.path)))`,
+              () => `${res}.set("X-Q", encodeURIComponent(JSON.stringify(${req}.query)))`,
+              () =>
+                  `${res}.set("X-Body", encodeURIComponent(JSON.stringify(${req}.body === undefined ? "none" : ${req}.body)))`,
+              () => `${res}.set("X-Hdr", String(${req}.get("x-fuzz")))`,
+              () => `${res}.set("X-Host", String(${req}.hostname))`,
+              () => `${res}.set("X-Fresh", String(${req}.fresh))`,
+              () => `${res}.set("X-Proto", ${req}.protocol)`,
+              () => `${res}.set("X-Xhr", String(${req}.xhr))`
+          ]
+        : [];
+    const terminals = [
+        () => `${res}.send(${pick(bodies)})`,
+        () => `${res}.send(${pick(bodies)})`,
+        () => `${res}.json(${pick(bodies)})`,
+        () => `${res}.end(${pick(ends)})`,
+        () => `${res}.sendStatus(${pick(SENDSTATUS_CODES)})`,
+        () => `${res}.status(${pick(PROGRAM_STATUSES)}).send(${pick(bodies)})`,
+        () => `${res}.status(${pick(PROGRAM_STATUSES)}).json(${pick(bodies)})`,
+        () => `${res}.status(${pick(PROGRAM_STATUSES)}).end()`,
+        () => `${res}.type(${JSON.stringify(pick(PROGRAM_TYPES))}).send(${pick(bodies)})`,
+        () => `${res}.redirect(${pick([`"/r/" + ${text}`, `301, "/r/" + ${text}`, '"back"', '"../up"'])})`,
+        () => `return ${res}.send(${pick(bodies)})`,
+        ...(shape.next ? [() => `${shape.next}()`, () => `${shape.next}(new Error("passed by " + ${text}))`] : [])
+    ];
+    // What may follow the answer without raising: a status, a local, a read. A header written
+    // after the head is out raises on both, and that error has nowhere to go but the socket.
+    const afters = [
+        () => `${res}.status(201)`,
+        () => `${res}.locals.after = 1`,
+        () => `${res}.statusCode = 202`,
+        () => `${res}.get("X-A")`
+    ];
+
+    const statements = [];
+    const count = Math.floor(rng() * 4);
+    for (let i = 0; i < count; i++) {
+        statements.push(reads.length && chance(0.3) ? pick(reads)() : pick(setups)());
+    }
+    const terminal = pick(terminals)();
+    statements.push(terminal);
+    const leaves = terminal.startsWith("return") || (shape.next && terminal.startsWith(shape.next + "("));
+    if (!leaves && chance(0.2)) {
+        statements.push(pick(afters)());
+    }
+    return { params: shape.params, statements };
+}
+
+/**
+ * The handler a program stands for, built from its text: the compiler and the analysis then read
+ * exactly what the plan prints.
+ *
+ * @param {{params: string, statements: string[]}} program
+ * @returns {Function}
+ */
+function programFrom(program) {
+    return new Function(`return ${program.params} => { ${program.statements.join("; ")}; }`)();
 }
 
 /**
@@ -1135,6 +1533,36 @@ function makeHandler(route) {
         case "sendstatus-unknown":
             // a code statuses has no message for, which is where express writes the number itself
             return (req, res) => res.sendStatus(499);
+        case "program":
+            return programFrom(route.program);
+        case "throw-headers":
+            // finalhandler writes the headers an error carries, and answers with its status
+            return () => {
+                const err = new Error("error with headers from " + id);
+                err.status = 503;
+                err.headers = { "Retry-After": "5", "X-Error": id };
+                throw err;
+            };
+        case "status-then-throw":
+            // a status set before the throw is what finalhandler answers with, when it is an error one
+            return (req, res) => {
+                res.status(422);
+                throw new Error("after a status from " + id);
+            };
+        case "throw-object":
+            // a plain object with a status: no stack, and toString is what the page prints
+            return () => {
+                throw { status: 402, message: "object thrown by " + id };
+            };
+        case "write-callback":
+            // the callback form of write, called once the chunk is out: where a write uWS did not
+            // take in one go has to wait for the socket
+            return (req, res) => {
+                res.type("txt");
+                res.write("first " + id, () => {
+                    res.write("second ", () => res.end("last"));
+                });
+            };
         case "format":
             return (req, res) =>
                 res.format({
@@ -1211,11 +1639,32 @@ function settingValue(value) {
  * @param {string} kind
  * @returns {Function}
  */
-function express_bodyParser(factory, kind) {
-    if (kind === "json") return factory.json();
-    if (kind === "urlencoded") return factory.urlencoded({ extended: true });
-    if (kind === "text") return factory.text();
-    return factory.raw();
+function express_bodyParser(factory, kind, options) {
+    const resolved = resolveOptions(options ?? {});
+    if (kind === "json") return factory.json(resolved);
+    if (kind === "urlencoded") return factory.urlencoded({ extended: true, ...resolved });
+    if (kind === "text") return factory.text(resolved);
+    return factory.raw(resolved);
+}
+
+/**
+ * Options as a middleware takes them: a value the plan wrote as a function's name becomes the
+ * function, everything else passes as it is.
+ *
+ * @param {Record<string, any>} options
+ * @returns {Record<string, any>}
+ */
+function resolveOptions(options) {
+    const out = {};
+    for (const [key, value] of Object.entries(options)) {
+        out[key] = typeof value === "string" && value.startsWith("fn:") ? OPTION_FUNCTIONS[value] : value;
+    }
+    return out;
+}
+
+/** @param {any} route @returns {string|RegExp} the path as the framework is handed it */
+function pathOf(route) {
+    return typeof route.path === "string" ? route.path : new RegExp(route.path.regex, route.path.flags);
 }
 
 /** Registers a plan on a framework and starts it. Returns the app and how to stop it. */
@@ -1229,6 +1678,10 @@ async function instantiate(plan, factory, port, generic) {
         app.set("native routes", false);
     }
     for (const [key, value] of Object.entries(plan.settings)) app.set(key, settingValue(value));
+    // test keeps both default error handlers off the console, and the page still carries the
+    // stack. On every round: an error handler of ours that throws, as one does after the head is
+    // out, still ends in the default one
+    app.set("env", "test");
     // registered on every plan: an engine costs nothing until something renders, and a mounted
     // application inherits it, which is part of what this is here to compare
     app.set("views", VIEW_DIR);
@@ -1244,10 +1697,10 @@ async function instantiate(plan, factory, port, generic) {
         // carries it. Saying so here compares the two on behaviour rather than rediscovering the
         // difference every time a body rides on a DELETE. Express ignores the setting.
         app.set("body methods", ["POST", "PUT", "PATCH", "QUERY", "DELETE", "OPTIONS"]);
-        app.use(express_bodyParser(factory, plan.bodyParser));
+        app.use(express_bodyParser(factory, plan.bodyParser, plan.bodyParserOptions));
     }
     if (plan.staticMount) {
-        app.use(plan.staticMount.mount, factory.static(FILE_DIR, { ...plan.staticMount.options }));
+        app.use(plan.staticMount.mount, factory.static(FILE_DIR, resolveOptions(plan.staticMount.options)));
     }
 
     const addRoute = (target, route) => {
@@ -1262,7 +1715,7 @@ async function instantiate(plan, factory, port, generic) {
                     : (err, req, res, next) => next(err)
             );
         }
-        target[route.method](route.path, ...handlers);
+        target[route.method](pathOf(route), ...handlers);
     };
 
     /** The mount path as the plan asked for it: one string, several, or a RegExp. */
@@ -1290,7 +1743,9 @@ async function instantiate(plan, factory, port, generic) {
             // one: leaving the route before it runs, and failing the value, which is what a
             // callback that looks an id up in a database does when it finds nothing
             router.param("p0", (req, res, next, value) => {
-                res.set("X-Param-Seen", String(value).slice(0, 20));
+                // encoded, since a decoded parameter can be non-ascii and that is the one
+                // difference this must not compare, see the header
+                res.set("X-Param-Seen", encodeURIComponent(String(value).slice(0, 20)));
                 if (paramCallback === "route") return next("route");
                 if (paramCallback === "error") return next(new Error("param p0 refused: " + value));
                 next();
@@ -1326,21 +1781,21 @@ async function instantiate(plan, factory, port, generic) {
     for (const route of plan.routes) {
         if (route.shape === "route") {
             // app.route() hangs several verbs off one path, which is a different layer arrangement
-            app.route(route.path)
+            app.route(pathOf(route))
                 .get(makeHandler(route))
                 .post(makeHandler({ ...route, id: route.id + "-post" }));
         } else if (route.shape === "all") {
-            app.all(route.path, makeHandler(route));
+            app.all(pathOf(route), makeHandler(route));
         } else {
             addRoute(app, route);
         }
     }
 
     app.use((req, res) => res.status(404).send("no route"));
-    if (!plan.skipFriendly) {
-        // an error handler of our own, because express's default one prints a stack that cannot
-        // match. Left out when the plan wants the analysis to grant a skip, which it refuses to do
-        // while any error handler exists
+    if (!plan.finalHandler) {
+        // an error handler of our own, which answers the message alone. Left out when the plan
+        // compares the default pages, and when it wants the analysis to grant a skip, which it
+        // refuses to do while any error handler exists
         app.use((err, req, res, next) => res.status(500).send("error: " + err.message));
     }
 
@@ -1355,7 +1810,9 @@ async function instantiate(plan, factory, port, generic) {
 // The default error page carries the stack of whoever raised, and those frames belong to each
 // project: nothing about them can match. The message above the first line break is compared, the
 // rest is dropped, which is what the comparison tests do with the same page.
-const DEFAULT_ERROR_PAGE = /<pre>([^]*?)<br>[^]*<\/pre>/;
+// the frames are optional: an fs error raised in an async callback carries none, so express's
+// page for one is the message alone where ours, raised off a sync stat, has ten lines under it
+const DEFAULT_ERROR_PAGE = /<pre>([^]*?)(?:<br>[^]*?)?<\/pre>/;
 
 /** @param {string} body @returns {string} */
 function withoutStack(body) {
@@ -1363,29 +1820,136 @@ function withoutStack(body) {
     return matched ? body.replace(matched[0], "<pre>" + matched[1] + "<br>(stack)</pre>") : body;
 }
 
-/** What is compared: the status, the headers worth comparing, and the body. */
+/**
+ * What went wrong with a request that got no answer, named so the two arms can agree on it: the
+ * code and not the message, since the message carries the port.
+ *
+ * @param {any} err what fetch rejected with
+ * @returns {string}
+ */
+function transportName(err) {
+    if (err && err.name === "TimeoutError") return "timeout";
+    const cause = err && err.cause;
+    return String((cause && (cause.code || cause.name)) || (err && (err.code || err.name)) || err);
+}
+
+/**
+ * The bytes a body goes out as, and the Content-Encoding that says so.
+ *
+ * @param {{text: string, encoding: string}} body
+ * @returns {{bytes: Buffer, header: string|null}}
+ */
+function bodyBytes(body) {
+    const raw = Buffer.from(body.text);
+    switch (body.encoding) {
+        case "gzip":
+            return { bytes: zlib.gzipSync(raw), header: "gzip" };
+        case "deflate":
+            return { bytes: zlib.deflateSync(raw), header: "deflate" };
+        case "br":
+            return { bytes: zlib.brotliCompressSync(raw), header: "br" };
+        case "unsupported":
+            return { bytes: raw, header: "zstd" };
+        case "lying":
+            return { bytes: raw, header: "gzip" };
+        default:
+            return { bytes: raw, header: null };
+    }
+}
+
+/**
+ * What the framing must not do, checked rather than compared, since content-length differs by
+ * design. A length on a 204 was real: sendStatus(204) compiled to a body and a length of ten, and
+ * the next answer on the connection began with those ten bytes.
+ *
+ * @param {Response} res
+ * @param {string} method
+ * @param {Buffer} bytes the body that came
+ * @returns {string|null} the fault, or null
+ */
+function framingFault(res, method, bytes) {
+    const length = res.headers.get("content-length");
+    const chunked = res.headers.get("transfer-encoding");
+    if (res.status === 204 || res.status === 304) {
+        // a zero is harmless, and node writes one when the application set it: cors does, on
+        // its preflight, and uWS drops it
+        if (length !== null && length !== "0") return `content-length ${length} on a ${res.status}`;
+        if (chunked !== null) return `transfer-encoding on a ${res.status}`;
+        if (bytes.length) return `${bytes.length} body bytes on a ${res.status}`;
+        return null;
+    }
+    if (length !== null && chunked !== null) return "both content-length and transfer-encoding";
+    // undici frames the body by the length, so only a length over what came is visible here; a
+    // length under it is read as the start of the next answer, which session-fuzz sees
+    if (
+        length !== null &&
+        method !== "HEAD" &&
+        !res.headers.has("content-encoding") &&
+        Number(length) !== bytes.length
+    ) {
+        return `content-length ${length} over ${bytes.length} bytes`;
+    }
+    return null;
+}
+
+/** What is compared: the status, every header but the excluded ones, the body, and the framing. */
 async function answerOf(port, url, method, headers, conditional, body) {
     const sent = conditional ? { ...headers, "if-none-match": conditional } : { ...headers };
+    let payload;
     if (body) {
         sent["content-type"] = body.type;
+        if (method !== "GET" && method !== "HEAD") {
+            const wire = bodyBytes(body);
+            if (wire.header) sent["content-encoding"] = wire.header;
+            payload = wire.bytes;
+        }
     }
-    const res = await fetch("http://localhost:" + port + url, {
-        method,
-        headers: sent,
-        body: body && method !== "GET" && method !== "HEAD" ? body.text : undefined,
-        signal: AbortSignal.timeout(5000),
-        redirect: "manual"
-    });
+    let res;
+    for (let attempt = 0; ; attempt++) {
+        try {
+            res = await fetch("http://localhost:" + port + url, {
+                method,
+                headers: sent,
+                body: payload,
+                signal: AbortSignal.timeout(4000),
+                redirect: "manual"
+            });
+            break;
+        } catch (err) {
+            // Once more on a reset: undici keeps the connection and the server may have closed
+            // it after the answer before, which is the client's race and not an answer. A hang
+            // is not retried, it would only double the wait.
+            const name = transportName(err);
+            if (attempt === 0 && name !== "timeout") continue;
+            // No answer is an answer, and used to be skipped as a request nobody could compare:
+            // an error after the head left the client waiting here and passed every round.
+            return { line: "transport: " + name, etag: null };
+        }
+    }
     const parts = [String(res.status)];
-    for (const name of [...COMPARED_HEADERS, ...MIDDLEWARE_HEADERS]) {
-        const value = name === "set-cookie" ? res.headers.getSetCookie().join(" | ") : res.headers.get(name);
-        if (value !== null && value !== "")
-            parts.push(`${name}: ${value.replace(/\d{2}:\d{2}:\d{2} GMT/g, "xx:xx:xx GMT")}`);
+    for (const [name, value] of res.headers) {
+        if (EXCLUDED_HEADERS.has(name) || PRESENCE_ONLY_HEADERS.includes(name) || name === "set-cookie") continue;
+        if (value !== "") parts.push(`${name}: ${value.replace(/\d{2}:\d{2}:\d{2} GMT/g, "xx:xx:xx GMT")}`);
     }
+    const cookies = res.headers.getSetCookie();
+    if (cookies.length)
+        parts.push(`set-cookie: ${cookies.join(" | ").replace(/\d{2}:\d{2}:\d{2} GMT/g, "xx:xx:xx GMT")}`);
     for (const name of PRESENCE_ONLY_HEADERS) {
         if (res.headers.has(name)) parts.push(`${name}: present`);
     }
-    parts.push(JSON.stringify(withoutStack(await res.text())));
+    let bytes;
+    try {
+        bytes = Buffer.from(await res.arrayBuffer());
+    } catch (err) {
+        // The same line as a failure before the head, on purpose. After res.write() and a throw,
+        // node's cork decides whether the head reached the socket before the destroy, and the
+        // answer changed between two setups of the same application: a connection dropped is
+        // one answer here, whatever had gone out before.
+        return { line: "transport: " + transportName(err), etag: null };
+    }
+    parts.push(JSON.stringify(withoutStack(bytes.toString("utf8"))));
+    const fault = framingFault(res, method, bytes);
+    if (fault) parts.push("framing: " + fault);
     return { line: parts.join(" | "), etag: res.headers.get("etag") };
 }
 
@@ -1424,43 +1988,47 @@ async function runPlan(plan, stopAtFirst) {
 
     const divergences = [];
     let checked = 0;
-    for (const url of plan.urls) {
-        for (const method of plan.methods) {
-            let ra, rb;
-            try {
-                const body = plan.body ?? null;
-                [ra, rb] = await Promise.all([
-                    answerOf(portA, url, method, plan.headers, undefined, body),
-                    answerOf(portB, url, method, plan.headers, undefined, body)
-                ]);
-            } catch {
-                continue; // a url fetch itself refuses to build is not a comparison
-            }
+    let stop = false;
+    const askOne = async (url, method) => {
+        if (stop) return;
+        const body = plan.body ?? null;
+        const [ra, rb] = await Promise.all([
+            answerOf(portA, url, method, plan.headers, undefined, body),
+            answerOf(portB, url, method, plan.headers, undefined, body)
+        ]);
+        checked++;
+        if (ra.line !== rb.line) {
+            divergences.push({ url, method, express: ra.line, fulmine: rb.line });
+            if (stopAtFirst) stop = true;
+        } else if (ra.etag && ra.etag === rb.etag) {
+            // asked again with the validator both just sent, which is the only way here to a
+            // 304 and to the headers express strips from one
             checked++;
-            if (ra.line !== rb.line) {
-                divergences.push({ url, method, express: ra.line, fulmine: rb.line });
-                if (stopAtFirst) break;
-            } else if (ra.etag && ra.etag === rb.etag) {
-                // asked again with the validator both just sent, which is the only way here to a
-                // 304 and to the headers express strips from one
-                checked++;
-                const [ca, cb] = await Promise.all([
-                    answerOf(portA, url, method, plan.headers, ra.etag),
-                    answerOf(portB, url, method, plan.headers, rb.etag)
-                ]);
-                if (ca.line !== cb.line) {
-                    divergences.push({
-                        url,
-                        method,
-                        conditional: true,
-                        express: ca.line,
-                        fulmine: cb.line
-                    });
-                    if (stopAtFirst) break;
-                }
+            const [ca, cb] = await Promise.all([
+                answerOf(portA, url, method, plan.headers, ra.etag),
+                answerOf(portB, url, method, plan.headers, rb.etag)
+            ]);
+            if (ca.line !== cb.line) {
+                divergences.push({ url, method, conditional: true, express: ca.line, fulmine: cb.line });
+                if (stopAtFirst) stop = true;
             }
         }
-        if (stopAtFirst && divergences.length) break;
+    };
+    if (plan.concurrent) {
+        // the round's requests in flight together, a method at a time: the only way here to two
+        // requests sharing a server at the same instant, a file read in flight, a cache filling,
+        // a response pending while another answers
+        for (const method of plan.methods) {
+            await Promise.all(plan.urls.map((url) => askOne(url, method)));
+        }
+    } else {
+        for (const url of plan.urls) {
+            for (const method of plan.methods) {
+                await askOne(url, method);
+                if (stop) break;
+            }
+            if (stop) break;
+        }
     }
 
     await a.stop();
@@ -1523,7 +2091,90 @@ async function shrink(plan, target) {
             current = (await tryWithout(candidate)) ?? current;
         }
     }
+    // what stands in front of the routes and what the request carries, so the printed case says
+    // whether the parser, the mount, the concurrency or a header is part of it
+    if (current.concurrent) current = (await tryWithout({ ...current, concurrent: false })) ?? current;
+    if (current.staticMount) current = (await tryWithout({ ...current, staticMount: null })) ?? current;
+    if (current.bodyParser) {
+        current = (await tryWithout({ ...current, bodyParser: null, bodyParserOptions: null })) ?? current;
+    }
+    for (const key of Object.keys(current.bodyParserOptions ?? {})) {
+        const bodyParserOptions = { ...current.bodyParserOptions };
+        delete bodyParserOptions[key];
+        current = (await tryWithout({ ...current, bodyParserOptions })) ?? current;
+    }
+    for (const key of Object.keys(current.headers ?? {})) {
+        const headers = { ...current.headers };
+        delete headers[key];
+        current = (await tryWithout({ ...current, headers })) ?? current;
+    }
+    // then the statements of every handler drawn as source, one at a time, so the printed handler
+    // holds only the calls the divergence needs
+    for (const spot of routeSpots(current)) {
+        let route = spot.route;
+        if (!route.program) continue;
+        for (let i = route.program.statements.length - 1; i >= 0; i--) {
+            const statements = route.program.statements.filter((_, j) => j !== i);
+            const smaller = { ...route, program: { ...route.program, statements } };
+            const candidate = await tryWithout(withRoute(current, spot, smaller));
+            if (candidate) {
+                current = candidate;
+                route = smaller;
+            }
+        }
+    }
     return current;
+}
+
+/**
+ * Every top-level and router route of a plan, with where it sits.
+ *
+ * @param {any} plan
+ * @returns {{router?: number, index: number, route: any}[]}
+ */
+function routeSpots(plan) {
+    const spots = plan.routes.map((route, index) => ({ index, route }));
+    plan.routers.forEach((spec, router) => {
+        spec.routes.forEach((route, index) => spots.push({ router, index, route }));
+    });
+    return spots;
+}
+
+/**
+ * The plan with one route replaced where a spot from routeSpots points, the rest shared.
+ *
+ * @param {any} plan
+ * @param {{router?: number, index: number}} spot
+ * @param {any} route
+ * @returns {any}
+ */
+function withRoute(plan, spot, route) {
+    if (spot.router === undefined) {
+        return { ...plan, routes: plan.routes.map((r, i) => (i === spot.index ? route : r)) };
+    }
+    return {
+        ...plan,
+        routers: plan.routers.map((spec, i) =>
+            i === spot.router ? { ...spec, routes: spec.routes.map((r, j) => (j === spot.index ? route : r)) } : spec
+        )
+    };
+}
+
+/**
+ * One registration as source: the path as written or as a RegExp, the handler as its kind or as
+ * the statements it was drawn from.
+ *
+ * @param {string} owner the variable the route hangs off
+ * @param {any} route
+ * @returns {string}
+ */
+function routeToSource(owner, route) {
+    const handler = route.program
+        ? `${route.program.params} => { ${route.program.statements.join("; ")}; }`
+        : route.kind;
+    const routePath =
+        typeof route.path === "string" ? JSON.stringify(route.path) : `/${route.path.regex}/${route.path.flags}`;
+    return `${owner}.${route.method}(${routePath}, ${handler});`;
 }
 
 /** The shrunk plan as the source it stands for. */
@@ -1535,36 +2186,35 @@ function planToSource(plan, target) {
     // case look smaller than it was, since the answer often comes from here rather than from a route
     for (const spec of plan.middlewares ?? [])
         lines.push(`app.use(${spec.name}(${JSON.stringify(spec.options)}));  // the npm package, on both arms`);
-    if (plan.bodyParser) lines.push(`app.use(express.${plan.bodyParser}());`);
+    if (plan.bodyParser)
+        lines.push(`app.use(express.${plan.bodyParser}(${JSON.stringify(plan.bodyParserOptions ?? {})}));`);
     if (plan.body) lines.push(`// request body: ${JSON.stringify(plan.body)}`);
     if (plan.staticMount) {
         const options = JSON.stringify(plan.staticMount.options);
         lines.push(`app.use(${JSON.stringify(plan.staticMount.mount)}, express.static(dir, ${options}));`);
     }
     if (plan.skipFriendly) lines.push("// no error handler anywhere, so the usage analysis may grant a skip");
+    else if (plan.finalHandler) lines.push("// no error handler of ours: each default page, its stack masked");
+    if (plan.concurrent) lines.push("// the round's requests were in flight together");
     if (plan.headers && Object.keys(plan.headers).length > 0) {
         lines.push(`// request headers: ${JSON.stringify(plan.headers)}`);
     }
     for (const [i, spec] of plan.routers.entries()) {
         lines.push(`const router${i} = express.Router(${JSON.stringify(spec.options)});`);
-        for (const route of spec.routes)
-            lines.push(`router${i}.${route.method}(${JSON.stringify(route.path)}, ${route.kind});`);
+        for (const route of spec.routes) lines.push(routeToSource(`router${i}`, route));
         if (spec.nested) {
             lines.push(`const nested${i} = express.Router();`);
-            for (const route of spec.nested.routes)
-                lines.push(`nested${i}.${route.method}(${JSON.stringify(route.path)}, ${route.kind});`);
+            for (const route of spec.nested.routes) lines.push(routeToSource(`nested${i}`, route));
             // the third level and the application below it, which instantiate() builds and this
             // used to leave out: a case printed without them cannot be reproduced from the print
             if (spec.nested.deeper) {
                 lines.push(`const deeper${i} = express.Router();`);
-                for (const route of spec.nested.deeper.routes)
-                    lines.push(`deeper${i}.${route.method}(${JSON.stringify(route.path)}, ${route.kind});`);
+                for (const route of spec.nested.deeper.routes) lines.push(routeToSource(`deeper${i}`, route));
                 lines.push(`nested${i}.use(${JSON.stringify(spec.nested.deeper.mount)}, deeper${i});`);
             }
             if (spec.nested.subApp) {
                 lines.push(`const inner${i} = express();`);
-                for (const route of spec.nested.subApp.routes)
-                    lines.push(`inner${i}.${route.method}(${JSON.stringify(route.path)}, ${route.kind});`);
+                for (const route of spec.nested.subApp.routes) lines.push(routeToSource(`inner${i}`, route));
                 lines.push(`nested${i}.use(${JSON.stringify(spec.nested.subApp.mount)}, inner${i});`);
             }
             lines.push(`router${i}.use(${JSON.stringify(spec.nested.mount)}, nested${i});`);
@@ -1575,11 +2225,10 @@ function planToSource(plan, target) {
         lines.push(`const sub = express();  // mounted ${plan.subApp.mountFirst ? "before" : "after"} its routes`);
         for (const [key, value] of Object.entries(plan.subApp.settings))
             lines.push(`sub.set(${JSON.stringify(key)}, ${JSON.stringify(value)});`);
-        for (const route of plan.subApp.routes)
-            lines.push(`sub.${route.method}(${JSON.stringify(route.path)}, ${route.kind});`);
+        for (const route of plan.subApp.routes) lines.push(routeToSource("sub", route));
         lines.push(`app.use(${JSON.stringify(plan.subApp.mount)}, sub);`);
     }
-    for (const route of plan.routes) lines.push(`app.${route.method}(${JSON.stringify(route.path)}, ${route.kind});`);
+    for (const route of plan.routes) lines.push(routeToSource("app", route));
     lines.push(`// then: ${target.method} ${target.url}`);
     return lines.join("\n");
 }
@@ -1593,6 +2242,10 @@ async function main() {
     const rounds = flag("rounds", 200);
     const baseSeed = flag("seed", (Date.now() ^ (process.pid << 16)) >>> 0);
     const keepGoing = argv.includes("--keep-going");
+    // triage: print every request the round disagreed on, and the round as drawn, without shrinking
+    const noShrink = argv.includes("--no-shrink");
+    // two runs at once, --self beside the express one, must not fight over the ports
+    nextPort = flag("port", 15000);
 
     // Registration parity first: a pattern one framework takes and the other refuses is a
     // divergence before any request is made, and it also decides which shapes the rounds can use.
@@ -1626,11 +2279,31 @@ async function main() {
     let checked = 0;
     let found = 0;
 
+    // An exception nobody caught, kept so its round can say which arm threw it: a run that dies
+    // with express loses every round after. Ours is a finding, express's is a shape to stop
+    // drawing, and that round is skipped since its server may be wedged.
+    const crash = { err: null };
+    process.on("uncaughtException", (err) => {
+        crash.err = err;
+    });
+    const ownSource = path.join(__dirname, "..", "src") + path.sep;
+
     for (let round = 0; round < rounds; round++) {
         const seed = (baseSeed + round) >>> 0;
         const plan = drawPlan(mulberry32(seed));
+        crash.err = null;
         const result = await runPlan(plan, false);
         checked += result.checked;
+        if (crash.err) {
+            const err = crash.err;
+            crash.err = null;
+            const named = `${err.code ?? err.name}: ${err.message}`;
+            if (!String(err.stack).includes(ownSource)) {
+                console.log(`  round ${round}, seed ${seed}: express threw uncaught ${named}, round skipped`);
+                continue;
+            }
+            result.divergences.unshift({ url: "(process)", method: "-", express: "-", fulmine: "uncaught " + named });
+        }
         if (!result.divergences.length) {
             if (round % 25 === 24) console.log(`  ${round + 1} rounds, ${checked} requests, no divergence`);
             continue;
@@ -1645,17 +2318,27 @@ async function main() {
         if (result.divergences.length > 1)
             console.log(`  (${result.divergences.length} requests disagree in this round)`);
 
-        console.log("\nshrinking...");
-        const small = await shrink(plan, target);
-        console.log("\n" + planToSource(small, target));
-        // what the shrunk plan answers on its own, since the two lines above belong to the whole
-        // round: a reader comparing them against this source would be reading two applications
-        const confirmed = await runPlan(small, true);
-        if (confirmed.divergences.length) {
-            console.log(`  ${LEFT}: ${confirmed.divergences[0].express}`);
-            console.log(`  ${RIGHT}: ${confirmed.divergences[0].fulmine}`);
+        if (noShrink) {
+            for (const other of result.divergences.slice(1, 8)) {
+                console.log(`  also ${other.method} ${other.url}${other.conditional ? " (conditional)" : ""}`);
+                console.log(`    ${LEFT}: ${other.express}`);
+                console.log(`    ${RIGHT}: ${other.fulmine}`);
+            }
+            console.log("\n" + planToSource(plan, target));
         } else {
-            console.log("  (this shrunk plan does not disagree on its own: it needs the round around it)");
+            console.log("\nshrinking...");
+            const small = await shrink(plan, target);
+            console.log("\n" + planToSource(small, target));
+            // what the shrunk plan answers on its own, since the two lines above belong to the
+            // whole round: a reader comparing them against this source would be reading two
+            // applications
+            const confirmed = await runPlan(small, true);
+            if (confirmed.divergences.length) {
+                console.log(`  ${LEFT}: ${confirmed.divergences[0].express}`);
+                console.log(`  ${RIGHT}: ${confirmed.divergences[0].fulmine}`);
+            } else {
+                console.log("  (this shrunk plan does not disagree on its own: it needs the round around it)");
+            }
         }
 
         if (!keepGoing) {

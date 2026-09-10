@@ -215,7 +215,11 @@ function drawCase(rng) {
 
     const hasSmuggled = chance(0.7);
     const bytes = head + body + (hasSmuggled ? SMUGGLED : "");
-    return { bytes, label: notes.join(" "), hasSmuggled };
+    // the same bytes in two writes with a pause between, cut anywhere: everything above arrives
+    // in one packet, and a parser keeps state only across a cut
+    const split = chance(0.3) ? Math.floor(rng() * bytes.length) : -1;
+    if (split !== -1) notes.push(`split@${split}`);
+    return { bytes, label: notes.join(" "), hasSmuggled, split };
 }
 
 /**
@@ -223,9 +227,10 @@ function drawCase(rng) {
  *
  * @param {number} port
  * @param {string} bytes
+ * @param {number} split where to cut the bytes into two writes, or -1 for one
  * @returns {Promise<{statuses: string[], closed: boolean, answered: boolean}>}
  */
-function exchange(port, bytes) {
+function exchange(port, bytes, split) {
     return new Promise((resolve) => {
         const socket = net.connect(port, "127.0.0.1");
         let out = "";
@@ -242,7 +247,16 @@ function exchange(port, bytes) {
             resolve({ statuses, closed, answered: out.length > 0 });
         };
         socket.setTimeout(1200);
-        socket.on("connect", () => socket.write(Buffer.from(bytes, "latin1")));
+        socket.on("connect", () => {
+            if (split === -1) {
+                socket.write(Buffer.from(bytes, "latin1"));
+                return;
+            }
+            socket.write(Buffer.from(bytes.slice(0, split), "latin1"));
+            setTimeout(() => {
+                if (!settled) socket.write(Buffer.from(bytes.slice(split), "latin1"));
+            }, 40);
+        });
         socket.on("data", (chunk) => {
             out += chunk.toString("latin1");
             clearTimeout(quiet);
@@ -269,17 +283,48 @@ async function drainLog(port) {
     return res.json();
 }
 
+// the paths registered on their own, ahead of the catch-all: on this framework those are native
+// routes, so the refusals a native handler makes before any routing are reached too
+const LITERAL_PATHS = ["/", "/a", "/a/b"];
+
+/**
+ * One served request as the log records it: what was asked, and how many body bytes the handler
+ * read, which is the second thing two parsers can disagree on out of the same bytes. Counted on
+ * the stream and filled in when it ends, so a body that never ends stays at -1.
+ *
+ * @param {any[]} log
+ * @param {any} req a node request or this framework's, both readable
+ * @returns {{line: string, body: number}}
+ */
+function record(log, req) {
+    const entry = { line: `${req.method} ${req.url}`, body: -1 };
+    log.push(entry);
+    let bytes = 0;
+    req.on("data", (chunk) => {
+        bytes += chunk.length;
+    });
+    req.on("end", () => {
+        entry.body = bytes;
+    });
+    return entry;
+}
+
+/** @param {any[]} log @returns {string[]} the entries as lines, and the log emptied */
+function drain(log) {
+    const lines = log.map((entry) => `${entry.line} body=${entry.body}`);
+    log.length = 0;
+    return lines;
+}
+
 /** The node reference: the same two routes, recording what it served. */
 function startNode(log) {
     const server = http.createServer((req, res) => {
         if (req.url === "/__log") {
-            const body = JSON.stringify(log.slice());
-            log.length = 0;
+            const body = JSON.stringify(drain(log));
             res.writeHead(200, { "content-type": "application/json" });
             return res.end(body);
         }
-        log.push(`${req.method} ${req.url}`);
-        req.resume();
+        record(log, req);
         req.on("end", () => res.end("ok"));
     });
     // node answers a malformed message itself; without this it also prints to stderr
@@ -298,14 +343,16 @@ function startFulmine(log) {
     const app = fulmine();
     app.set("etag", false);
     app.get("/__log", (req, res) => {
-        const body = log.slice();
-        log.length = 0;
-        res.json(body);
+        res.json(drain(log));
     });
-    app.all("/*splat", (req, res) => {
-        log.push(`${req.method} ${req.url}`);
+    const serve = (req, res) => {
+        record(log, req);
         res.send("ok");
-    });
+    };
+    for (const literal of LITERAL_PATHS) {
+        app.all(literal, serve);
+    }
+    app.all("/*splat", serve);
     return new Promise((resolve) => app.listen(0, () => resolve({ server: app, port: app.address().port })));
 }
 
@@ -334,9 +381,9 @@ async function main() {
         const seed = (baseSeed + round) >>> 0;
         const c = drawCase(mulberry32(seed));
 
-        const nodeRes = await exchange(nodeSrv.port, c.bytes);
+        const nodeRes = await exchange(nodeSrv.port, c.bytes, c.split);
         const nodeServed = await drainLog(nodeSrv.port);
-        const fulRes = await exchange(fulSrv.port, c.bytes);
+        const fulRes = await exchange(fulSrv.port, c.bytes, c.split);
         const fulServed = await drainLog(fulSrv.port);
 
         const nodeSmuggled = nodeServed.filter((s) => s.includes("/smuggled")).length;
@@ -348,6 +395,14 @@ async function main() {
         // desync that smuggling is made of.
         const desync = fulServed.length > nodeServed.length || fulSmuggled > nodeSmuggled;
         const morePermissive = nodeServed.length === 0 && fulServed.length > 0;
+        // the same requests with different bodies: one handler was given bytes the other parser
+        // gave to nobody. Only where both ended, since body=-1 is the refusing direction.
+        const bodyDiffers =
+            !desync &&
+            fulServed.length === nodeServed.length &&
+            fulServed.some(
+                (line, i) => line !== nodeServed[i] && !line.endsWith("body=-1") && !nodeServed[i].endsWith("body=-1")
+            );
 
         // One shape is µWS's and stays out, the way the non-ascii header value stays out of fuzz.js.
         // A client that writes "Connection: close", bare or in a list, and a second request in the
@@ -360,7 +415,7 @@ async function main() {
         const closeThenPipelined =
             CONNECTION_CLOSE.test(c.bytes) && c.hasSmuggled && nodeServed.length === 1 && fulServed.length === 2;
 
-        if ((desync || morePermissive) && !closeThenPipelined) {
+        if ((desync || morePermissive || bodyDiffers) && !closeThenPipelined) {
             findings++;
             console.log(`\n=== case ${round}, seed ${seed} (replay: --seed ${seed} --rounds 1)`);
             console.log(`  ${c.label || "(plain)"}${c.hasSmuggled ? " +smuggled" : ""}`);
@@ -369,9 +424,12 @@ async function main() {
                 `  node:    served ${JSON.stringify(nodeServed)}  statuses ${nodeRes.statuses.join(",") || "-"}`
             );
             console.log(`  fulmine: served ${JSON.stringify(fulServed)}  statuses ${fulRes.statuses.join(",") || "-"}`);
-            console.log(
-                `  why:     ${desync ? "different number of requests read from the same bytes" : "served what node refused"}`
-            );
+            const why = desync
+                ? "different number of requests read from the same bytes"
+                : bodyDiffers
+                  ? "the same requests, with a body framed differently"
+                  : "served what node refused";
+            console.log(`  why:     ${why}`);
         } else if (fulServed.length < nodeServed.length) {
             stricter++;
             if (verbose) {
