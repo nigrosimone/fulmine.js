@@ -11,6 +11,8 @@ app.post("/off", express.json({ inflate: false }), (req, res) => res.json(req.bo
 // a request wrong in both ways: which of the two is named is the parser's own order
 app.post("/both", express.json(), (req, res) => res.json(req.body));
 app.post("/text", express.text(), (req, res) => res.json(req.body));
+// the limit counts the bytes that come out of zlib, not the compressed ones the length declares
+app.post("/limit", express.raw({ limit: "8b" }), (req, res) => res.json(String(req.body)));
 app.use((err, req, res, next) =>
     res
         .status(err.status)
@@ -49,6 +51,19 @@ for (const body of [Buffer.alloc(0), Buffer.from("{}")]) {
             console.log(path, body.length, res.status, await res.text());
         });
     }
+}
+
+// gzip makes five bytes bigger than the eight-byte limit, so a length-based refusal would answer
+// 413 for a body that fits once it is inflated. The one over the limit still has to be refused.
+for (const text of ["bytes", "far more than eight bytes once inflated"]) {
+    cases.push(async () => {
+        const res = await fetchTest("http://localhost:13333/limit", {
+            method: "POST",
+            headers: { "content-type": "application/octet-stream", "content-encoding": "gzip" },
+            body: require("zlib").gzipSync(Buffer.from(text))
+        });
+        console.log("/limit", text.length, res.status, await res.text());
+    });
 }
 
 app.listen(13333, async () => {

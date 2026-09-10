@@ -1082,8 +1082,11 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 return beforeReturn(req, res, next, options, empty, encoding);
             }
 
-            // skip reading too large body; NaN compares false, so no declared length passes
-            if (lengthNumber > limit) {
+            // skip reading too large body; NaN compares false, so no declared length passes.
+            // Not while inflating: content-length counts the compressed bytes and the limit is
+            // about the ones that come out, which body-parser says by leaving the length unset.
+            // The limit is still enforced per chunk as they inflate, see keepChunk
+            if (!inflate && lengthNumber > limit) {
                 return next(
                     bodyError("request entity too large", 413, "entity.too.large", {
                         expected: lengthNumber,
