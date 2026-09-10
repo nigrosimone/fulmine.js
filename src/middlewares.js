@@ -26,6 +26,7 @@ const mime = require("mime-types");
 const compressible = require("compressible");
 const ms = require("ms");
 const qs = require("qs");
+const statuses = require("statuses");
 const parseQuery = require("./parse-query.js");
 const { kGetSafe } = require("./usage.js");
 const { AsyncResource } = require("async_hooks");
@@ -48,6 +49,7 @@ const {
     NullObject,
     asStatError,
     httpError,
+    httpErrorName,
     memoizeByString,
     containsDotFile,
     negotiateEncoding,
@@ -247,14 +249,32 @@ function runVerify(req, res, next, options, buf, encoding) {
         options.verify(req, res, buf, encoding ?? null);
         return true;
     } catch (e) {
-        const err = /** @type {HttpError} */ (e);
-        next(
-            asBodyError(err, err.status ?? err.statusCode ?? 403, err.type ?? "entity.verify.failed", {
-                body: buf
-            })
-        );
+        next(verifyError(e, buf));
         return false;
     }
+}
+
+/**
+ * The error a verify hook's throw becomes, as http-errors shapes it for body-parser. An Error is
+ * kept, with its own status when that is one a client can be answered with; a thrown string
+ * becomes a 403 with that message, and anything else a plain 403.
+ *
+ * @param {unknown} thrown
+ * @param {Buffer} buf the body, which rides on the error as body-parser puts it there
+ * @returns {HttpError}
+ */
+function verifyError(thrown, buf) {
+    const own = thrown instanceof Error ? /** @type {HttpError} */ (thrown) : undefined;
+    let status = own ? own.status || own.statusCode || 403 : 403;
+    // http-errors answers 500 for a status it cannot answer with: not a number, or outside 4xx
+    // and 5xx with no message of its own
+    if (typeof status !== "number" || (!statuses.message[status] && (status < 400 || status >= 600))) {
+        status = 500;
+    }
+    const err = own ?? httpError(status, typeof thrown === "string" ? thrown : undefined);
+    // read off whatever was thrown, as body-parser reads it
+    const type = /** @type {{type?: string}|null|undefined} */ (thrown)?.type || "entity.verify.failed";
+    return asBodyError(err, status, type, { body: buf });
 }
 
 /**
@@ -286,15 +306,6 @@ function strictSyntaxMessage(text, char) {
     return "strict violation";
 }
 
-// The name http-errors gives each status body-parser answers with. An application reading
-// err.name, or a logger printing it, sees "PayloadTooLargeError" from Express and would have
-// seen a bare "Error" here.
-const BODY_ERROR_NAMES = {
-    400: "BadRequestError",
-    413: "PayloadTooLargeError",
-    415: "UnsupportedMediaTypeError"
-};
-
 /**
  * The error a body parser hands to next(), shaped as body-parser shapes it: with a status, since
  * `res.status(err.status || 500)` would otherwise answer 500 to a request that was merely too
@@ -309,9 +320,9 @@ const BODY_ERROR_NAMES = {
 function bodyError(message, status, type, extra) {
     /** @type {HttpError} */
     const err = new Error(message);
-    if (BODY_ERROR_NAMES[status]) {
-        err.name = BODY_ERROR_NAMES[status];
-    }
+    // the name http-errors gives it: an application reading err.name, or a logger printing it,
+    // sees "PayloadTooLargeError" from Express and would have seen a bare "Error" here
+    err.name = httpErrorName(status);
     return asBodyError(err, status, type, extra);
 }
 

@@ -1599,20 +1599,37 @@ const STAT_ERROR_STATUS = { ENAMETOOLONG: 404, ENOTDIR: 404, ENOENT: 404 };
  * of that handler as 500. The message is the status's own name, as http-errors writes it.
  *
  * @param {number} status
+ * @param {string} [message] the status text unless given, as http-errors has it
  * @returns {HttpError}
  */
-function httpError(status) {
-    const message = statuses.message[status] ?? "Error";
+function httpError(status, message = statuses.message[status] ?? "Error") {
     /** @type {HttpError} */
     const err = new Error(message);
     // http-errors names these BadRequestError, ForbiddenError and so on, and the name is what the
     // error page shows: an application looking at a 400 sees the same word Express shows it. Set
     // before anything reads the stack, which V8 formats on first read
-    err.name = `${message.replace(/\W/g, "")}Error`;
+    err.name = httpErrorName(status);
     err.expose = status < 500;
     err.statusCode = status;
     err.status = status;
     return err;
+}
+
+/**
+ * The name http-errors gives an error for a status, NotFoundError for 404: each word of the status
+ * text capitalised and run together, plus Error unless it already ends in it, which is how
+ * "Internal Server Error" stays InternalServerError.
+ *
+ * @param {number} status
+ * @returns {string}
+ */
+function httpErrorName(status) {
+    const name = (statuses.message[status] ?? "Error")
+        .split(" ")
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join("")
+        .replace(/[^ _0-9a-z]/gi, "");
+    return name.endsWith("Error") ? name : name + "Error";
 }
 
 /**
@@ -1689,6 +1706,7 @@ module.exports = {
     withUtf8Charset,
     asStatError,
     httpError,
+    httpErrorName,
     EMPTY_REGEX,
     settingsEpoch
 };
