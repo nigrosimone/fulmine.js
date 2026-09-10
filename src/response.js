@@ -848,6 +848,25 @@ module.exports = class Response extends LazyWritable {
      * @returns {this}
      */
     send(body) {
+        // undefined means nothing was passed, and Express treats that differently from a value
+        // that happens to be empty: no content-type and no ETag for send(), both for send(null)
+        // and send(""). It writes no header for it either, so it does not refuse a head that has
+        // gone out: after a res.write(), express answers this and we hung up on it.
+        if (body === undefined) {
+            if (!this.headersSent) {
+                // freshness and the bodiless statuses, as every express send goes through: a 204
+                // answered with json(undefined) loses the type json had set
+                if (this.req.fresh) {
+                    this.status(304);
+                }
+                if (this.statusCode === 204 || this.statusCode === 304) {
+                    delete this.headers["content-type"];
+                    delete this.headers["content-length"];
+                    delete this.headers["transfer-encoding"];
+                }
+            }
+            return this.end("");
+        }
         if (this.headersSent) {
             // what express's send meets first once the head is out is setHeader's refusal
             throw headersSentError("set");
@@ -860,22 +879,6 @@ module.exports = class Response extends LazyWritable {
             body = Buffer.from(body.buffer, body.byteOffset, body.byteLength);
         }
         const isBuffer = Buffer.isBuffer(body);
-        // undefined means nothing was passed, and Express treats that differently from a value
-        // that happens to be empty: no content-type and no ETag for send(), both for send(null)
-        // and send("").
-        if (body === undefined) {
-            // still through freshness and the bodiless statuses, as every express send is: a 204
-            // answered with json(undefined) loses the type json had set
-            if (this.req.fresh) {
-                this.status(304);
-            }
-            if (this.statusCode === 204 || this.statusCode === 304) {
-                delete this.headers["content-type"];
-                delete this.headers["content-length"];
-                delete this.headers["transfer-encoding"];
-            }
-            return this.end("");
-        }
         // null is an object as far as Express's switch is concerned, so it becomes the empty
         // string without ever reaching the branch that gives a string its content-type. It still
         // earns an ETag. send("") takes the string branch and does get one.
