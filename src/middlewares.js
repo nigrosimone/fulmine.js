@@ -231,16 +231,20 @@ function decodeBody(buf, encoding) {
  * @param {Request} req
  * @param {Response} res
  * @param {(err?: unknown) => void} next
- * @param {any} options the parser options, settled by createBodyParser
+ * @param {BodyParserOptions} options the parser options, settled by createBodyParser
  * @param {Buffer} buf
+ * @param {string|undefined} encoding the charset the body is about to be decoded with, undefined
+ *   for raw, which never decodes
  * @returns {boolean}
  */
-function runVerify(req, res, next, options, buf) {
+function runVerify(req, res, next, options, buf, encoding) {
     if (!options.verify) {
         return true;
     }
     try {
-        options.verify(req, res, buf);
+        // the charset goes too, as body-parser hands it over: a hook checking a signature over
+        // the decoded text needs it. raw gets null, which is what body-parser gives it there
+        options.verify(req, res, buf, encoding ?? null);
         return true;
     } catch (e) {
         const err = /** @type {HttpError} */ (e);
@@ -991,7 +995,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             if (lengthNumber === 0) {
                 req.bodyRead = true;
                 const empty = Buffer.alloc(0);
-                if (!runVerify(req, res, next, options, empty)) {
+                if (!runVerify(req, res, next, options, empty, encoding)) {
                     return;
                 }
                 return beforeReturn(req, res, next, options, empty, encoding);
@@ -1090,7 +1094,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                     if (copyBody) {
                         buf = Buffer.from(buf);
                     }
-                    if (!runVerify(req, res, next, options, buf)) {
+                    if (!runVerify(req, res, next, options, buf, encoding)) {
                         return;
                     }
                     beforeReturn(req, res, next, options, buf, encoding);
@@ -1246,7 +1250,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                     : abs.length === 1
                       ? abs[0]
                       : Buffer.concat(abs);
-                if (!runVerify(req, res, next, options, buf)) {
+                if (!runVerify(req, res, next, options, buf, encoding)) {
                     return;
                 }
                 beforeReturn(req, res, next, options, buf, encoding);

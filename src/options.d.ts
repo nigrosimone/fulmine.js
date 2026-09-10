@@ -95,8 +95,11 @@ export interface BodyParserOptions {
     limit?: number | string;
     /** Which content types this parser claims. */
     type?: string | string[] | ((req: any) => boolean);
-    /** Runs on the raw bytes before parsing, which is where a signature check belongs. */
-    verify?: false | ((req: any, res: any, buf: Buffer, encoding: string) => void);
+    /**
+     * Runs on the raw bytes before parsing, which is where a signature check belongs. The charset
+     * is the one the body is decoded with, null for raw, as body-parser hands it over.
+     */
+    verify?: false | ((req: any, res: any, buf: Buffer, encoding: string | null) => void);
     /** Whether a compressed body is decompressed rather than refused. */
     inflate?: boolean;
     /** The charset assumed when the request names none. */
