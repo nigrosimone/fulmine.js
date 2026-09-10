@@ -184,20 +184,6 @@ class Application extends Router {
             constructor(res, req, app) {
                 super(res, req, app);
             }
-
-            /**
-             * Node counts an explicit writeHead as the head gone out; remembered here so the
-             * automatic OPTIONS reply can refuse to add headers after it, as express's does.
-             *
-             * @param {number} statusCode
-             * @param {string|import("http").OutgoingHttpHeaders|import("http").OutgoingHttpHeader[]} [statusMessage]
-             * @param {import("http").OutgoingHttpHeaders|import("http").OutgoingHttpHeader[]} [headers]
-             * @returns {this}
-             */
-            writeHead(statusCode, statusMessage, headers) {
-                this._headWritten = true;
-                return super.writeHead(statusCode, statusMessage, headers);
-            }
         };
         this.request = this._request.prototype;
         this.response = this._response.prototype;

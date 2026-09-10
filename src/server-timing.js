@@ -34,6 +34,7 @@ limitations under the License.
 "use strict";
 
 const { work, names } = require("./work.js");
+const { applyWriteHead } = require("./utils.js");
 
 /** @typedef {import("./response.js")} Response */
 
@@ -175,6 +176,14 @@ function serverTiming(options) {
             }
         };
 
+        const _writeHead = res.writeHead;
+        // writeHead settles the head, so a handler that calls it is stamped there, with the headers
+        // it carries applied first, as on-headers orders it
+        res.writeHead = function writeHead(statusCode, statusMessage, headers) {
+            const reason = applyWriteHead(this, statusMessage, headers);
+            stamp();
+            return _writeHead.call(this, statusCode, reason);
+        };
         res.write = function write(chunk, encoding, callback) {
             stamp();
             return _write.call(this, chunk, encoding, callback);

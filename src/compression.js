@@ -50,7 +50,8 @@ const {
     ENCODING_GZIP,
     ENCODING_DEFLATE,
     ENCODING_ZSTD,
-    memoizeByString
+    memoizeByString,
+    applyWriteHead
 } = require("./utils.js");
 
 // zstd arrived in node's zlib during the range of versions this supports, so whether it can be
@@ -401,19 +402,32 @@ function compression(options) {
         if (!chosen || chosen === "identity" || req.method === "HEAD") {
             res.flush = noFlush;
             const _plainEnd = res.end;
+            const _plainWriteHead = res.writeHead;
             let varied = false;
-            res.end = function end(chunk, encoding, callback) {
-                if (!varied) {
-                    varied = true;
-                    const cacheControl = res.headersSent ? undefined : res.getHeader("Cache-Control");
-                    if (
-                        !res.headersSent &&
-                        filter(req, res) &&
-                        !(cacheControl && NO_TRANSFORM.test(String(cacheControl)))
-                    ) {
-                        addVary(res);
-                    }
+            /** Says the answer varies, once, before the head is settled. */
+            const vary = () => {
+                if (varied) {
+                    return;
                 }
+                varied = true;
+                const cacheControl = res.headersSent ? undefined : res.getHeader("Cache-Control");
+                if (
+                    !res.headersSent &&
+                    filter(req, res) &&
+                    !(cacheControl && NO_TRANSFORM.test(String(cacheControl)))
+                ) {
+                    addVary(res);
+                }
+            };
+            // writeHead settles the head, so a handler that calls it is answered there, with the
+            // headers it carries applied first, as on-headers orders it for the compression module
+            res.writeHead = function writeHead(statusCode, statusMessage, headers) {
+                const reason = applyWriteHead(this, statusMessage, headers);
+                vary();
+                return _plainWriteHead.call(this, statusCode, reason);
+            };
+            res.end = function end(chunk, encoding, callback) {
+                vary();
                 return _plainEnd.call(this, chunk, encoding, callback);
             };
             return next();
@@ -422,12 +436,15 @@ function compression(options) {
         const _write = res.write;
         const _end = res.end;
         const _on = res.on;
+        const _writeHead = res.writeHead;
 
         /** drain listeners parked until there is a compressor to hang them on, see res.on below */
         let listeners = /** @type {OnArgs[]|null} */ ([]);
         /** @type {(import("stream").Transform & import("zlib").Zlib)|null} */
         let stream = null;
         let decided = false;
+        // the encoding decided on, "" for none; the compressor itself starts with the first byte
+        let method = "";
         let ended = false;
         /** what end() was given to call back, held until the compressor has finished */
         let endCallback = /** @type {(() => void)|undefined} */ (undefined);
@@ -527,6 +544,17 @@ function compression(options) {
             _on.call(res, "close", () => compressor.destroy());
         }
 
+        // writeHead settles the head, so the decision is taken there when a handler calls it, as
+        // on-headers takes it for the compression module: with the headers it carries applied
+        // first, since a Content-Length among them is what the decision removes
+        res.writeHead = function writeHead(statusCode, statusMessage, headers) {
+            const reason = applyWriteHead(this, statusMessage, headers);
+            if (!decided) {
+                method = decide();
+            }
+            return _writeHead.call(this, statusCode, reason);
+        };
+
         res.write = function write(chunk, encoding, callback) {
             if (typeof encoding === "function") {
                 callback = encoding;
@@ -536,10 +564,10 @@ function compression(options) {
                 return false;
             }
             if (!decided) {
-                const method = decide();
-                if (method) {
-                    startStream(method);
-                }
+                method = decide();
+            }
+            if (method && !stream) {
+                startStream(method);
             }
             if (stream) {
                 return stream.write(toBuffer(chunk, encoding), callback);
@@ -548,8 +576,7 @@ function compression(options) {
         };
 
         res.end = function end(chunk, encoding, callback) {
-            // node's shapes, of which this project's own end() takes (data, cb): the third
-            // argument only arrives from code written against node's ServerResponse
+            // node's shapes: the callback may sit in either position
             if (typeof chunk === "function") {
                 callback = chunk;
                 chunk = undefined;
@@ -561,6 +588,14 @@ function compression(options) {
             if (ended) {
                 return this;
             }
+            if (!decided) {
+                method = decide(chunkLength(chunk, encoding));
+            }
+            // a head settled by writeHead can no longer take the length the whole-body answer
+            // below sets, so the body goes out in pieces, as node's does after one
+            if (method && !stream && res.headersSent) {
+                startStream(method);
+            }
             if (stream) {
                 ended = true;
                 endCallback = callback;
@@ -571,32 +606,29 @@ function compression(options) {
                 }
                 return this;
             }
-            if (!decided) {
-                const method = decide(chunkLength(chunk, encoding));
-                if (method) {
-                    // the whole answer is here, so it is compressed in one call rather than
-                    // through a stream, and goes out with the length it ended up being
-                    ended = true;
-                    const input = toBuffer(chunk, encoding);
-                    if (input.length <= SYNC_LIMIT) {
-                        const body = compressWhole(method, input);
-                        res.setHeader("Content-Length", String(body.length));
-                        return _end.call(this, body, callback);
-                    }
-                    compressWholeAsync(method, input, (err, body) => {
-                        // the client can leave while the pool is working, and writing to a
-                        // response that is already gone is not something uWS survives
-                        if (res.aborted || res.finished) {
-                            return;
-                        }
-                        if (err) {
-                            return res.destroy(err);
-                        }
-                        res.setHeader("Content-Length", String(body.length));
-                        _end.call(res, body, callback);
-                    });
-                    return this;
+            if (method) {
+                // the whole answer is here, so it is compressed in one call rather than through a
+                // stream, and goes out with the length it ended up being
+                ended = true;
+                const input = toBuffer(chunk, encoding);
+                if (input.length <= SYNC_LIMIT) {
+                    const body = compressWhole(method, input);
+                    res.setHeader("Content-Length", String(body.length));
+                    return _end.call(this, body, callback);
                 }
+                compressWholeAsync(method, input, (err, body) => {
+                    // the client can leave while the pool is working, and writing to a response
+                    // that is already gone is not something uWS survives
+                    if (res.aborted || res.finished) {
+                        return;
+                    }
+                    if (err) {
+                        return res.destroy(err);
+                    }
+                    res.setHeader("Content-Length", String(body.length));
+                    _end.call(res, body, callback);
+                });
+                return this;
             }
             ended = true;
             return _end.call(this, chunk, callback);

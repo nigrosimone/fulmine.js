@@ -153,7 +153,7 @@ test("a body written in pieces is stamped once, on the first piece", async () =>
     assert.strictEqual(stamps.length, 1, "one total, however many writes there were");
 });
 
-test("a response whose head has already gone out is left alone", async () => {
+test("a head flushed early is stamped on its way out, as on-headers stamps one on node", async () => {
     const answer = await ask((app) => {
         app.use(express.serverTiming());
         app.get("/flushed", (req, res) => {
@@ -163,7 +163,9 @@ test("a response whose head has already gone out is left alone", async () => {
         });
     }, "/flushed");
     assert.strictEqual(answer.body, "late");
-    assert.strictEqual(answer.timing, null, "nothing can be added to a head that is gone");
+    // flushHeaders settles the head through writeHead, which the middleware hooks: the timing
+    // covers what ran up to the flush, and nothing is added once the head is gone
+    assert.match(answer.timing, /total;dur=\d+\.\d\d/);
 });
 
 test("a route that reads no header and no query says so", async () => {
@@ -229,4 +231,17 @@ test("the work field can be turned off", async () => {
     }, "/host");
     assert.doesNotMatch(answer.timing, /work;/);
     assert.match(answer.timing, /total;dur=/);
+});
+
+test("a handler that writes its own head is stamped there, before the head is settled", async () => {
+    const answer = await ask((app) => {
+        app.use(express.serverTiming());
+        app.get("/own-head", (req, res) => {
+            res.writeHead(201, { "Content-Type": "text/plain" });
+            res.end("own");
+        });
+    }, "/own-head");
+    assert.strictEqual(answer.status, 201);
+    assert.strictEqual(answer.body, "own");
+    assert.match(answer.timing, /total;dur=\d+\.\d\d/);
 });

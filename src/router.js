@@ -26,6 +26,7 @@ const {
     pathsCanOverlap,
     regexpGroupKeys,
     NullObject,
+    headersSentError,
     EMPTY_REGEX,
     settingsEpoch
 } = require("./utils.js");
@@ -921,6 +922,14 @@ module.exports = class Router extends EventEmitter {
             }
         }
         logError(this, err);
+        // no error page can follow a head that is out, so express's final handler closes the
+        // connection instead, and leaves a response that was already ended as it is
+        if (response.headersSent) {
+            if (!response.finished) {
+                response.destroy();
+            }
+            return;
+        }
         if (response.statusCode === 200) {
             // the status the error carries, as express's own final handler reads it: a body that
             // was too large or a request cut short is the client's 4xx, not a 500 from here
@@ -1404,8 +1413,8 @@ module.exports = class Router extends EventEmitter {
      * @param {Set<string>} methods the verbs the answering router knows, which are its own
      */
     _sendOptionsReply(request, response, methods) {
-        if (response._headWritten) {
-            throw new Error("Cannot set headers after they are sent to the client");
+        if (response.headersSent) {
+            throw headersSentError("set");
         }
         // Express 5 sorts the methods and joins them with ", ", so the header reads the same
         // regardless of the order the routes happened to be registered in

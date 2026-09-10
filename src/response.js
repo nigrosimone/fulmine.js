@@ -38,6 +38,8 @@ const {
     withUtf8Charset,
     asStatError,
     httpError,
+    headersSentError,
+    applyWriteHead,
     contentTypeFor,
     statTag,
     cachedStat,
@@ -109,15 +111,21 @@ module.exports = class Response extends LazyWritable {
     /** Whether a flush is already booked for the end of this turn. */
     #flushBooked = false;
 
-    /** @type {Response["headers"]|null} */
-    #outHeaders = null;
+    /** Whether the status line and the headers have reached uWS, which only a body write does. */
+    #headOut = false;
 
     /**
-     * Whether node's writeHead has run, which only the per-app subclass sets. _sendOptionsReply
-     * refuses to write a second head over it, as node's setHeader does.
-     * @type {boolean|undefined}
+     * The status line as writeHead settled it, which is the one the wire gets: node stores the
+     * head at writeHead, so a status set later never reaches the client.
+     * @type {number}
      */
-    _headWritten;
+    #status = 200;
+
+    /** @type {string|undefined} */
+    #statusText = undefined;
+
+    /** @type {Response["headers"]|null} */
+    #outHeaders = null;
 
     /**
      * The request this response answers, linked so either reaches the other.
@@ -430,13 +438,15 @@ module.exports = class Response extends LazyWritable {
 
         this.writingChunk = true;
         this._res.cork(() => {
-            if (!this.headersSent) {
-                this.writeHead(this.statusCode);
+            if (!this.#headOut) {
+                if (!this.headersSent) {
+                    this.writeHead(this.statusCode);
+                }
                 // "unknown" and not the bare number: node writes that reason phrase for a code it
                 // has no message for, so the raw status lines match. The default 200 with no
                 // phrase is uWS's own head, byte for byte, so it is not written at all
-                if (this.statusCode !== 200 || this.statusText !== undefined) {
-                    this._res.writeStatus(statusLine(this.statusCode, this.statusText));
+                if (this.#status !== 200 || this.#statusText !== undefined) {
+                    this._res.writeStatus(statusLine(this.#status, this.#statusText));
                 }
                 this.writeHeaders(typeof chunk === "string");
             }
@@ -505,8 +515,9 @@ module.exports = class Response extends LazyWritable {
 
     /**
      * Sets the status and, optionally, a batch of headers, the way node does. The second argument
-     * is either the status message or the headers, since node allows both shapes. Nothing is
-     * written here despite the name: the headers go out when the body does.
+     * is either the status message or the headers, since node allows both shapes. The bytes go out
+     * with the body, but the head is settled here, as node's is: headersSent reads true from now
+     * on, what is set later throws, and a status written later never reaches the wire.
      *
      * Every header goes through setHeader and not through set. This is node's method, not
      * Express's: a content-type given here keeps the value it was given, where res.set would append
@@ -520,35 +531,17 @@ module.exports = class Response extends LazyWritable {
      * @returns {this}
      */
     writeHead(statusCode, statusMessage, headers) {
+        if (this.headersSent) {
+            throw headersSentError("write");
+        }
         this.statusCode = statusCode;
-        if (typeof statusMessage === "string") {
-            this.statusText = statusMessage;
+        const reason = applyWriteHead(this, statusMessage, headers);
+        if (reason !== undefined) {
+            this.statusText = reason;
         }
-        if (!headers) {
-            if (!statusMessage) return this;
-            // the two-argument shape, where what looked like a reason phrase is the headers. A
-            // string reaching here was already taken as the phrase above and simply has no keys.
-            headers = /** @type {import("http").OutgoingHttpHeaders|import("http").OutgoingHttpHeader[]} */ (
-                statusMessage
-            );
-        }
-        if (Array.isArray(headers)) {
-            // node takes a flat list here, name then value, and not a list of pairs. An odd length
-            // is the caller's mistake and node names the argument in what it throws
-            if (headers.length % 2 !== 0) {
-                /** @type {NodeJS.ErrnoException} */
-                const err = new TypeError(`The argument 'headers' is invalid. Received ${JSON.stringify(headers)}`);
-                err.code = "ERR_INVALID_ARG_VALUE";
-                throw err;
-            }
-            for (let i = 0; i < headers.length; i += 2) {
-                this.setHeader(/** @type {string} */ (headers[i]), headers[i + 1]);
-            }
-            return this;
-        }
-        for (const header in headers) {
-            this.setHeader(header, headers[header]);
-        }
+        this.#status = statusCode;
+        this.#statusText = this.statusText;
+        this.headersSent = true;
         return this;
     }
 
@@ -602,16 +595,19 @@ module.exports = class Response extends LazyWritable {
             }
         }
         this.headersSent = true;
+        this.#headOut = true;
     }
 
     /**
-     * What node calls before writing a body when the caller never called writeHead. Here there is
-     * nothing to flush, since the headers are written with the body, so this only fixes the status.
+     * What node calls before writing a body when the caller never called writeHead: it settles the
+     * head, and nothing is flushed, since the headers are written with the body. Not once the head
+     * is settled: the compression module calls this on the strength of node's _header, which this
+     * response does not keep, so the guard is here instead of there.
      */
     _implicitHeader() {
-        // compatibility function
-        // usually should send headers but this is useless for us
-        this.writeHead(this.statusCode);
+        if (!this.headersSent) {
+            this.writeHead(this.statusCode);
+        }
     }
 
     /**
@@ -684,7 +680,11 @@ module.exports = class Response extends LazyWritable {
         if (this.finished) {
             return this;
         }
-        this.writeHead(this.statusCode);
+        // as node's end() calls _implicitHeader: not after an explicit writeHead, which settled the
+        // head already and told on-headers' listeners
+        if (!this.headersSent) {
+            this.writeHead(this.statusCode);
+        }
         // uWS holds the socket corked for the synchronous window of its route handler, and
         // cork inside cork is a passthrough: the wrapper and its closure are only paid once the
         // answer has outlived that window, which is what _corkNeeded records
@@ -707,16 +707,16 @@ module.exports = class Response extends LazyWritable {
         // read before the head is written below, which is what sets the flag: what matters further
         // down is whether something had already committed the framing, a flushHeaders() or a first
         // res.write(), not whether this call is about to write the head itself
-        const headWasAlreadyOut = this.headersSent;
-        if (!this.headersSent) {
+        const headWasAlreadyOut = this.#headOut;
+        if (!this.#headOut) {
             // freshness is not decided here. node's end() knows nothing about conditional requests,
             // and Express answers 304 from send() and from sendFile(), each of which strips the
             // entity headers first. Deciding it here made res.end("body") answer 304 and drop the
             // body the caller had just written.
             // "unknown" for a code without a message, as node's status line has it. The default 200
             // with no phrase is not written at all: uWS emits the identical head on its own
-            if (this.statusCode !== 200 || this.statusText !== undefined) {
-                this._res.writeStatus(statusLine(this.statusCode, this.statusText));
+            if (this.#status !== 200 || this.#statusText !== undefined) {
+                this._res.writeStatus(statusLine(this.#status, this.#statusText));
             }
             this.writeHeaders(true);
         }
@@ -731,7 +731,7 @@ module.exports = class Response extends LazyWritable {
         const closeConnection = this.req._connectionClose === true;
         // 204 and 304 carry no body, so no Content-Length may describe one either; 1xx is the
         // third case, by range
-        if (this.statusCode === 204 || this.statusCode === 304 || this.statusCode < 200) {
+        if (this.#status === 204 || this.#status === 304 || this.#status < 200) {
             // no body and no length describing one, whatever the caller passed. node decides
             // this the same way, from the status alone, so res.status(304).end("x") sends the
             // status and nothing else on either.
@@ -791,7 +791,8 @@ module.exports = class Response extends LazyWritable {
      */
     send(body) {
         if (this.headersSent) {
-            throw new Error("Can't write body: Response was already sent");
+            // what express's send meets first once the head is out is setHeader's refusal
+            throw headersSentError("set");
         }
         // a typed array is bytes to send, not an object to serialise: res.send(new Uint8Array([104,
         // 101, 121])) is "hey" and not {"0":104,"1":101,"2":121}. Uint8Array and not every view
@@ -1303,7 +1304,7 @@ module.exports = class Response extends LazyWritable {
      */
     setHeader(field, value) {
         if (this.headersSent) {
-            throw new Error("Cannot set headers after they are sent to the client");
+            throw headersSentError("set");
         }
         // one Map hit for a name already validated and lowercased: middleware writes the same
         // constant names on every request. Insert-only after validation, so no bad name can enter
@@ -1366,15 +1367,17 @@ module.exports = class Response extends LazyWritable {
      * @returns {void}
      */
     flushHeaders() {
-        if (this.headersSent || this.finished || this.aborted) {
+        if (this.#headOut || this.finished || this.aborted) {
             return;
         }
         this._res.cork(() => {
-            this.writeHead(this.statusCode);
+            if (!this.headersSent) {
+                this.writeHead(this.statusCode);
+            }
             // the same rule the chunked write path follows: uWS emits the 200 head itself, byte for
             // byte, so writing it again would only cost a crossing
-            if (this.statusCode !== 200 || this.statusText !== undefined) {
-                this._res.writeStatus(statusLine(this.statusCode, this.statusText));
+            if (this.#status !== 200 || this.#statusText !== undefined) {
+                this._res.writeStatus(statusLine(this.#status, this.#statusText));
             }
             // true, as the chunked path passes for a string chunk: what follows a flush is a body
             // written in pieces, and the framing has to be the one that allows them
@@ -1431,10 +1434,7 @@ module.exports = class Response extends LazyWritable {
      */
     #refuseInformationAfterHead() {
         if (this.headersSent) {
-            /** @type {NodeJS.ErrnoException} */
-            const err = new Error("Cannot write headers after they are sent to the client");
-            err.code = "ERR_HTTP_HEADERS_SENT";
-            throw err;
+            throw headersSentError("write");
         }
     }
 
@@ -1672,6 +1672,9 @@ module.exports = class Response extends LazyWritable {
      * @param {string} field
      */
     removeHeader(field) {
+        if (this.headersSent) {
+            throw headersSentError("remove");
+        }
         const key = field.toLowerCase();
         // the delete is a runtime call, and helmet removes a header most responses never carry
         if (key in this.headers) {

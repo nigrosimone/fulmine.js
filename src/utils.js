@@ -1522,6 +1522,63 @@ function headerError(message, code) {
 }
 
 /**
+ * node's ERR_HTTP_HEADERS_SENT, for a head that can no longer change: "set" from setHeader,
+ * "remove" from removeHeader, "write" from writeHead, which is how node words each one.
+ *
+ * @param {string} verb
+ * @returns {NodeJS.ErrnoException}
+ */
+function headersSentError(verb) {
+    /** @type {NodeJS.ErrnoException} */
+    const err = new Error(`Cannot ${verb} headers after they are sent to the client`);
+    // the first line of the stack reads as node's, see headerError
+    err.name = "Error [ERR_HTTP_HEADERS_SENT]";
+    void err.stack;
+    delete (/** @type {{name?: string}} */ (err).name);
+    err.code = "ERR_HTTP_HEADERS_SENT";
+    return err;
+}
+
+/**
+ * Applies the headers a writeHead call carries, in either of node's shapes, (status, headers) or
+ * (status, reason, headers), and answers the reason phrase when there was one. Shared with the
+ * middleware that hooks writeHead: what it decides at the head has to see these first, the way
+ * on-headers applies them before its listeners run.
+ *
+ * @param {{setHeader(name: string, value: import("http").OutgoingHttpHeader|undefined): unknown}} res
+ * @param {string|import("http").OutgoingHttpHeaders|import("http").OutgoingHttpHeader[]} [statusMessage]
+ * @param {import("http").OutgoingHttpHeaders|import("http").OutgoingHttpHeader[]} [headers]
+ * @returns {string|undefined} the reason phrase
+ */
+function applyWriteHead(res, statusMessage, headers) {
+    let reason;
+    if (typeof statusMessage === "string") {
+        reason = statusMessage;
+    } else if (!headers) {
+        // the two-argument shape, where what looked like a reason phrase is the headers
+        headers = statusMessage;
+    }
+    if (Array.isArray(headers)) {
+        // node takes a flat list here, name then value, and not a list of pairs. An odd length is
+        // the caller's mistake and node names the argument in what it throws
+        if (headers.length % 2 !== 0) {
+            /** @type {NodeJS.ErrnoException} */
+            const err = new TypeError(`The argument 'headers' is invalid. Received ${JSON.stringify(headers)}`);
+            err.code = "ERR_INVALID_ARG_VALUE";
+            throw err;
+        }
+        for (let i = 0; i < headers.length; i += 2) {
+            res.setHeader(/** @type {string} */ (headers[i]), headers[i + 1]);
+        }
+    } else if (headers) {
+        for (const header in headers) {
+            res.setHeader(header, headers[header]);
+        }
+    }
+    return reason;
+}
+
+/**
  * Refuses a header name that is not an HTTP token, the way node's setHeader does and with its
  * error, so an application catching ERR_INVALID_HTTP_TOKEN behind Express catches it here.
  *
@@ -1707,6 +1764,8 @@ module.exports = {
     asStatError,
     httpError,
     httpErrorName,
+    headersSentError,
+    applyWriteHead,
     EMPTY_REGEX,
     settingsEpoch
 };

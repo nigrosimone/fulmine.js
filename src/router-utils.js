@@ -215,7 +215,9 @@ function nativeDone(matched) {
     if (!matched) {
         queueMicrotask(() => {
             const response = this.res;
-            if (response.headersSent || response.aborted) {
+            // a 404 after the head is left as it is, as express's final handler leaves it; an error
+            // after it goes on to _handleError, which closes the connection as that handler does
+            if (response.aborted || (response.headersSent && !this.req._error)) {
                 return;
             }
             try {
