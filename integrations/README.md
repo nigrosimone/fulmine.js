@@ -25,12 +25,13 @@ cd integrations && node build.js --force  # rebuild the applications from scratc
 | [nest.js](./cases/nest.js)                 | a Nest controller with a pipe, a body and an exception filter, through the adapter                |
 | [apollo.js](./cases/apollo.js)             | Apollo Server through `@as-integrations/express5`                                                 |
 | [trpc.js](./cases/trpc.js)                 | a tRPC router through `@trpc/server/adapters/express`                                             |
+| [mcp.js](./cases/mcp.js)                   | an MCP server on `StreamableHTTPServerTransport`, asked by the SDK's own client and by hand       |
 | [astro.js](./cases/astro.js)               | `@astrojs/node` in middleware mode, including the `next()` it calls for a path it does not answer |
 | [sveltekit.js](./cases/sveltekit.js)       | the handler `@sveltejs/adapter-node` builds                                                       |
 | [react-router.js](./cases/react-router.js) | React Router v7 through `@react-router/express`                                                   |
 | [next.js](./cases/next.js)                 | Next.js as a custom server, `next().getRequestHandler()`                                          |
 
-The first three are libraries: a case requires them and runs. The last four compile an application
+The first four are libraries: a case requires them and runs. The last four compile an application
 first, so each keeps a small one in [`apps/`](./apps) and [`build.js`](./build.js) builds it before
 the case runs. A build already there and newer than its sources is skipped, so running one case
 twice costs nothing.
