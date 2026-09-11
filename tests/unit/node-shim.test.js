@@ -5,6 +5,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const http = require("node:http");
+const net = require("node:net");
 const path = require("node:path");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -402,4 +403,38 @@ test("the callable app hands an unmatched request to its next callback", async (
     assert.equal(miss.status, 404);
     assert.equal(await miss.text(), "the outer server's own answer");
     await close();
+});
+
+test("an error after the head is out closes the connection, as express's final handler does", async () => {
+    const app = express();
+    // off the console: the page cannot be sent either way, the connection going down is the answer
+    app.set("env", "test");
+    app.get("/throw", (req, res) => {
+        res.write("chunk ");
+        throw new Error("after the head");
+    });
+
+    const { url, close } = await serve(app);
+    const port = Number(new URL(url).port);
+    // a raw socket, since fetch settles on the head and would not see the end of the connection
+    const seen = await new Promise((resolve) => {
+        const socket = net.connect(port, "127.0.0.1", () => socket.write("GET /throw HTTP/1.1\r\nHost: x\r\n\r\n"));
+        let text = "";
+        socket.on("data", (chunk) => (text += chunk));
+        socket.on("close", () => resolve(text));
+        socket.setTimeout(2000, () => {
+            socket.destroy();
+            resolve("(still open)");
+        });
+    });
+
+    // in a finally: a failing assertion would otherwise leave the server up and hang the run
+    try {
+        assert.notEqual(seen, "(still open)", "the connection was left open");
+        assert.match(seen, /^HTTP\/1\.1 200 /);
+        // the chunked body stops where the handler stopped: no terminating chunk was ever sent
+        assert.ok(!seen.includes("0\r\n\r\n"), "the response was finished instead of dropped");
+    } finally {
+        await close();
+    }
 });

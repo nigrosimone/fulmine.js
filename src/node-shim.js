@@ -417,7 +417,10 @@ function serveNodeRequest(router, nodeReq, nodeRes, next) {
     router._armAbort(shimRes, response);
 
     return router._routeRequest(request, response).then((matched) => {
-        if (matched || response.headersSent || response.aborted) {
+        // a 404 after the head is out is left as it is, an error after it is not: it goes on to
+        // the final handler, which closes the connection as express's does. Same rule as the
+        // native path, see nativeDone in router-utils.js
+        if (matched || response.aborted || (response.headersSent && !request._error)) {
             return;
         }
         if (next) {
