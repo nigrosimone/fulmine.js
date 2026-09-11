@@ -416,6 +416,10 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true, strict 
                 }
                 groupContent += pattern[i++];
             }
+            // a group nobody closed, which express refuses rather than reading to the end
+            if (braceDepth > 0) {
+                throw new Error(`Unexpected end at index ${len}, expected }: ${pattern}`);
+            }
             i++;
 
             // When a :parameter precedes this group, that parameter is the one that gives ground
@@ -512,12 +516,12 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true, strict 
 
         // these have no meaning in a path, and the route is refused rather than matching them
         // literally: a path that quietly stops matching is worse than one that fails at startup.
-        // Escape them to use them as literals.
-        if ("?+()[]!".includes(ch)) {
+        // Escape them to use them as literals. A } here closes a group nobody opened.
+        if ("?+()[]!}".includes(ch)) {
             throw new Error(`Unexpected ${ch} at index ${i}: ${pattern}`);
         }
 
-        if (".^$|}".includes(ch)) {
+        if (".^$|".includes(ch)) {
             regexPattern += "\\" + ch;
         } else {
             regexPattern += ch;
@@ -556,9 +560,20 @@ function escapePathLiteral(literal) {
     return literal.replace(/[:*{}?+()[\]!.^$|\\]/g, "\\$&");
 }
 
+// Everything path-to-regexp gives a meaning to: a parameter, a wildcard, a group, a character it
+// reserves, and the backslash that makes one of them literal. A dot or a dash is not in here, so
+// the ordinary path stays a string compare.
+const PATH_SYNTAX = /[:*{}?+()[\]!\\]/;
+
 /**
  * Whether a path has anything in it that a string comparison cannot answer, which is a parameter,
- * a wildcard or an optional group. A regular expression is already compiled, so it needs nothing.
+ * a wildcard, an optional group, or a reserved character. A regular expression is already
+ * compiled, so it needs nothing.
+ *
+ * The escapes are what the short list of three used to miss: "/\\(a\\)" is the way to ask for a
+ * literal parenthesis, and comparing it as text looked for the backslashes on the wire and
+ * answered 404. A reserved character written bare, "/(a)", has to reach the compiler too, which
+ * is what refuses it the way express does.
  *
  * @param {string|RegExp} pattern
  * @returns {boolean}
@@ -568,7 +583,7 @@ function needsConversionToRegex(pattern) {
         return false;
     }
 
-    return pattern.includes("*") || pattern.includes(":") || pattern.includes("{");
+    return PATH_SYNTAX.test(pattern);
 }
 
 /**
