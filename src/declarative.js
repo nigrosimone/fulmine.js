@@ -18,7 +18,7 @@ limitations under the License.
 */
 
 const acorn = require("acorn");
-const { stringify, contentTypeSet, withUtf8Charset, contentTypeFor } = require("./utils.js");
+const { stringify, contentTypeSet, withUtf8Charset, contentTypeFor, headerIsWritable } = require("./utils.js");
 // H3App, DeclarativeResponse and _cfg exist at runtime but are missing from the .d.ts the
 // package ships, so the module is read through a loose alias
 const uWS = require("uWebSockets.js");
@@ -261,6 +261,11 @@ function readStatusAndHeaders(callExprs, headers) {
                     }
                     value = resolved;
                 }
+                // a name or a value setHeader refuses is an error page in express, not a header:
+                // left to the ordinary path, which throws it
+                if (!headerIsWritable(String(header), value)) {
+                    return null;
+                }
                 const index = headers.findIndex((entry) => String(entry[0]).toLowerCase() === name);
                 if (index === -1) {
                     headers.push([header, value]);
@@ -278,6 +283,9 @@ function readStatusAndHeaders(callExprs, headers) {
             }
         } else if (call.obj.propertyName === "append") {
             if (call.arguments[0].type !== "Literal" || call.arguments[1].type !== "Literal") {
+                return null;
+            }
+            if (!headerIsWritable(String(call.arguments[0].value), String(call.arguments[1].value))) {
                 return null;
             }
             headers.push([call.arguments[0].value, String(call.arguments[1].value)]);
