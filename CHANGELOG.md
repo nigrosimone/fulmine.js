@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.19.7](https://github.com/nigrosimone/fulmine.js/compare/v5.19.6...v5.19.7) (2026-09-11)
+
+### Bug Fixes
+
+* **router:** a path escape matches the character it stands for, and a bare one is refused ([cae47f5](https://github.com/nigrosimone/fulmine.js/commit/cae47f541ca986a8765ef576c566cb1ff8c5459b))
+
 ## [5.19.6](https://github.com/nigrosimone/fulmine.js/compare/v5.19.5...v5.19.6) (2026-09-10)
 
 ### Bug Fixes
