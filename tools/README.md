@@ -29,6 +29,7 @@ npm run fuzz -- --keep-going        # do not stop at the first divergence
 npm run fuzz -- --no-shrink         # every request a round disagreed on, and the round as drawn
 npm run fuzz -- --port 17000        # where the arms bind, for a second run beside the first
 npm run fuzz -- --self              # against itself with the optimizer off, not against Express
+npm run fuzz -- --shim              # served by http.createServer(app), the path supertest takes
 ```
 
 `--no-shrink` is for triage rather than for a case: shrinking one divergence takes longer than the
@@ -45,6 +46,13 @@ also reaches the shapes Express has no opinion about. Checked by putting a known
 confirming it is caught: with the wildcard fix reverted, `--self --seed 220496 --rounds 1` reports
 the mounted route answering where the earlier one should have.
 
+`--shim` serves the arm under test with `http.createServer(app)` instead of `app.listen`, so every
+request and response goes through `node-shim.js` and nothing compiled can answer: there is no uWS
+app to hang a native route on. It is the path supertest and `vhost` ride, and it is the one where
+the hand written tests cannot compare against Express, since the corpus serves both arms the same
+way. It found an error thrown after the head was out being dropped instead of closing the
+connection, which the native path already did right.
+
 Two things make it a tool rather than a lucky script. Every round is drawn from a seeded generator,
 so a failure prints the seed that reproduces it. And the failure is then **shrunk**: routes and
 settings are dropped one at a time for as long as the divergence survives, which turns a forty route
@@ -57,7 +65,8 @@ bug or something the fuzzer needs taught. Every divergence it has reported so fa
 What it draws from: route shapes including the 161 patterns lifted from `path-to-regexp`'s own test
 cases, routes written as a `RegExp`, mounted routers three deep, sub-apps, `app.route()`, settings,
 body parsers, static mounts, view engines, ranges, proxies, declarative-compiled routes, and the
-routes the usage analysis can grant skips to. Every round asks `GET` and `HEAD` plus one drawn verb,
+routes the usage analysis can grant skips to, `Route` objects built by hand and dispatched from a
+middleware. Every round asks `GET` and `HEAD` plus one drawn verb,
 `QUERY` and `PATCH` included, since those two are the ones whose body handling is least like the
 rest. A round that puts a body parser in front draws its options too, the limit, the strict mode,
 the type matcher, the verify hook and the inflate switch, and one body from several shapes per

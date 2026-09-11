@@ -18,6 +18,7 @@
 // forty route accident into the two lines worth pasting into tests/.
 
 const fs = require("fs");
+const http = require("http");
 const os = require("os");
 const path = require("path");
 const zlib = require("zlib");
@@ -49,8 +50,12 @@ const EXCLUDED_HEADERS = new Set(["x-powered-by", "content-length", "transfer-en
 // opinion about. A divergence here is a bug by construction: the same code answered the same
 // request two different ways.
 const SELF = process.argv.includes("--self");
+// --shim serves the arm under test with http.createServer(app) instead of app.listen, so the
+// request and the response go through node-shim. It is the path supertest takes, and nothing
+// compiled can answer on it, since there is no uWS app to hang a native route on.
+const SHIM = process.argv.includes("--shim");
 const LEFT = SELF ? "generic" : "express";
-const RIGHT = SELF ? "native " : "fulmine";
+const RIGHT = SELF ? "native " : SHIM ? "shim   " : "fulmine";
 
 /** @param {number} seed @returns {() => number} the same sequence for the same seed */
 function mulberry32(seed) {
@@ -721,8 +726,10 @@ function drawPlan(rng) {
         return {
             // an error handler between the middleware and the handler, which either answers or hands on
             errorArm: !skipFriendly && chance(0.15) ? pick(["answer", "forward"]) : null,
-            // how it is registered: the ordinary way, through app.route(), or as app.all()
-            shape: chance(0.12) ? pick(["route", "all"]) : null,
+            // how it is registered: the ordinary way, through app.route(), as app.all(), or as a
+            // Route built by hand and dispatched from a middleware, which is what express exports
+            // Route for
+            shape: chance(0.15) ? pick(["route", "all", "dispatch"]) : null,
             method: chance(0.75) ? "get" : pick(["post", "put", "delete", "all"]),
             path: routePath,
             kind: program ? "program" : pick(HANDLER_KINDS),
@@ -1786,6 +1793,16 @@ async function instantiate(plan, factory, port, generic) {
                 .post(makeHandler({ ...route, id: route.id + "-post" }));
         } else if (route.shape === "all") {
             app.all(pathOf(route), makeHandler(route));
+        } else if (route.shape === "dispatch") {
+            // the verbs are answered by Route itself, not by the router: the mount only decides
+            // which requests reach dispatch. all() goes on beside the verb so the second handler
+            // runs when the first hands on
+            const built = new factory.Route(pathOf(route));
+            built[route.method](makeHandler(route));
+            if (route.method !== "all") {
+                built.all(makeHandler({ ...route, id: route.id + "-all" }));
+            }
+            app.use(pathOf(route), (req, res, next) => built.dispatch(req, res, next));
         } else {
             addRoute(app, route);
         }
@@ -1799,11 +1816,14 @@ async function instantiate(plan, factory, port, generic) {
         app.use((err, req, res, next) => res.status(500).send("error: " + err.message));
     }
 
+    // the arm under test only: the reference arm stays on whatever serves it, so a --shim run
+    // compares node-shim against express and a --self --shim run compares it against uWS
+    const shimmed = SHIM && factory === fulmine && !generic;
     const server = await new Promise((resolve) => {
-        const s = app.listen(port, () => resolve(s));
+        const s = shimmed ? http.createServer(app).listen(port, () => resolve(s)) : app.listen(port, () => resolve(s));
     });
     return {
-        stop: () => (typeof app.close === "function" ? app.close() : new Promise((r) => server.close(r)))
+        stop: () => (!shimmed && typeof app.close === "function" ? app.close() : new Promise((r) => server.close(r)))
     };
 }
 
@@ -2251,6 +2271,21 @@ function routeToSource(owner, route) {
         : route.kind;
     const routePath =
         typeof route.path === "string" ? JSON.stringify(route.path) : `/${route.path.regex}/${route.path.flags}`;
+    if (route.shape === "route") {
+        return `${owner}.route(${routePath}).get(${handler}).post(<the same, id ${route.id}-post>);`;
+    }
+    if (route.shape === "all") {
+        return `${owner}.all(${routePath}, ${handler});`;
+    }
+    if (route.shape === "dispatch") {
+        return (
+            `const ${route.id} = new express.Route(${routePath});
+` +
+            `${route.id}.${route.method}(${handler});
+` +
+            `${owner}.use(${routePath}, (req, res, next) => ${route.id}.dispatch(req, res, next));`
+        );
+    }
     return `${owner}.${route.method}(${routePath}, ${handler});`;
 }
 
