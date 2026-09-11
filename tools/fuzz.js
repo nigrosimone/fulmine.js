@@ -1953,6 +1953,83 @@ async function answerOf(port, url, method, headers, conditional, body) {
     return { line: parts.join(" | "), etag: res.headers.get("etag") };
 }
 
+// The calls that put a header on the response, which is what express refuses once the head is out.
+// json and jsonp are here because they set a content-type before they write anything. send is not:
+// it sets one too, and both refuse it, so the two agree and that is not the shape below.
+const SETS_A_HEADER =
+    /\.(set|append|header|setHeader|writeHead|cookie|clearCookie|type|vary|links|location|attachment|removeHeader|json|jsonp)\(/;
+
+/**
+ * Every handler the plan draws as source, wherever it sits.
+ *
+ * @param {any} plan
+ * @returns {{params: string, statements: string[]}[]}
+ */
+function everyProgram(plan) {
+    const out = [];
+    const take = (routes) => {
+        for (const route of routes ?? []) if (route.program) out.push(route.program);
+    };
+    take(plan.routes);
+    for (const spec of plan.routers ?? []) {
+        take(spec.routes);
+        take(spec.nested?.routes);
+        take(spec.nested?.deeper?.routes);
+        take(spec.nested?.subApp?.routes);
+    }
+    take(plan.subApp?.routes);
+    return out;
+}
+
+/**
+ * The one difference this project has decided to keep, the way wire-fuzz keeps closeThenPipelined.
+ *
+ * Express flushes the head inside res.write(), so a header set after one throws there and the
+ * socket goes. Here the head is queued and leaves on the next tick, so the same header is taken
+ * and the request is answered. Decided on 2026-09-11: not a bug for this project.
+ *
+ * Narrow on purpose: it takes a handler that writes and then sets a header, express failing with
+ * no answer at all, and this framework answering. Anything else is still a divergence.
+ *
+ * @param {any} plan
+ * @param {{line: string}} express
+ * @param {{line: string}} fulmine
+ * @returns {boolean}
+ */
+function headerAfterWrite(plan, express, fulmine) {
+    if (!express.line.startsWith("transport:") || fulmine.line.startsWith("transport:")) {
+        return false;
+    }
+    return everyProgram(plan).some((program) => {
+        const wrote = program.statements.findIndex((statement) => statement.includes(".write("));
+        return wrote !== -1 && program.statements.slice(wrote + 1).some((s) => SETS_A_HEADER.test(s));
+    });
+}
+
+/**
+ * The second difference this project keeps. A value the request did not carry, interpolated into a
+ * body next to other text, reads "undefined" in javascript and writes nothing through uWS, so a
+ * route compiled into a declarative response answers the text without it. A body that is only that
+ * value agrees already, since express sends nothing for undefined too. Decided on 2026-09-11.
+ *
+ * Narrow on purpose: it takes express printing the word and a handler that interpolates a request
+ * value into something longer than itself.
+ *
+ * @param {any} plan
+ * @param {{line: string}} express
+ * @returns {boolean}
+ */
+function missingValueInterpolated(plan, express) {
+    if (!express.line.includes("undefined")) {
+        return false;
+    }
+    return everyProgram(plan).some((program) =>
+        program.statements.some(
+            (statement) => /(query|params)\./.test(statement) && (statement.includes("`") || statement.includes(" + "))
+        )
+    );
+}
+
 let nextPort = 15000;
 
 /**
@@ -1997,10 +2074,10 @@ async function runPlan(plan, stopAtFirst) {
             answerOf(portB, url, method, plan.headers, undefined, body)
         ]);
         checked++;
-        if (ra.line !== rb.line) {
+        if (ra.line !== rb.line && !headerAfterWrite(plan, ra, rb) && !missingValueInterpolated(plan, ra)) {
             divergences.push({ url, method, express: ra.line, fulmine: rb.line });
             if (stopAtFirst) stop = true;
-        } else if (ra.etag && ra.etag === rb.etag) {
+        } else if (ra.line === rb.line && ra.etag && ra.etag === rb.etag) {
             // asked again with the validator both just sent, which is the only way here to a
             // 304 and to the headers express strips from one
             checked++;

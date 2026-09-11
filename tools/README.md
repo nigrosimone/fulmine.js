@@ -131,6 +131,23 @@ one corrupt byte while µWS writes proper utf-8. Both compute the same value; on
 Keep generated filenames and header values ASCII. The rest of what is not compared is in
 `tests/helpers.js`: `x-powered-by`, `content-length` and `transfer-encoding`.
 
+Two more are differences this project has looked at and decided to keep, the way `fuzz:wire` keeps
+`closeThenPipelined`. Both were decided on 2026-09-11, both are narrow, and each is one named
+function so a reader can see what it excludes:
+
+- **A header set after `res.write()`**, `headerAfterWrite`. Express flushes the head inside
+  `write()`, so a header written after one throws there and the socket goes. Here the head is
+  queued and leaves on the next tick, so the same header is taken and the request is answered. It
+  takes a handler that writes and then sets a header, Express answering nothing at all, and this
+  framework answering.
+- **A value the request did not carry, interpolated next to other text**,
+  `missingValueInterpolated`. It reads `undefined` in javascript and writes nothing through µWS, so
+  a route compiled into a declarative response answers the text without it. A body that is only
+  that value agrees already, since Express sends nothing for `undefined` either.
+
+Both were checked the way the rest of this file is: with the exceptions in, three fixed bugs put
+back one at a time were still reported, so neither exception blinds the tool.
+
 ## wire-fuzz.js
 
 Fuzzes the bytes rather than the API. Every other tool here speaks through `fetch`, and undici will
