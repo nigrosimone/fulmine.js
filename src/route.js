@@ -120,20 +120,19 @@ class Route {
                 if (handle.length !== 4) {
                     return next(err);
                 }
-                try {
-                    handle(err, req, res, next);
-                } catch (thrown) {
-                    next(thrown);
+            } else if (handle.length === 4) {
+                return next();
+            }
+            try {
+                const out = err ? handle(err, req, res, next) : handle(req, res, next);
+                // a rejected promise goes to next() as the error it carries, as express's Layer
+                // does it. A bare rejection carries none and gets the one express invents. Thenable
+                // too, which express deprecates but still waits for
+                if (out && typeof out.then === "function") {
+                    out.then(null, (thrown) => next(thrown || new Error("Rejected promise")));
                 }
-            } else {
-                if (handle.length === 4) {
-                    return next();
-                }
-                try {
-                    handle(req, res, next);
-                } catch (thrown) {
-                    next(thrown);
-                }
+            } catch (thrown) {
+                next(thrown);
             }
             sync = 0;
         };
