@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.19.8](https://github.com/nigrosimone/fulmine.js/compare/v5.19.7...v5.19.8) (2026-09-11)
+
+### Bug Fixes
+
+* **declarative:** do not compile a header node itself would refuse ([9cf38dc](https://github.com/nigrosimone/fulmine.js/commit/9cf38dc0b444f44fb9c96f1e189aed816fb39054))
+* **node-shim:** close the connection on an error after the head is out ([3c1b428](https://github.com/nigrosimone/fulmine.js/commit/3c1b428c303abfbe37576719313a09650383caa7))
+* **route:** wait for what a hand built Route's handler returns, as express does ([dbf81c0](https://github.com/nigrosimone/fulmine.js/commit/dbf81c009f09e5662ca3ba28904284b1a58c5fa8))
+
 ## [5.19.7](https://github.com/nigrosimone/fulmine.js/compare/v5.19.6...v5.19.7) (2026-09-11)
 
 ### Bug Fixes
