@@ -48,6 +48,10 @@ class Route {
      * @returns {boolean}
      */
     handlesMethod(method) {
+        // all() answers every verb, registered or not, which is what express reads _all for
+        if (this.methods._all) {
+            return true;
+        }
         const lowered = method.toLowerCase();
         return Boolean(this.methods[lowered] || (lowered === "head" && this.methods.get));
     }
@@ -169,9 +173,9 @@ for (const method of ["all", ...METHODS.map((verb) => verb.toLowerCase())]) {
         // the check above threw on anything else
         for (const handle of /** @type {Function[]} */ (flattened)) {
             this.stack.push({ method: method === "all" ? undefined : method, handle });
-            if (method !== "all") {
-                this.methods[method] = true;
-            }
+            // express marks the route _all rather than naming every verb, and whoever reads
+            // req.route.methods reads that key, so it is written the same way here
+            this.methods[method === "all" ? "_all" : method] = true;
         }
         return this;
     };
