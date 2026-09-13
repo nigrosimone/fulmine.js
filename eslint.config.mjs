@@ -3,6 +3,7 @@ import globals from "globals";
 import prettier from "eslint-config-prettier";
 import jsdoc from "eslint-plugin-jsdoc";
 import sonarjs from "eslint-plugin-sonarjs";
+import noEarlyAllocation from "./eslint-rules/no-early-allocation.mjs";
 
 export default [
     {
@@ -77,6 +78,13 @@ export default [
         }
     },
     {
+        // Only src/, where a request path runs: an allocation a branch never reads is paid on that
+        // branch for nothing, and the fix is moving one line. The rule file says what it counts.
+        files: ["src/**/*.js"],
+        plugins: { local: { rules: { "no-early-allocation": noEarlyAllocation } } },
+        rules: { "local/no-early-allocation": "error" }
+    },
+    {
         // Adopted 2026-09-08, only src/. The recommended set minus the rules below: those fire on
         // things this codebase does on purpose, and a rule nobody may act on is worse than no rule.
         // The count each one was carrying when it was turned off is written next to it, so a later
@@ -117,7 +125,7 @@ export default [
         }
     },
     {
-        files: ["eslint.config.mjs"],
+        files: ["eslint.config.mjs", "eslint-rules/*.mjs"],
         languageOptions: {
             sourceType: "module"
         }

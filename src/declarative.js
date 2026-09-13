@@ -803,8 +803,6 @@ module.exports = function compileDeclarative(cb, app) {
 
         /** @type {[string, string][]} */
         const headers = [];
-        /** @type {any[]} loose because a literal's value is kept as it is, see readBody */
-        const body = [];
 
         const status = readStatusAndHeaders(callExprs, headers);
         if (status === null) {
@@ -812,6 +810,8 @@ module.exports = function compileDeclarative(cb, app) {
         }
         const { statusCode, sendStatusUsed } = status;
 
+        /** @type {any[]} loose because a literal's value is kept as it is, see readBody */
+        const body = [];
         const read = readBody(callExprs, headers, body, app, queries, params);
         if (read === null) {
             return false;
