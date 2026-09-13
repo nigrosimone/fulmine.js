@@ -192,6 +192,23 @@ a native handler makes before any routing are reached as well.
 Checked by putting a known bug back: with the framing refusal reverted, `--seed 5000 --rounds 120`
 reports the appended request being served where node reads one message.
 
+Two shapes are µWS's and stay out, each one named function so a reader can see what it excludes.
+`closeThenPipelined`: a `Connection: close` and a second request in the same packet, which µWS has
+parsed out of the buffer before this project can close anything. `trailingTabTrimmed`, decided
+2026-09-13: a `Content-Length` with a tab after the value. Node refuses the message with 400, since
+llhttp takes a trailing space there and not a trailing tab; µWS trims the whitespace as RFC 9110
+allows and hands this project `"11"`, the value a clean request carries, so there is no byte left
+here to refuse on, and a bare µWS application serves the same requests out of the bytes.
+uNetworking keeps header handling on the caller's side
+([uWebSockets.js#1299](https://github.com/uNetworking/uWebSockets.js/issues/1299)), and here the
+caller never sees the tab. It is checked rather than assumed, every time it fires: node has to have
+served nothing, and node then has to read the same requests out of the same bytes with the tab gone
+that this framework read with it in. Anything µWS made of the bytes beyond trimming fails that
+control and is reported as before. In practice the two shapes arrive together: the same bytes with
+the tab taken out are read by node as one request and a close, which is `closeThenPipelined`, and
+this framework answers the tab and the no-tab bytes identically, so the tab changes nothing on this
+side at all.
+
 What µWS decides before any of this can see it, measured against node with
 [Http11Probe](https://github.com/MDA2AV/Http11Probe) on 2026-08-18: a request line it cannot parse
 answers 505 rather than 400, an HTTP/1.0 or HTTP/0.9 request the same, a header with an empty name
