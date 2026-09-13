@@ -173,7 +173,8 @@ decide who fixes it:
 
 `fuzz:wire` already carries two documented exceptions: a pipelined request after a
 `Connection: close`, which µWS has parsed out of the buffer before this project can close anything,
-and a `Content-Length` with a tab after the value, which µWS trims before this project sees it.
+and a framing value µWS reads through where node refuses it, a tab after a `Content-Length` or a
+parameter after `chunked`, both gone before this project is handed the header.
 Add another only with the same evidence: a bare µWS application doing the same thing.
 
 ### The fuzzers

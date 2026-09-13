@@ -194,20 +194,29 @@ reports the appended request being served where node reads one message.
 
 Two shapes are µWS's and stay out, each one named function so a reader can see what it excludes.
 `closeThenPipelined`: a `Connection: close` and a second request in the same packet, which µWS has
-parsed out of the buffer before this project can close anything. `trailingTabTrimmed`, decided
-2026-09-13: a `Content-Length` with a tab after the value. Node refuses the message with 400, since
-llhttp takes a trailing space there and not a trailing tab; µWS trims the whitespace as RFC 9110
-allows and hands this project `"11"`, the value a clean request carries, so there is no byte left
-here to refuse on, and a bare µWS application serves the same requests out of the bytes.
-uNetworking keeps header handling on the caller's side
-([uWebSockets.js#1299](https://github.com/uNetworking/uWebSockets.js/issues/1299)), and here the
-caller never sees the tab. It is checked rather than assumed, every time it fires: node has to have
-served nothing, and node then has to read the same requests out of the same bytes with the tab gone
-that this framework read with it in. Anything µWS made of the bytes beyond trimming fails that
-control and is reported as before. In practice the two shapes arrive together: the same bytes with
-the tab taken out are read by node as one request and a close, which is `closeThenPipelined`, and
-this framework answers the tab and the no-tab bytes identically, so the tab changes nothing on this
-side at all.
+parsed out of the buffer before this project can close anything. `canonicalisedByUws`, decided
+2026-09-13: a framing value spelled a way µWS reads through and llhttp refuses. `Content-Length:
+11\t` and `Transfer-Encoding: chunked;a=b` are both of it. `HttpParser.h` trims the OWS around
+every header value before anything looks at it, and reads a Transfer-Encoding by the coding name
+alone, so by the time either reaches this project the tab and the parameter are gone and the value
+in hand is the one a clean request carries: there is no byte left here to refuse on, and a bare µWS
+application serves the same requests out of the bytes. uNetworking keeps header handling on the
+caller's side ([uWebSockets.js#1299](https://github.com/uNetworking/uWebSockets.js/issues/1299)),
+and the caller never sees these.
+
+It is checked rather than assumed, every time it fires: the same bytes written the way µWS reads
+them go back to node, which has to read the requests this framework read, or differ only by
+`closeThenPipelined`, which is the same parser's doing and already excluded on its own. Anything µWS
+made of the bytes beyond that fails the control and is reported as before, and the widened exception
+was checked the way the rest of this file is: with the framing refusal reverted, `--seed 5000
+--rounds 120` still reports its ten findings.
+
+The `chunked;a=b` half is already gone upstream. µWS answers 400 to anything but `chunked` since
+v20.70.0, deliberately — _"that entirely eliminates all forms of transfer-encoding obfuscation
+tricks"_, says the comment beside the check — so once the pin moves past the v20.69.0 in
+`package.json` that case stops reaching this exception at all, and what holds the pin there is
+[uWebSockets#1941](https://github.com/uNetworking/uWebSockets/issues/1941), where the same check is
+too strict about the codings beside it. The trimming is not version bound and stays.
 
 What µWS decides before any of this can see it, measured against node with
 [Http11Probe](https://github.com/MDA2AV/Http11Probe) on 2026-08-18: a request line it cannot parse
