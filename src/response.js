@@ -238,6 +238,7 @@ module.exports = class Response extends LazyWritable {
             this.headers["x-powered-by"] = "Fulmine";
         }
 
+        /** @type {unknown} a slot for whatever a middleware puts on res.body, never read here */
         this.body = undefined;
         // what was handed to uWS, kept so a caller asking for content-length after the fact can be
         // answered, see get(). Undefined until the response ends, and for one that sends no body

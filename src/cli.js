@@ -214,6 +214,7 @@ function findSpecifiersTypeScript(source, fileName, ts, seen) {
         }
     };
 
+    /** @param {import("typescript").Node} node */
     const visit = (node) => {
         // import express from "express", import type { Request } from "express", export * from it.
         // A type-only import is rewritten too: the types come from the new package as well.
@@ -465,7 +466,7 @@ function findEntry(given) {
  * owns listen.
  *
  * @param {string} entry
- * @returns {object[]} the prototypes to stub, this command's copy first
+ * @returns {Application[]} the prototypes to stub, this command's copy first
  */
 function listenOwners(entry) {
     const builds = new Set([require("./index.js")]);
@@ -477,6 +478,7 @@ function listenOwners(entry) {
         }
     }
 
+    /** @type {Application[]} */
     const owners = [];
     for (const build of builds) {
         if (typeof build !== "function") {
@@ -531,6 +533,7 @@ function loadApps(argv, command) {
         return null;
     }
 
+    /** @type {Application[]} */
     const listened = [];
     const real = owners.map((proto) => proto.listen);
     for (const proto of owners) {

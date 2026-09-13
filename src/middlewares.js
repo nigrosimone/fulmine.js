@@ -139,6 +139,7 @@ function stripBom(text) {
     return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
 }
 
+/** @type {typeof import("iconv-lite")|undefined} */
 let iconv;
 
 /**
@@ -966,6 +967,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             (contentType) => !!typeis.is(contentType, /** @type {string[]} */ (options.type))
         );
 
+        /** @type {string[]|null|undefined} the "body methods" setting, read on the first request */
         let additionalMethods;
 
         const parserMiddleware = (req, res, next) => {
@@ -1038,6 +1040,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             // halves sit on either side of the encoding, which is the order body-parser reads
             // them in: the charset this parser accepts at all, then the Content-Encoding, then
             // whether iconv knows the charset.
+            /** @type {string|undefined} */
             let encoding;
             if (charsetPolicy) {
                 encoding = charsetOf(type) ?? defaultCharset;
@@ -1129,7 +1132,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 // not us, and would wait for an end that is never coming
                 req.complete = true;
                 req.readable = false;
-                req._res.collectBody(limit, (body) => {
+                req._res.collectBody(limit, (/** @type {ArrayBuffer|null} */ body) => {
                     if (body === null) {
                         // over maxSize: uWS refused it natively
                         return next(
@@ -1165,6 +1168,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             // known and we are not inflating, the final size is known up front, so chunks go
             // straight into one buffer and the body is copied once. The cap means a client that
             // declares a body and never sends it costs no more than one that sends it
+            /** @type {Buffer[]} */
             const abs = [];
             const declaredLength = inflate ? -1 : Number(length);
             let target =
@@ -1310,7 +1314,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             // if we are fast enough (not async), we can do it
             // otherwise we need to use a stream since it already started streaming it
             if (!req.receivedData) {
-                req._res.onData((ab, isLast) => {
+                req._res.onData((/** @type {ArrayBuffer} */ ab, /** @type {boolean} */ isLast) => {
                     onData(ab);
                     if (isLast) {
                         // this subscription replaced the Readable's own, so the stream will

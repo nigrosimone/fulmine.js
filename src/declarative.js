@@ -26,6 +26,7 @@ const uWSAny = /** @type {any} */ (uWS);
 const statuses = require("statuses");
 
 /** @typedef {import("./application.js").Application} Application */
+/** @typedef {import("./router.js")} Router */
 
 const parser = acorn.Parser;
 
@@ -45,7 +46,11 @@ const allowedResMethods = [
 
 const allowedIdentifiers = ["query", "params", ...allowedResMethods];
 
-/** What res.type(x) sets the content type to. A lookup on a literal. */
+/**
+ * What res.type(x) sets the content type to. A lookup on a literal.
+ *
+ * @param {string} type
+ */
 const typeValueOf = (type) => (type.indexOf("/") === -1 ? contentTypeFor(type) : type);
 
 // what one instruction of a declarative response can carry, since uWS writes its length as a u16
@@ -307,7 +312,7 @@ function readStatusAndHeaders(callExprs, headers) {
  * @param {any[]} callExprs the res calls, in run order, as readStatusAndHeaders takes them
  * @param {[string, string][]} headers the headers read so far, written to
  * @param {any[]} body the body parts, written to; loose because a literal's value is kept as it is
- * @param {Application} app the application, for the json settings
+ * @param {Application|Router} app the application or router the route hangs on, for the json settings
  * @param {string[]} queries names bound by a destructured req.query
  * @param {string[]} params names bound by a destructured req.params
  * @returns {{sendUsed: boolean, bodyFromSend: boolean}|null}
@@ -438,6 +443,7 @@ function readBody(callExprs, headers, body, app, queries, params) {
                     }
                     body.push({ type: arg.object.property.name, value: arg.property.name });
                 } else if (arg.type === "BinaryExpression") {
+                    /** @type {any[]} the parts, in the same loose shape as body */
                     const stuff = [];
                     /**
                      * Reads a chain of string concatenations right to left. Each side must be a literal or a
@@ -768,6 +774,10 @@ function identifiersAllowed(fn, args, names) {
 // - doesnt create variables
 // - only uses req.query and req.params
 // basically, its only simple, static responses
+/**
+ * @param {Function} cb the handler
+ * @param {Application|Router} app the application or router the route hangs on, for the json settings
+ */
 module.exports = function compileDeclarative(cb, app) {
     try {
         const handler = readHandler(cb);
@@ -791,7 +801,9 @@ module.exports = function compileDeclarative(cb, app) {
             return false;
         }
 
+        /** @type {[string, string][]} */
         const headers = [];
+        /** @type {any[]} loose because a literal's value is kept as it is, see readBody */
         const body = [];
 
         const status = readStatusAndHeaders(callExprs, headers);

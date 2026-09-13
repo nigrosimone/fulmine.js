@@ -51,6 +51,7 @@ const {
 
 // router.js requires this file while it is still being evaluated, so its class cannot be required
 // from here: it hands it over on the line under its own export instead.
+/** @type {typeof import("./router.js")} */
 let Router;
 
 /**
@@ -233,6 +234,12 @@ function compileOptimizedRoutes(root) {
 
     // pathPrefix/chainPrefix accumulate across nested sole-callback mounts, and outerGuards
     // carries what was written before them and answers only part of what is under them
+    /**
+     * @param {Router} router
+     * @param {string} pathPrefix
+     * @param {RouteEntry[]} chainPrefix
+     * @param {import("./router-utils.js").MountGuard[]} outerGuards
+     */
     const walk = (router, pathPrefix, chainPrefix, outerGuards) => {
         for (const route of router._routes) {
             if (route.use) {
@@ -344,7 +351,7 @@ function compileOptimizedRoutes(root) {
                     if (route._caseGuards) {
                         // compared against the whole path µWS matched, so they carry the mount
                         // prefix, folded along with the rest of it
-                        registered._caseGuards = route._caseGuards.map((p) => pathPrefix + p);
+                        registered._caseGuards = route._caseGuards.map((/** @type {string} */ p) => pathPrefix + p);
                     }
                     root._registerUwsRoute(registered, chain);
                     // the chain holds the original object, so the request-time guard has to find
@@ -388,18 +395,27 @@ function registerUwsRoute(router, route, optimizedPath) {
         method = "del";
     }
     if (route.path.includes(":")) {
-        route.optimizedParams = route.path.match(regExParam).map((p) => p.slice(1));
+        route.optimizedParams = route.path.match(regExParam).map((/** @type {string} */ p) => p.slice(1));
     }
     // null for almost every route: only a parameter route with an earlier literal that a case
     // variant could slip past carries one, see _optimizeRoute. Built once here, and matched
     // insensitively, since that is the folding the guard exists for
     const caseGuards = route._caseGuards
-        ? route._caseGuards.map((p) => (needsConversionToRegex(p) ? patternToRegex(p, false, false) : p.toLowerCase()))
+        ? route._caseGuards.map((/** @type {string} */ p) =>
+              needsConversionToRegex(p) ? patternToRegex(p, false, false) : p.toLowerCase()
+          )
         : null;
+    /**
+     * @param {RouteEntry[]} chain
+     * @param {import("./router-utils.js").NativePreset|undefined} preset
+     * @param {{skipHeaders: boolean, skipQuery: boolean}} skips
+     * @param {string|null} wireMethod
+     */
     const makeHandler = (chain, preset, skips, wireMethod) => {
         // the mutable object a granted skip lives on, so a middleware arriving after listen can
         // take it back: a literal registration's preset doubles as it, a parameterised one gets a
         // holder of its own. It carries the method too, so the constructor settles it in one compare
+        /** @type {import("./router-utils.js").SkipHolder|undefined} */
         let skipHolder = preset;
         if (skipHolder === undefined && (skips.skipHeaders || skips.skipQuery || wireMethod !== null)) {
             skipHolder = {
@@ -504,6 +520,11 @@ function registerUwsRoute(router, route, optimizedPath) {
         }
     }
     // remembered so a middleware or setting arriving after listen can take the skips back
+    /**
+     * @param {string} path
+     * @param {string} method
+     * @param {{skipHeaders: boolean, skipQuery: boolean}} skips
+     */
     const makePreset = (path, method, skips) => {
         const preset = nativePreset(path, method);
         if (skips.skipHeaders || skips.skipQuery) {

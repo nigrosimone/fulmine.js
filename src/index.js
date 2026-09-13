@@ -68,6 +68,7 @@ try {
 module.exports = /** @type {any} */ (Application);
 
 // a router is a function too: it has to be callable to be used as middleware
+/** @param {object} [options] the options express.Router() takes */
 module.exports.Router = function (options) {
     return new Router(options)._asCallable();
 };

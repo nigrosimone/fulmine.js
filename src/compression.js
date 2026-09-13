@@ -161,6 +161,7 @@ function reusableCompressor(create, finishFlag, oneShot) {
         return oneShot;
     };
 
+    /** @param {Buffer} body */
     const compress = (body) => {
         if (broken || busy) {
             return oneShot(body);

@@ -457,7 +457,9 @@ module.exports = class Request extends LazyReadable {
         this._lastMethod = this.method;
         // the folded _opPath and the percent scan of _originalPath, built on the hop that first
         // wants them and dropped by every rewrite, see _pathMatches and Walk#dispatch
+        /** @type {string|null} */
         this._opPathLower = null;
+        /** @type {boolean|null} */
         this._mayFailDecode = null;
         this.params = {};
 
@@ -478,6 +480,7 @@ module.exports = class Request extends LazyReadable {
         this._paramStack = null;
         // route and application in pairs, one pair per mounted application entered from another
         // application, so handing back puts the one that was current back, see rememberApp
+        /** @type {any[]|undefined} route and app alternating, loose because the pairs share one array */
         this._appStack = undefined;
         this.receivedData = false;
         // node's IncomingMessage flag: false until the whole body has arrived. on-finished

@@ -79,6 +79,7 @@ class Walk {
         //
         // Null here and bound on the first route with more than one callback, the only shape that
         // reads it: a request that never meets one paid a bind for nothing
+        /** @type {((err?: unknown) => void)|null} */
         this.leaveRoute = null;
     }
 
@@ -103,6 +104,7 @@ class Walk {
      * a chain of N middlewares costs one promise instead of N nested ones.
      *
      * @param {number} startIndex where to resume the scan
+     * @returns {void}
      */
     dispatch(startIndex) {
         const req = this.req;
@@ -226,7 +228,7 @@ class Walk {
                 .then((resumed) => this.runRoute(resumed))
                 // wrapped so the native pair keeps the walk as receiver; a promise's reject
                 // would not have cared
-                .catch((err) => this.reject(err));
+                .catch((/** @type {unknown} */ err) => this.reject(err));
             return;
         }
         return this.runRoute(continueRoute);
@@ -291,6 +293,7 @@ class Walk {
      * way in, and then the route's callbacks run one after another through next().
      *
      * @param {true|"route"} continueRoute what _preprocessRequest decided: true to run, "route" to skip
+     * @returns {void}
      */
     runRoute(continueRoute) {
         const req = this.req;
@@ -347,6 +350,7 @@ class Walk {
      *
      * @param {number} kind what the callback is, one of the CALLBACK_ constants
      * @param {Function} callback
+     * @returns {void}
      */
     errorHop(kind, callback) {
         const req = this.req;
@@ -441,6 +445,7 @@ class Walk {
      * leave the route; with anything else, remember it as the error and carry on.
      *
      * @param {unknown} thingamabob what next() was called with: nothing, "route", or an error
+     * @returns {void}
      */
     step(thingamabob) {
         const req = this.req;
@@ -492,7 +497,7 @@ class Walk {
             }
             callback
                 ._routeRequest(req, res, 0)
-                .then((routed) => {
+                .then((/** @type {RouteEntry|false} */ routed) => {
                     // the child's params are scoped to it, and must not leak into the routes after
                     if (pushedParams) {
                         req._paramStack.pop();
@@ -531,7 +536,7 @@ class Walk {
                 // a rejection out of the nested walk, or a throw above, must reject this one
                 // instead of dying as an unhandled rejection; wrapped for the native pair's
                 // receiver
-                .catch((err) => this.reject(err));
+                .catch((/** @type {unknown} */ err) => this.reject(err));
         } else {
             // errors and error handlers live out of line: this is the cold path, and its size
             // was pushing step past the inlining threshold

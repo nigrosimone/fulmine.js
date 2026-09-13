@@ -87,6 +87,7 @@ class Route {
         }
         req.route = this;
 
+        /** @param {unknown} [err] */
         const next = (err) => {
             // next("route") leaves this route, and next("router") leaves whoever is running it
             if (err === "route") {
@@ -129,7 +130,7 @@ class Route {
                 // does it. A bare rejection carries none and gets the one express invents. Thenable
                 // too, which express deprecates but still waits for
                 if (out && typeof out.then === "function") {
-                    out.then(null, (thrown) => next(thrown || new Error("Rejected promise")));
+                    out.then(null, (/** @type {unknown} */ thrown) => next(thrown || new Error("Rejected promise")));
                 }
             } catch (thrown) {
                 next(thrown);
@@ -162,10 +163,11 @@ for (const method of ["all", ...METHODS.map((verb) => verb.toLowerCase())]) {
     if (method !== "all" && typeof Route.prototype[method] === "function") {
         continue;
     }
-    Route.prototype[method] = function (...handlers) {
+    Route.prototype[method] = function (/** @type {unknown[]} */ ...handlers) {
         const flattened = handlers.flat(Infinity);
         checkRouteHandlers(method, flattened);
-        for (const handle of flattened) {
+        // the check above threw on anything else
+        for (const handle of /** @type {Function[]} */ (flattened)) {
             this.stack.push({ method: method === "all" ? undefined : method, handle });
             if (method !== "all") {
                 this.methods[method] = true;

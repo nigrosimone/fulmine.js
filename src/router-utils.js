@@ -175,8 +175,14 @@ function layerFor(route, callback) {
  * @returns {Layer} the layer object, which is express's shape and not one of ours
  */
 function routeLayer(route) {
+    /**
+     * @param {Request} req
+     * @param {Response} res
+     * @param {(err?: unknown) => void} next
+     */
     const handle = function handle(req, res, next) {
         let index = 0;
+        /** @param {unknown} [err] */
         const step = (err) => {
             const callback = route.callbacks[index++];
             if (callback === undefined) {
@@ -206,6 +212,7 @@ function routeLayer(route) {
  * The 404 epilogue stays on a microtask, where the await used to resume: a middleware that writes
  * after calling next() must still win the headersSent check, as it does in express.
  * @this {Walk}
+ * @param {RouteEntry|false} matched what the walk ended on, as the resolve receives it
  */
 function nativeDone(matched) {
     if (this.settled) {
@@ -238,6 +245,7 @@ function nativeDone(matched) {
  * an unhandled rejection. Deferred like the resolve, since every rejection used to reach the
  * handler's catch through an await.
  * @this {Walk}
+ * @param {unknown} err
  */
 function nativeFail(err) {
     if (this.settled) {
@@ -313,7 +321,7 @@ const PATH_PROPERTY = {
 const ABSORB_URL = Request.prototype._absorbUrlRewrite;
 const ABSORB_METHOD = Request.prototype._absorbMethodRewrite;
 
-const NO_PARAM_NAMES = [];
+const NO_PARAM_NAMES = /** @type {string[]} */ ([]);
 
 /**
  * The parameter names a route captures with its own pattern.
@@ -636,7 +644,8 @@ function hasErrorMiddleware(router) {
 }
 
 /**
- *
+ * @param {unknown[]} handlers what a registration was given, flattened
+ * @param {string} [emptyMessage]
  */
 function checkHandlers(handlers, emptyMessage = "argument handler is required") {
     if (handlers.length === 0) {

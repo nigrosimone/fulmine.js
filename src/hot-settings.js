@@ -27,14 +27,21 @@ class HotSettings {
     constructor() {
         this.epoch = 0;
         this.xPoweredBy = false;
+        /** @type {((body: string|Buffer|import("fs").Stats, encoding?: BufferEncoding) => string)|undefined} */
         this.etagFn = undefined;
         // null means every method, which is express's behaviour and the default
+        /** @type {Set<string>|null} */
         this.etagMethods = null;
+        /** @type {((query: string|null) => Record<string, any>)|undefined} */
         this.queryParserFn = undefined;
+        /** @type {import("./utils.js").TrustFn|undefined} */
         this.trustProxyFn = undefined;
         this.trustProxyProtocol = false;
+        /** @type {boolean|undefined} */
         this.jsonEscape = undefined;
+        /** @type {any} the "json replacer" setting, as stringify takes it */
         this.jsonReplacer = undefined;
+        /** @type {string|number|undefined} */
         this.jsonSpaces = undefined;
     }
 }

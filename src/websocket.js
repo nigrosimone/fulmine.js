@@ -208,7 +208,7 @@ function makeUpgradeHandler(app, path, behavior) {
  * @param {Application} app
  */
 function registerWebSocketRoutes(app) {
-    const routes = [];
+    const routes = /** @type {WsRoute[]} */ ([]);
     collectRoutes(app, "", routes, new Set());
     for (const route of routes) {
         const uwsBehavior = { ...route.behavior };

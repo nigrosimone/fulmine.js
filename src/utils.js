@@ -208,6 +208,9 @@ function getPatternMeta(pattern) {
  * A bare `*`, an unnamed parameter, an inline regex like :id(\\d+) and the `+`, `?`, `()` operators
  * throw: a route that quietly stops matching is worse than one that fails at startup. The names it
  * captures go in a WeakMap beside the regex, see PatternMeta.
+ *
+ * @param {string|RegExp} pattern
+ * @returns {RegExp}
  */
 function patternToRegex(pattern, isPrefix = false, caseSensitive = true, strict = false) {
     if (pattern instanceof RegExp) {
@@ -222,11 +225,12 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true, strict 
     let regexPattern = "";
     let i = 0;
     const len = pattern.length;
-    const wildcardNames = [];
+    const wildcardNames = /** @type {string[]} */ ([]);
     // express takes /:a/:a, and two capture groups cannot share a name, so a repeat is compiled
     // under a spelling of its own and mapped back when the parameters are read out. Reading them
     // in order then leaves the last occurrence in place, which is the value express reports
-    const groupOutputName = new Map();
+    const groupOutputName = /** @type {Map<string, string>} */ (new Map());
+    /** @param {string} name */
     const uniqueGroupName = (name) => {
         if (!groupOutputName.has(name)) {
             groupOutputName.set(name, name);
@@ -255,7 +259,11 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true, strict 
     let lastCaptureWasWildcard = false;
     let wildcardInSegment = false;
     let paramInSegment = false;
-    /** Records literal text as it is emitted, which is what the rules above are written against. */
+    /**
+     * Records literal text as it is emitted, which is what the rules above are written against.
+     *
+     * @param {string} text
+     */
     const literal = (text) => {
         backtrack += text;
         if (lastCaptureWasWildcard) {
@@ -750,7 +758,8 @@ function acceptParams(str) {
     const length = str.length;
     const colonIndex = str.indexOf(";");
     let index = colonIndex === -1 ? length : colonIndex;
-    const ret = { value: str.slice(0, index).trim(), quality: 1, params: {} };
+    const params = /** @type {Record<string, string>} */ ({});
+    const ret = { value: str.slice(0, index).trim(), quality: 1, params };
 
     while (index < length) {
         const splitIndex = str.indexOf("=", index);
@@ -1099,12 +1108,19 @@ function durationSetting(value, name) {
 }
 
 /**
+ * The predicate "trust proxy" compiles to: whether the address at hop i is trusted. The address is
+ * undefined over a unix socket, see Request#parsedIp.
+ *
+ * @typedef {(addr: string|undefined, i: number) => boolean} TrustFn
+ */
+
+/**
  * Turns whatever "trust proxy" was set to into the function proxy-addr wants: a predicate saying
  * whether the address at hop i is trusted. true trusts everything, a number trusts that many hops,
  * and a string or a list is read as addresses and subnet names.
  *
- * @param {boolean|number|string|string[]|Function} val
- * @returns {Function}
+ * @param {boolean|number|string|string[]|TrustFn} val
+ * @returns {TrustFn}
  */
 function compileTrust(val) {
     if (typeof val === "function") return val;
@@ -1118,8 +1134,9 @@ function compileTrust(val) {
 
     if (typeof val === "number") {
         // Support trusting hop count
-        return function (a, i) {
-            return i < val;
+        const hops = val;
+        return function (/** @type {string|undefined} */ a, /** @type {number} */ i) {
+            return i < hops;
         };
     }
 
@@ -1130,7 +1147,9 @@ function compileTrust(val) {
         });
     }
 
-    return proxyaddr.compile(val || []);
+    // proxy-addr answers false to an address it cannot parse, undefined included, though its
+    // typing does not admit one
+    return /** @type {TrustFn} */ (proxyaddr.compile(val || []));
 }
 
 const shownWarnings = new Set();

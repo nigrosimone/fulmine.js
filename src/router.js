@@ -169,6 +169,7 @@ module.exports = class Router extends EventEmitter {
 
         this._paramCallbacks = new Map();
         this._mountpathCache = new Map();
+        /** @type {RouteEntry[]} */
         this._routes = [];
         // websocket routes, kept apart from the HTTP ones: µWS serves them itself and listen()
         // hands them over whole, mount paths and all
@@ -908,6 +909,7 @@ module.exports = class Router extends EventEmitter {
      */
     _handleError(err, handler, request, response) {
         if (handler) {
+            /** @param {unknown} [pass] */
             const next = (pass) => {
                 delete request._error;
                 delete request._errorKey;
@@ -1154,12 +1156,15 @@ module.exports = class Router extends EventEmitter {
         return new Promise((resolve) => {
             let index = 0;
             let name = "";
+            /** @type {unknown} */
             let value;
             let entry;
+            /** @type {Function[]} */
             let fns = [];
             let fnIndex = 0;
 
             // one parameter after the other, err being what the last one's callbacks ended with
+            /** @param {unknown} [err] */
             const nextParam = (err) => {
                 if (err) {
                     if (err !== "route") {
@@ -1188,6 +1193,7 @@ module.exports = class Router extends EventEmitter {
             };
 
             // and one callback of the current parameter after the other
+            /** @param {unknown} [err] */
             const nextCallback = (err) => {
                 const fn = fns[fnIndex++];
                 // read before the callback runs and again after it: one that rewrites
@@ -1248,6 +1254,13 @@ module.exports = class Router extends EventEmitter {
 
     /**
      * Resolves with the route that answered, or false when nothing matched.
+     *
+     * @param {Request} req
+     * @param {Response} res
+     * @param {number} [startIndex]
+     * @param {RouteEntry[]} [routes]
+     * @param {boolean} [skipCheck] take the route at the index without matching it, see Walk
+     * @param {RouteEntry} [skipUntil] route to resume after when this chain runs out, see Walk
      * @returns {Promise<RouteEntry|false>}
      */
     _routeRequest(req, res, startIndex = 0, routes = this._routes, skipCheck = false, skipUntil) {
@@ -1366,11 +1379,16 @@ module.exports = class Router extends EventEmitter {
         // one map for the whole chain, because express builds one Route for it: a request answered
         // by the get() of an app.route() reads post() in its req.route.methods too
         const groupMethods = new NullObject();
+        /** @type {(Omit<Layer, "route"> & {method: string|undefined})[]} express's Route#stack, see createRoute */
         const groupStack = [];
         // express hands back a Route, which carries these three beside the verb methods
         fns.path = path;
         fns.methods = groupMethods;
         fns.stack = groupStack;
+        /**
+         * @param {string} method
+         * @param {unknown[]} callbacks
+         */
         const inGroup = (method, callbacks) => {
             this._pendingGroup = group;
             this._pendingGroupMethods = groupMethods;
@@ -1384,9 +1402,9 @@ module.exports = class Router extends EventEmitter {
             }
         };
         for (const method of methods) {
-            fns[method] = (...callbacks) => inGroup(method, callbacks);
+            fns[method] = (/** @type {unknown[]} */ ...callbacks) => inGroup(method, callbacks);
         }
-        fns.get = (...callbacks) => inGroup("GET", callbacks);
+        fns.get = (/** @type {unknown[]} */ ...callbacks) => inGroup("GET", callbacks);
         return fns;
     }
 
@@ -1482,7 +1500,10 @@ module.exports = class Router extends EventEmitter {
 useRouterClass(module.exports);
 
 for (const method of methods) {
-    module.exports.prototype[method] = function (path, ...callbacks) {
+    module.exports.prototype[method] = function (
+        /** @type {string|RegExp|(string|RegExp)[]} */ path,
+        /** @type {unknown[]} */ ...callbacks
+    ) {
         return this.createRoute(method, path, this, ...callbacks);
     };
 }

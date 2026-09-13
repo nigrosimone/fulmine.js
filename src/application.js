@@ -47,7 +47,7 @@ const cpuCount = os.cpus().length;
 // mounted sub-app knows it may inherit the parent's
 const trustProxyDefaultSymbol = "@@symbol:trust_proxy_default";
 
-const workers = [];
+const workers = /** @type {FSWorker[]} */ ([]);
 let taskKey = 0;
 const workerTasks = new NullObject();
 
@@ -133,7 +133,7 @@ class Application extends Router {
             becomeSupervisor();
         }
         if (settings.uwsApp) {
-            this.uwsApp = settings.uwsApp;
+            this.uwsApp = /** @type {import("uWebSockets.js").TemplatedApp} */ (settings.uwsApp);
         } else if (settings.http3) {
             // uWS.H3App exists in the pinned build but its QUIC stack does not: the constructor
             // segfaults on Linux and hangs forever on Windows before serving a single request,
@@ -401,7 +401,7 @@ class Application extends Router {
             if (value != null && (!Array.isArray(value) || value.some((m) => typeof m !== "string"))) {
                 throw new TypeError('"etag methods" wants an array of method names, or null for all of them');
             }
-            value = value == null ? undefined : value.map((m) => m.toUpperCase());
+            value = value == null ? undefined : value.map((/** @type {string} */ m) => m.toUpperCase());
         } else if (key === "etag") {
             // The skips are not taken back here. They used to be, because send consults freshness,
             // but that branch reads if-none-match, if-modified-since and cache-control by name
@@ -594,7 +594,7 @@ class Application extends Router {
         // uWS runs this handler from inside its own listen(), so everything it hands back to the
         // caller is deferred a tick. Express binds synchronously too but reports through events,
         // and node emits both 'listening' and 'error' from a process.nextTick.
-        const onListen = (socket) => {
+        const onListen = (/** @type {import("uWebSockets.js").us_listen_socket|false} */ socket) => {
             if (!socket) {
                 /** @type {NodeJS.ErrnoException} */
                 const err = new Error("listen EADDRINUSE: address already in use :::" + port);
@@ -926,6 +926,7 @@ class Application extends Router {
 // Tried once before and reverted the same day, because a callable app broke supertest: `request(app)`
 // reads `typeof app === "function"` and wraps what it finds in http.createServer, and there was
 // nothing underneath that could serve node's IncomingMessage. src/node-shim.js closes that hole.
+/** @param {object} [options] the settings express() takes, see the Application constructor */
 module.exports = function (options) {
     return new Application(options)._asCallable();
 };

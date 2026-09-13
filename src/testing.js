@@ -134,7 +134,7 @@ function select(app, patterns, caller) {
         throw new TypeError(`${caller} needs a path, or a list of them, to check`);
     }
     const report = routeReport(app);
-    const selected = [];
+    const selected = /** @type {ReturnType<typeof routeReport>} */ ([]);
     for (const pattern of wanted) {
         const matched = report.filter((entry) => names(entry, pattern));
         if (matched.length === 0) {

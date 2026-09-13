@@ -80,13 +80,19 @@ function addressToBytes(address) {
     return view.buffer;
 }
 
-/** A chunk as the ArrayBuffer uWS deals in, copied rather than viewed so nothing aliases node's. */
+/**
+ * A chunk as the ArrayBuffer uWS deals in, copied rather than viewed so nothing aliases node's.
+ *
+ * @param {ArrayBuffer|Buffer|string} chunk
+ * @returns {ArrayBuffer}
+ */
 function toArrayBuffer(chunk) {
     if (chunk instanceof ArrayBuffer) {
         return chunk;
     }
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+    // node types the store as possibly shared, but a Buffer it made or was given here never is
+    return /** @type {ArrayBuffer} */ (buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength));
 }
 
 /**
@@ -175,6 +181,7 @@ class NodeHttpResponse {
         // how much of the body has gone out, which is what uWS reports through getWriteOffset and
         // hands back to an onWritable callback
         this._offset = 0;
+        /** @type {((offset: number) => boolean)|null} */
         this._onWritable = null;
         this._aborted = false;
         // the current body handler: uWS keeps one and a second onData replaces it, so this does too
@@ -195,6 +202,8 @@ class NodeHttpResponse {
      * uWS batches everything written inside this into one syscall. node has no equivalent that
      * means the same thing, and its own cork would hold the write until the callback returned
      * without changing what is sent, so this only runs it.
+     *
+     * @param {() => void} cb
      */
     cork(cb) {
         cb();
@@ -300,13 +309,19 @@ class NodeHttpResponse {
      * Called when there is room to write again. uWS asks the handler to answer whether it managed
      * to write everything, and calls it again if not; node's drain says nothing, so the handler is
      * kept until the next drain and its answer ignored.
+     *
+     * @param {(offset: number) => boolean} handler
      */
     onWritable(handler) {
         this._onWritable = handler;
         return this;
     }
 
-    /** Called when the connection goes before the response is finished. */
+    /**
+     * Called when the connection goes before the response is finished.
+     *
+     * @param {() => void} handler
+     */
     onAborted(handler) {
         this._nodeRes.on("close", () => {
             if (!this._nodeRes.writableFinished) {

@@ -68,7 +68,7 @@ for (const s of [
 // One status line per code, built on first use: the default path, with no custom reason phrase,
 // paid a template string and a trim per request for a line that never changes. Bounded to real
 // HTTP codes so a wild writeHead value cannot grow the array or flip it into dictionary mode.
-const STATUS_LINES = [];
+const STATUS_LINES = /** @type {string[]} */ ([]);
 /**
  * @param {number} code
  * @param {string|undefined} text an explicit reason phrase, which bypasses the cache
