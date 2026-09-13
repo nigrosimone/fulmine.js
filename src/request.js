@@ -205,13 +205,6 @@ module.exports = class Request extends LazyReadable {
     rawIp;
 
     /**
-     * Whether rawIp came from a PROXY protocol preamble rather than from the socket. Only the
-     * IPv4 mapping reads it, see parsedIp. Declared for the same reason as rawIp.
-     * @type {boolean}
-     */
-    _ipFromProxy = false;
-
-    /**
      * Whether the request declared a body, content-length or transfer-encoding, spotted during
      * the header copy. Declared for the same reason as rawIp.
      * @type {boolean|undefined}
@@ -1051,7 +1044,6 @@ module.exports = class Request extends LazyReadable {
             const proxied = uwsRes.getProxiedRemoteAddress();
             // empty unless a preamble arrived, which is the only thing that tells the two apart
             if (proxied.byteLength !== 0) {
-                this._ipFromProxy = true;
                 return proxied;
             }
         }
@@ -1087,14 +1079,12 @@ module.exports = class Request extends LazyReadable {
         /** @type {string|undefined} */
         let ip;
         if (rawIp.byteLength === 4) {
-            // ipv4
+            // ipv4, and plain: four bytes mean the peer arrived over IPv4 on an IPv4 socket, which
+            // is what node writes plain as well. A dual stack listener hands an IPv4 peer over as
+            // the mapped sixteen below, the node shim passes node's own form through, and an
+            // address a proxy declared is the four numbers the proxy sent, so none of them wants
+            // a prefix invented here
             ip = new Uint8Array(rawIp).join(".");
-            // the mapped form belongs to a dual stack listener, which is what makes an IPv4 peer
-            // arrive as ::ffff:a.b.c.d. An address a proxy declared never came through that socket,
-            // so it is left as the four numbers the proxy sent
-            if (!this._ipFromProxy && mapsIPv4Peer(this.app)) {
-                ip = "::ffff:" + ip;
-            }
         } else if (rawIp.byteLength === 16) {
             const bytes = new Uint8Array(rawIp);
             if (isMappedIPv4(bytes)) {

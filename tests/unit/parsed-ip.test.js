@@ -117,6 +117,8 @@ test("only the whole ::ffff:0:0/96 prefix takes the shortcut", () => {
 
 test("the window that reads the address up front closes and stays closed", async () => {
     const express = require("../../src/index.js");
+    const { loopbackPeer } = require("./loopback.js");
+    const expected = await loopbackPeer();
     const app = express();
     // reads req.ip while the response is still open, which is the case that needs nothing read
     // ahead of time: an app that asks after the response is what flips needsIpAfterResponse
@@ -124,10 +126,10 @@ test("the window that reads the address up front closes and stays closed", async
     const port = await new Promise((resolve) => app.listen(0, () => resolve(app.address().port)));
     try {
         for (let i = 0; i < 120; i++) {
-            // dialled by address, not by name: "localhost" resolves to ::1 here and the loopback
-            // this checks is the mapped IPv4 one
+            // dialled by address, not by name: "localhost" resolves to ::1 where there is one, and
+            // the loopback this checks is the IPv4 one, in whichever form this host reports it
             const res = await fetch(`http://127.0.0.1:${port}/`);
-            assert.equal(await res.text(), "::ffff:127.0.0.1");
+            assert.equal(await res.text(), expected);
         }
         // saturated rather than wrapped: the counter this replaced went round at 100000 and let a
         // hundred requests pay again for a discovery made long before
@@ -140,7 +142,9 @@ test("the window that reads the address up front closes and stays closed", async
 
 test("four bytes are an IPv4 peer, and anything else is no address at all", () => {
     const four = new Uint8Array([203, 0, 113, 7]);
-    // the app is not bound to an IPv4 address here, so node would report the mapped form
-    assert.strictEqual(ipOf(four), "::ffff:203.0.113.7");
+    // plain, and nothing is guessed on top: four bytes are what a peer of an IPv4 socket arrives
+    // as, and node writes that one plain too. A dual stack socket hands its IPv4 peers over as the
+    // mapped sixteen above, so the width has already said which form this is
+    assert.strictEqual(ipOf(four), "203.0.113.7");
     assert.strictEqual(ipOf(new Uint8Array(0)), undefined);
 });
