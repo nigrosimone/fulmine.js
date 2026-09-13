@@ -208,6 +208,10 @@ module.exports = class Response extends LazyWritable {
         this.req = req;
         this._res = res;
         this.headersSent = false;
+        // whether a body goes out, decided from the method that arrived, as node decides it when
+        // it builds its ServerResponse: a middleware that rewrites req.method afterwards, which
+        // method-override does, changes what the router matches and not what the wire carries
+        this._hasBody = req._isHead !== true;
         this.app = app;
         this.locals = new NullObject();
         this.finished = false;
@@ -812,7 +816,7 @@ module.exports = class Response extends LazyWritable {
         } else {
             // a Buffer goes to uWS as the view it is: copying it into a fresh ArrayBuffer was
             // an allocation per body, and uWS reads the view's own offset and length
-            if (this.req.method === "HEAD") {
+            if (!this._hasBody) {
                 const length = Buffer.byteLength(data ?? "");
                 this.headers["content-length"] = String(length);
                 this._res.endWithoutBody(length, closeConnection);
@@ -961,6 +965,15 @@ module.exports = class Response extends LazyWritable {
             this.headers["content-length"] = "0";
             delete this.headers["transfer-encoding"];
             body = "";
+        }
+        // express's send reads req.method here and hands node's end() nothing for a HEAD, the
+        // length already set, and node frames what it is handed: a GET a middleware made a HEAD
+        // answers its length and no body. end() alone decides by the wire, see _hasBody
+        if (this.req.method === "HEAD") {
+            if (this.statusCode !== 204 && this.statusCode !== 304) {
+                this.headers["content-length"] = String(Buffer.byteLength(body));
+            }
+            return this.end();
         }
         return this.end(body);
     }
