@@ -8,7 +8,12 @@ const path = require("path");
 const net = require("node:net");
 const test = require("node:test");
 const childProcess = require("node:child_process");
-const exec = require("util").promisify(childProcess.exec);
+// execFile and not exec: exec goes through a shell, so the node process is the shell's child and
+// the SIGKILL below reaches the shell alone. A timed-out arm then kept its port for the rest of
+// the run, and every file after it waited the budget in waitForFreePorts and failed against a
+// server that was still answering. Measured on 2026-09-13: the shell died, node did not, and the
+// coverage job spent thirty minutes failing every test after the first slow one.
+const execFile = require("util").promisify(childProcess.execFile);
 const assert = require("node:assert");
 
 const TEST_TIMEOUT = 60000;
@@ -41,24 +46,36 @@ function portBusy(port) {
     });
 }
 
-/** Waits until nothing is listening on these ports, so a run cannot reach the run before it. */
+/**
+ * Waits until nothing is listening on these ports, so a run cannot reach the run before it.
+ *
+ * @param {number[]} ports
+ * @returns {Promise<number[]>} the ports still answering when the wait ran out, which is a server
+ *   an earlier file left behind rather than one still shutting down
+ */
 async function waitForFreePorts(ports) {
+    const stillBusy = [];
     for (const port of ports) {
-        for (let step = 0; step < PORT_WAIT_STEPS; step++) {
+        let step = 0;
+        for (; step < PORT_WAIT_STEPS; step++) {
             if (!(await portBusy(port))) {
                 break;
             }
             await new Promise((resolve) => setTimeout(resolve, PORT_WAIT_MS));
         }
+        if (step === PORT_WAIT_STEPS) {
+            stillBusy.push(port);
+        }
     }
+    return stillBusy;
 }
 
 // see tests/win-exit-delay.cjs: without it every test crashes on exit under Node 24+ on Windows
-const NODE_ARGS = process.platform === "win32" ? `--require "${path.join(__dirname, "win-exit-delay.cjs")}" ` : "";
+const NODE_ARGS = process.platform === "win32" ? ["--require", path.join(__dirname, "win-exit-delay.cjs")] : [];
 // what a file asking for it gets, see tests/inspect-preload.cjs
-const INSPECT_ARG = `--require "${path.join(__dirname, "inspect-preload.cjs")}" `;
+const INSPECT_ARG = ["--require", path.join(__dirname, "inspect-preload.cjs")];
 // the reference arm of a --self run, see tests/generic-preload.cjs
-const GENERIC_ARG = `--require "${path.join(__dirname, "generic-preload.cjs")}" `;
+const GENERIC_ARG = ["--require", path.join(__dirname, "generic-preload.cjs")];
 
 // --self replaces the Express arm with a second run of this framework, with the optimizer off.
 // Every file then answers the question the corpus was not written for: does µWS answering by itself
@@ -168,13 +185,29 @@ for (const testCategory of testCategories) {
                     // 2026-08-04); the second timeout is a real hang and fails with the arm's name.
                     const ports = portsOf(testCode);
                     const execTest = async (module) => {
-                        await waitForFreePorts(ports);
-                        const generic = module === "generic" ? GENERIC_ARG : "";
-                        const command = `node ${NODE_ARGS}${marker === "INSPECT" ? INSPECT_ARG : ""}${generic}"${testPath}"`;
+                        const stillBusy = await waitForFreePorts(ports);
+                        // Something from an earlier file is still answering there, and this arm is
+                        // about to be compared against it. Said out loud rather than waited out in
+                        // silence: it is one cause with one cure, and a run that hides it reads as
+                        // every test after the first one failing for no reason
+                        if (stillBusy.length) {
+                            console.error(
+                                `${stillBusy.join(", ")} still answering after ${(PORT_WAIT_STEPS * PORT_WAIT_MS) / 1000}s, ` +
+                                    `so ${module} runs against whatever holds them: ${testPath}`
+                            );
+                        }
+                        const args = [
+                            ...NODE_ARGS,
+                            ...(marker === "INSPECT" ? INSPECT_ARG : []),
+                            ...(module === "generic" ? GENERIC_ARG : []),
+                            testPath
+                        ];
                         const options = { maxBuffer: 1024 * 1024 * 100, timeout: TEST_TIMEOUT, killSignal: "SIGKILL" };
                         for (let attempt = 1; ; attempt++) {
                             try {
-                                return (await exec(command, options)).stdout;
+                                // the same node that runs this, rather than whichever one a PATH
+                                // lookup would find
+                                return (await execFile(process.execPath, args, options)).stdout;
                             } catch (error) {
                                 // maxBuffer also kills the child, and retrying an output that big
                                 // would only mislabel it as a hang
