@@ -1167,7 +1167,9 @@ module.exports = class Router extends EventEmitter {
             /** @param {unknown} [err] */
             const nextParam = (err) => {
                 if (err) {
-                    if (err !== "route") {
+                    // an error already in flight stays the one in flight: express reaches a mount's
+                    // param callbacks with it pending and goes on with next(layerError || err)
+                    if (err !== "route" && !req._error) {
                         req._error = err;
                         req._errorKey = route.routeKey;
                         req._errorGroup = route.group;
