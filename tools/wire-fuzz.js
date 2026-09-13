@@ -50,8 +50,8 @@ function mulberry32(seed) {
 const CRLF = "\r\n";
 // a Connection header asking for the close, bare or one token of a list, see closeThenPipelined
 const CONNECTION_CLOSE = /connection:[^\r\n]*close/i;
-// a Content-Length whose value is followed by a tab, alone or among spaces, see trailingTabTrimmed
-const LENGTH_WITH_TRAILING_TAB = /^(content-length:[ \t]*\d+)[ \t]*\t[ \t]*(?=\r?\n)/im;
+// the two framing headers, captured as name and value, see canonicalisedByUws
+const FRAMING_HEADER = /^(content-length|transfer-encoding):([^\r\n]*)(?=\r?\n)/gim;
 // what a well-formed request looks like, appended after a malformed one so a desync is visible: if
 // the server framed the first request differently from the client, this is read as a request of its
 // own and served, and that is exactly what smuggling delivers
@@ -239,19 +239,36 @@ function isCloseThenPipelined(c, nodeCount, fulCount) {
 }
 
 /**
- * The same bytes with the tab after the one Content-Length value taken out, or null when that is
- * not the shape of these bytes: two lengths, or none, or one with nothing after the digits but
- * spaces, is some other case and gets no control.
+ * The same bytes with the framing headers written the way µWS reads them, or null when that is the
+ * way they are written already and there is nothing to control against.
+ *
+ * µWS trims the OWS around every header value before anything looks at it, and reads a
+ * Transfer-Encoding as chunked by the coding name alone, so a tab after a Content-Length and a
+ * parameter after "chunked" are both gone by the time this project is handed the header. Only
+ * those two rewrites, and only on a single header of each name: a value that is not digits, a
+ * coding that is not chunked, and two lengths disagreeing are all some other case and get no
+ * control. A rewrite that changes nothing answers null, which is every ordinary request.
  *
  * @param {string} bytes
  * @returns {string|null}
  */
-function withoutTrailingTabInLength(bytes) {
-    const lengths = bytes.match(/^content-length:/gim);
-    if (!lengths || lengths.length !== 1 || !LENGTH_WITH_TRAILING_TAB.test(bytes)) {
+function canonicalFramingBytes(bytes) {
+    const seen = new Map();
+    const rewritten = bytes.replace(FRAMING_HEADER, (whole, name, value) => {
+        const lowered = name.toLowerCase();
+        seen.set(lowered, (seen.get(lowered) ?? 0) + 1);
+        const trimmed = value.trim();
+        if (lowered === "content-length") {
+            return /^\d+$/.test(trimmed) ? `${name}: ${trimmed}` : whole;
+        }
+        // the coding name on its own, which is what the comparison against "chunked" is made on
+        const coding = trimmed.split(";")[0].trim();
+        return coding.toLowerCase() === "chunked" ? `${name}: ${coding}` : whole;
+    });
+    if (rewritten === bytes || [...seen.values()].some((count) => count > 1)) {
         return null;
     }
-    return bytes.replace(LENGTH_WITH_TRAILING_TAB, "$1");
+    return rewritten;
 }
 
 /**
@@ -420,7 +437,7 @@ async function main() {
 
     let findings = 0;
     let stricter = 0;
-    let trimmedTabs = 0;
+    let canonicalised = 0;
 
     for (let round = 0; round < rounds; round++) {
         const seed = (baseSeed + round) >>> 0;
@@ -459,29 +476,29 @@ async function main() {
         // request rather than refusing it.
         const closeThenPipelined = isCloseThenPipelined(c, nodeServed.length, fulServed.length);
 
-        // The other shape that is µWS's, decided 2026-09-13. A Content-Length with a tab after the
-        // value: node refuses the message with 400, since llhttp takes a trailing space there and
-        // not a trailing tab, while µWS trims the whitespace as RFC 9110 allows and hands this
-        // project "11", the value a clean request carries, so there is no byte left here to refuse
-        // on. A bare µWS application serves the same requests out of these bytes, and uNetworking
-        // keeps header handling on the caller's side (uWebSockets.js#1299). Narrow, and checked
-        // rather than assumed each time: it takes node having served nothing, and node then
-        // reading the same requests out of the same bytes with the tab gone that this framework
-        // read with it in. Anything µWS made of the bytes beyond trimming would fail that control
-        let trailingTabTrimmed = false;
-        if ((desync || morePermissive) && !closeThenPipelined && nodeServed.length === 0) {
-            const trimmed = withoutTrailingTabInLength(c.bytes);
-            if (trimmed !== null) {
-                await exchange(nodeSrv.port, trimmed, -1);
+        // The other shape that is µWS's, decided 2026-09-13: a framing value spelled a way µWS
+        // reads through and llhttp refuses. `Content-Length: 11\t` and `Transfer-Encoding:
+        // chunked;a=b` are both of them, and by the time either reaches this project the tab and
+        // the parameter are gone, so the value in hand is the one a clean request carries and
+        // there is no byte left here to refuse on. See HttpParser.h, which trims the OWS around
+        // every value and then compares the coding name against "chunked"; uNetworking keeps
+        // header handling on the caller's side (uWebSockets.js#1299), and the caller never sees
+        // these. Checked rather than assumed, every time it fires: the same bytes written the way
+        // µWS reads them go back to node, which has to read the requests this framework read, or
+        // differ only by the shape above. Anything µWS made of the bytes beyond that fails the
+        // control and is reported as before
+        let canonicalisedByUws = false;
+        if ((desync || morePermissive) && !closeThenPipelined) {
+            const canonical = canonicalFramingBytes(c.bytes);
+            if (canonical !== null) {
+                await exchange(nodeSrv.port, canonical, -1);
                 const control = await drainLog(nodeSrv.port);
-                // agreeing outright, or differing only by the shape above, which is the same
-                // parser's doing and already excluded on its own
-                trailingTabTrimmed =
+                canonicalisedByUws =
                     sameRequests(control, fulServed) || isCloseThenPipelined(c, control.length, fulServed.length);
             }
         }
 
-        if ((desync || morePermissive || bodyDiffers) && !closeThenPipelined && !trailingTabTrimmed) {
+        if ((desync || morePermissive || bodyDiffers) && !closeThenPipelined && !canonicalisedByUws) {
             findings++;
             console.log(`\n=== case ${round}, seed ${seed} (replay: --seed ${seed} --rounds 1)`);
             console.log(`  ${c.label || "(plain)"}${c.hasSmuggled ? " +smuggled" : ""}`);
@@ -496,11 +513,11 @@ async function main() {
                   ? "the same requests, with a body framed differently"
                   : "served what node refused";
             console.log(`  why:     ${why}`);
-        } else if (trailingTabTrimmed) {
-            trimmedTabs++;
+        } else if (canonicalisedByUws) {
+            canonicalised++;
             if (verbose) {
                 console.log(
-                    `  [trimmed tab] case ${round}: node refused, and served the same ${fulServed.length} without the tab  ${c.label}`
+                    `  [canonicalised] case ${round}: node read the same ${fulServed.length} from the bytes as µWS spells them  ${c.label}`
                 );
             }
         } else if (fulServed.length < nodeServed.length) {
@@ -519,8 +536,8 @@ async function main() {
     if (!verbose && stricter) {
         console.log("those are not reported: refusing more than node is safe, --verbose lists them");
     }
-    if (trimmedTabs) {
-        console.log(`${trimmedTabs} where µWS trimmed a tab off a Content-Length node refuses, see trailingTabTrimmed`);
+    if (canonicalised) {
+        console.log(`${canonicalised} where µWS read a framing value node refuses, see canonicalisedByUws`);
     }
     nodeSrv.server.close();
     fulSrv.server.close();
