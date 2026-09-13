@@ -104,8 +104,9 @@ function isMappedIPv4(bytes) {
 
 /**
  * Whether node would report an IPv4 peer of this app in mapped form, "::ffff:a.b.c.d". Node maps it
- * whenever the listener is dual stack, which is every listen() without an IPv4 address. uWS already
- * gives mapped peers as sixteen bytes, four bytes come only from a v4 listener or the node shim.
+ * whenever the listener is dual stack, which is every listen() without an IPv4 address. Only the
+ * address invented after the response has ended asks: every address actually read says which form
+ * it is in by its width, uWS handing a mapped peer over as sixteen bytes and a plain one as four.
  *
  * @param {import("./application.js").Application} app the application the request arrived at
  * @returns {boolean}

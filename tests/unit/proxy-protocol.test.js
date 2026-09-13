@@ -11,6 +11,7 @@ const assert = require("node:assert");
 const net = require("node:net");
 
 const express = require("../../src/index.js");
+const { loopbackPeer } = require("./loopback.js");
 
 /** PROXY protocol v2 over TCP/IPv4: 203.0.113.7:4321 -> 10.0.0.1:80 */
 function preambleV2() {
@@ -56,24 +57,26 @@ function serve(trusted) {
 }
 
 test("the address a proxy declares is ignored unless the application asked for it", async () => {
+    const own = await loopbackPeer();
     const { port, close } = await serve(false);
     try {
         // the same preamble a load balancer would send, from a client that is not one
-        assert.equal(await ask(port, true), "::ffff:127.0.0.1");
-        assert.equal(await ask(port, false), "::ffff:127.0.0.1");
+        assert.equal(await ask(port, true), own);
+        assert.equal(await ask(port, false), own);
     } finally {
         close();
     }
 });
 
 test("with the setting on, req.ip is the address the preamble carried", async () => {
+    const own = await loopbackPeer();
     const { port, close } = await serve(true);
     try {
         // plain, not ::ffff:203.0.113.7: the mapped form belongs to the dual stack socket, and this
         // address never came through one
         assert.equal(await ask(port, true), "203.0.113.7");
         // and a connection with no preamble still reads its own address rather than an empty one
-        assert.equal(await ask(port, false), "::ffff:127.0.0.1");
+        assert.equal(await ask(port, false), own);
     } finally {
         close();
     }

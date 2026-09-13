@@ -39,21 +39,30 @@ function addressToBytes(address) {
     if (!address) {
         return new ArrayBuffer(0);
     }
-    // node reports an IPv4 client on a dual stack socket as ::ffff:127.0.0.1, and the address that
-    // belongs in req.ip is the v4 one
-    const mapped = address.startsWith("::ffff:") ? address.slice(7) : address;
-    if (mapped.includes(".")) {
-        const parts = mapped.split(".");
+    // node reports an IPv4 client on a dual stack socket as ::ffff:127.0.0.1 and one on an IPv4
+    // socket as 127.0.0.1, which is the difference req.ip reads back out of the width: uWS hands
+    // the mapped peer over as the sixteen bytes, the plain one as four. Keeping node's own form
+    // rather than flattening both to four is what makes the shim answer what node answers,
+    // whichever socket accepted the connection
+    const mapped = address.startsWith("::ffff:") && address.includes(".");
+    const dotted = mapped ? address.slice(7) : address;
+    if (dotted.includes(".")) {
+        const parts = dotted.split(".");
         if (parts.length !== 4) {
             return new ArrayBuffer(0);
         }
-        const bytes = new Uint8Array(4);
+        const bytes = new Uint8Array(mapped ? 16 : 4);
+        const offset = mapped ? 12 : 0;
+        if (mapped) {
+            bytes[10] = 0xff;
+            bytes[11] = 0xff;
+        }
         for (let i = 0; i < 4; i++) {
             const value = Number(parts[i]);
             if (!Number.isInteger(value) || value < 0 || value > 255) {
                 return new ArrayBuffer(0);
             }
-            bytes[i] = value;
+            bytes[offset + i] = value;
         }
         return bytes.buffer;
     }
