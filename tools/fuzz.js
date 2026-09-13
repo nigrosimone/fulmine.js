@@ -2283,6 +2283,9 @@ function routeToSource(owner, route) {
 ` +
             `${route.id}.${route.method}(${handler});
 ` +
+            // the second registration the builder adds beside the verb, which the printed case left
+            // out: without it a divergence that only all() causes reads as one the verb causes
+            (route.method === "all" ? "" : `${route.id}.all(<the same, id ${route.id}-all>);\n`) +
             `${owner}.use(${routePath}, (req, res, next) => ${route.id}.dispatch(req, res, next));`
         );
     }
