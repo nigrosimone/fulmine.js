@@ -91,9 +91,12 @@ test("getFullMountpath answers an empty pattern for a request that entered no mo
         seen = app.getFullMountpath(req);
         res.end("ok");
     });
-    const server = app.listen(38417);
+    // a free port: the fixed one this used to bind was taken on a CI runner
+    const server = await new Promise((resolve) => {
+        const listening = app.listen(0, () => resolve(listening));
+    });
     try {
-        await fetch("http://127.0.0.1:38417/x").then((response) => response.text());
+        await fetch(`http://127.0.0.1:${app.address().port}/x`).then((response) => response.text());
     } finally {
         server.close();
     }
