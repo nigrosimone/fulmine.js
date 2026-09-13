@@ -20,9 +20,15 @@ const express = require("../../src/index.js");
  * @returns {Promise<{url: string, close: () => Promise<void>}>}
  */
 function serve(listener, host = "127.0.0.1") {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
         const server = http.createServer(listener);
+        // a host this machine cannot bind fails through the event rather than by throwing, and the
+        // test that asks for the v6 loopback means to skip when there is none: without this it
+        // never sees the refusal and the run dies on an unhandled 'error' instead
+        const refused = (/** @type {Error} */ err) => reject(err);
+        server.once("error", refused);
         server.listen(0, host, () => {
+            server.off("error", refused);
             const address = /** @type {any} */ (server.address());
             const shownHost = host.includes(":") ? `[${host}]` : host;
             resolve({
