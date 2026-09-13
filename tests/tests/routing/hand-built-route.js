@@ -52,6 +52,14 @@ mount("/verbs", (route) => {
     route.get((req, res) => res.send("got"));
     route.post((req, res) => res.send("posted"));
 });
+// all() marks the route rather than naming every verb: express writes _all into the methods map,
+// which is the map req.route hands to whoever reads it and the one an OPTIONS reply is built from
+const marks = (req, res) => res.json({ methods: req.route.methods, verbs: req.route._methods() });
+mount("/marked", (route) => {
+    route.get(marks);
+    route.all(marks);
+});
+mount("/only-all", (route) => route.all(marks));
 
 app.use((req, res) => res.status(404).send("none"));
 app.use((err, req, res, next) => res.status(500).send("app handler: " + err.message));
@@ -68,7 +76,12 @@ const asks = [
     ["GET", "/verbs"],
     ["POST", "/verbs"],
     ["HEAD", "/verbs"],
-    ["PUT", "/verbs"]
+    ["PUT", "/verbs"],
+    // the verb's own handler answers, and the one all() added answers everything else
+    ["GET", "/marked"],
+    ["PUT", "/marked"],
+    ["GET", "/only-all"],
+    ["DELETE", "/only-all"]
 ];
 
 app.listen(13333, async () => {
