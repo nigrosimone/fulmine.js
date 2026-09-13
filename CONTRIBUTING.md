@@ -171,8 +171,9 @@ decide who fixes it:
   the static files, the cookies. A request that reaches a route it must not reach, or a header of
   one request affecting another, is a bug in this repository whatever µWS did with the bytes.
 
-`fuzz:wire` already carries one documented exception, a pipelined request after a
-`Connection: close`, which µWS has parsed out of the buffer before this project can close anything.
+`fuzz:wire` already carries two documented exceptions: a pipelined request after a
+`Connection: close`, which µWS has parsed out of the buffer before this project can close anything,
+and a `Content-Length` with a tab after the value, which µWS trims before this project sees it.
 Add another only with the same evidence: a bare µWS application doing the same thing.
 
 ### The fuzzers
