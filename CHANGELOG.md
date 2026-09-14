@@ -1,5 +1,14 @@
 # Changelog
 
+## [5.19.9](https://github.com/nigrosimone/fulmine.js/compare/v5.19.8...v5.19.9) (2026-09-13)
+
+### Bug Fixes
+
+* **request:** report an IPv4 peer in the form the socket it arrived on gives it ([c9438ee](https://github.com/nigrosimone/fulmine.js/commit/c9438ee9107de652e0298b4f99dcc7231c61601b))
+* **response:** end() sends a body by the method that arrived, send() by req.method as it reads ([e61caa2](https://github.com/nigrosimone/fulmine.js/commit/e61caa2def1faa089dec1af2e9a6cc64e2031595))
+* **route:** mark a hand built Route _all when all() registers a handler, as express does ([e434def](https://github.com/nigrosimone/fulmine.js/commit/e434def519e38368e0a089128e4e6fe2be2dfdbf))
+* **router:** keep the error in flight over one a param callback raises on the way into a mount ([56ea3a0](https://github.com/nigrosimone/fulmine.js/commit/56ea3a0f43ff3f801f729df8ebf1e55fdeaf2c6e))
+
 ## [5.19.8](https://github.com/nigrosimone/fulmine.js/compare/v5.19.7...v5.19.8) (2026-09-11)
 
 ### Bug Fixes

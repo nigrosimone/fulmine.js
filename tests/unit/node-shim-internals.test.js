@@ -12,14 +12,20 @@ test("addressToBytes answers bytes for real addresses and nothing for malformed 
     assert.equal(addressToBytes(undefined).byteLength, 0);
     assert.equal(addressToBytes("").byteLength, 0);
 
-    // the v4 forms, mapped and plain
+    // the v4 forms keep the width they came in as, which is how req.ip tells the two apart:
+    // four bytes for a peer of an IPv4 socket, the mapped sixteen for one of a dual stack socket
     assert.deepEqual([...new Uint8Array(addressToBytes("1.2.3.4"))], [1, 2, 3, 4]);
-    assert.deepEqual([...new Uint8Array(addressToBytes("::ffff:127.0.0.1"))], [127, 0, 0, 1]);
+    assert.deepEqual(
+        [...new Uint8Array(addressToBytes("::ffff:127.0.0.1"))],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 127, 0, 0, 1]
+    );
 
     // malformed v4: wrong part count, out-of-range octet, not a number
     assert.equal(addressToBytes("1.2.3").byteLength, 0);
     assert.equal(addressToBytes("1.2.3.999").byteLength, 0);
     assert.equal(addressToBytes("1.2.3.x").byteLength, 0);
+    // and the same octets behind the mapped prefix, which is read as the v4 tail it is
+    assert.equal(addressToBytes("::ffff:1.2.3.999").byteLength, 0);
 
     // v6: the "::" expands to however many zero groups are missing
     const loopback = new DataView(addressToBytes("::1"));

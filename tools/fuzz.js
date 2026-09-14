@@ -2266,9 +2266,11 @@ function withRoute(plan, spot, route) {
  * @returns {string}
  */
 function routeToSource(owner, route) {
-    const handler = route.program
-        ? `${route.program.params} => { ${route.program.statements.join("; ")}; }`
-        : route.kind;
+    // the lead runs first on the same registration, and it was left out of the printed case:
+    // a rewrite of req.url or req.method there is what decided the answer, not the handler
+    const lead = route.lead ? `lead-${route.lead}, ` : "";
+    const handler =
+        lead + (route.program ? `${route.program.params} => { ${route.program.statements.join("; ")}; }` : route.kind);
     const routePath =
         typeof route.path === "string" ? JSON.stringify(route.path) : `/${route.path.regex}/${route.path.flags}`;
     if (route.shape === "route") {
@@ -2283,6 +2285,9 @@ function routeToSource(owner, route) {
 ` +
             `${route.id}.${route.method}(${handler});
 ` +
+            // the second registration the builder adds beside the verb, which the printed case left
+            // out: without it a divergence that only all() causes reads as one the verb causes
+            (route.method === "all" ? "" : `${route.id}.all(<the same, id ${route.id}-all>);\n`) +
             `${owner}.use(${routePath}, (req, res, next) => ${route.id}.dispatch(req, res, next));`
         );
     }
