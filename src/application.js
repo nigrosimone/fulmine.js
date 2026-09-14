@@ -62,6 +62,9 @@ class FSWorker {
         this.worker = new Worker(path.join(__dirname, "worker.js"));
 
         this.worker.on("message", (message) => {
+            // node speaks on this channel too: under --watch a worker reports the files it loaded
+            // as {"watch:import": [...]}, which carries no key of ours
+            if (workerTasks[message.key] === undefined) return;
             this.busy = false;
             if (message.err) {
                 workerTasks[message.key].reject(new Error(message.err));
