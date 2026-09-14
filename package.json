@@ -1,7 +1,7 @@
 {
     "name": "fulmine.js",
     "version": "5.19.8",
-    "description": "Drop-in Express 5 replacement on uWebSockets.js. Your existing middleware keeps working.",
+    "description": "Drop-in Express 5 replacement on uWebSockets.js, up to 20x faster. Same API, your middleware and framework keep working.",
     "main": "src/index.js",
     "exports": {
         ".": {
@@ -64,16 +64,28 @@
     "keywords": [
         "express",
         "express5",
+        "express-alternative",
+        "drop-in replacement",
         "fast",
+        "fastest",
+        "performance",
+        "web framework",
         "http",
         "http server",
         "https",
         "https server",
+        "router",
+        "middleware",
+        "rest api",
         "uwebsockets",
         "uws",
         "websocket",
         "websockets",
-        "performance"
+        "nestjs",
+        "angular ssr",
+        "nextjs",
+        "cluster",
+        "typescript"
     ],
     "types": "src/types.d.ts",
     "author": "Nigro Simone",

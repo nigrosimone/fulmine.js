@@ -26,6 +26,6 @@ node websocket.js
 | [proxy-protocol.js](./proxy-protocol.js)             | `trust proxy protocol`, the PROXY preamble, and why it is off by default                                        |
 | [graceful-shutdown.js](./graceful-shutdown.js)       | the app answering as an `http.Server`, and what is behind that surface                                          |
 
-The readme's [Performance tips](../README.md#performance-tips) is the prose these go with, and
-[Differences from Express](../README.md#differences-from-express) is what to read before assuming
+The readme's [Performance tips](../docs/performance.md#performance-tips) is the prose these go with, and
+[Differences from Express](../docs/differences.md) is what to read before assuming
 something here behaves as it does there.
