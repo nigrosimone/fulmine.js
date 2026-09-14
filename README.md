@@ -40,6 +40,13 @@ const express = require("fulmine.js"); // instead of require("express")
 ## Quick start
 
 ```sh
+npx fulmine.js create my-app   # a server, a package.json and a Dockerfile that works, --ts for TypeScript
+cd my-app && npm install && npm run dev
+```
+
+Or in a project you already have:
+
+```sh
 npm install fulmine.js
 ```
 

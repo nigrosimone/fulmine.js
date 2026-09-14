@@ -37,6 +37,11 @@ limitations under the License.
 // The two things a project needs that are a line in a JSON file rather than a specifier in a
 // source file: the package manager substitution, for a framework that requires express in its own
 // code, and angular.json's externalDependencies. See src/adopt.js.
+//
+// npx fulmine create <dir>
+//
+// A new project for whoever has nothing to migrate: a server, a package.json and the Dockerfile
+// that works. See src/create.js.
 
 const fs = require("fs");
 const path = require("path");
@@ -45,6 +50,7 @@ const acorn = require("acorn");
 const { collectRoutes } = require("./testing.js");
 const { verify } = require("./verify.js");
 const { override, angular } = require("./adopt.js");
+const { create } = require("./create.js");
 
 /** @typedef {import("./application.js").Application} Application */
 /** @typedef {import("./router-utils.js").RouteEntry} RouteEntry */
@@ -910,8 +916,13 @@ function main(argv) {
     if (command === "angular") {
         return angular(argv.slice(1));
     }
+    if (command === "create") {
+        return create(argv.slice(1));
+    }
     if (command !== "migrate") {
         console.log(`Usage:
+  npx ${TO} create <dir>       start a new project: a server, a package.json and a Dockerfile that
+                               works, --ts for TypeScript
   npx ${TO} migrate [dir]      rewrite require("${FROM}") and import from "${FROM}" to "${TO}"
   npx ${TO} override [dir]     answer ${FROM} with this package for the whole dependency tree, for
                                when a framework requires ${FROM} in its own code and not in yours
