@@ -30,13 +30,16 @@ cd integrations && node build.js --force  # rebuild the applications from scratc
 | [sveltekit.js](./cases/sveltekit.js)       | the handler `@sveltejs/adapter-node` builds                                                       |
 | [react-router.js](./cases/react-router.js) | React Router v7 through `@react-router/express`                                                   |
 | [next.js](./cases/next.js)                 | Next.js as a custom server, `next().getRequestHandler()`                                          |
+| [tsoa.js](./cases/tsoa.js)                 | the routes tsoa generates from a decorated controller, `RegisterRoutes(app)`, validation included |
 
-The first four are libraries: a case requires them and runs. The last four compile an application
+The first four are libraries: a case requires them and runs. The other five compile an application
 first, so each keeps a small one in [`apps/`](./apps) and [`build.js`](./build.js) builds it before
-the case runs. A build already there and newer than its sources is skipped, so running one case
+the case runs. tsoa is the odd one: what it compiles is not a page but the Express routes themselves,
+generated from a controller written with decorators, so the case is the generated code calling into
+the request and response as tsoa wrote it. A build already there and newer than its sources is skipped, so running one case
 twice costs nothing.
 
-Between them the four cover both halves of the surface. Astro, SvelteKit and Next hand the node
+Between them the page renderers cover both halves of the surface. Astro, SvelteKit and Next hand the node
 request and response to a handler that reads the stream and writes with `writeHead`; React Router's
 adapter is written for Express and goes through `res.status`, `res.set` and the response stream. The
 `writeHead` bug above was only ever going to be found by the first kind.

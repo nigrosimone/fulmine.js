@@ -223,17 +223,13 @@ Almost all middlewares that are compatible with Express are compatible with Fulm
 - ✅ [better-sse](https://www.npmjs.com/package/better-sse)
 - ✅ [supertest](https://www.npmjs.com/package/supertest)
 
-[tsoa](https://github.com/lukeautry/tsoa) works too, but it is not in the suite above: it resolves
-`express` itself, so testing it here needs a dependency override rather than the one-line swap
-everything else takes.
-
 ## Tested frameworks
 
 The list above is middlewares. A framework built on Express is a much larger user of the Express
 surface than any application is, so those have a suite of their own, in
 [`integrations/`](../integrations): the same application served twice, once on Express and once here,
-with the two outputs compared byte for byte. The four that render pages are built first, by that
-suite, so what is compared is what their own build produces.
+with the two outputs compared byte for byte. The four that render pages, and the tsoa routes, are
+built first by that suite, so what is compared is what their own build produces.
 
 - ✅ [NestJS](https://nestjs.com) through [`fulmine.js/nest`](./migrating.md#nestjs)
 - ✅ [Next.js](https://nextjs.org) as a custom server, `next().getRequestHandler()`
@@ -247,6 +243,8 @@ suite, so what is compared is what their own build produces.
   [`@modelcontextprotocol/sdk`](https://www.npmjs.com/package/@modelcontextprotocol/sdk) on the
   Streamable HTTP transport, with the body read off the stream or handed over by `express.json()`.
   Runnable: [`examples/mcp.js`](../examples/mcp.js)
+- ✅ [tsoa](https://tsoa-project.github.io/docs/): the routes `tsoa spec-and-routes` generates from a decorated
+  controller, registered with `RegisterRoutes(app)`, validation errors included
 - ✅ [Angular SSR](./migrating.md#angular-ssr), which is an ordinary Express `server.ts` plus one line of build
   configuration
 

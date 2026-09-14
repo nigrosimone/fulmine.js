@@ -70,7 +70,7 @@ only proof. The same holds for any new oracle: put a known bug back and confirm 
 a check that cannot fail is worse than no check.
 
 `npm run test:integrations` is not in that list because it needs its own install,
-`npm run integrations:install`, and builds four applications the first time. Run it when you touch
+`npm run integrations:install`, and builds five applications the first time. Run it when you touch
 anything a framework sits on: the request and response surface, the body parsers, `writeHead`, the
 header methods. Both bugs it has found so far were in code the comparison suite covers well and
 applications reach differently from frameworks.
@@ -142,10 +142,10 @@ internals. `app.close()`, `res.aborted` and the rest of the `http.Server` surfac
 readme and in the runtime for months with nothing in the types, which is what that test is for.
 
 `npm run test:integrations` is the comparison suite again, with a framework on top. Nest, Next,
-Astro, SvelteKit, React Router, Apollo and tRPC each serve one application, once on Express and once
+Astro, SvelteKit, React Router, Apollo, tRPC and tsoa each serve one application, once on Express and once
 here, and the two outputs have to match. It lives in [`integrations/`](./integrations) rather than in
 `tests/` because those dependencies are frameworks rather than middlewares: heavy, installed on their
-own, four of them needing their own build to run first, and none of it something `npm test` should
+own, five of them needing their own build to run first, and none of it something `npm test` should
 ask for. Read [`integrations/README.md`](./integrations/README.md) before adding a case.
 
 It earns its keep. Two runs, two real bugs, both in the gap a hand-written test does not reach:

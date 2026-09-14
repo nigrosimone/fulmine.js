@@ -38,3 +38,6 @@ integrations/apps/*/.astro/
 integrations/apps/*/.svelte-kit/
 integrations/apps/*/.react-router/
 integrations/apps/*/package-lock.json
+
+# what `tsoa spec-and-routes` writes next to the controller, before tsc compiles it into build/
+integrations/apps/tsoa/src/routes.ts

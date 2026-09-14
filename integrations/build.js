@@ -1,8 +1,8 @@
-// Builds the applications under apps/, which four of the cases need before they can serve anything.
+// Builds the applications under apps/, which five of the cases need before they can serve anything.
 //
 // Nest, Apollo and tRPC are libraries: a case requires them and runs. Astro, SvelteKit, React Router
-// and Next are frameworks that compile an application first, and what mounts on Express is the
-// thing their build produces. So those four keep a small application in apps/ and this builds it.
+// and Next compile an application first, and what mounts on Express is the thing their build
+// produces; tsoa compiles the routes themselves. Each keeps a small application in apps/.
 //
 // A build is skipped when its output is already there and newer than every source that went into
 // it, which is what makes running one case twice cost nothing. `node build.js --force` rebuilds
@@ -19,7 +19,9 @@ const BUILDS = {
     astro: { output: "dist/server/entry.mjs", command: "astro build" },
     next: { output: ".next/BUILD_ID", command: "next build" },
     "react-router": { output: "build/server/index.js", command: "react-router build" },
-    sveltekit: { output: "build/handler.js", command: "vite build" }
+    sveltekit: { output: "build/handler.js", command: "vite build" },
+    // the routes tsoa writes from the controller, then compiled: the case requires the .js
+    tsoa: { output: "build/routes.js", command: "tsoa spec-and-routes && tsc" }
 };
 
 /** Directories a build writes into, which are not sources however new they are. */

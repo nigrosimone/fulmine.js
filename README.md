@@ -29,7 +29,7 @@ const express = require("fulmine.js"); // instead of require("express")
   the Express ecosystem keep working. Not "mostly": every test runs against real Express first and the
   output must match byte for byte, and Express 5's own test suite passes whole, 1130 of 1130.
 - **Your framework works too.** NestJS, Next.js, Astro, SvelteKit, React Router, Angular SSR, Apollo
-  Server, tRPC, MCP servers: each one is served twice in CI, on Express and on Fulmine, and compared.
+  Server, tRPC, tsoa, MCP servers: each one is served twice in CI, on Express and on Fulmine, and compared.
 - **Ranked in public.** See [HttpArena](https://www.http-arena.com/#sort=rps:-1&q=Js) and
   [web-frameworks](https://web-frameworks-benchmark.netlify.app/result?l=javascript), run on their
   hardware with their rules. No figure is copied here, the boards are the current ones.

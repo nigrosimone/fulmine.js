@@ -39,6 +39,8 @@
         "react-dom": "^19.2.8",
         "react-router": "^8.3.0",
         "svelte": "^5.56.9",
+        "tsoa": "^7.0.0-alpha.0",
+        "typescript": "^7.0.2",
         "vite": "^8.2.1"
     },
     "allowScripts": {

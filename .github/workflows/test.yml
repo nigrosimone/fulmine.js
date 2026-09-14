@@ -222,7 +222,7 @@ jobs:
             - name: Install the frameworks beside it
               run: npm run integrations:install
 
-            # builds the four applications that need building, then runs every case
+            # builds the applications that need building, then runs every case
             - name: Serve the same application on Express and on fulmine
               run: npm run test:integrations
 
