@@ -1,6 +1,6 @@
 # Deploying Fulmine.js
 
-Docker, a private npm registry, and a proxy in front. Requirements first: Node 22, 24 or 26 on x64 or arm64, glibc 2.38 or newer, and no Bun. `npx fulmine.js verify` checks all of it in one run.
+Docker, pnpm, a private npm registry, and a proxy in front. Requirements first: Node 22, 24 or 26 on x64 or arm64, glibc 2.38 or newer, and no Bun. `npx fulmine.js verify` checks all of it in one run.
 
 ## Docker
 
@@ -31,6 +31,37 @@ CMD ["node", "server.js"]
 ```
 
 A single-stage `node:26-trixie-slim` image works too if you `apt-get install -y git ca-certificates` before `npm ci`. Prebuilt binaries exist for x64 and arm64 on Linux, macOS and Windows, so nothing is compiled at install time either way.
+
+## pnpm
+
+pnpm 10.26 and later refuse a dependency of a dependency that comes from git, and µWebSockets.js is
+one, so on a clean project the install stops before anything runs:
+
+```
+$ pnpm add fulmine.js
+ERR_PNPM_EXOTIC_SUBDEP  Exotic dependency "uWebSockets.js" (resolved via git-repository) is not
+allowed in subdependencies when blockExoticSubdeps is enabled
+```
+
+Listing µWebSockets.js as your own dependency does not help, and neither does a `pnpm.overrides`
+that still points at git: the check is on the spec fulmine declares. Two ways through:
+
+- **Turn the check off**, in `pnpm-workspace.yaml` (pnpm 11 reads its settings there, not from
+  `.npmrc`). It is a security setting for the whole project, so know what you are turning off: any
+  dependency of a dependency may then come from git or a URL.
+
+    ```yaml
+    # pnpm-workspace.yaml
+    blockExoticSubdeps: false
+    ```
+
+- **Serve µWebSockets.js from a registry**, which is the next section, with the override written
+  under `pnpm.overrides` instead of `overrides`. Nothing is turned off, and this is the one that
+  also works where git dependencies are refused for other reasons.
+
+`npx fulmine.js verify` reads the lockfile, the `packageManager` field and both fixes, and says
+which case the project is in. There is an open request upstream to publish µWebSockets.js to npm,
+which would make this section go away: [uNetworking/uWebSockets.js#1312](https://github.com/uNetworking/uWebSockets.js/issues/1312).
 
 ## Behind a private registry
 

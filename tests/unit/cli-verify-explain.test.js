@@ -140,3 +140,32 @@ test("the usage text lists every command", () => {
         assert.match(out, new RegExp(`\\b${command}\\b`), command);
     }
 });
+
+test("verify fails on a pnpm project, since pnpm 10.26 refuses a git dependency of a dependency", () => {
+    const dir = fixture({ "package.json": "{}", "pnpm-lock.yaml": "lockfileVersion: '9.0'\n" });
+    const { code, out } = run(["verify", dir]);
+    assert.strictEqual(code, 1, "an install that fails stops everything after it");
+    assert.match(out, /NO {4}pnpm \(pnpm-lock\.yaml is here\) will refuse to install this/);
+    assert.match(out, /ERR_PNPM_EXOTIC_SUBDEP/);
+    assert.match(out, /blockExoticSubdeps: false/);
+});
+
+test("verify accepts pnpm when the setting is off, the version is older, or µWebSockets.js comes from a registry", () => {
+    const off = fixture({
+        "package.json": "{}",
+        "pnpm-lock.yaml": "",
+        "pnpm-workspace.yaml": "packages:\n  - apps/*\nblockExoticSubdeps: false\n"
+    });
+    assert.match(run(["verify", off]).out, /ok {4}pnpm, with blockExoticSubdeps off/);
+
+    const older = fixture({ "package.json": JSON.stringify({ packageManager: "pnpm@10.20.0" }) });
+    assert.match(run(["verify", older]).out, /ok {4}pnpm 10\.20 installs a git dependency of a dependency/);
+
+    const registry = fixture({
+        "package.json": JSON.stringify({
+            packageManager: "pnpm@11.0.0",
+            pnpm: { overrides: { "uWebSockets.js": "20.69.0" } }
+        })
+    });
+    assert.match(run(["verify", registry]).out, /ok {4}pnpm, with µWebSockets\.js overridden to 20\.69\.0/);
+});

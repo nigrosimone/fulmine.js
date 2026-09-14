@@ -29,6 +29,7 @@ limitations under the License.
 
 const fs = require("fs");
 const path = require("path");
+const { detectManager } = require("./adopt.js");
 
 // The oldest glibc the pinned uWS binaries are built against. A runtime older than this loads the
 // file and then fails on a symbol, which is a worse error than not finding it at all.
@@ -252,6 +253,20 @@ function checkDockerfiles(dir) {
 }
 
 /**
+ * The project's package.json, or nothing where there is none to read.
+ *
+ * @param {string} dir
+ * @returns {any}
+ */
+function readPackage(dir) {
+    try {
+        return JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8"));
+    } catch {
+        return undefined;
+    }
+}
+
+/**
  * The dependencies that need a different API here. Read from package.json rather than from
  * node_modules, so a project is answered before it installs anything.
  *
@@ -261,12 +276,8 @@ function checkDockerfiles(dir) {
 function checkDependencies(dir) {
     /** @type {ReturnType<typeof result>[]} */
     const results = [];
-    let pkg;
-    try {
-        pkg = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8"));
-    } catch {
-        return results;
-    }
+    const pkg = readPackage(dir);
+    if (!pkg) return results;
     const installed = { ...pkg.dependencies, ...pkg.devDependencies };
     for (const name of Object.keys(NEEDS_A_LOOK)) {
         if (installed[name]) {
@@ -274,6 +285,56 @@ function checkDependencies(dir) {
         }
     }
     return results;
+}
+
+// pnpm refuses a git dependency of a dependency since this version, and µWebSockets.js is one
+const PNPM_BLOCKS_GIT_SUBDEPS = [10, 26];
+
+/**
+ * Whether the package manager will install this at all. pnpm 10.26 and later refuse a dependency
+ * of a dependency that comes from git, which µWebSockets.js does, so `pnpm add fulmine.js` fails
+ * before anything runs. Two things let it through and both are readable from the project:
+ * `blockExoticSubdeps: false` in pnpm-workspace.yaml, or an override that takes µWebSockets.js
+ * from a registry instead.
+ *
+ * @param {string} dir
+ * @param {any} pkg the parsed package.json
+ * @returns {ReturnType<typeof result>|undefined} nothing to say for npm and yarn
+ */
+function checkPackageManager(dir, pkg) {
+    const { manager, why } = detectManager(dir, pkg);
+    if (manager !== "pnpm") return undefined;
+
+    const declared = /^pnpm@(\d+)\.(\d+)/.exec(pkg.packageManager ?? "");
+    if (declared) {
+        const [major, minor] = [Number(declared[1]), Number(declared[2])];
+        const [blockMajor, blockMinor] = PNPM_BLOCKS_GIT_SUBDEPS;
+        if (major < blockMajor || (major === blockMajor && minor < blockMinor)) {
+            return result("ok", `pnpm ${declared[1]}.${declared[2]} installs a git dependency of a dependency`);
+        }
+    }
+
+    let workspace = "";
+    try {
+        workspace = fs.readFileSync(path.join(dir, "pnpm-workspace.yaml"), "utf8");
+    } catch {
+        // no workspace file, so the setting is at its default
+    }
+    if (/^\s*blockExoticSubdeps:\s*false\s*$/m.test(workspace)) {
+        return result("ok", "pnpm, with blockExoticSubdeps off in pnpm-workspace.yaml");
+    }
+    const override = pkg.pnpm?.overrides?.["uWebSockets.js"];
+    if (typeof override === "string" && /^[~^]?\d/.test(override)) {
+        return result("ok", `pnpm, with µWebSockets.js overridden to ${override} from a registry`);
+    }
+
+    return result(
+        "no",
+        `pnpm (${why}) will refuse to install this`,
+        "pnpm 10.26 and later block a git dependency of a dependency, and µWebSockets.js is one:\n" +
+            "        pnpm add fulmine.js fails with ERR_PNPM_EXOTIC_SUBDEP. Put `blockExoticSubdeps: false` in\n" +
+            "        pnpm-workspace.yaml, or serve µWebSockets.js from a registry of your own, see docs/deployment.md."
+    );
 }
 
 /**
@@ -292,6 +353,10 @@ function verify(argv) {
         results.push(libc);
     }
     results.push(checkBinary(), ...checkDockerfiles(dir), ...checkDependencies(dir));
+    const manager = checkPackageManager(dir, readPackage(dir) ?? {});
+    if (manager) {
+        results.push(manager);
+    }
 
     console.log(`\nWhether this machine and this project can run fulmine.js\n`);
     const label = { ok: "ok  ", note: "note", no: "NO  " };
@@ -312,4 +377,13 @@ function verify(argv) {
     return blocking === 0 ? 0 : 1;
 }
 
-module.exports = { verify, checkNode, checkLibc, currentGlibc, checkBinary, checkDockerfiles, checkDependencies };
+module.exports = {
+    verify,
+    checkNode,
+    checkLibc,
+    currentGlibc,
+    checkBinary,
+    checkDockerfiles,
+    checkDependencies,
+    checkPackageManager
+};

@@ -68,8 +68,9 @@ import type { Request, Response } from "fulmine.js";
 ```
 
 Requirements: Node 22, 24 or 26, on Linux, macOS or Windows, x64 or arm64. Not Alpine (glibc 2.38+
-is needed) and not Bun. `npx fulmine.js verify` tells you in thirty seconds whether this machine and
-your Docker image can run it, and [Deploying](./docs/deployment.md) has the Dockerfile that works.
+is needed) and not Bun; pnpm needs [one setting](./docs/deployment.md#pnpm). `npx fulmine.js verify` tells
+you in thirty seconds whether this machine, your package manager and your Docker image can run it,
+and [Deploying](./docs/deployment.md) has the Dockerfile that works.
 
 ## Migrate an existing Express app
 
@@ -147,7 +148,7 @@ with the reason for each: [Differences from Express](./docs/differences.md).
 ## Documentation
 
 - [Migrating](./docs/migrating.md): the CLI, Angular SSR, NestJS, and when Express is somebody else's dependency
-- [Deploying](./docs/deployment.md): Docker, a private npm registry, behind a proxy
+- [Deploying](./docs/deployment.md): Docker, pnpm, a private npm registry, behind a proxy
 - [Performance](./docs/performance.md): the numbers, the tips, `profile`, `explain` and the testing helpers
 - [Differences from Express](./docs/differences.md): what answers differently and why
 - [WebSockets](./docs/websockets.md): `app.ws()` and socket.io
