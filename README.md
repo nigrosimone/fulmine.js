@@ -160,7 +160,7 @@ with the reason for each: [Differences from Express](./docs/differences.md).
 - [Compatibility](./docs/compatibility.md): the API checklist, tested middlewares, frameworks and view engines
 - [Compared with the others](./docs/compare.md): ultimate-express, hyper-express, Fastify, Bun, raw µWS
 - [Examples](./examples/README.md): one runnable file per feature
-- [Contributing](./CONTRIBUTING.md), [Security](./SECURITY.md), [Changelog](./CHANGELOG.md)
+- [Attribution](./docs/attribution.md), [Contributing](./CONTRIBUTING.md), [Security](./SECURITY.md), [Changelog](./CHANGELOG.md)
 
 ## Versioning
 
@@ -169,17 +169,8 @@ arrives, Fulmine goes to 6, and that is the only reason the major ever moves. Mi
 behaviour, patch for fixes, so a breaking change can land in a minor: it is in the changelog under
 its own heading, but the version number alone will not warn you. If you pin, pin the minor.
 
-## Attribution
-
-Fulmine is a derivative work of [Ultimate Express](https://github.com/dimdenGD/ultimate-express) by [@dimdenGD](https://github.com/dimdenGD), used under the Apache License 2.0. The full commit history is preserved, so the original authorship is visible in the repository itself.
-
-**Special thanks to [@dimdenGD](https://github.com/dimdenGD).** Ultimate Express is the hard part of this project, and it was already done before Fulmine existed. Everything here stands on that work.
-
-Fulmine is not affiliated with, endorsed by, or maintained by the authors of Ultimate Express. See [`NOTICE`](./NOTICE) for the list of significant changes.
-
-It is likewise not affiliated with the OpenJS Foundation or the Express.js project. Express is a trademark of the OpenJS Foundation.
-
 ## License
 
-[Apache-2.0](./LICENSE). Found something exploitable? Report it privately, see
+[Apache-2.0](./LICENSE), with the credits and the other licences in
+[Attribution](./docs/attribution.md). Found something exploitable? Report it privately, see
 [`SECURITY.md`](./SECURITY.md).

@@ -79,6 +79,7 @@ export default defineConfig({
                 items: [
                     { text: "Differences from Express", link: "/differences" },
                     { text: "Compatibility", link: "/compatibility" },
+                    { text: "Attribution", link: "/attribution" },
                     { text: "Examples", link: `${repo}/tree/main/examples` },
                     { text: "Changelog", link: `${repo}/blob/main/CHANGELOG.md` }
                 ]
@@ -91,8 +92,7 @@ export default defineConfig({
         editLink: { pattern: `${repo}/edit/main/docs/:path`, text: "Edit this page on GitHub" },
         search: { provider: "local" },
         footer: {
-            message:
-                "Apache-2.0. A derivative work of Ultimate Express by @dimdenGD. Not affiliated with the Express.js project.",
+            message: 'Apache-2.0. <a href="/attribution">Attribution</a>. Not affiliated with the Express.js project.',
             copyright: "Nigro Simone"
         }
     }

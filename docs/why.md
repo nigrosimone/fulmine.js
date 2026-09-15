@@ -35,10 +35,11 @@ Express has no answer for these, so Fulmine adds them, all optional:
 Every one of these is a real price, so here they are:
 
 - **A native binary.** Node 22, 24 or 26 on Linux, macOS or Windows, x64 or arm64, glibc 2.38 or newer. No Alpine, no Bun. `npx fulmine.js verify` checks a machine and a Dockerfile in thirty seconds, and [Deploying](./deployment.md) has the image that works.
-- **µWebSockets.js is not on npm.** It is installed from GitHub, which needs git at install time and [one setting under pnpm](./deployment.md#pnpm).
+- **µWebSockets.js is not on npm.** It is installed from GitHub, which needs git at install time and [one command under pnpm](./deployment.md#pnpm).
 - **A few things answer differently**, because there is no `node:http` underneath: [Differences from Express](./differences.md).
 - **The major tracks Express**, not semver. Fulmine 5 follows Express 5. If you pin, pin the minor.
 
 ## Who is behind it
 
-Fulmine is a derivative work of [Ultimate Express](https://github.com/dimdenGD/ultimate-express) by [@dimdenGD](https://github.com/dimdenGD), used under the Apache License 2.0, with the full commit history preserved. It targets Express 5 only, is typed, and adds the compiled responses, the cluster, the testing helpers and the tooling above. It is not affiliated with the OpenJS Foundation or the Express.js project.
+One maintainer, and a lineage: the credits, the licences and the people this stands on are in
+[Attribution](./attribution.md).
