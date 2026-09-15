@@ -16,7 +16,10 @@ export default [
             // the applications the integration cases serve, and what their builds write. Each one
             // is somebody else's framework with its own conventions, modules and JSX included, and
             // teaching this config four dialects to lint four fixtures is not worth it
-            "integrations/apps/**"
+            "integrations/apps/**",
+            // what VitePress builds and caches for the docs site
+            "site/.vitepress/dist/**",
+            "site/.vitepress/cache/**"
         ]
     },
     js.configs.recommended,

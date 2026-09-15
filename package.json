@@ -93,7 +93,7 @@
     "bugs": {
         "url": "https://github.com/nigrosimone/fulmine.js/issues"
     },
-    "homepage": "https://github.com/nigrosimone/fulmine.js#readme",
+    "homepage": "https://fulmine.sndesign.it",
     "dependencies": {
         "@types/express": "^5.0.6",
         "accepts": "^2.0.0",

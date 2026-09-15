@@ -1,0 +1,14 @@
+{
+    "name": "fulmine-site",
+    "private": true,
+    "description": "The docs site at fulmine.sndesign.it, built by VitePress from ../docs",
+    "scripts": {
+        "dev": "vitepress dev",
+        "build": "vitepress build",
+        "preview": "vitepress preview"
+    },
+    "devDependencies": {
+        "vitepress": "^1.6.4",
+        "vitepress-plugin-llms": "^1.14.0"
+    }
+}

@@ -6,6 +6,8 @@
 [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js) instead of `node:http`. Same API, same
 middleware, same tests. Change one line and your Express application runs faster.
 
+**Docs: [fulmine.sndesign.it](https://fulmine.sndesign.it)**
+
 ```js
 const express = require("fulmine.js"); // instead of require("express")
 ```
@@ -147,12 +149,14 @@ with the reason for each: [Differences from Express](./docs/differences.md).
 
 ## Documentation
 
+- [Why Fulmine](./docs/why.md): what it is, what it costs, who is behind it
 - [Migrating](./docs/migrating.md): the CLI, Angular SSR, NestJS, and when Express is somebody else's dependency
 - [Deploying](./docs/deployment.md): Docker, pnpm, a private npm registry, behind a proxy
 - [Performance](./docs/performance.md): the numbers, the tips, `profile`, `explain` and the testing helpers
 - [Differences from Express](./docs/differences.md): what answers differently and why
 - [WebSockets](./docs/websockets.md): `app.ws()` and socket.io
 - [Compatibility](./docs/compatibility.md): the API checklist, tested middlewares, frameworks and view engines
+- [Compared with the others](./docs/compare.md): ultimate-express, hyper-express, Fastify, Bun, raw µWS
 - [Examples](./examples/README.md): one runnable file per feature
 - [Contributing](./CONTRIBUTING.md), [Security](./SECURITY.md), [Changelog](./CHANGELOG.md)
 

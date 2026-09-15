@@ -1,0 +1,61 @@
+name: Site
+
+# The docs site at fulmine.sndesign.it: VitePress in site/, reading docs/ in place.
+
+on:
+    push:
+        branches: [main]
+        paths:
+            - "docs/**"
+            - "site/**"
+            - ".github/workflows/site.yml"
+    workflow_dispatch:
+
+permissions:
+    contents: read
+    pages: write
+    id-token: write
+
+concurrency:
+    group: site
+    cancel-in-progress: true
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        steps:
+            - name: Checkout Source Tree
+              uses: actions/checkout@v7
+
+            - name: Setup Node.js environment
+              uses: actions/setup-node@v7
+              with:
+                  node-version: "24"
+
+            - name: Install the site
+              run: npm ci --prefix site
+
+            - name: Build
+              run: npm run build --prefix site
+
+            # the custom domain lives in the repository settings, this only keeps it on a branch publish
+            - name: Name the domain
+              run: echo fulmine.sndesign.it > site/.vitepress/dist/CNAME
+
+            - name: Upload
+              uses: actions/upload-pages-artifact@v5
+              with:
+                  path: site/.vitepress/dist
+
+    deploy:
+        needs: build
+        runs-on: ubuntu-latest
+        timeout-minutes: 5
+        environment:
+            name: github-pages
+            url: ${{ steps.deployment.outputs.page_url }}
+        steps:
+            - name: Deploy
+              id: deployment
+              uses: actions/deploy-pages@v5

@@ -41,3 +41,7 @@ integrations/apps/*/package-lock.json
 
 # what `tsoa spec-and-routes` writes next to the controller, before tsc compiles it into build/
 integrations/apps/tsoa/src/routes.ts
+
+# what VitePress builds and caches for the docs site, site/ is the source
+site/.vitepress/dist/
+site/.vitepress/cache/

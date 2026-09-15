@@ -21,3 +21,7 @@ NOTICE
 
 # written by conventional-changelog on the release runner, where no hook reformats it
 CHANGELOG.md
+
+# what VitePress builds and caches for the docs site
+site/.vitepress/dist
+site/.vitepress/cache
