@@ -232,3 +232,41 @@ test("the usage text names both commands", () => {
     assert.match(out, /npx fulmine\.js override \[dir\]/);
     assert.match(out, /npx fulmine\.js angular \[dir\]/);
 });
+
+test("pnpm writes the direct dependency and the override, and leaves what is already there alone", () => {
+    const { UWS_SPEC } = require("../../src/adopt.js");
+    const dir = fixture({
+        "package.json": JSON.stringify({ name: "demo", dependencies: { "fulmine.js": "^5" } }, null, 2) + "\n",
+        "pnpm-workspace.yaml": "packages:\n  - apps/*\n"
+    });
+    const first = run(["pnpm", dir]);
+    assert.strictEqual(first.code, 0, first.out);
+    assert.strictEqual(readJson(dir, "package.json").dependencies["uWebSockets.js"], UWS_SPEC);
+    const workspace = fs.readFileSync(path.join(dir, "pnpm-workspace.yaml"), "utf8");
+    assert.strictEqual(workspace, 'packages:\n  - apps/*\n\noverrides:\n  "fulmine.js>uWebSockets.js": "-"\n');
+    assert.match(first.out, /Then `pnpm install`/);
+
+    // a second run changes nothing, and says so
+    const again = run(["pnpm", dir]);
+    assert.strictEqual(again.code, 0);
+    assert.match(again.out, /Nothing to change/);
+    assert.strictEqual(fs.readFileSync(path.join(dir, "pnpm-workspace.yaml"), "utf8"), workspace);
+});
+
+test("pnpm inserts under an existing overrides block, writes the file when there is none, and dry-run writes nothing", () => {
+    const { withPnpmOverride } = require("../../src/adopt.js");
+    assert.strictEqual(
+        withPnpmOverride('overrides:\n  "left-pad": "1.3.0"\n'),
+        'overrides:\n  "fulmine.js>uWebSockets.js": "-"\n  "left-pad": "1.3.0"\n'
+    );
+    assert.strictEqual(withPnpmOverride(""), 'overrides:\n  "fulmine.js>uWebSockets.js": "-"\n');
+    assert.strictEqual(withPnpmOverride("overrides:\n  fulmine.js>uWebSockets.js: '-'\n"), undefined);
+
+    const dir = fixture({ "package.json": "{}\n" });
+    const { code, out } = run(["pnpm", dir, "--dry-run"]);
+    assert.strictEqual(code, 0);
+    assert.match(out, /would add to package\.json/);
+    assert.match(out, /would add to pnpm-workspace\.yaml/);
+    assert.strictEqual(fs.existsSync(path.join(dir, "pnpm-workspace.yaml")), false);
+    assert.strictEqual(fs.readFileSync(path.join(dir, "package.json"), "utf8"), "{}\n");
+});

@@ -29,7 +29,7 @@ limitations under the License.
 
 const fs = require("fs");
 const path = require("path");
-const { detectManager } = require("./adopt.js");
+const { detectManager, UWS_SPEC, UWS_OVERRIDE } = require("./adopt.js");
 
 // The oldest glibc the pinned uWS binaries are built against. A runtime older than this loads the
 // file and then fails on a symbol, which is a worse error than not finding it at all.
@@ -293,9 +293,9 @@ const PNPM_BLOCKS_GIT_SUBDEPS = [10, 26];
 /**
  * Whether the package manager will install this at all. pnpm 10.26 and later refuse a dependency
  * of a dependency that comes from git, which µWebSockets.js does, so `pnpm add fulmine.js` fails
- * before anything runs. Two things let it through and both are readable from the project:
- * `blockExoticSubdeps: false` in pnpm-workspace.yaml, or an override that takes µWebSockets.js
- * from a registry instead.
+ * before anything runs. What lets it through is readable from the project: the two lines
+ * `npx fulmine.js pnpm` writes, the setting turned off, or an override taking µWebSockets.js from
+ * a registry. pnpm 11 reads its settings from pnpm-workspace.yaml only, so that is what is read.
  *
  * @param {string} dir
  * @param {any} pkg the parsed package.json
@@ -318,22 +318,49 @@ function checkPackageManager(dir, pkg) {
     try {
         workspace = fs.readFileSync(path.join(dir, "pnpm-workspace.yaml"), "utf8");
     } catch {
-        // no workspace file, so the setting is at its default
+        // no workspace file, so every setting is at its default
     }
+
+    // the recipe: the project owns the git dependency, and the copy this package asks for is dropped
+    const dropped = new RegExp(`^\\s*["']?${UWS_OVERRIDE.replace(/\./g, "\\.")}["']?:\\s*["']?-["']?\\s*$`, "m").test(
+        workspace
+    );
+    const own = pkg.dependencies?.["uWebSockets.js"];
+    if (dropped && typeof own === "string") {
+        if (own === UWS_SPEC) {
+            return result(
+                "ok",
+                "pnpm, with µWebSockets.js as the project's own dependency at the pin this package uses"
+            );
+        }
+        return result(
+            "note",
+            `pnpm, with µWebSockets.js as the project's own dependency at ${own}`,
+            `this package pins ${UWS_SPEC} and was tested against it. \`npx fulmine.js pnpm\` writes the pin.`
+        );
+    }
+    if (dropped) {
+        return result(
+            "no",
+            "pnpm-workspace.yaml drops µWebSockets.js from this package, and the project does not declare it",
+            `nothing would install it. \`npx fulmine.js pnpm\` adds "uWebSockets.js": "${UWS_SPEC}" to dependencies.`
+        );
+    }
+
     if (/^\s*blockExoticSubdeps:\s*false\s*$/m.test(workspace)) {
         return result("ok", "pnpm, with blockExoticSubdeps off in pnpm-workspace.yaml");
     }
-    const override = pkg.pnpm?.overrides?.["uWebSockets.js"];
-    if (typeof override === "string" && /^[~^]?\d/.test(override)) {
-        return result("ok", `pnpm, with µWebSockets.js overridden to ${override} from a registry`);
+    const registry = /^\s*["']?uWebSockets\.js["']?:\s*["']?([~^]?\d[^"'\s]*)/m.exec(workspace);
+    if (registry) {
+        return result("ok", `pnpm, with µWebSockets.js overridden to ${registry[1]} from a registry`);
     }
 
     return result(
         "no",
         `pnpm (${why}) will refuse to install this`,
         "pnpm 10.26 and later block a git dependency of a dependency, and µWebSockets.js is one:\n" +
-            "        pnpm add fulmine.js fails with ERR_PNPM_EXOTIC_SUBDEP. Put `blockExoticSubdeps: false` in\n" +
-            "        pnpm-workspace.yaml, or serve µWebSockets.js from a registry of your own, see docs/deployment.md."
+            "        pnpm add fulmine.js fails with ERR_PNPM_EXOTIC_SUBDEP. `npx fulmine.js pnpm` writes the two\n" +
+            "        lines that let it through, see docs/deployment.md."
     );
 }
 

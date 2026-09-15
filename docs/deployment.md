@@ -43,25 +43,46 @@ ERR_PNPM_EXOTIC_SUBDEP  Exotic dependency "uWebSockets.js" (resolved via git-rep
 allowed in subdependencies when blockExoticSubdeps is enabled
 ```
 
-Listing µWebSockets.js as your own dependency does not help, and neither does a `pnpm.overrides`
-that still points at git: the check is on the spec fulmine declares. Two ways through:
+The same rule allows a git dependency that is the project's own. So the project takes
+µWebSockets.js on itself, at the tag fulmine pins, and an override drops the copy fulmine asks for.
+One command writes both lines:
 
-- **Turn the check off**, in `pnpm-workspace.yaml` (pnpm 11 reads its settings there, not from
-  `.npmrc`). It is a security setting for the whole project, so know what you are turning off: any
-  dependency of a dependency may then come from git or a URL.
+```sh
+npx fulmine.js pnpm             # writes the two lines below, then: pnpm install
+npx fulmine.js pnpm --dry-run   # say what it would write, write nothing
+```
 
-    ```yaml
-    # pnpm-workspace.yaml
-    blockExoticSubdeps: false
-    ```
+```yaml
+# pnpm-workspace.yaml: pnpm 11 reads its settings only from here, not from package.json or .npmrc
+overrides:
+    "fulmine.js>uWebSockets.js": "-"
+```
 
-- **Serve µWebSockets.js from a registry**, which is the next section, with the override written
-  under `pnpm.overrides` instead of `overrides`. Nothing is turned off, and this is the one that
-  also works where git dependencies are refused for other reasons.
+```json
+// package.json
+"dependencies": {
+    "fulmine.js": "^5",
+    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.69.0"
+}
+```
 
-`npx fulmine.js verify` reads the lockfile, the `packageManager` field and both fixes, and says
-which case the project is in. There is an open request upstream to publish µWebSockets.js to npm,
-which would make this section go away: [uNetworking/uWebSockets.js#1312](https://github.com/uNetworking/uWebSockets.js/issues/1312).
+Nothing is turned off, and nothing is redistributed: µWebSockets.js still comes from uNetworking's
+repository, fetched by pnpm as your dependency. What it costs is that the tag is now yours to
+move. Nothing is left to memory: when fulmine changes its pin, the server says so once at startup
+(`uWebSockets.js 20.68.0 is installed, this version was tested with 20.69.0`), `npx fulmine.js verify`
+says the two differ, and running `npx fulmine.js pnpm` again writes the new one. Each pin change is
+also a line in the changelog.
+
+Two other ways through, for completeness. `blockExoticSubdeps: false` in `pnpm-workspace.yaml`
+turns the check off for the whole project, so any dependency of a dependency may then come from
+git or a URL. And serving µWebSockets.js from a registry of your own, which is the next section,
+with the override under `overrides` in `pnpm-workspace.yaml` rather than in `package.json`: that
+is the one that also works where git is refused for other reasons.
+
+`npx fulmine.js verify` reads the lockfile, the `packageManager` field and all three, and says which
+case the project is in. There was a request upstream to publish µWebSockets.js to npm, and the answer
+is a firm no for reasons of their own, so this section stays:
+[uNetworking/uWebSockets.js#1312](https://github.com/uNetworking/uWebSockets.js/issues/1312).
 
 ## Behind a private registry
 

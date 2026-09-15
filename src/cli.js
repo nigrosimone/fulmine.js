@@ -42,6 +42,10 @@ limitations under the License.
 //
 // A new project for whoever has nothing to migrate: a server, a package.json and the Dockerfile
 // that works. See src/create.js.
+//
+// npx fulmine pnpm [dir]
+//
+// The two lines a pnpm project needs before it will install this at all. See src/adopt.js.
 
 const fs = require("fs");
 const path = require("path");
@@ -49,7 +53,7 @@ const acorn = require("acorn");
 // the same walk express.testing asserts on, so the command and the assertions cannot drift
 const { collectRoutes } = require("./testing.js");
 const { verify } = require("./verify.js");
-const { override, angular } = require("./adopt.js");
+const { override, angular, pnpm } = require("./adopt.js");
 const { create } = require("./create.js");
 
 /** @typedef {import("./application.js").Application} Application */
@@ -919,6 +923,9 @@ function main(argv) {
     if (command === "create") {
         return create(argv.slice(1));
     }
+    if (command === "pnpm") {
+        return pnpm(argv.slice(1));
+    }
     if (command !== "migrate") {
         console.log(`Usage:
   npx ${TO} create <dir>       start a new project: a server, a package.json and a Dockerfile that
@@ -928,6 +935,8 @@ function main(argv) {
                                when a framework requires ${FROM} in its own code and not in yours
   npx ${TO} angular [dir]      declare this package external in angular.json's server build, which
                                esbuild otherwise tries to inline a native binary into
+  npx ${TO} pnpm [dir]         make a pnpm project install this: pnpm 10.26 and later refuse a git
+                               dependency of a dependency, and µWebSockets.js is one
   npx ${TO} profile [entry]    load an application without listening and print what compiling
                                its routes decided, route by route
   npx ${TO} explain <route>    what happens when a request for that route arrives
@@ -935,7 +944,7 @@ function main(argv) {
   npx ${TO} differences        print what behaves differently, without changing anything
 
 Options:
-  --dry-run                    migrate, override, angular: say what would change and change nothing`);
+  --dry-run                    migrate, override, angular, pnpm: say what would change and change nothing`);
         return command ? 1 : 0;
     }
 

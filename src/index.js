@@ -21,6 +21,28 @@ limitations under the License.
 // package ships, so the module is read through a loose alias
 const uWS = require("uWebSockets.js");
 const uWSAny = /** @type {any} */ (uWS);
+
+// A project on pnpm owns the uWebSockets.js dependency itself, see `npx fulmine.js pnpm`, so the
+// one installed can drift from the one this package pins and was tested against. Said once, at
+// require time, where it reaches every deployment rather than only the ones that run verify.
+{
+    const pinned = /#v?([\d.]+)$/.exec(require("../package.json").dependencies["uWebSockets.js"])?.[1];
+    /** @type {string|undefined} */
+    let installed;
+    try {
+        // its exports map does not expose package.json, so it is read beside the entry point
+        const beside = require("path").join(require.resolve("uWebSockets.js"), "..", "package.json");
+        installed = JSON.parse(require("fs").readFileSync(beside, "utf8")).version;
+    } catch {
+        // nothing to compare against, which is not worth a warning of its own
+    }
+    if (pinned && installed && installed !== pinned) {
+        console.warn(
+            `fulmine.js: uWebSockets.js ${installed} is installed, this version was tested with ${pinned}.\n` +
+                "  On pnpm the pin is the project's own: `npx fulmine.js pnpm` writes the tested one."
+        );
+    }
+}
 const Application = require("./application.js");
 const Router = require("./router.js");
 const Route = require("./route.js");

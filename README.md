@@ -70,7 +70,7 @@ import type { Request, Response } from "fulmine.js";
 ```
 
 Requirements: Node 22, 24 or 26, on Linux, macOS or Windows, x64 or arm64. Not Alpine (glibc 2.38+
-is needed) and not Bun; pnpm needs [one setting](./docs/deployment.md#pnpm). `npx fulmine.js verify` tells
+is needed) and not Bun; pnpm needs [one command](./docs/deployment.md#pnpm). `npx fulmine.js verify` tells
 you in thirty seconds whether this machine, your package manager and your Docker image can run it,
 and [Deploying](./docs/deployment.md) has the Dockerfile that works.
 
@@ -85,6 +85,7 @@ npx fulmine.js migrate --dry-run   # say what it would change, change nothing
 npx fulmine.js migrate             # do it
 npx fulmine.js override            # when a framework requires express in its own code, not in yours
 npx fulmine.js angular             # angular.json's server build, one line of config
+npx fulmine.js pnpm                # the two lines a pnpm project needs before it installs this
 npx fulmine.js differences         # just the list of what to check by hand
 ```
 

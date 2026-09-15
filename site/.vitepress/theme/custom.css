@@ -11,7 +11,11 @@
     --vp-home-hero-name-color: transparent;
     --vp-home-hero-name-background: linear-gradient(120deg, #ff6b2c 30%, #ffc24b);
     /* a faint glow behind the bolt, not a second bolt */
-    --vp-home-hero-image-background-image: linear-gradient(-45deg, rgba(255, 107, 44, 0.22) 50%, rgba(255, 194, 75, 0.22) 50%);
+    --vp-home-hero-image-background-image: linear-gradient(
+        -45deg,
+        rgba(255, 107, 44, 0.22) 50%,
+        rgba(255, 194, 75, 0.22) 50%
+    );
     --vp-home-hero-image-filter: blur(72px);
 
     /* the language label on a code block, which the default paints too light to read */

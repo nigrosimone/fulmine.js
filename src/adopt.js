@@ -14,17 +14,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// The two commands that edit a config file rather than source: `npx fulmine.js override` and
-// `npx fulmine.js angular`.
+// The commands that edit a config file rather than source: `npx fulmine.js override`,
+// `npx fulmine.js angular` and `npx fulmine.js pnpm`.
 //
-// `migrate` rewrites `require("express")` in your own files. The two cases it cannot reach are
-// both a line in a JSON file:
+// `migrate` rewrites `require("express")` in your own files. The cases it cannot reach are each
+// a line in a config file:
 //
 //   override   A framework built on Express requires it in its own code, so there is no specifier
 //              to rewrite. Every package manager can answer `express` with this package instead,
 //              and each one spells it differently.
 //   angular    An Angular server bundle is built with esbuild, which inlines every dependency and
 //              cannot load uWS's native binary. Two names in `externalDependencies` fix it.
+//   pnpm       pnpm 10.26 and later refuse a git dependency of a dependency, and µWebSockets.js
+//              is one. A direct dependency is allowed, so the project takes it on itself and an
+//              override drops the copy this package asks for.
 
 "use strict";
 
@@ -36,6 +39,12 @@ const REPLACES = "express";
 
 /** The major this package tracks, which is the range an override should ask for. */
 const MAJOR = require("../package.json").version.split(".")[0];
+
+const UWS = "uWebSockets.js";
+/** The git spec this package pins, which is what a project taking uWS on itself has to pin too. */
+const UWS_SPEC = /** @type {string} */ (require("../package.json").dependencies[UWS]);
+/** The pnpm override that drops this package's own copy, so the project's direct one is the only one. */
+const UWS_OVERRIDE = `${SELF}>${UWS}`;
 
 /** Where each manager keeps its substitutions, and what to call it when telling someone. */
 const MANAGERS = {
@@ -315,4 +324,106 @@ function angular(argv) {
     return 0;
 }
 
-module.exports = { override, angular, detectManager, serverBuilds, indentOf };
+/**
+ * The pnpm-workspace.yaml with the override in it. Written by hand rather than through a YAML
+ * library: the file is small, the block is two lines, and what is already there is kept as is.
+ *
+ * @param {string} source the file as it is, or "" when there is none
+ * @returns {string|undefined} the new file, or nothing when the override is already there
+ */
+function withPnpmOverride(source) {
+    const line = `  "${UWS_OVERRIDE}": "-"`;
+    if (
+        new RegExp(
+            `^\\s*["']?${SELF.replace(".", "\\.")}>${UWS.replace(".", "\\.")}["']?:\\s*["']?-["']?\\s*$`,
+            "m"
+        ).test(source)
+    ) {
+        return undefined;
+    }
+    const lines = source.length ? source.replace(/\r\n/g, "\n").replace(/\n*$/, "").split("\n") : [];
+    const at = lines.findIndex((one) => /^overrides:\s*$/.test(one));
+    if (at === -1) {
+        return [...lines, ...(lines.length ? [""] : []), "overrides:", line, ""].join("\n");
+    }
+    lines.splice(at + 1, 0, line);
+    return lines.join("\n") + "\n";
+}
+
+/**
+ * npx fulmine.js pnpm [dir] [--dry-run]
+ *
+ * Makes a pnpm project install this package, which pnpm 10.26 and later otherwise refuse: the
+ * project takes µWebSockets.js as a direct dependency, at the spec this package pins, and an
+ * override in pnpm-workspace.yaml drops the copy this package asks for. pnpm 11 reads its
+ * settings from that file only, so package.json's `pnpm` field is not where this goes.
+ *
+ * @param {string[]} argv everything after the command name
+ * @returns {number} exit code
+ */
+function pnpm(argv) {
+    const dryRun = argv.includes("--dry-run");
+    const dir = path.resolve(argv.find((arg) => !arg.startsWith("--")) ?? ".");
+    const file = path.join(dir, "package.json");
+    const workspaceFile = path.join(dir, "pnpm-workspace.yaml");
+
+    const read = readJson(file);
+    if ("error" in read) {
+        console.error(read.code === "ENOENT" ? `no package.json in ${dir}` : read.error);
+        return 1;
+    }
+    const { data: pkg, source } = read;
+
+    let changed = 0;
+    const existing = readPath(pkg, ["dependencies", UWS]);
+    if (existing === UWS_SPEC) {
+        console.log(`dependencies.${UWS} already says ${UWS_SPEC}`);
+    } else {
+        if (existing !== undefined) {
+            console.log(`dependencies.${UWS} says ${JSON.stringify(existing)}, and this package pins ${UWS_SPEC}:`);
+            console.log("the pin is what the code here was tested against, so it is the one written.");
+        }
+        writePath(pkg, ["dependencies", UWS], UWS_SPEC);
+        changed++;
+        console.log(`${dryRun ? "would add" : "added"} to package.json: "dependencies": { "${UWS}": "${UWS_SPEC}" }`);
+        if (!dryRun) fs.writeFileSync(file, JSON.stringify(pkg, null, indentOf(source)) + "\n");
+    }
+
+    let workspace = "";
+    try {
+        workspace = fs.readFileSync(workspaceFile, "utf8");
+    } catch {
+        // no workspace file yet, it is written below
+    }
+    const rewritten = withPnpmOverride(workspace);
+    if (rewritten === undefined) {
+        console.log(`pnpm-workspace.yaml already overrides ${UWS_OVERRIDE}`);
+    } else {
+        changed++;
+        console.log(`${dryRun ? "would add" : "added"} to pnpm-workspace.yaml: overrides: { "${UWS_OVERRIDE}": "-" }`);
+        if (!dryRun) fs.writeFileSync(workspaceFile, rewritten);
+    }
+
+    if (!changed) {
+        console.log("\nNothing to change.");
+        return 0;
+    }
+    console.log(`\nThen \`pnpm install\`. µWebSockets.js is now the project's own dependency, so it is fetched as a`);
+    console.log("direct one, which pnpm allows, and the copy this package asks for is dropped from the graph.");
+    console.log(
+        `When this package moves its pin, run this again: \`npx fulmine.js verify\` says when the two differ.\n`
+    );
+    return 0;
+}
+
+module.exports = {
+    override,
+    angular,
+    pnpm,
+    detectManager,
+    serverBuilds,
+    indentOf,
+    withPnpmOverride,
+    UWS_SPEC,
+    UWS_OVERRIDE
+};

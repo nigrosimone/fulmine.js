@@ -136,7 +136,7 @@ test("explain says what to type when given nothing", () => {
 
 test("the usage text lists every command", () => {
     const { out } = run([]);
-    for (const command of ["migrate", "profile", "explain", "verify", "differences"]) {
+    for (const command of ["migrate", "profile", "explain", "verify", "differences", "create", "pnpm"]) {
         assert.match(out, new RegExp(`\\b${command}\\b`), command);
     }
 });
@@ -147,7 +147,37 @@ test("verify fails on a pnpm project, since pnpm 10.26 refuses a git dependency 
     assert.strictEqual(code, 1, "an install that fails stops everything after it");
     assert.match(out, /NO {4}pnpm \(pnpm-lock\.yaml is here\) will refuse to install this/);
     assert.match(out, /ERR_PNPM_EXOTIC_SUBDEP/);
-    assert.match(out, /blockExoticSubdeps: false/);
+    assert.match(out, /npx fulmine.js pnpm/);
+});
+
+test("verify accepts the two lines `npx fulmine.js pnpm` writes, and notices a pin that differs", () => {
+    const { UWS_SPEC } = require("../../src/adopt.js");
+    const override = 'overrides:\n  "fulmine.js>uWebSockets.js": "-"\n';
+    const fixed = fixture({
+        "package.json": JSON.stringify({ dependencies: { "uWebSockets.js": UWS_SPEC } }),
+        "pnpm-lock.yaml": "",
+        "pnpm-workspace.yaml": override
+    });
+    assert.match(
+        run(["verify", fixed]).out,
+        /ok {4}pnpm, with µWebSockets.js as the project's own dependency at the pin/
+    );
+
+    const stale = fixture({
+        "package.json": JSON.stringify({
+            dependencies: { "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.60.0" }
+        }),
+        "pnpm-lock.yaml": "",
+        "pnpm-workspace.yaml": override
+    });
+    const noted = run(["verify", stale]);
+    assert.strictEqual(noted.code, 0, "an older pin installs, it is a note");
+    assert.match(noted.out, /note {2}pnpm, with µWebSockets.js as the project's own dependency at github:.*v20.60.0/);
+
+    const dropped = fixture({ "package.json": "{}", "pnpm-lock.yaml": "", "pnpm-workspace.yaml": override });
+    const refused = run(["verify", dropped]);
+    assert.strictEqual(refused.code, 1, "the override alone leaves nothing to install it");
+    assert.match(refused.out, /NO {4}pnpm-workspace.yaml drops µWebSockets.js/);
 });
 
 test("verify accepts pnpm when the setting is off, the version is older, or µWebSockets.js comes from a registry", () => {
@@ -162,10 +192,8 @@ test("verify accepts pnpm when the setting is off, the version is older, or µWe
     assert.match(run(["verify", older]).out, /ok {4}pnpm 10\.20 installs a git dependency of a dependency/);
 
     const registry = fixture({
-        "package.json": JSON.stringify({
-            packageManager: "pnpm@11.0.0",
-            pnpm: { overrides: { "uWebSockets.js": "20.69.0" } }
-        })
+        "package.json": JSON.stringify({ packageManager: "pnpm@11.0.0" }),
+        "pnpm-workspace.yaml": "overrides:\n  uWebSockets.js: 20.69.0\n"
     });
     assert.match(run(["verify", registry]).out, /ok {4}pnpm, with µWebSockets\.js overridden to 20\.69\.0/);
 });
