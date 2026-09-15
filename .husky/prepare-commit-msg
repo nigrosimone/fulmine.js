@@ -1,0 +1,10 @@
+# The sign-off the DCO asks for, added when the message does not carry one already. The same
+# line `git commit -s` writes, so a commit made either way looks the same.
+case "$2" in
+merge | squash) exit 0 ;;
+esac
+name=$(git config user.name)
+email=$(git config user.email)
+if [ -n "$name" ] && [ -n "$email" ]; then
+    git interpret-trailers --in-place --if-exists doNothing --trailer "Signed-off-by: $name <$email>" "$1"
+fi

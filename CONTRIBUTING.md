@@ -84,6 +84,14 @@ On Windows every test process asserts or hangs at exit under Node 24 and later.
 Releases are the maintainer's: pushing a `v*` tag is what makes `.github/workflows/release.yml`
 publish to npm, and `npm run release` creates that tag.
 
+### Signing off
+
+Every commit carries a `Signed-off-by: Name <email>` line, which is the
+[Developer Certificate of Origin](https://developercertificate.org): whoever commits certifies that
+they wrote the change, or have the right to contribute it, under this project's licence. Nothing to
+sign anywhere else. The `prepare-commit-msg` hook writes the line for you, `git commit -s` writes
+the same one, and commitlint refuses a message without it, locally and on every pull request.
+
 ### Writing a comparison test
 
 A test file is an ordinary script. The first line is its description, the second may carry a marker,
