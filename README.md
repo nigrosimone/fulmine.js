@@ -70,7 +70,8 @@ import type { Request, Response } from "fulmine.js";
 ```
 
 Requirements: Node 22, 24 or 26, on Linux, macOS or Windows, x64 or arm64. Not Alpine (glibc 2.38+
-is needed) and not Bun; pnpm needs [one command](./docs/deployment.md#pnpm). `npx fulmine.js verify` tells
+is needed) and not Bun; pnpm refuses the install (`ERR_PNPM_EXOTIC_SUBDEP` on uWebSockets.js) until
+[one command](./docs/deployment.md#pnpm) is run. `npx fulmine.js verify` tells
 you in thirty seconds whether this machine, your package manager and your Docker image can run it,
 and [Deploying](./docs/deployment.md) has the Dockerfile that works.
 

@@ -45,7 +45,8 @@ allowed in subdependencies when blockExoticSubdeps is enabled
 
 The same rule allows a git dependency that is the project's own. So the project takes
 µWebSockets.js on itself, at the tag fulmine pins, and an override drops the copy fulmine asks for.
-One command writes both lines:
+One command writes both lines, and `npx fulmine.js create my-app --pnpm` starts a new project with
+them already in (it also reads that it was started by `pnpm dlx`):
 
 ```sh
 npx fulmine.js pnpm             # writes the two lines below, then: pnpm install

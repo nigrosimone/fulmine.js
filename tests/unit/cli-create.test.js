@@ -142,3 +142,37 @@ test("create refuses a directory with something in it, and asks for one when non
     assert.strictEqual(none.code, 1);
     assert.match(none.out, /Usage/);
 });
+
+test("create --pnpm makes the project own uWebSockets.js, which is what pnpm needs to install it", () => {
+    const { UWS_SPEC } = require("../../src/adopt.js");
+    const parent = scratch();
+    const { code, out } = run(["create", "demo", "--pnpm"], parent);
+    assert.strictEqual(code, 0, out);
+    const project = path.join(parent, "demo");
+    const pkg = JSON.parse(fs.readFileSync(path.join(project, "package.json"), "utf8"));
+    assert.strictEqual(pkg.dependencies["uWebSockets.js"], UWS_SPEC);
+    assert.strictEqual(
+        fs.readFileSync(path.join(project, "pnpm-workspace.yaml"), "utf8"),
+        'overrides:\n  "fulmine.js>uWebSockets.js": "-"\n'
+    );
+    assert.match(fs.readFileSync(path.join(project, "Dockerfile"), "utf8"), /pnpm install --frozen-lockfile --prod/);
+    assert.match(out, /pnpm install/);
+
+    // the same, read from how the command was started rather than from a flag
+    const byAgent = scratch();
+    execFileSync(process.execPath, [cli, "create", "agent"], {
+        cwd: byAgent,
+        encoding: "utf8",
+        env: { ...process.env, npm_config_user_agent: "pnpm/11.13.0 npm/? node/v26.0.0 linux x64" }
+    });
+    assert.ok(fs.existsSync(path.join(byAgent, "agent", "pnpm-workspace.yaml")));
+
+    // and an npm start does not carry any of it
+    const plain = scratch();
+    execFileSync(process.execPath, [cli, "create", "plain"], {
+        cwd: plain,
+        encoding: "utf8",
+        env: { ...process.env, npm_config_user_agent: "npm/11.0.0 node/v26.0.0 linux x64" }
+    });
+    assert.ok(!fs.existsSync(path.join(plain, "plain", "pnpm-workspace.yaml")));
+});

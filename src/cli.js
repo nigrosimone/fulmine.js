@@ -929,7 +929,7 @@ function main(argv) {
     if (command !== "migrate") {
         console.log(`Usage:
   npx ${TO} create <dir>       start a new project: a server, a package.json and a Dockerfile that
-                               works, --ts for TypeScript
+                               works, --ts for TypeScript, --pnpm for the two lines pnpm needs
   npx ${TO} migrate [dir]      rewrite require("${FROM}") and import from "${FROM}" to "${TO}"
   npx ${TO} override [dir]     answer ${FROM} with this package for the whole dependency tree, for
                                when a framework requires ${FROM} in its own code and not in yours

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// npx fulmine.js create <dir> [--ts]
+// npx fulmine.js create <dir> [--ts] [--pnpm]
 //
 // A new project, for whoever has no Express application to migrate. `migrate` and `override` start
 // from somebody's code; this starts from nothing and writes the few files a first run needs: a
@@ -25,6 +25,7 @@ limitations under the License.
 
 const fs = require("fs");
 const path = require("path");
+const { withPnpmOverride, UWS_SPEC } = require("./adopt.js");
 
 const SELF = "fulmine.js";
 
@@ -81,9 +82,10 @@ app.listen(port, () => {
 /**
  * @param {string} name the package name, from the directory
  * @param {boolean} ts
+ * @param {boolean} pnpm the project also owns µWebSockets.js, see `npx fulmine.js pnpm`
  * @returns {string}
  */
-function packageSource(name, ts) {
+function packageSource(name, ts, pnpm) {
     const pkg = {
         name,
         version: "0.1.0",
@@ -96,7 +98,7 @@ function packageSource(name, ts) {
                   dev: "node --watch --experimental-strip-types src/server.ts"
               }
             : { start: "node server.js", dev: "node --watch server.js" },
-        dependencies: { [SELF]: `^${MAJOR}` },
+        dependencies: { [SELF]: `^${MAJOR}`, ...(pnpm ? { "uWebSockets.js": UWS_SPEC } : {}) },
         ...(ts ? { devDependencies: { "@types/node": `^${nodeMajor()}`, typescript: "^5" } } : {}),
         engines: { node: ">=22" }
     };
@@ -123,17 +125,20 @@ const TSCONFIG = `{
  * newer on both, since bookworm's glibc is too old for the binary and Alpine has no build at all.
  *
  * @param {boolean} ts
+ * @param {boolean} pnpm install with pnpm, whose lockfile and workspace file come along
  * @returns {string}
  */
-function dockerfileSource(ts) {
+function dockerfileSource(ts, pnpm) {
     const major = nodeMajor();
+    const manifests = pnpm ? "package.json pnpm-lock.yaml pnpm-workspace.yaml" : "package*.json";
+    const install = pnpm ? "npm install -g pnpm@11 && pnpm install --frozen-lockfile" : "npm ci";
     const build = ts
-        ? `COPY package*.json tsconfig.json ./
-RUN npm ci
+        ? `COPY ${manifests} tsconfig.json ./
+RUN ${install}
 COPY src ./src
-RUN npm run build && npm prune --omit=dev`
-        : `COPY package*.json ./
-RUN npm ci --omit=dev`;
+RUN ${pnpm ? "pnpm run build && pnpm prune --prod" : "npm run build && npm prune --omit=dev"}`
+        : `COPY ${manifests} ./
+RUN ${install}${pnpm ? " --prod" : " --omit=dev"}`;
     const run = ts
         ? `COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
@@ -167,31 +172,38 @@ const INDEX_HTML = `<!doctype html>
  *
  * @param {string} name
  * @param {boolean} ts
+ * @param {boolean} pnpm
  * @returns {Record<string, string>}
  */
-function projectFiles(name, ts) {
+function projectFiles(name, ts, pnpm) {
     return {
-        "package.json": packageSource(name, ts),
+        "package.json": packageSource(name, ts, pnpm),
         [ts ? "src/server.ts" : "server.js"]: serverSource(ts),
         ...(ts ? { "tsconfig.json": TSCONFIG } : {}),
+        // pnpm refuses a git dependency of a dependency, so the project owns µWebSockets.js itself
+        ...(pnpm ? { "pnpm-workspace.yaml": /** @type {string} */ (withPnpmOverride("")) } : {}),
         "public/index.html": INDEX_HTML,
-        Dockerfile: dockerfileSource(ts),
+        Dockerfile: dockerfileSource(ts, pnpm),
         ".dockerignore": "node_modules\n.git\ndist\n",
         ".gitignore": "node_modules\ndist\n"
     };
 }
 
 /**
- * `npx fulmine.js create <dir> [--ts]`
+ * `npx fulmine.js create <dir> [--ts] [--pnpm]`
+ *
+ * pnpm is also read from how this was started: `pnpm dlx fulmine.js create` says so in the user
+ * agent npm and pnpm both set, and a project started that way would otherwise fail its first install.
  *
  * @param {string[]} argv everything after the command
  * @returns {number} exit code
  */
 function create(argv) {
     const ts = argv.includes("--ts");
+    const pnpm = argv.includes("--pnpm") || /^pnpm\//.test(process.env.npm_config_user_agent ?? "");
     const given = argv.find((arg) => !arg.startsWith("--"));
     if (!given) {
-        console.error(`Usage: npx ${SELF} create <dir> [--ts]`);
+        console.error(`Usage: npx ${SELF} create <dir> [--ts] [--pnpm]`);
         return 1;
     }
     const dir = path.resolve(given);
@@ -207,7 +219,7 @@ function create(argv) {
         return 1;
     }
 
-    const files = projectFiles(name, ts);
+    const files = projectFiles(name, ts, pnpm);
     for (const [file, content] of Object.entries(files)) {
         const full = path.join(dir, file);
         fs.mkdirSync(path.dirname(full), { recursive: true });
@@ -215,10 +227,17 @@ function create(argv) {
         console.log(`wrote ${path.join(given, file)}`);
     }
 
+    const pm = pnpm ? "pnpm" : "npm";
     console.log(`\nNext:\n`);
     console.log(`  cd ${given}`);
-    console.log(`  npm install`);
-    console.log(`  npm run dev${ts ? "                 # or npm run build && npm start" : ""}\n`);
+    console.log(`  ${pm} install`);
+    console.log(`  ${pm} run dev${ts ? `                 # or ${pm} run build && ${pm} start` : ""}\n`);
+    if (pnpm) {
+        console.log("pnpm refuses a git dependency of a dependency, and µWebSockets.js is one, so this project owns");
+        console.log(
+            "it: the pin in package.json and the override in pnpm-workspace.yaml. See docs/deployment.md#pnpm."
+        );
+    }
     console.log(
         `The Dockerfile uses node:${nodeMajor()}-trixie, since Alpine and bookworm cannot load µWebSockets.js.`
     );
