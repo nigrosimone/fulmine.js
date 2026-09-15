@@ -10,6 +10,9 @@ module.exports = {
         // the default 100 is tight for a subject that has to say what changed and why
         "header-max-length": [2, "always", 120],
         // the body carries the reasoning, and it is worth room to breathe
-        "body-max-line-length": [2, "always", 100]
+        "body-max-line-length": [2, "always", 100],
+        // the Developer Certificate of Origin: whoever commits certifies they may contribute the
+        // change under the project's licence. The prepare-commit-msg hook writes the line
+        "signed-off-by": [2, "always", "Signed-off-by:"]
     }
 };
