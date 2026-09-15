@@ -9,6 +9,9 @@ hero:
     image:
         src: /logo-mark.svg
         alt: Fulmine.js
+        width: 320
+        height: 320
+        fetchpriority: high
     actions:
         - theme: brand
           text: Migrate in one line

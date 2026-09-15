@@ -1,0 +1,35 @@
+:root {
+    --vp-font-family-base:
+        system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+    --vp-font-family-mono: ui-monospace, "Cascadia Code", "Fira Code", Menlo, Consolas, monospace;
+
+    /* the two colours of the bolt in the logo, the first one darkened until white text reads on it */
+    --vp-c-brand-1: #c2410c;
+    --vp-c-brand-2: #ff6b2c;
+    --vp-c-brand-3: #ff8a4c;
+    --vp-c-brand-soft: rgba(255, 107, 44, 0.14);
+    --vp-home-hero-name-color: transparent;
+    --vp-home-hero-name-background: linear-gradient(120deg, #ff6b2c 30%, #ffc24b);
+    --vp-home-hero-image-background-image: linear-gradient(-45deg, #ff6b2c 50%, #ffc24b 50%);
+    --vp-home-hero-image-filter: blur(44px);
+
+    /* the language label on a code block, which the default paints too light to read */
+    --vp-code-lang-color: var(--vp-c-text-2);
+}
+
+.dark {
+    --vp-c-brand-1: #ff8a4c;
+    --vp-c-brand-2: #ff6b2c;
+    --vp-c-brand-3: #e8571a;
+}
+
+/* white text on the brand button, dark enough to read in both modes */
+:root,
+.dark {
+    --vp-button-brand-bg: #c2410c;
+    --vp-button-brand-border: #c2410c;
+    --vp-button-brand-hover-bg: #e8571a;
+    --vp-button-brand-hover-border: #e8571a;
+    --vp-button-brand-active-bg: #9a3412;
+    --vp-button-brand-active-border: #9a3412;
+}

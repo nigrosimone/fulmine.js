@@ -23,7 +23,7 @@ export default defineConfig({
     },
     head: [
         ["link", { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" }],
-        ["meta", { name: "theme-color", content: "#f5a623" }],
+        ["meta", { name: "theme-color", content: "#ff6b2c" }],
         ["meta", { property: "og:type", content: "website" }],
         ["meta", { property: "og:title", content: "Fulmine.js: the drop-in Express 5 replacement, up to 20x faster" }],
         ["meta", { property: "og:site_name", content: "Fulmine.js" }],
@@ -48,7 +48,7 @@ export default defineConfig({
         }
     },
     themeConfig: {
-        logo: "/logo-mark.svg",
+        logo: { src: "/logo-mark.svg", alt: "", width: 24, height: 24 },
         nav: [
             { text: "Guide", link: "/migrating" },
             { text: "Performance", link: "/performance" },
