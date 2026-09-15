@@ -30,6 +30,8 @@ export default defineConfig({
         ["meta", { property: "og:url", content: "https://fulmine.sndesign.it/" }]
     ],
     markdown: {
+        // the default github themes paint comments too light for the contrast audit
+        theme: { light: "github-light-high-contrast", dark: "github-dark-high-contrast" },
         config(md) {
             const render =
                 md.renderer.rules.link_open ??
