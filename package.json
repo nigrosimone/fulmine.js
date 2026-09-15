@@ -1,6 +1,6 @@
 {
     "name": "fulmine.js",
-    "version": "5.19.9",
+    "version": "5.20.0",
     "description": "Drop-in Express 5 replacement on uWebSockets.js, up to 20x faster. Same API, your middleware and framework keep working.",
     "main": "src/index.js",
     "exports": {

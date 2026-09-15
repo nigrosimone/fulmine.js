@@ -1,5 +1,18 @@
 # Changelog
 
+## [5.20.0](https://github.com/nigrosimone/fulmine.js/compare/v5.19.9...v5.20.0) (2026-09-15)
+
+### Features
+
+* **cli:** create --pnpm, or started by pnpm dlx, writes the project that pnpm installs ([7c94a01](https://github.com/nigrosimone/fulmine.js/commit/7c94a01e7578862266d79ec8d8de47312aba873e))
+* **cli:** create a new project with a server, a package.json and a Dockerfile that works ([438225d](https://github.com/nigrosimone/fulmine.js/commit/438225dd9b3e03b1002aae009960e9f074ad2424))
+* **cli:** pnpm writes the two lines a pnpm project needs, verify reads them, and a drifted uWS pin is said at startup ([81aeacd](https://github.com/nigrosimone/fulmine.js/commit/81aeacdf251469e837d3af295c70c80953797758))
+* **verify:** say when pnpm will refuse the install, and document the two ways through ([00a9bef](https://github.com/nigrosimone/fulmine.js/commit/00a9beff9687d04e68e81903080c1c4287f20ba8))
+
+### Bug Fixes
+
+* **application:** leave node's own watch-mode message on the worker channel alone, it has no task to settle ([7c2f79d](https://github.com/nigrosimone/fulmine.js/commit/7c2f79d626bb6a1a5b44f62ecf3cc9c83052e2de))
+
 ## [5.19.9](https://github.com/nigrosimone/fulmine.js/compare/v5.19.8...v5.19.9) (2026-09-13)
 
 ### Bug Fixes
