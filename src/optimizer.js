@@ -558,8 +558,9 @@ function registerUwsRoute(router, route, optimizedPath) {
         route.paramCallbacks.size === 0 && // a param callback has to run, and this answers without running anything
         // a captured value is decoded when the route runs, and one that cannot be decoded is a
         // 400 in express and on the ordinary path here. Nothing runs to raise it on a
-        // declarative response, so GET /a-b%5Ec@d%e came back 200 from app.get("/:p12")
-        route.optimizedParams === undefined &&
+        // declarative response, so GET /a-b%5Ec@d%e came back 200 from app.get("/:p12").
+        // "declarative request values" is the application accepting that
+        (route.optimizedParams === undefined || router.get("declarative request values")) &&
         // a declarative response is answered by µWS itself, so no javascript runs and the case
         // guard could not: a route that needs one has to stay an ordinary handler
         caseGuards === null &&

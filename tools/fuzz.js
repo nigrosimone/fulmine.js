@@ -2004,6 +2004,9 @@ function everyProgram(plan) {
 /**
  * The one difference this project has decided to keep, the way wire-fuzz keeps closeThenPipelined.
  *
+ * A second one, a missing query value interpolated by a compiled response, was kept here until
+ * "declarative request values" made those bodies opt in: off by default, the fuzzer never sees one.
+ *
  * Express flushes the head inside res.write(), so a header set after one throws there and the
  * socket goes. Here the head is queued and leaves on the next tick, so the same header is taken
  * and the request is answered. Decided on 2026-09-11: not a bug for this project.
@@ -2024,30 +2027,6 @@ function headerAfterWrite(plan, express, fulmine) {
         const wrote = program.statements.findIndex((statement) => statement.includes(".write("));
         return wrote !== -1 && program.statements.slice(wrote + 1).some((s) => SETS_A_HEADER.test(s));
     });
-}
-
-/**
- * The second difference this project keeps. A value the request did not carry, interpolated into a
- * body next to other text, reads "undefined" in javascript and writes nothing through uWS, so a
- * route compiled into a declarative response answers the text without it. A body that is only that
- * value agrees already, since express sends nothing for undefined too. Decided on 2026-09-11.
- *
- * Narrow on purpose: it takes express printing the word and a handler that interpolates a request
- * value into something longer than itself.
- *
- * @param {any} plan
- * @param {{line: string}} express
- * @returns {boolean}
- */
-function missingValueInterpolated(plan, express) {
-    if (!express.line.includes("undefined")) {
-        return false;
-    }
-    return everyProgram(plan).some((program) =>
-        program.statements.some(
-            (statement) => /(query|params)\./.test(statement) && (statement.includes("`") || statement.includes(" + "))
-        )
-    );
 }
 
 let nextPort = 15000;
@@ -2094,7 +2073,7 @@ async function runPlan(plan, stopAtFirst) {
             answerOf(portB, url, method, plan.headers, undefined, body)
         ]);
         checked++;
-        if (ra.line !== rb.line && !headerAfterWrite(plan, ra, rb) && !missingValueInterpolated(plan, ra)) {
+        if (ra.line !== rb.line && !headerAfterWrite(plan, ra, rb)) {
             divergences.push({ url, method, express: ra.line, fulmine: rb.line });
             if (stopAtFirst) stop = true;
         } else if (ra.line === rb.line && ra.etag && ra.etag === rb.etag) {

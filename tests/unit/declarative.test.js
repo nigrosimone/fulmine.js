@@ -168,9 +168,12 @@ test("a literal body is one end(), so uWS frames it with a Content-Length", () =
 
 test("a body with a piece of the request in it stays written in pieces", () => {
     // its length is not known until the request arrives, so uWS has to chunk it. Only reachable
-    // with etag off: an ETag cannot be computed over a body this side has not seen yet
+    // with etag off, an ETag cannot be computed over a body this side has not seen yet, and with
+    // request values allowed in: without the setting the same handler is not compiled at all
     const noEtag = express();
     noEtag.set("etag", false);
+    assert.ok(!compileDeclarative((req, res) => res.send("id " + req.params.id), noEtag));
+    noEtag.set("declarative request values", true);
     const parts = decode(compileDeclarative((req, res) => res.send("id " + req.params.id), noEtag)).filter(
         (instruction) => ["END", "WRITE", "PARAM", "QUERY"].includes(instruction.op)
     );

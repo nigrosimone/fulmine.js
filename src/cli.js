@@ -107,10 +107,11 @@ const DIFFERENCES = [
     [
         "a compiled route keeps its connection header",
         "A handler simple enough to be read at registration time is answered natively, and a client\n" +
-            "that sent Connection: close is still told keep-alive, though the socket does close. A body\n" +
-            "with a piece of the query in it is framed chunked, since its length is not known until the\n" +
-            "request arrives. A response that would carry a validator is never compiled, so conditional\n" +
-            'requests behave as on Express. app.set("declarative responses", false) turns it off.'
+            "that sent Connection: close is still told keep-alive, though the socket does close. A\n" +
+            "response that would carry a validator is never compiled, so conditional requests behave as\n" +
+            'on Express. app.set("declarative responses", false) turns it off. A body with a piece of\n' +
+            'the query or a route parameter in it is compiled only under app.set("declarative request\n' +
+            'values", true), which takes the value as uWS reads it: undecoded, the first one, or none.'
     ],
     [
         "headers are capped at 4096 bytes by default",

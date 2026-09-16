@@ -4,8 +4,9 @@ const express = require("express");
 const { fetchTest } = require("../../helpers.js");
 
 const app = express();
-// no etag, so the dynamic bodies stay on the compiled path
+// no etag, so the dynamic bodies stay on the compiled path, and request values allowed in them
 app.set("etag", false);
+app.set("declarative request values", true);
 
 app.get("/sub", (req, res) => res.send(req.query.n - 1));
 // eslint-disable-next-line eqeqeq -- the loose comparison operator is what is under test

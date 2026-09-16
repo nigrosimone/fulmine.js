@@ -6,6 +6,8 @@ const { fetchTest, sequential } = require("../../helpers.js");
 const app = express();
 const app2 = express();
 app2.set("etag", false);
+// what lets a body with a query or a parameter in it compile at all
+app2.set("declarative request values", true);
 
 app.get("/test", (req, res) => {
     res.send("Hello World");
@@ -94,7 +96,17 @@ app.listen(13333, async () => {
         // app2 is the compiled arm, app the ordinary one, and only app2 can be pinned: express has
         // no testing namespace, so this runs on our side only
         if (express.testing) {
-            express.testing.expectDeclarative(app2, ["/test", "/test2", "/test4", "/test5", "/test6", "/test8"]);
+            express.testing.expectDeclarative(app2, [
+                "/test",
+                "/test2",
+                "/test3/:id",
+                "/test4",
+                "/test5",
+                "/test6",
+                "/test8",
+                "/test9/:id",
+                "/test10/:id"
+            ]);
         }
 
         console.log("Server is running on port 13333");

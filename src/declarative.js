@@ -818,6 +818,12 @@ module.exports = function compileDeclarative(cb, app) {
         }
         const { sendUsed, bodyFromSend } = read;
 
+        // a part copied out of the request is written by uWS with its own reading of it, so the
+        // route is compiled only where the application asked for that
+        if (!app.get("declarative request values") && body.some((part) => part.type !== "text")) {
+            return false;
+        }
+
         // a handler that never sends is not a response: Express leaves the request waiting, so this
         // has to fall back instead of answering a bare 200
         if (!sendUsed && !sendStatusUsed) {

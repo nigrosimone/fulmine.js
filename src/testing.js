@@ -187,8 +187,11 @@ function whyNotCompiled(app, entry) {
     if (!app.get("declarative responses")) {
         return "answered by µWS, but declarative responses are turned off";
     }
-    if (entry.path.includes(":")) {
-        return "answered by µWS, but the route captures, and nothing runs to decode the value";
+    if (entry.path.includes(":") && !app.get("declarative request values")) {
+        return (
+            "answered by µWS, but the route captures, and nothing runs to decode the value: " +
+            'app.set("declarative request values", true) is what puts a route here'
+        );
     }
     if (app.get("etag")) {
         return (

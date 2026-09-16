@@ -1028,6 +1028,11 @@ const defaultSettings = {
     // The native µWS router matches bytes, so the compiler in _compileOptimizedRoutes only hands
     // it routes whose earlier siblings it can prove agree under either case rule.
     "declarative responses": true,
+    // off: a compiled body copies nothing out of the request. On, res.send(req.query.q) and
+    // res.send(req.params.id) compile too, written by uWS as it reads them and not as Express
+    // does: a query key repeated or missing gives the first value or nothing, a route parameter
+    // goes out undecoded, and one that Express refuses with a 400 is answered
+    "declarative request values": false,
     // on. Off hands every request to the ordinary chain instead of letting uWS match what it can,
     // which is slower and answers the same. Not a tuning knob: it exists so one application can be
     // served both ways and the answers compared, see `npm run fuzz -- --self`. A compiled response
