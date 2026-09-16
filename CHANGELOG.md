@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.21.1](https://github.com/nigrosimone/fulmine.js/compare/v5.21.0...v5.21.1) (2026-09-16)
+
+### Bug Fixes
+
+* load uWebSockets.js on first use, so an app served through node's http never loads it ([9b93afc](https://github.com/nigrosimone/fulmine.js/commit/9b93afc8097e584e11fdb9f952d8f6d1f1a2b006))
+* the file worker starts with its own execArgv, not the parent thread's ([a80eaf8](https://github.com/nigrosimone/fulmine.js/commit/a80eaf862b0c54ddd506509979c9b8cc69d8cb80))
+* **types:** express.static takes preCompressed, as the docs say it does ([cd50e63](https://github.com/nigrosimone/fulmine.js/commit/cd50e6330e99c300b595bd2cce02fb2a73604ebe))
+
 ## [5.21.0](https://github.com/nigrosimone/fulmine.js/compare/v5.20.0...v5.21.0) (2026-09-16)
 
 ### Features
