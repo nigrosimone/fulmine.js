@@ -100,9 +100,11 @@ module.exports = class Router extends EventEmitter {
      * it have already established that, so the honest `TemplatedApp|undefined` would only add
      * casts where the guard already is.
      *
-     * @type {any}
+     * @returns {any}
      */
-    uwsApp;
+    get uwsApp() {
+        return undefined;
+    }
 
     /**
      * Whether an unset routing flag reads on through the mount parent. Only an application does,

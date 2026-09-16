@@ -21,8 +21,7 @@ const acorn = require("acorn");
 const { stringify, contentTypeSet, withUtf8Charset, contentTypeFor, headerIsWritable } = require("./utils.js");
 // H3App, DeclarativeResponse and _cfg exist at runtime but are missing from the .d.ts the
 // package ships, so the module is read through a loose alias
-const uWS = require("uWebSockets.js");
-const uWSAny = /** @type {any} */ (uWS);
+const { loadUWS } = require("./uws.js");
 const statuses = require("statuses");
 
 /** @typedef {import("./application.js").Application} Application */
@@ -836,7 +835,7 @@ module.exports = function compileDeclarative(cb, app) {
             return false;
         }
 
-        let decRes = new uWSAny.DeclarativeResponse();
+        let decRes = new (loadUWS().DeclarativeResponse)();
 
         if (statusCode !== 200) {
             const statusMessage = statuses.message[statusCode] ?? "unknown";

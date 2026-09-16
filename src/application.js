@@ -17,7 +17,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-const uWS = require("uWebSockets.js");
+const { loadUWS } = require("./uws.js");
 const Router = require("./router.js");
 const {
     removeDuplicateSlashes,
@@ -117,6 +117,15 @@ class Application extends Router {
     _testingCompiled;
 
     /**
+     * The uWS app once made, or the one settings.uwsApp handed in. See the uwsApp getter.
+     * @type {any}
+     */
+    _uwsApp;
+
+    /** What uWS.App or uWS.SSLApp is given, kept until the app is made. */
+    _uwsOptions;
+
+    /**
      * @param {object} [settings] the options express() takes. uwsOptions goes to uWS and decides
      *   between an HTTP, an HTTPS and an HTTP/3 server; threads sizes the file-reading pool, and 0
      *   turns it off; cluster forks one process per core over the same port; uwsApp adopts an
@@ -138,9 +147,7 @@ class Application extends Router {
         if (this._clusterWorkers > 0 && cluster.isPrimary) {
             becomeSupervisor();
         }
-        if (settings.uwsApp) {
-            this.uwsApp = /** @type {import("uWebSockets.js").TemplatedApp} */ (settings.uwsApp);
-        } else if (settings.http3) {
+        if (settings.http3) {
             // uWS.H3App exists in the pinned build but its QUIC stack does not: the constructor
             // segfaults on Linux and hangs forever on Windows before serving a single request,
             // verified 2026-08-05 with uWS alone. A clear throw beats a native crash; this
@@ -149,12 +156,12 @@ class Application extends Router {
                 "http3 is not usable with the pinned uWebSockets.js build: its H3App crashes " +
                     "during construction. Track uNetworking/uWebSockets.js for working QUIC support."
             );
-        } else if (settings.uwsOptions.key_file_name && settings.uwsOptions.cert_file_name) {
-            this.uwsApp = uWS.SSLApp(settings.uwsOptions);
-        } else {
-            this.uwsApp = uWS.App(settings.uwsOptions);
         }
         this.ssl = settings.uwsOptions.key_file_name && settings.uwsOptions.cert_file_name;
+        // the uWS app is made on first use, see the uwsApp getter: what listen(), ws() and the
+        // optimizer need, and what an app served through node's http never asks for
+        this._uwsApp = settings.uwsApp;
+        this._uwsOptions = settings.uwsOptions;
         this.cache = new NullObject();
         this.engines = { __proto__: null };
         // a null prototype, as express gives app.locals, so a local named like an Object method
@@ -513,6 +520,22 @@ class Application extends Router {
     }
 
     /**
+     * The µWS app underneath, for anything µWS offers that this does not: socket.io attaches to
+     * it. Made the first time it is asked for, so an application that only ever answers through
+     * node's http, a test through supertest or Angular's build extracting routes in a worker
+     * thread, never loads the binary. See src/uws.js for why that matters.
+     *
+     * @returns {any}
+     */
+    get uwsApp() {
+        if (this._uwsApp === undefined) {
+            const uWS = loadUWS();
+            this._uwsApp = this.ssl ? uWS.SSLApp(this._uwsOptions) : uWS.App(this._uwsOptions);
+        }
+        return this._uwsApp;
+    }
+
+    /**
      * Registers the catch-all uWS handler, which is what serves every request that no optimized
      * route took natively. It walks this app's own chain and, when nothing in it answered, decides
      * between an error, the automatic OPTIONS reply and a 404.
@@ -620,7 +643,7 @@ class Application extends Router {
             // listen() returns. The callback is not: running it here would run it before listen()
             // had returned, and `const server = app.listen(p, () => server.address())` - the form
             // the Express docs use - would die on the temporal dead zone.
-            this.port = uWS.us_socket_local_port(socket);
+            this.port = loadUWS().us_socket_local_port(socket);
             this.listening = true;
             this._listenHost = host;
             // kept so close() can stop accepting without dropping what is in flight
@@ -891,7 +914,7 @@ class Application extends Router {
             return this;
         }
         if (this._listenSocket) {
-            uWS.us_listen_socket_close(this._listenSocket);
+            loadUWS().us_listen_socket_close(this._listenSocket);
             this._listenSocket = undefined;
         }
         this._draining = true;

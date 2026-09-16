@@ -17,11 +17,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// H3App, DeclarativeResponse and _cfg exist at runtime but are missing from the .d.ts the
-// package ships, so the module is read through a loose alias
-const uWS = require("uWebSockets.js");
-const uWSAny = /** @type {any} */ (uWS);
-
 // A project on pnpm owns the uWebSockets.js dependency itself, see `npx fulmine.js pnpm`, so the
 // one installed can drift from the one this package pins and was tested against. Said once, at
 // require time, where it reaches every deployment rather than only the ones that run verify.
@@ -49,13 +44,6 @@ const Route = require("./route.js");
 const middlewares = require("./middlewares.js");
 const Request = require("./request.js");
 const Response = require("./response.js");
-
-try {
-    // disable Uwebsockets header
-    uWSAny._cfg("999999990007");
-} catch (error) {
-    // older uWS builds do not expose _cfg; there is nothing to fall back to
-}
 
 try {
     // the compile cache, node 22.8 and up: the next boot skips compiling the same code. Respects
