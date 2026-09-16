@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.21.0](https://github.com/nigrosimone/fulmine.js/compare/v5.20.0...v5.21.0) (2026-09-16)
+
+### Features
+
+* declarative request values, a compiled body copies query and params only when asked ([9ba8959](https://github.com/nigrosimone/fulmine.js/commit/9ba89593e298a475d59bb993b677d9d9b27b600e))
+
 ## [5.20.0](https://github.com/nigrosimone/fulmine.js/compare/v5.19.9...v5.20.0) (2026-09-15)
 
 ### Features
