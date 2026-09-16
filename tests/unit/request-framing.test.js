@@ -240,8 +240,9 @@ test("a method nobody defines never reaches a route", async () => {
 test("a transfer-encoding whose last coding is not chunked is refused", async () => {
     const { port, close, served } = await serve();
 
-    // with a coding applied after the framing one, nothing can say where the body ends
-    for (const te of ["chunked, gzip", "chunked, identity"]) {
+    // with a coding applied after the framing one, nothing can say where the body ends. A
+    // parameter on chunked is a 400 from node too, and uWS 20.71 refuses it natively
+    for (const te of ["chunked, gzip", "chunked, identity", "chunked;a=b"]) {
         const answer = await raw(
             port,
             `POST / HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nTransfer-Encoding: ${te}\r\n\r\n` +
@@ -257,7 +258,7 @@ test("a transfer-encoding whose last coding is not chunked is refused", async ()
 test("chunked last is still served, however the list is written", async () => {
     const { port, close } = await serve();
 
-    for (const te of ["chunked", "gzip, chunked", "identity, chunked", "chunked;a=b"]) {
+    for (const te of ["chunked", "gzip, chunked", "identity, chunked"]) {
         const answer = await raw(
             port,
             `POST / HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nTransfer-Encoding: ${te}\r\n\r\n` +
