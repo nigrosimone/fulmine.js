@@ -106,6 +106,9 @@ expectAssignable<RequestHandler>(express.urlencoded({ extended: true }));
 
 expectAssignable<RequestHandler>(express.static("public"));
 expectAssignable<RequestHandler>(express.static("public", { maxAge: "1d" }));
+// preCompressed is this project's option, and the README example has to compile
+expectAssignable<RequestHandler>(express.static("public", { maxAge: "1d", preCompressed: true }));
+expectAssignable<RequestHandler>(express.static("public", { preCompressed: { cache: "5s" } }));
 
 expectAssignable<RequestHandler>(express.raw());
 expectAssignable<RequestHandler>(express.text());

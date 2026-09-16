@@ -18,6 +18,7 @@ declare module "fulmine.js" {
     import e from "express";
     import uWS from "uWebSockets.js";
     import { ZlibOptions, BrotliOptions } from "zlib";
+    import serveStatic = require("serve-static");
 
     type Settings = {
         uwsOptions?: uWS.AppOptions;
@@ -36,7 +37,16 @@ declare module "fulmine.js" {
         export import request = e.request;
         export import response = e.response;
 
-        export import static = e.static;
+        /** serve-static's options plus preCompressed, which is this project's. */
+        interface StaticOptions extends serveStatic.ServeStaticOptions<e.Response> {
+            /**
+             * Serve `file.br` or `file.gz` in place of `file` when one is on disk and the client
+             * takes it. Off by default. Which twins a path has is remembered for a second;
+             * `{ cache: false }` asks the disk every time, a duration sets how long.
+             */
+            preCompressed?: boolean | { cache?: number | string | false };
+        }
+        function static(root: string, options?: StaticOptions): e.RequestHandler;
         // export import query = e.query;
 
         // express has no compression middleware, so there is nothing to re-export: these are the
