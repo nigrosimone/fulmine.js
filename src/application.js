@@ -59,7 +59,10 @@ class FSWorker {
      */
     constructor() {
         this.busy = false;
-        this.worker = new Worker(path.join(__dirname, "worker.js"));
+        // its own execArgv, not the parent thread's: a worker inherits them, and a --require or
+        // --import written for the parent (Angular's route extraction registers a loader that reads
+        // workerData) throws inside a thread that only reads files
+        this.worker = new Worker(path.join(__dirname, "worker.js"), { execArgv: [] });
 
         this.worker.on("message", (message) => {
             // node speaks on this channel too: under --watch a worker reports the files it loaded
