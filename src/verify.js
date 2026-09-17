@@ -321,10 +321,10 @@ function checkPackageManager(dir, pkg) {
         // no workspace file, so every setting is at its default
     }
 
-    // the recipe: the project owns the git dependency, and the copy this package asks for is dropped
-    const dropped = new RegExp(`^\\s*["']?${UWS_OVERRIDE.replace(/\./g, "\\.")}["']?:\\s*["']?-["']?\\s*$`, "m").test(
-        workspace
-    );
+    // the recipe: the project owns the git dependency, and the copy this package asks for is dropped.
+    // Only the dots need escaping today, every metacharacter is, so the name stays a literal
+    const literal = UWS_OVERRIDE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const dropped = new RegExp(`^\\s*["']?${literal}["']?:\\s*["']?-["']?\\s*$`, "m").test(workspace);
     const own = pkg.dependencies?.["uWebSockets.js"];
     if (dropped && typeof own === "string") {
         if (own === UWS_SPEC) {
