@@ -765,14 +765,8 @@ function identifiersAllowed(fn, args, names) {
             params.includes(id)
     );
 }
-// uWS allows creating such responses and they are extremely fast
-// since you don't even have to call into Node.js at all
-// declarative response will only be created if callback is 'simple enough'
-// simple enough means:
-// - doesnt call external functions
-// - doesnt create variables
-// - only uses req.query and req.params
-// basically, its only simple, static responses
+// A uWS declarative response never enters node, so it is very fast. Only a handler that is simple
+// enough compiles: no external calls, no variables, only req.query and req.params in the body
 /**
  * @param {Function} cb the handler
  * @param {Application|Router} app the application or router the route hangs on, for the json settings

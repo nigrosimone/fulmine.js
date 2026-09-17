@@ -20,17 +20,9 @@ limitations under the License.
 const { Writable } = require("stream");
 
 /**
- * A Writable that has not built its state yet, the mirror of LazyReadable and for the same reason:
- * a response is a Writable because middleware expects one, and the ordinary one never uses it.
- * `send()` reaches `end()`, which is overridden here and goes straight to _finish, so the
- * WritableState was allocated for every response and read by nobody. Only res.write(), a pipe,
- * cork and the writableX getters need it.
- *
- * `Response extends LazyWritable`, whose prototype is Writable's, so `res instanceof Writable`
- * stays true. `_writableState` is built on the first touch. Measured at 45ns a response.
- *
- * As on the Readable side the wrapping is generated: every own member of Writable's prototype gets
- * a version that materialises first, so there is no list to keep in step.
+ * The mirror of LazyReadable: a response is a Writable because middleware expects one, but send()
+ * goes straight to _finish and only res.write(), a pipe, cork and the writableX getters need the
+ * state, so it is built on the first touch. Measured at 45ns a response. Same generated wrapping.
  */
 class LazyWritableBase {}
 Object.setPrototypeOf(LazyWritableBase.prototype, Writable.prototype);

@@ -97,15 +97,9 @@ const PRECOMPRESSED = [
  * ) => void} BodyHandler
  */
 
-// The failures express.static answers by moving on to the next handler rather than by reporting
-// them, when fallthrough is on. They all mean the same thing: the request is not a file here.
-//
-// serve-static decides this by remembering whether send got as far as settling on a file. The list
-// says the same from the other side: by the time this hands over the file has been found and
-// stat'ed, so what is left to fail is a dotfile rule or a path that will not decode.
-//
-// A 412 and a 416 are not on it. Both are about a file that exists and about conditions the client
-// itself set, and falling through swallowed them: a Range Not Satisfiable came back as a 404.
+// The failures express.static passes to the next handler when fallthrough is on: all of them mean
+// the request is not a file here. A 412 and a 416 are about a file that exists, so they are
+// answered: falling through turned a Range Not Satisfiable into a 404.
 const FALLTHROUGH_STATUSES = new Set([400, 403, 404]);
 
 /**
@@ -395,15 +389,10 @@ function twinsOf(filePath, ttl) {
 }
 
 /**
- * The compressed twin of a file to serve in its place, or undefined when the client would rather
- * have the file itself or the twin is not there.
- *
- * The stat comes back with it, and is what sendFile then answers from: the ETag and Last-Modified
- * of a variant are its own. Two bodies sharing one ETag is how a shared cache ends up handing
- * brotli to a client that cannot read it.
- *
- * One stat when the answer is a twin, none when the last request already found there is no twin.
- * See twinCache above for what is remembered.
+ * The compressed twin to serve in place of a file, or undefined when the client does not take one
+ * or it is not there. Its own stat comes back with it, so the ETag and Last-Modified are the
+ * variant's: two bodies under one ETag makes a shared cache hand brotli to a client that cannot
+ * read it. One stat for a twin, none once twinCache remembers there is no twin.
  *
  * @param {string} filePath absolute path of the file that was asked for
  * @param {string|undefined} accept the request's Accept-Encoding
@@ -590,14 +579,10 @@ function serveStatic(root, options) {
             } else return next();
         }
         let _path = url;
-        // Joined against the root and not normalised on its own first, which is the difference
-        // between "/mount/../package.json" being refused and being served: a ".." has to climb
-        // relative to the root so the check below can see it leave, and normalizing the url alone
-        // clamps it at "/". Absolute because resolvedRoot is, so nothing resolves against the
-        // working directory per request.
-        // Without the trailing separator join keeps and resolve does not, because statTarget below
-        // puts it back only where it belongs: linux refuses a file asked for as a directory, so a
-        // mount whose root is a file would answer nothing. Windows stats it either way
+        // Joined against the root, not normalised alone: a ".." must climb relative to the root so
+        // the check below sees it leave ("/mount/../package.json"), normalising the url alone clamps
+        // it at "/". No trailing separator, statTarget puts it back only where it belongs: linux
+        // refuses a file asked for as a directory
         let fullpath = path.join(resolvedRoot, url);
         if (fullpath.length > resolvedRoot.length && fullpath.endsWith(path.sep)) {
             fullpath = fullpath.slice(0, -1);
@@ -605,13 +590,9 @@ function serveStatic(root, options) {
         // the same file as _path, absolute: the two move together through the index and extension
         // rules below, and only the precompressed lookup needs the absolute one
         let filePath = fullpath;
-        // What serve-static hands send is this path, except that a bare "/" under a mount the
-        // request did not write with one becomes "": without that rule a mount whose root is a file
-        // would ask the disk for a directory and could never answer.
-        //
-        // Send then stats `normalize(join(root, path))`, and both keep a trailing separator where
-        // `resolve` takes it off. The disk refuses a file asked for as a directory, and the name
-        // inside the error carries it, which is what an error handler prints
+        // The path serve-static hands send, except a bare "/" the request did not write becomes "":
+        // a mount whose root is a file must not ask the disk for a directory. Then
+        // `normalize(join(root, path))` as send stats it, trailing separator kept
         const mountRelative = rawPath === "/" && !req.endsWithSlash ? "" : url;
         const statTarget = mountRelative.endsWith("/") && !fullpath.endsWith(path.sep) ? fullpath + path.sep : fullpath;
         if (root && !fullpath.startsWith(resolvedRoot)) {
@@ -954,15 +935,10 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
         // buffer itself to the application, and a verify hook may keep what it is shown
         const copyBody = keepsBuffer || typeof options.verify === "function";
 
-        // Whether a content-type is one this parser claims, remembered per parser.
-        //
-        // Only reached when the caller asked for a wildcard or a list, since a plain type takes the
-        // simpleType shortcut above. For those callers type-is was 513ns to reach the same answer
-        // about the same string on every request, against 4ns for one already worked out. The
-        // header is the client's, so the memo needs its ceiling.
-        //
-        // typeis.is and not typeis(req, ...): the request form first checks that there is a body,
-        // which the caller below has established.
+        // Whether a content-type is one this parser claims, memoised per parser: a wildcard or a
+        // list (a plain type took the simpleType shortcut) cost type-is 513ns per request against
+        // 4ns memoised. The header is the client's, so the memo has a ceiling. typeis.is, not
+        // typeis(req): the caller already established there is a body
         const claimsType = memoizeByString(
             (contentType) => !!typeis.is(contentType, /** @type {string[]} */ (options.type))
         );

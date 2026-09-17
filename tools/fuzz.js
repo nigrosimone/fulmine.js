@@ -1,21 +1,8 @@
-// Differential fuzzing against express.
+// Differential fuzzing against express: a random application, registered on both, hit with hostile
+// urls, every answer compared. Seeded, so a failure prints the seed that replays it, and shrunk,
+// routes and settings dropped one at a time while the divergence survives.
 //
-// The suite compares hand written cases. This builds random ones instead: a random application
-// shape, registered on real express and on fulmine, hit with hostile urls, and every answer
-// compared. Anything the two disagree on is a compatibility bug in one of them, and it is usually
-// ours.
-//
-//   node tools/fuzz.js                     a few hundred rounds
-//   node tools/fuzz.js --rounds 500        longer
-//   node tools/fuzz.js --seed 12345        replay exactly what a past run did
-//   node tools/fuzz.js --keep-going        do not stop at the first divergence
-//   node tools/fuzz.js --self             compare this framework against itself with the
-//                                          optimizer off, instead of against express
-//
-// Two things make it a tool rather than a lucky script. Every round is drawn from a seeded
-// generator, so a failure prints the seed that reproduces it. And a failure is then shrunk: routes
-// and settings are dropped one at a time for as long as the divergence survives, which turns a
-// forty route accident into the two lines worth pasting into tests/.
+//   node tools/fuzz.js [--rounds 500] [--seed 12345] [--keep-going] [--self]
 
 const fs = require("fs");
 const http = require("http");
@@ -40,15 +27,9 @@ const basicAuth = require("express-basic-auth");
 // every value a handler writes has to be ascii now. content-length is checked, see framingFault.
 const EXCLUDED_HEADERS = new Set(["x-powered-by", "content-length", "transfer-encoding", "x-response-time"]);
 
-// --self compares this framework against itself with the optimizer off instead of against Express.
-//
-// Every native registration, compiled response and granted skip is a claim that µWS answering by
-// itself gives the answer the ordinary chain would have given. That claim is what this project is,
-// and it is where the bugs have been: the analysis reading a pattern as narrower than it is, a
-// route that never gets its turn, a guard that does not fire. Comparing the two arms tests it
-// directly, with no second framework in the way, so it also reaches the shapes Express has no
-// opinion about. A divergence here is a bug by construction: the same code answered the same
-// request two different ways.
+// --self compares this framework against itself with the optimizer off: every native registration,
+// compiled response and granted skip claims to answer as the ordinary chain would, and that is
+// where the bugs have been. A divergence here is a bug by construction.
 const SELF = process.argv.includes("--self");
 // --shim serves the arm under test with http.createServer(app) instead of app.listen, so the
 // request and the response go through node-shim. It is the path supertest takes, and nothing
@@ -215,27 +196,14 @@ const OPTION_FUNCTIONS = {
 // to inflate, with one it does not know, or with one that lies about the bytes under it
 const BODY_ENCODINGS = ["identity", "gzip", "deflate", "br", "unsupported", "lying"];
 
-// The middleware an application really installs, drawn into the plan and registered on both arms.
-//
-// Unlike the body parsers, which each framework brings its own copy of, both arms here get the
-// same npm package. There is no second implementation to compare, so a divergence is our request
-// and response surface behaving differently under code that neither framework wrote, which is the
-// gap integrations/ covers for whole frameworks and this covers one layer down. It reaches what a
-// generated handler cannot: on-headers, on-finished, a middleware that answers instead of calling
-// next, and a response stream somebody else writes.
-//
-// Each entry draws its options as plain data, so the shrinker can drop it and the printed case can
-// name it. `headers` adds what the request has to carry for the middleware to do anything.
-//
-// Left out, and why:
-//   express-session, cookie-session           a session id and an expiry drawn from the clock
-//   express-rate-limit                        counts across rounds, and its headers carry a reset
-//   errorhandler                              writes the stack, whose frames belong to each project
-//   express-mongo-sanitize                    assigns to req.query, which express 5 refuses: the
-//                                             message it throws names the request class, and ours
-//                                             is not a node IncomingMessage
-//   http-proxy-middleware, express-http-proxy  want an upstream to talk to
-//   multer, express-fileupload                want a multipart body, which nothing here generates
+// The middleware an application really installs, drawn into the plan on both arms: the same npm
+// package on each, so a divergence is our request and response surface under code neither
+// framework wrote (on-headers, on-finished, a stream somebody else writes). Options are plain data,
+// so the shrinker can drop an entry; `headers` is what the request must carry for it to do anything.
+// Left out: express-session and cookie-session (clock), express-rate-limit (counts across rounds),
+// errorhandler (writes the stack), express-mongo-sanitize (assigns req.query, which express 5
+// refuses naming its request class), the proxies (want an upstream), multer and express-fileupload
+// (want multipart)
 const SINK = { write: () => {} };
 const MIDDLEWARE = {
     cors: {
@@ -313,12 +281,9 @@ const MIDDLEWARE = {
 };
 const MIDDLEWARE_NAMES = Object.keys(MIDDLEWARE);
 
-// Every path written in the case corpus of path-to-regexp, the library express matches with. It
-// holds both sides of their tests, the patterns and the concrete paths they are matched against,
-// so the same list serves as route vocabulary and as request vocabulary. It is what brings in the
-// shapes nobody would think to generate: escapes, extensions, unicode, percent-encoding, optional
-// groups, and wildcards with a suffix.
-// Taken from pillarjs/path-to-regexp, src/cases.spec.ts.
+// Every path in path-to-regexp's own case corpus (pillarjs/path-to-regexp, src/cases.spec.ts),
+// patterns and the paths matched against them, as route and request vocabulary: escapes,
+// extensions, unicode, percent-encoding, optional groups, wildcards with a suffix
 const LIBRARY_PATHS = [
     "/",
     "/:test",
@@ -1036,13 +1001,10 @@ function paramNamesOf(path) {
 }
 
 /**
- * A handler drawn as source, statement by statement. declarative.js and usage.js both read a
- * handler's text, so the statements are drawn from their borders: a destructured request, a
- * template with a parameter in it, a header set twice in two casings, a status after the body.
- * They are kept as strings, so the shrinker drops them one at a time.
- *
- * Never drawn, because express dies of them: a body written after end(), and an end() with an
- * encoding node does not know.
+ * A handler drawn as source, statement by statement, from the borders declarative.js and usage.js
+ * read: a destructured request, a template with a parameter, a header set twice in two casings, a
+ * status after the body. Strings, so the shrinker drops them one at a time. Never drawn, express
+ * dies of them: a write after end(), an end() with an encoding node does not know.
  *
  * @param {() => number} rng
  * @param {string[]} paramNames what the route's path binds
@@ -1364,14 +1326,9 @@ function makeHandler(route) {
         case "attachment":
             return (req, res) => res.attachment("report.json").send(id);
         case "attachment-odd-name":
-            // a name that has to be quoted and has a quote and a backslash to escape inside it.
-            //
-            // Deliberately ASCII. A non-ascii one is not comparable: express hands the value to
-            // node, whose header block turns the character into U+FFFD and then writes it as
-            // latin1, so a filename with an accent leaves express as one corrupt byte. µWS writes
-            // the string as utf-8, so the same filename leaves this one intact. Comparing them
-            // reported a divergence on every round and the only way to match would be to corrupt
-            // the name too, which is not worth being bug-compatible about.
+            // a name that has to be quoted, with a quote and a backslash inside. ASCII only: node
+            // writes a non-ascii header value as U+FFFD in latin1, one corrupt byte, µWS writes
+            // utf-8, and matching that would mean corrupting the name too
             return (req, res) => res.attachment('re"port\\v1.json').send(id);
         case "clear-cookie":
             return (req, res) => res.cookie("a", id).clearCookie("b", { path: "/x" }).send(id);
@@ -2002,17 +1959,10 @@ function everyProgram(plan) {
 }
 
 /**
- * The one difference this project has decided to keep, the way wire-fuzz keeps closeThenPipelined.
- *
- * A second one, a missing query value interpolated by a compiled response, was kept here until
- * "declarative request values" made those bodies opt in: off by default, the fuzzer never sees one.
- *
- * Express flushes the head inside res.write(), so a header set after one throws there and the
- * socket goes. Here the head is queued and leaves on the next tick, so the same header is taken
- * and the request is answered. Decided on 2026-09-11: not a bug for this project.
- *
- * Narrow on purpose: it takes a handler that writes and then sets a header, express failing with
- * no answer at all, and this framework answering. Anything else is still a divergence.
+ * The one difference kept, as wire-fuzz keeps closeThenPipelined: express flushes the head inside
+ * res.write(), so a header set after one throws and the socket goes, here the head leaves on the
+ * next tick and the request is answered. Decided 2026-09-11. Narrow: a write then a header,
+ * express with no answer, this framework answering. Anything else is still a divergence.
  *
  * @param {any} plan
  * @param {{line: string}} express

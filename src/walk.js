@@ -72,13 +72,9 @@ class Walk {
         // bound, not wrapped in an arrow: an arrow forwarding into step() is one more call on every
         // hop, and it measured 495 microseconds per thousand requests of nothing else
         this.next = this.step.bind(this);
-        // What res.sendFile reports a failure to. Express hands it req.next, the router next and
-        // not the route one, so a file that cannot be served leaves the route and its error reaches
-        // the router error handlers. req.next itself is left alone: making it mean this everywhere
-        // breaks express own res.format and app.routes.error tests here.
-        //
-        // Null here and bound on the first route with more than one callback, the only shape that
-        // reads it: a request that never meets one paid a bind for nothing
+        // What res.sendFile reports a failure to: the router next, as express's req.next, so the
+        // error leaves the route. req.next itself stays as it is, changing it breaks express's
+        // res.format tests. Bound on the first route with more than one callback, the only reader
         /** @type {((err?: unknown) => void)|null} */
         this.leaveRoute = null;
     }

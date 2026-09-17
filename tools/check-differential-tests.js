@@ -14,15 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Refuses to commit a differential test that is pointing at the local source.
-//
-// The harness runs each of these files twice by rewriting its first import: once as written,
-// against the real Express, and once with the import swapped for src/index.js. It puts the file
-// back afterwards, but the file is on disk in the swapped state while the run is going, and a
-// commit made in that window records it. What lands then is a test that compares fulmine against
-// fulmine and passes whatever it does. That happened once, hence this.
-//
-// Run by lint-staged over the staged test files.
+// Refuses to commit a differential test pointing at the local source: the harness swaps the
+// express import for src/index.js while a run is going, and a commit in that window records a
+// test that compares fulmine against fulmine. Happened once. Run by lint-staged.
 
 "use strict";
 

@@ -21,22 +21,10 @@ limitations under the License.
  * @typedef {Parameters<import("stream").Writable["on"]>} OnArgs
  */
 
-// express.compression(), which answers with a compressed body when the client asked for one.
-//
-// The options, the defaults and the order the decision is taken in are the compression module's,
-// so a front that already uses it can drop the require and change nothing else. Three things are
-// different, and each one only turns a worse answer into a better one:
-//
-//   - a response that arrives whole, which is every res.send() and res.json(), is compressed in
-//     one call instead of through a transform stream, and goes out with a Content-Length. Same
-//     bytes: zlib.gzipSync and a createGzip fed the same body in one write agree.
-//   - partial content is left alone. The compression module compresses a 206 too, and the result
-//     is a byte range of the file described as gzip, which no client can decode.
-//   - zstd is on offer, which the compression module cannot do. Ranked below brotli and above
-//     gzip, so a client that takes both is answered as before. A Node with no zstd never offers it.
-//
-// The streaming half is the module's own design: a transform stream, its output written as it
-// comes, and the drain listeners moved onto it so a pipe that fills up hears from the compressor.
+// express.compression(): the compression module's options, defaults and decision order, with three
+// differences: a whole body (res.send, res.json) is compressed in one call and goes out with a
+// Content-Length, a 206 is left alone (a compressed byte range decodes nowhere), and zstd is on
+// offer, ranked between brotli and gzip. The streaming half is the module's own transform design.
 
 "use strict";
 
@@ -108,16 +96,10 @@ const SYNC_LIMIT = 24 * 1024;
 const noop = () => {};
 
 /**
- * A whole-body compressor that keeps one stream instead of letting zlib build and throw one away
- * per call, which under the sync limit costs more than the compression does. Same bytes, a third
- * of the time.
- *
- * It is private node, and two things have to be held in place: close, because the FINISH that ends
- * the member would take the binding with it, and the handle, which the same FINISH drops off the
- * stream. The probe compresses each body twice and gives up unless every answer matches `oneShot`,
- * so a node that does this differently gets the public API back.
- *
- * Only for the deflate formats. A brotli stream carries context across a reset.
+ * A whole-body compressor on one reused zlib stream: building one per call costs more than the
+ * compression under the sync limit, this is the same bytes in a third of the time. It holds
+ * node's private close and handle in place across FINISH, and a probe falls back to `oneShot` on
+ * a node that behaves differently. Deflate formats only, a brotli stream keeps context on reset.
  *
  * @param {() => any} create makes the stream. Loose because what is checked below is node's zlib
  *   internals, which its typings do not declare

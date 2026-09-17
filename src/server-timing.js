@@ -14,22 +14,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// express.serverTiming(): Server-Timing, with the two things only this framework can put in it.
-//
-// What no other stopwatch middleware can add is how the request was routed:
+// express.serverTiming(): Server-Timing with what only this framework can say, how the request was
+// routed and what it was made to build:
 //
 //     Server-Timing: route;desc="native", hdr;desc="not copied", total;dur=0.42
 //
-// `route;desc="native"` means uWS matched the path in C++ and handed over a chain worked out at
-// startup. `route;desc="router"` means this request was matched here, in javascript, layer by
-// layer. A handler compiled into a response never enters javascript, so there is nothing to time
-// on it: `npx fulmine profile` counts those.
-//
-// `work` names what the request was made to build: folded headers, parsed query, body, Readable,
-// Writable, socket stand-in. A fast request builds none and the field is absent. See src/work.js.
-//
-// The duration ends where the header does. Server-Timing goes out with the head, so `total` covers
-// everything up to the moment the answer starts leaving, and `work` has the same boundary.
+// `route` is "native" (matched by uWS, chain worked out at startup) or "router" (matched here, layer
+// by layer); a compiled response never enters javascript, `npx fulmine profile` counts those. `work`
+// names what was built (headers, query, body, Readable, Writable, socket stand-in), see src/work.js.
+// The duration ends where the header goes out.
 
 "use strict";
 

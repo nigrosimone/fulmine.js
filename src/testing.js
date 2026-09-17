@@ -14,14 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// express.testing: what listen() decided about each route, as something a test can assert on.
-//
-// A route is answered by uWS itself only while it stays eligible: a `const` in the wrong place, a
-// middleware that reads a header, a new route above an old one, and it falls back to the ordinary
-// router. The answer stays correct, so nothing complains, only the throughput changes.
-//
-// `npx fulmine profile` prints the same verdicts for a human. This is the half a test can hold on
-// to, so a pull request that loses the fast path fails in CI.
+// express.testing: what listen() decided about each route, for a test to assert on. A route falls
+// off the native path silently (a middleware reading a header, a new route above an old one) and
+// only the throughput changes: this is what makes such a pull request fail in CI.
 
 "use strict";
 

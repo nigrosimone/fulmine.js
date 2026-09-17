@@ -14,22 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// What makes an application answer the questions a library asks about an http.Server.
-//
-// `app.listen()` returns the app and there is no node server under it, the socket belongs to uWS.
-// Graceful shutdown libraries, connection trackers and health check wrappers recognise a server
-// with `server instanceof http.Server`, then call close(), address(), getConnections().
-//
-// Two halves:
-//
-//   - the members. close(), address(), listening and the events are already on the application,
-//     because Express hands back an http.Server. The rest of net.Server is added below.
-//   - the recognition. An application cannot inherit from http.Server, its prototype chain runs
-//     through Router and this project's own EventEmitter. So instanceof is taught instead, with
-//     Symbol.hasInstance. The patch is additive, nothing loses the answer it had.
-//
-// Nothing emits 'request', 'connection' or 'upgrade': those carry node sockets and there are none.
-// A library counting connections through them counts zero, and socket.io wants app.uwsApp.
+// What makes an application answer as an http.Server, for graceful shutdown libraries and
+// connection trackers: the net.Server members added below, and `instanceof http.Server` taught
+// through Symbol.hasInstance, since the prototype chain runs through Router. Nothing emits
+// 'request', 'connection' or 'upgrade', there are no node sockets: socket.io wants app.uwsApp.
 
 const http = require("http");
 const net = require("net");

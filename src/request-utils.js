@@ -197,14 +197,9 @@ function endsWithChunked(value) {
 }
 
 /**
- * Whether a Connection header says the connection ends with this response.
- *
- * It is a list, and "keep-alive, close" closes as much as "close" alone. Compared against an exact
- * "close", this server kept a connection the client was done with and read the bytes after it as
- * another request, which is a desync.
- *
- * A scan rather than a split and a lowercase: almost every request carries "keep-alive" here, and
- * both of those allocate per request.
+ * Whether a Connection header says the connection ends with this response. It is a list:
+ * "keep-alive, close" closes too, and comparing against an exact "close" read the bytes after that
+ * request as another one. A scan, since a split and a lowercase allocate on every request.
  *
  * @param {string} value as µWS hands it over
  * @returns {boolean}

@@ -14,13 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// A uWS-shaped request and response backed by node's own, so an app can serve what arrived through
-// http.createServer. Nothing here is fast and it does not need to be: it is what makes supertest
-// and http.createServer(app) work.
-//
-// Request and Response ask uWS for eighteen things and this answers all eighteen. Where the models
-// disagree node's gives way: cork only runs its callback, and a status is remembered rather than
-// sent, since node writes the head with the first byte of body.
+// A uWS-shaped request and response over node's own, for supertest and http.createServer(app).
+// Not fast and not meant to be. Where the models disagree node's gives way: cork only runs its
+// callback, a status is kept until the first byte of body
 
 const { IncomingMessage } = require("http");
 

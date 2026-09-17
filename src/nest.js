@@ -22,17 +22,10 @@ limitations under the License.
 //     const app = await NestFactory.create(AppModule, new FulmineExpressAdapter());
 //     await app.listen(3000);
 //
-// @nestjs/platform-express takes any Express instance and this is one, so controllers, pipes,
-// guards and interceptors are untouched. Only three methods below the adapter need overriding:
-//
-//   - initHttpServer wraps the instance in http.createServer(). That would push every request
-//     through node's parser and node-shim.js, the slow path. The app is already an http.Server.
-//   - registerParserMiddleware looks for Nest's body parsers in app.router.stack. There is no
-//     layer array here, so the answer was always "no" and a second call added a second pair.
-//   - httpsOptions asks node for a TLS server. TLS belongs to uWS and is set when the app is
-//     built, so that combination is refused.
-//
-// @nestjs/platform-express is an optional peer dependency, only this file requires it.
+// @nestjs/platform-express takes any Express instance, so only three methods are overridden:
+// initHttpServer (the app is already an http.Server, no createServer and no node-shim slow path),
+// registerParserMiddleware (it looks for the parsers in app.router.stack, which is not here) and
+// httpsOptions (TLS is uWS's, set when the app is built, so it is refused). Optional peer dependency.
 
 "use strict";
 

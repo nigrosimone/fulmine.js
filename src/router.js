@@ -563,14 +563,10 @@ module.exports = class Router extends EventEmitter {
     }
 
     /**
-     * The layers Express keeps on a router, in Express's own shape: one per middleware, one per
-     * route, and the route's own handlers under `route.stack`. Libraries that list an application's
-     * endpoints walk this, and so do tests that reach in for a handler by name, which is how
-     * LibreChat pulls one middleware out of its router.
-     *
-     * A view, rebuilt on every read, not the router's own storage: pushing a layer onto it or
-     * splicing one out moves nothing. The layer objects are kept, so identities compare across two
-     * reads the way they do in Express.
+     * The layers in Express's own shape, one per middleware and per route with the handlers under
+     * `route.stack`: endpoint listers walk it, LibreChat pulls a middleware out of it by name. A
+     * view rebuilt on every read, so pushing or splicing moves nothing; the layer objects are kept,
+     * so identities compare across reads.
      *
      * @returns {Layer[]}
      */
@@ -589,10 +585,9 @@ module.exports = class Router extends EventEmitter {
     }
 
     /**
-     * Registers a route, which every method helper and use() funnel into. Several paths at once
-     * become several routes sharing the callbacks, as Express allows. Paths are normalised here and
-     * not at match time: no trailing slash unless strict routing, "*" becomes "/{*splat}", and
-     * anything not comparable as a string is compiled to a regular expression and marked complex.
+     * Registers a route, what every method helper and use() funnel into. Paths are normalised here:
+     * no trailing slash unless strict routing, "*" becomes "/{*splat}", anything not comparable as
+     * a string is compiled to a regex and marked complex.
      *
      * @param {string} method HTTP method, or USE for a mount
      * @param {string|RegExp|(string|RegExp)[]} path one path or several
@@ -816,18 +811,10 @@ module.exports = class Router extends EventEmitter {
     }
 
     /**
-     * Refuses a request whose framing cannot be trusted and hangs up without answering. No route
-     * runs, so nothing downstream can be reached by one.
-     *
-     * Hanging up is the point: uWS has already read what followed the body it believed in as a
-     * second, pipelined request, and it dispatches that one unless the socket goes. Node answers
-     * 400 and then closes, and this cannot do both: uWS only skips the queued request when the
-     * response is closed rather than completed, and writeStatus, end and endWithoutBody all
-     * complete it. Every combination was measured and delivering the 400 always let the smuggled
-     * request through, so the close wins.
-     *
-     * Called once handleRequest has fully returned, never from inside it: an Application links the
-     * response into its pending list after the base call, and the 'close' emitted here takes it out.
+     * Refuses a request whose framing cannot be trusted by hanging up without an answer: uWS has
+     * already read what followed as a pipelined request and dispatches it unless the socket goes,
+     * and any way of delivering node's 400 completes the response and lets it through. Called once
+     * handleRequest has returned, so the 'close' here finds the response in the pending list.
      *
      * @param {Response} response
      */
@@ -1085,12 +1072,8 @@ module.exports = class Router extends EventEmitter {
         }
 
         // the route's own router's callbacks: an optimized chain is walked by the app even when it
-        // ends in a mounted router's route
-        //
-        // A route an OPTIONS request reaches only to have its verb counted is not a route this
-        // request runs, and express does not run its app.param() callbacks for it. Same condition
-        // as the OPTIONS branch in runRoute. The decoding above happens either way, because express
-        // decodes a layer whose path matched whatever its method is
+        // ends in a mounted router's route. Not for a route OPTIONS reaches only to count its verb,
+        // express runs no app.param() there, though it still decodes the layer
         const paramCallbacks = route.paramCallbacks;
         if (paramCallbacks.size > 0 && !(req._isOptions && !route.all && route.method !== "OPTIONS")) {
             return this._runParamCallbacks(req, res, route, paramCallbacks);
@@ -1121,11 +1104,8 @@ module.exports = class Router extends EventEmitter {
 
     /**
      * Runs the app.param() callbacks for the parameters this route matched, and says whether the
-     * route may run.
-     *
-     * Express calls one once per value and not once per request: the same name with a different
-     * value calls it again, and a value already seen restores what that call left in req.params,
-     * its deferral or its error included, without running anything.
+     * route may run. Once per value, as in express: a value already seen restores what that call
+     * left in req.params, deferral or error included, without running again.
      *
      * @param {Request} req
      * @param {Response} res
@@ -1337,14 +1317,10 @@ module.exports = class Router extends EventEmitter {
     }
 
     /**
-     * Registers a websocket route, which uWS serves itself.
-     *
-     * The behavior is uWS's, settings and socket handlers alike, plus one addition: an
-     * `upgrade(req, res)` of this project's own shape, which runs before the handshake with a real
-     * request and response. Answering with the response declines the socket; returning a promise
-     * holds the handshake until it settles.
-     *
-     * The request lives as long as the socket and reaches every handler as `ws.req`.
+     * Registers a websocket route, served by uWS itself. The behavior is uWS's, plus an
+     * `upgrade(req, res)` that runs before the handshake with a real request and response:
+     * answering declines the socket, a returned promise holds the handshake. The request lives as
+     * long as the socket, as `ws.req`.
      *
      * @example
      * app.ws("/room/:id", {

@@ -587,13 +587,9 @@ class Application extends Router {
      * @returns {this} the app, which doubles as the server handle
      */
     listen(port, host, backlog, callback) {
-        // With { cluster } the primary has nothing to bind. Each worker binds this same port with
-        // uWS's shared flag, SO_REUSEPORT, so the kernel hands each connection to one of them and
-        // the primary only forks and replaces a worker that dies. Everything below this runs in the
-        // workers, listen callback included, so once per worker rather than once.
-        //
-        // The test is the process and not this app: a second app on a TLS port, without a cluster
-        // setting of its own, would take that port here exclusively and every worker would fail
+        // With { cluster } the primary only forks: each worker binds this port with SO_REUSEPORT
+        // and everything below runs once per worker. The test is the process, not this app: a
+        // second app without a cluster setting would take its port here and every worker would fail
         if (cluster.isPrimary && isSupervising()) {
             if (this._clusterWorkers > 0 && !this._clusterHandle) {
                 this._clusterHandle = forkWorkers(this._clusterWorkers);
@@ -777,12 +773,9 @@ class Application extends Router {
     }
 
     /**
-     * Renders a view and hands the result to the callback, without sending anything.
-     * `res.render()` is the one that responds.
-     *
-     * `app.locals` and `options._locals` are merged into the options, in that order, so a
-     * per-request local wins. Caching follows the "view cache" setting unless `options.cache` says
-     * otherwise. A function in the options position is taken as the callback.
+     * Renders a view into the callback, without sending: `res.render()` is the one that responds.
+     * `app.locals` then `options._locals` are merged in, so a per-request local wins. Caching
+     * follows the "view cache" setting unless `options.cache` says otherwise.
      *
      * @param {string} name view name, resolved against the "views" setting
      * @param {Record<string, any>|((err: Error|null, html?: string) => void)} [options] locals for
@@ -864,15 +857,10 @@ class Application extends Router {
     }
 
     /**
-     * Stops accepting connections, lets in-flight requests finish, then emits 'close'.
-     *
-     * Node's server.close() only closes the listen socket and waits for what is being served; uWS's
-     * close() terminates every connection, so calling it first aborted whatever a graceful shutdown
-     * was waiting for. It still runs, but only once the last pending response is done, to drop the
-     * idle keep-alive connections nothing else would close.
-     *
-     * The callback is the first 'close' listener. Closing a server that was not listening still
-     * calls back with ERR_SERVER_NOT_RUNNING, the way node does.
+     * Stops accepting connections, lets in-flight requests finish, then emits 'close'. uWS's
+     * close() kills every connection, so it runs only after the last pending response, to drop the
+     * idle keep-alive ones. Closing a server that was not listening calls back with
+     * ERR_SERVER_NOT_RUNNING, as node does.
      *
      * @param {(err?: Error) => void} [callback] called once closed
      * @returns {this} the app, for chaining
@@ -948,13 +936,8 @@ class Application extends Router {
     }
 }
 
-// An app is a function, as it is in Express, and not the Application instance whose properties it
-// carries. Middleware that takes a whole app and calls it, vhost being the one everybody meets, was
-// given something it could not call.
-//
-// Tried once before and reverted the same day, because a callable app broke supertest: `request(app)`
-// reads `typeof app === "function"` and wraps what it finds in http.createServer, and there was
-// nothing underneath that could serve node's IncomingMessage. src/node-shim.js closes that hole.
+// An app is a function, as in Express: vhost and the like call it. supertest then wraps it in
+// http.createServer, which is what src/node-shim.js serves.
 /** @param {object} [options] the settings express() takes, see the Application constructor */
 module.exports = function (options) {
     return new Application(options)._asCallable();

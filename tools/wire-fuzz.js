@@ -1,32 +1,11 @@
-// Fuzzing the wire instead of the API.
+// Fuzzing the wire: raw sockets, since undici never sends a malformed request, and the smuggling
+// bug of 2026-08-16 (a repeated Content-Length framing the request differently) was only found by
+// hand. The oracle is node's parser, llhttp, not Express: both servers record what they were asked
+// to serve from the same bytes. Reported: fulmine reading a different NUMBER of requests (desync),
+// or serving what node refused. Refusing what node served is only noted with --verbose, µWS may be
+// stricter (SECURITY.md), not more permissive.
 //
-//   node tools/wire-fuzz.js                  a few hundred cases on a seed nobody chose
-//   node tools/wire-fuzz.js --rounds 2000    longer
-//   node tools/wire-fuzz.js --seed 12345     replay exactly what a past run did
-//   node tools/wire-fuzz.js --verbose        print every case, not only the findings
-//
-// Every other tool here speaks through `fetch`, and undici will not send a malformed request: it
-// normalises the header block, refuses two Content-Lengths, writes its own chunked framing. So no
-// generated test in this repo can reach the HTTP parser at all, and the one serious bug found on
-// 2026-08-16, a repeated or unparseable Content-Length framing the request differently from what
-// the client sent, which is request smuggling, was only found by writing sockets by hand. This
-// writes them for you.
-//
-// The oracle is node's own parser, not Express: the question here is framing, and llhttp is the
-// reference implementation this project is a drop-in for. Both servers get the same routes and
-// record what they were asked to serve, then the same bytes go to each and the two are compared.
-//
-// The verdict is deliberately asymmetric, because the two directions do not mean the same thing:
-//
-//   fulmine reads a different NUMBER of requests out of the same bytes   -> desync, reported
-//   fulmine serves something node refused outright                       -> reported
-//   fulmine refuses something node served                                -> noted only with
-//                                                                           --verbose, since
-//                                                                           refusing more is safe
-//
-// A blind diff would drown in the third: µWS is a different parser and is allowed to be stricter,
-// and SECURITY.md puts µWS's own parsing out of scope. What is not allowed is being more permissive
-// than the thing this replaces.
+//   node tools/wire-fuzz.js [--rounds 2000] [--seed 12345] [--verbose]
 
 "use strict";
 
@@ -239,15 +218,10 @@ function isCloseThenPipelined(c, nodeCount, fulCount) {
 }
 
 /**
- * The same bytes with the framing headers written the way µWS reads them, or null when that is the
- * way they are written already and there is nothing to control against.
- *
- * µWS trims the OWS around every header value before anything looks at it, and reads a
- * Transfer-Encoding as chunked by the coding name alone, so a tab after a Content-Length and a
- * parameter after "chunked" are both gone by the time this project is handed the header. Only
- * those two rewrites, and only on a single header of each name: a value that is not digits, a
- * coding that is not chunked, and two lengths disagreeing are all some other case and get no
- * control. A rewrite that changes nothing answers null, which is every ordinary request.
+ * The same bytes with the framing headers written the way µWS reads them, or null when nothing
+ * changes: µWS trims the OWS around a value and reads a Transfer-Encoding by the coding name, so a
+ * tab after a Content-Length and a parameter after "chunked" are gone before this project sees
+ * them. Only those two rewrites, on a single header of each name.
  *
  * @param {string} bytes
  * @returns {string|null}
@@ -466,27 +440,17 @@ async function main() {
                 (line, i) => line !== nodeServed[i] && !line.endsWith("body=-1") && !nodeServed[i].endsWith("body=-1")
             );
 
-        // Two shapes are µWS's and stay out, the way the non-ascii header value stays out of fuzz.js.
-        // A client that writes "Connection: close", bare or in a list, and a second request in the
-        // same packet: node answers the first and closes, µWS has already parsed both out of the
-        // buffer and serves them. This project asks µWS to close and it does, but only after what
-        // it had already read. A bare µWS application with `res.end(body, true)` does exactly the
-        // same, which is how this was told apart, and SECURITY.md puts the parser out of scope.
-        // Narrow on purpose: it takes the close, the pipelining, and node having served the first
-        // request rather than refusing it.
+        // µWS's own shape, kept out as the non-ascii header value is in fuzz.js: "Connection: close"
+        // with a second request in the same packet, node answers the first and closes, µWS has
+        // already parsed both and serves them, a bare µWS app with res.end(body, true) does the
+        // same. Narrow: the close, the pipelining, and node having served the first request
         const closeThenPipelined = isCloseThenPipelined(c, nodeServed.length, fulServed.length);
 
-        // The other shape that is µWS's, decided 2026-09-13: a framing value spelled a way µWS
-        // reads through and llhttp refuses. `Content-Length: 11\t` and `Transfer-Encoding:
-        // chunked;a=b` are both of them, and by the time either reaches this project the tab and
-        // the parameter are gone, so the value in hand is the one a clean request carries and
-        // there is no byte left here to refuse on. See HttpParser.h, which trims the OWS around
-        // every value and then compares the coding name against "chunked"; uNetworking keeps
-        // header handling on the caller's side (uWebSockets.js#1299), and the caller never sees
-        // these. Checked rather than assumed, every time it fires: the same bytes written the way
-        // µWS reads them go back to node, which has to read the requests this framework read, or
-        // differ only by the shape above. Anything µWS made of the bytes beyond that fails the
-        // control and is reported as before
+        // The other µWS shape, decided 2026-09-13: a framing value µWS reads through and llhttp
+        // refuses, `Content-Length: 11\t` or `Transfer-Encoding: chunked;a=b`, where the tab and
+        // the parameter are gone before this project sees the value (HttpParser.h trims the OWS,
+        // uWebSockets.js#1299). Checked every time it fires: the bytes rewritten the way µWS reads
+        // them go back to node, which has to read the same requests this framework read
         let canonicalisedByUws = false;
         if ((desync || morePermissive) && !closeThenPipelined) {
             const canonical = canonicalFramingBytes(c.bytes);

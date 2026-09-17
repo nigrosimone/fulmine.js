@@ -14,20 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// The commands that edit a config file rather than source: `npx fulmine.js override`,
-// `npx fulmine.js angular` and `npx fulmine.js pnpm`.
-//
-// `migrate` rewrites `require("express")` in your own files. The cases it cannot reach are each
-// a line in a config file:
-//
-//   override   A framework built on Express requires it in its own code, so there is no specifier
-//              to rewrite. Every package manager can answer `express` with this package instead,
-//              and each one spells it differently.
-//   angular    An Angular server bundle is built with esbuild, which inlines every dependency and
-//              cannot load uWS's native binary. Two names in `externalDependencies` fix it.
-//   pnpm       pnpm 10.26 and later refuse a git dependency of a dependency, and µWebSockets.js
-//              is one. A direct dependency is allowed, so the project takes it on itself and an
-//              override drops the copy this package asks for.
+// The commands that edit a config file, the cases `migrate` cannot reach by rewriting a specifier:
+//   override   a framework requires express in its own code, so the package manager answers it
+//   angular    the esbuild server bundle cannot inline uWS's binary, two externalDependencies
+//   pnpm       pnpm >= 10.26 refuses a git dependency of a dependency, the project takes it on itself
 
 "use strict";
 

@@ -14,14 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// express({ cluster: "auto" }): one process per core, all on the same port.
-//
-// The usual answer is the cluster module, where the primary holds the listening socket and passes
-// each accepted connection to a worker over IPC. uWS does not need that: it binds with the port
-// marked shared, which is SO_REUSEPORT, so every worker has its own listening socket on the same
-// port and the kernel picks who gets each connection. No primary in the path, nothing serialised.
-//
-// Application#listen already passes the flag. What was missing is the fork.
+// express({ cluster: "auto" }): one process per core on the same port. No IPC as in node's cluster
+// module: every worker binds with SO_REUSEPORT and the kernel picks who gets each connection.
 
 "use strict";
 

@@ -15,37 +15,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// npx fulmine migrate [dir]
-//
-// Rewrites the module specifier and nothing else. An Express 5 app is a Fulmine app already, so
-// there is no code to translate. The short list of things that behave differently is printed at
-// the end, because no rewrite can find those for you.
-//
-// npx fulmine profile [entry]
-//
-// Prints what listen() worked out about each route: which ones uWS answers on its own, which ones
-// fell back to the ordinary router and why, and which ones were compiled into a response.
-//
-// npx fulmine verify [dir]
-//
-// Whether this machine and this project can run it at all: the node version, the C library, the
-// uWebSockets.js binary, the base image a Dockerfile names. See src/verify.js.
-//
-// npx fulmine override [dir]
-// npx fulmine angular [dir]
-//
-// The two things a project needs that are a line in a JSON file rather than a specifier in a
-// source file: the package manager substitution, for a framework that requires express in its own
-// code, and angular.json's externalDependencies. See src/adopt.js.
-//
-// npx fulmine create <dir>
-//
-// A new project for whoever has nothing to migrate: a server, a package.json and the Dockerfile
-// that works. See src/create.js.
-//
-// npx fulmine pnpm [dir]
-//
-// The two lines a pnpm project needs before it will install this at all. See src/adopt.js.
+// The CLI:
+//   migrate [dir]    rewrites the module specifier, then prints what behaves differently
+//   profile [entry]  what listen() decided about each route: native, router and why, or compiled
+//   verify [dir]     whether this machine, project and Dockerfile can run it, see src/verify.js
+//   override [dir]   the package manager substitution for a framework requiring express itself
+//   angular [dir]    angular.json's externalDependencies, see src/adopt.js
+//   create <dir>     a new project: server, package.json, a Dockerfile that works, src/create.js
+//   pnpm [dir]       the two lines pnpm needs before it installs this, see src/adopt.js
 
 const fs = require("fs");
 const path = require("path");
@@ -156,15 +133,9 @@ function collectFiles(dir) {
 }
 
 /**
- * A reader for the .ts files of the project being migrated, or null when it has no TypeScript.
- *
- * acorn cannot read TypeScript, and shipping a parser that can would put megabytes into this
- * package for a command most people run once. A TypeScript project already has the compiler, so it
- * is resolved from there. A project without one is told its .ts files were left alone.
- *
- * typescript 7 is the compiler rewritten in Go and publishes no JavaScript parser any more:
- * require("typescript") gives back a version number and nothing else. Its scanner survives on an
- * ESM-only subpath that require() reads, so 7 gets the token walk and 6 keeps the tree.
+ * A reader for the .ts files of the project being migrated, or null when it has no TypeScript. The
+ * parser is the project's own compiler, not shipped here. typescript 7 (Go) publishes no parser,
+ * only its scanner on an ESM subpath, so 7 gets a token walk and 6 keeps the tree.
  *
  * @param {string} target directory being migrated
  * @returns {((source: string, fileName: string, seen?: Set<string>) => {start: number, end: number}[])|null}
@@ -466,15 +437,9 @@ function findEntry(given) {
 }
 
 /**
- * Every build of this library the application could load, as the prototype that owns listen().
- *
- * The command runs from its own copy, and the application loads whichever one resolves from its own
- * directory. That is usually the same file and sometimes not: a global install, an
- * `npx fulmine.js@version`, a hoisted second copy, or `express` pointing here through an override.
- * Patching only this command's copy leaves the application's own listen() to bind the port.
- *
- * An app is a callable, so its own prototype does not carry the methods: walk up to whichever link
- * owns listen.
+ * Every copy of this library the application could load, as the prototype that owns listen(): a
+ * global install, `npx fulmine.js@version` or an override can resolve a copy other than this
+ * command's, and patching only this one would leave the application's listen() to bind the port.
  *
  * @param {string} entry
  * @returns {Application[]} the prototypes to stub, this command's copy first
@@ -594,15 +559,9 @@ ${error.stack ?? error}`);
 }
 
 /**
- * Ends the file-reading threads that building an application started.
- *
- * An Application starts one per `threads` in its constructor, and these commands only read what
- * compiling the routes decided. They are unref'd, so leaving them would not hang the process, but
- * they hold the library the application loaded, and this command is often not the whole process.
- * It also stops them outliving the directory they were loaded from, which is how a test that
- * profiles a copy and then removes it saw "Cannot find module .../src/worker.js".
- *
- * Best effort throughout: a build with no workers, or a worker already gone, is not an error.
+ * Ends the file-reading threads that building an application started. They are unref'd, but they
+ * hold the loaded library and outlive the directory it came from: a test that profiled a copy and
+ * removed it saw "Cannot find module .../src/worker.js". Best effort, a worker already gone is fine.
  *
  * @param {Application[]} apps
  * @returns {void}

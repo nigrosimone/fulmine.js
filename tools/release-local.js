@@ -1,20 +1,10 @@
 "use strict";
 
-// Publishing by hand, from a machine logged in to npm.
+// Publishing by hand, for a release the workflow cannot fix by itself: version bumped, tag pushed,
+// npm refused the package. Releases are otherwise made by .github/workflows/release.yml. Every
+// check runs before anything becomes public, and the tag is pushed once npm accepted the package.
 //
-//   node tools/release-local.js 5.3.0 --dry-run      rehearse, change nothing
-//   node tools/release-local.js 5.3.0                do it
-//   node tools/release-local.js 5.3.0 --skip-tests   after a publish that failed at the end
-//
-// This wrote the first release. It is not how releases are made any more: `.github/workflows/
-// release.yml` does that, either dispatched or triggered by a pushed tag, and that is the path to
-// use. What keeps this here is the case the workflow cannot fix by itself, which is a release that
-// got half way: the version bumped and the tag pushed, and then npm refused the package. Rerunning
-// the workflow will not republish a tag it has already seen, and `npm publish` by hand skips every
-// check. This does the checks and then publishes.
-//
-// Everything that can fail happens before anything becomes public, and the tag is pushed only once
-// npm has accepted the package.
+//   node tools/release-local.js 5.3.0 [--dry-run] [--skip-tests]
 
 const { spawnSync } = require("child_process");
 const readline = require("readline");

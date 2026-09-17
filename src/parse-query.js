@@ -18,12 +18,9 @@ limitations under the License.
 
 /*
 The parser from fast-querystring 1.1.x (https://github.com/anonrig/fast-querystring), Copyright
-(c) 2022 Yagiz Nizipli, MIT, whose permission notice is reproduced in full in NOTICE at the root
-of this package. Vendored for one change: the result is a bare
-Object.create(null) instead of the library's Empty-constructor trick. The trick is faster to
-construct but node inspects it as "Empty <[Object: null prototype] {}>", where Express shows
-"[Object: null prototype]", and matching that used to cost an Object.assign copy of every parse
-on every query-carrying request. The copy was worth more than the trick.
+(c) 2022 Yagiz Nizipli, MIT, notice in NOTICE at the root of this package. Vendored for one change:
+a bare Object.create(null) result instead of the Empty-constructor trick, which node inspects as
+"Empty <[Object: null prototype] {}>" where Express shows the bare form.
 */
 
 const fastDecode = require("fast-decode-uri-component");
@@ -31,15 +28,10 @@ const fastDecode = require("fast-decode-uri-component");
 const plusRegex = /\+/g;
 
 /**
- * node's querystring.parse semantics on a null-prototype result: repeated keys accumulate into
- * arrays, '+' is a space, percent sequences decode when present and stay literal when broken.
- *
- * `capture` collects the decoded pairs flat, key then value, so a caller can replay the stores
- * without scanning again; a repeated key marks it invalid instead. See `get query`.
- *
- * `separatorLimit` refuses a body with that many "&" separators like body-parser's parameterCount,
- * inside this scan: the overflow flag is set, the partial result is discarded, the caller answers
- * 413.
+ * node's querystring.parse semantics on a null-prototype result: repeated keys become arrays, '+'
+ * is a space, a broken percent sequence stays literal. `capture` collects the decoded pairs flat so
+ * `get query` can replay them, a repeated key marks it invalid. `separatorLimit` is body-parser's
+ * parameterCount: over it the overflow flag is set and the caller answers 413.
  *
  * @param {string} input
  * @param {string[] & {invalid?: boolean}} [capture]

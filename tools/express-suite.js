@@ -1,44 +1,16 @@
 "use strict";
 
-// Express's own test suite, run against Fulmine.
+// Express's own test suite, run against Fulmine: a clone of expressjs/express at the installed tag
+// (node_modules/express-suite-clone, --refresh throws it away; not under .cache, a dotted directory
+// fails 55 sendFile tests on both sides) with index.js swapped for src/index.js, mocha one file at
+// a time.
 //
-//   node tools/express-suite.js                   every file
-//   node tools/express-suite.js res.sendFile      only the files whose name contains this
-//   node tools/express-suite.js --express         the same run against Express itself, as a control
-//   node tools/express-suite.js --verbose         print mocha's output for the files that failed
-//   node tools/express-suite.js --json out.json   the table as data
-//   node tools/express-suite.js --ci              red on any failure, see below
+//   node tools/express-suite.js [name] [--express] [--verbose] [--json out.json] [--ci]
 //
-// It clones expressjs/express at the tag matching the installed `express` devDependency, swaps its
-// index.js for one that requires src/index.js from here, and runs mocha one file at a time. The
-// The clone lives in node_modules/express-suite-clone and is reused; pass --refresh to throw it
-// away. Not under .cache: send answers 404 to any absolute path with a dot segment, so from a
-// dotted directory 55 sendFile and download tests fail identically for express and for us,
-// measuring the path instead of the framework.
-//
-// This is a bug mine, not a gate. In one afternoon it found: body parser errors that carried no
-// status, so every bad body was answered 500 instead of 400, 413 or 415; express.json() accepting
-// "a string", 123, true and null, because `strict` never ran; a directory redirect that answered
-// `Location: //assets/`, a protocol relative URL pointing off this server; and every res.sendFile
-// error arriving as a bare Error, so a 403 was answered as a 500. None of those were reachable from
-// the suite in tests/, because a test only finds what someone thought to write.
-//
-// With --ci it is also a gate, since 2026-08-04, the day the count reached 1130 passing and
-// 0 failing: any failing test or file without a result is red, and the clone's commit has to
-// match PINNED below, so a moved tag cannot quietly change what "Express says" means. Zero is
-// what makes the gate possible: a pass count above zero would need a list of expected failures,
-// which rots the moment either project moves.
-//
-// Two caveats keep their marks. The clone keeps Express's own lib/ in place and only index.js is
-// swapped, so a test that imports from there is exercising Express's code as much as ours:
-// test/utils.js is entirely that, four other files borrow lib/utils for its list of HTTP methods,
-// and those rows are marked `lib`. And without --ci the exit status still says nothing, because a
-// local run is for reading, not for vetoing.
-//
-// On Windows every one of these processes hangs at exit rather than in a test, which is a libuv bug
-// in Node 24 and later and not ours: mocha has printed its results long before. So the run watches
-// the output, and once the summary has arrived and the output has been quiet for a moment it kills
-// the process instead of waiting for it. A row marked `exit` is that, and its counts are good.
+// --ci is a gate since 2026-08-04 (1130 passing, 0 failing): any failure is red and the clone's
+// commit has to match PINNED. Rows marked `lib` import Express's own lib/, so they exercise its
+// code as much as ours. Rows marked `exit` were killed after the summary: on Windows with node 24+
+// mocha hangs at exit (libuv), the counts are good.
 
 const fs = require("fs");
 const path = require("path");

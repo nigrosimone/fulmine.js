@@ -1,33 +1,11 @@
-// Hostile values through the response API, compared against express on the wire.
+// Hostile values through the methods that compute a header out of client input (res.cookie,
+// res.location, res.attachment, ...), compared against express on the wire: a CRLF that reaches
+// the header block ends it and writes what follows as a header. Raw sockets, fetch would parse the
+// injected line away. Both directions are reported: refusing what express writes is a
+// compatibility bug, the other one is the injection. ASCII only, node writes non-ascii as U+FFFD.
+// A few hundred cases, swept, no seed and no shrinking.
 //
-//   node tools/header-fuzz.js                 every value against every writer
-//   node tools/header-fuzz.js --filter cookie only the writers whose name contains this
-//   node tools/header-fuzz.js --verbose       print every case, not only the disagreements
-//
-// res.set() refuses a value that would split the response, and tests cover that. What nothing
-// covered is the other door: the methods that compute a header value out of something the request
-// carried. res.cookie, res.location, res.attachment and the rest all write a header nobody typed,
-// and an application hands them a filename, a path or a redirect target that came from the client.
-// If one of them reaches the header block without the check res.set() gets, a CRLF in that value
-// ends the header and writes whatever follows as a header of its own.
-//
-// So this hands each of them the values that break a header block, and compares the bytes that come
-// back against express. Raw sockets, because fetch parses the answer and would hide the very thing
-// this is looking for: an injected line is a header to undici, not a finding.
-//
-// Express is the oracle here rather than node, because the question is what these methods compute,
-// which is express's own behaviour and not the parser's. A disagreement either way is reported: a
-// value express writes and this refuses is a compatibility bug, and the other direction is the
-// injection. The list of headers left out of the comparison is the one tests/helpers.js uses, plus
-// what only a wire comparison sees: date, keep-alive and connection.
-//
-// Every value is ASCII on purpose. Express hands a non-ascii header value to node, whose header
-// block turns the character into U+FFFD and writes it as latin1, so the two differ on the wire
-// while computing the same string. That is express corrupting it, and matching it would mean
-// copying a fault. See tools/README.md.
-//
-// The cross product is a few hundred cases, so this sweeps rather than samples: there is no seed
-// and no shrinking, because every case is already one line of source.
+//   node tools/header-fuzz.js [--filter cookie] [--verbose]
 
 "use strict";
 

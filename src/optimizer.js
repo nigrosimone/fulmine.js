@@ -299,12 +299,9 @@ function compileOptimizedRoutes(root) {
             } else if (
                 // parameters that are whole segments are matched by µWS the same way
                 (canBeOptimized(route.path) || canBeOptimizedWithParams(route.path)) &&
-                // Inside a mounted router, only when nothing after it could answer the same path.
-                // Asked of literal routes too, not only parameter ones: uWS picks by specificity
-                // where Express picks by registration order, and a chain carries only what runs in
-                // front of its route, so `router.get("/a", (req, res, next) => next())` before
-                // `router.get("/:x", ...)` left the mount and answered 404. Found by the fuzzer,
-                // replay with --seed 221940161 --rounds 1.
+                // Inside a mounted router, only when nothing after it could answer the same path,
+                // literal routes included: uWS picks by specificity, Express by order, so a
+                // `get("/a", next())` before `get("/:x")` answered 404. Fuzzer seed 221940161
                 (!pathPrefix || !router._isFollowedByAnOverlap(route, router._routes)) &&
                 supportedUwsMethods.has(route.method)
             ) {
@@ -494,14 +491,9 @@ function registerUwsRoute(router, route, optimizedPath) {
     // registering that path here is the only way it could
     const strictHere = (route.owner ?? router)._strictRouting();
 
-    // Whether requests served by this registration may skip the header copy: GET and its HEAD twins
-    // only, no error middleware anywhere (a throw hands the request to code the analysis never
-    // saw), and every callback in the chain has to pass usage.js, whose default answer is no.
-    //
-    // The etag setting is not a condition. It used to be, because send consults freshness, but the
-    // skip branch reads if-none-match and if-modified-since by name whatever the setting, see the
-    // comment in request.js, and req.fresh reads nothing else. Requiring etag off as well cost the
-    // copy to every application that left it on.
+    // Whether this registration may skip the header copy: GET and HEAD only, no error middleware
+    // (a throw reaches code the analysis never saw), every callback passing usage.js. The etag
+    // setting is not a condition: the skip branch reads the conditional pair by name anyway
     const NO_SKIPS = { skipHeaders: false, skipQuery: false };
     let getSkips = NO_SKIPS;
     let headSkips = NO_SKIPS;

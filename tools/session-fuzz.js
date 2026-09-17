@@ -1,33 +1,11 @@
-// Several requests down one connection, compared against express and against themselves.
+// Several requests down one connection: state a request leaves behind for the next one (a header
+// map, a parsed query, a preset the optimizer mutates) is what no single-request tool can see.
+// Each sequence is asked twice, `shared` down one keep-alive connection and `fresh` one connection
+// each, on both frameworks. express.shared != fulmine.shared is a compatibility bug;
+// fulmine.shared != fulmine.fresh where express agrees is STATE, what this tool exists for. The
+// sockets are counted, so a round that opened a second one is not reported as agreement.
 //
-//   node tools/session-fuzz.js                     a few hundred sequences on a seed nobody chose
-//   node tools/session-fuzz.js --rounds 500        longer
-//   node tools/session-fuzz.js --seed 12345 --rounds 1   replay
-//   node tools/session-fuzz.js --keep-going        do not stop at the first finding
-//
-// Every other tool here asks one question and hangs up. Nothing looks at what a request leaves
-// behind for the next one on the same socket, and that is where a whole class of bug lives: a
-// header map, a parsed query, a set of matched verbs, a response's locals, a preset the optimizer
-// mutates. Any of them kept one request too long answers the second request with the first one's
-// data, and no single-request tool can see it.
-//
-// So each round draws a small application and a sequence of requests, and asks them twice:
-//
-//   shared   all of them down one keep-alive connection, in order
-//   fresh    each of them on a connection of its own
-//
-// Two verdicts come out of that, and they are not the same question:
-//
-//   express.shared[i] != fulmine.shared[i]                     an ordinary compatibility bug
-//   fulmine.shared[i] != fulmine.fresh[i], where express agrees STATE, something was kept
-//
-// The second is the one this tool exists for. A request that answers differently for having
-// followed another is either state that outlived its request or express doing the same thing, and
-// asking express the same way tells the two apart: express keeps per-connection state too, and
-// copying it is the point.
-//
-// The connection really is one connection: an agent with maxSockets 1 and keepAlive on, and the
-// sockets are counted, so a round that quietly opened a second one is not reported as agreement.
+//   node tools/session-fuzz.js [--rounds 500] [--seed 12345 --rounds 1] [--keep-going]
 
 "use strict";
 

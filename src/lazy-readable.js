@@ -23,19 +23,10 @@ const { Readable } = require("stream");
 const READABLE_OPTIONS = { highWaterMark: 128 * 1024 };
 
 /**
- * A Readable that has not been built yet.
- *
- * Every request pays for the stream and almost none use it: a GET carries no body, and the bodies
- * that arrive are collected by uWS and handed to the parsers without touching the stream. Measured
- * on this machine, Readable's constructor is about 90ns of the 900ns a hello-world request costs.
- *
- * So the chain says Readable and the constructor does not run. `Request extends LazyReadable`, and
- * LazyReadable's prototype is Readable's, so `req instanceof Readable` stays true and every
- * Readable method is reachable. What is missing is `_readableState`, built on the first touch.
- *
- * The wrapping below is generated, not written out: every own member of Readable's prototype gets a
- * version that materialises first, so there is no list to keep in step. Missing one would be a
- * TypeError on `undefined._readableState`, not a slow path.
+ * A Readable whose state is built on the first touch: almost no request uses the stream (uWS hands
+ * bodies to the parsers directly) and Readable's constructor is about 90ns of the 900ns a
+ * hello-world costs. The prototype is Readable's, so instanceof and every method still work, and
+ * the wrapping is generated over Readable's own members, so there is no list to keep in step.
  */
 class LazyReadableBase {}
 Object.setPrototypeOf(LazyReadableBase.prototype, Readable.prototype);

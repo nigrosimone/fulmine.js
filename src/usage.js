@@ -263,12 +263,9 @@ function walk(node, parent, visit) {
 }
 
 /**
- * What a native route's whole chain provably never does, so the request constructor may leave
- * that work undone: skipHeaders spares the header copy, skipQuery the query fetch.
- *
- * A bare next() passes anywhere but in the terminal route, where it falls out of the chain: there
- * it passes only when no later route could catch the fall-through. The framework's own 404 answers
- * from the path alone.
+ * What a native route's whole chain provably never does, so the request constructor may skip it:
+ * skipHeaders the header copy, skipQuery the query fetch. A bare next() in the terminal route
+ * passes only when no later route could catch the fall-through, the 404 reads the path alone.
  *
  * @param {RouteEntry[]} chain the routes the native handler runs, in order, this route last
  * @param {boolean} allowTerminalNext whether a fall-through past the chain lands only in the

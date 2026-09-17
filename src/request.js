@@ -228,23 +228,10 @@ module.exports = class Request extends LazyReadable {
     _sawContentLength;
 
     /**
-     * Whether this request must not be routed at all. Node's parser refuses each of these and
-     * answers 400; every one is a way for bytes the client did not send as a request to be served
-     * as one, which is request smuggling.
-     *
-     *   a repeated content-length     uWS frames on the first and drops the rest, so a proxy in
-     *                                 front reading the last one forwards bytes uWS then answers
-     *                                 as a second, pipelined request
-     *   one that is not a byte count  uWS keeps whatever is left after trimming, an empty value
-     *                                 included, and frames the request as carrying no body, which
-     *                                 turns the body the client sent into that second request.
-     *                                 See isByteCount
-     *   a method nobody defines       uWS takes any token as the method, so anything followed by a
-     *                                 space and a path is a request line to it. With no
-     *                                 content-length and no transfer-encoding there is no body, so
-     *                                 the bytes after it are the next request. See KNOWN_METHODS
-     *
-     * Declared for the same reason as rawIp.
+     * Whether this request is refused before routing, as node's parser does with a 400. Each shape
+     * lets bytes uWS did not frame as this request be served as the next one, which is smuggling:
+     * a repeated content-length (uWS frames on the first), one that is not a byte count (see
+     * isByteCount), a method nobody defines (see KNOWN_METHODS). Declared for the same reason as rawIp.
      *
      * @type {boolean|undefined}
      */
@@ -314,28 +301,17 @@ module.exports = class Request extends LazyReadable {
         this._res = res;
         this._req = req;
         if (skipHolder !== undefined && skipHolder.skipHeaders) {
-            // The chain behind this registration provably never reads a header, so instead of
-            // copying them all out of uWS the constructor asks for the ones that steer the
-            // framework itself: body framing, keep-alive, and the conditional pair. A GET that
-            // declares a body takes the full copy.
-            //
-            // A handful of named reads beats one forEach: measured at seven reads they are flat at
-            // 0.75us however many headers are on the wire, since each one is a napi crossing, while
-            // the copy pays a hop back into JS per header and grows, 1.16us at four headers, 1.61
-            // at eight, 2.90 at sixteen. The body case pays two reads and then copies anyway, 0.2us.
-            //
-            // accept is not read: nothing on a granted chain consumes it, the error and 404 pages
-            // are fixed HTML that never negotiate.
+            // The chain never reads a header, so only the ones that steer the framework are read:
+            // body framing, keep-alive, the conditional pair. Seven named reads are flat at 0.75us
+            // whatever is on the wire, the full copy is 1.16us at four headers, 1.61 at eight, 2.90
+            // at sixteen. A GET that declares a body takes the full copy. accept is not read: the
+            // error and 404 pages never negotiate
             const length = req.getHeader("content-length");
             const transferEncoding = req.getHeader("transfer-encoding");
-            // A content-length of "0" declares no body and used to stay on the cheap side, but
-            // getHeader only returns the first of a repeated header, so a duplicate cannot be seen
-            // from here and has to be refused rather than routed, see _mustRefuse. Anything that
-            // says a word about framing takes the full copy instead.
-            //
-            // One shape stays invisible here, a content-length present with an empty value: uWS
-            // answers "" for that and for a header never sent, and nothing in its API tells them
-            // apart. It frames both as carrying no body. The full copy below does refuse it.
+            // Anything that says a word about framing takes the full copy, "0" included: getHeader
+            // returns only the first of a repeated header, and a duplicate must be refused, see
+            // _mustRefuse. An empty content-length reads as "" like a header never sent, and only
+            // the full copy below refuses it
             if (length !== "" || transferEncoding !== "") {
                 currentRequest = this;
                 this._req.forEach(Request.#collectHeader);
@@ -918,37 +894,19 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * The query string parsed by whichever parser the "query parser" setting names. A null-prototype
-     * object, so a key like "__proto__" cannot reach Object.prototype. No setter, so assigning to
-     * req.query throws as it does on Express.
-     *
-     * Every read answers a new object, because express re-parses on every read and hands one back
-     * too. So req.query is never the object another reader holds, and a write to a key of it is
-     * gone by the next read. That is how express-validator's sanitisers behave: `.trim()` on a
-     * query parameter changes nothing an ordinary handler sees. With the parse cached and handed
-     * out as itself, the sanitised value leaked into req.query here.
-     *
-     * So there is no cache of the object: the fresh object comes from the raw string, not from
-     * copying a kept parse. Parse-once-copy-per-read was the first shape shipped, and the copy was
-     * the expensive half: Object.assign between null-prototype objects, which live in V8's
-     * dictionary mode, measured 638ns for a two-parameter query where parsing the same string
-     * measures 119ns, so +1.5us of CPU per request, which a public arena saw as -8% on its
-     * query-carrying rows.
-     *
-     * The default parser keeps the decoded pairs of its first parse and replays the stores into a
-     * fresh null-prototype object: same output, nothing shared between reads. A repeated key
-     * cannot be replayed and re-parses.
+     * Parsed by the "query parser" setting into a null-prototype object, a new one on every read as
+     * express re-parses on every read: a sanitiser writing into req.query (express-validator's
+     * trim) must not be seen by the next reader. Not parse-once-then-copy: the copy between
+     * null-prototype objects measured 638ns against 119ns for the parse, -8% on the arena. The
+     * default parser replays its decoded pairs instead. No setter, so assigning throws as on express.
      *
      * @returns {Record<string, any>}
      */
     get query() {
         const qp = this.app._hot().queryParserFn;
-        // the vendored default already answers on a bare null prototype, so it goes out as is; any
-        // other parser is copied onto one, which kept fast-querystring's result from inspecting as
-        // "Empty <[Object: null prototype] {}>" where Express shows the bare form.
-        // A parser of the application's own is handed what express hands it, parseurl's `query`:
-        // null when the url carries no "?", the text after it otherwise, empty string included.
-        // Passing "" for both made a parser written for express see no query as an empty query.
+        // the vendored default already answers on a bare null prototype, any other parser is copied
+        // onto one. A parser of the application's own gets what express hands it, parseurl's query:
+        // null with no "?", the text after it otherwise, "" included
         if (!qp) {
             return Object.create(null);
         }
@@ -1027,14 +985,9 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * The peer address bytes, from the socket or, when the application asked for it, from a PROXY
-     * protocol preamble the load balancer in front of this server sent ahead of the request.
-     *
-     * The setting is off by default and has to stay that way. uWS parses the preamble from whoever
-     * sends it, with no way to restrict who may, so an application that took the address
-     * unconditionally would let any client claim any address: the first sixteen bytes of a
-     * connection are enough to become 10.0.0.1 for a rate limiter or an allow list. Turn it on only
-     * when nothing can reach this server except the proxy in front of it.
+     * The peer address bytes, from the socket or from a PROXY protocol preamble when the setting
+     * is on. Off by default and it has to stay so: uWS parses the preamble from anyone, so any
+     * client could claim any address to a rate limiter. Turn it on only behind the proxy.
      *
      * @returns {ArrayBuffer} the socket's own address when no preamble arrived
      */

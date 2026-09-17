@@ -14,17 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// What one request actually made this framework do, read from state it already keeps.
-//
-// Most of the speed here is work that does not happen: no Readable, no Writable, no folded headers
-// object, no parsed query, no socket stand-in. One careless middleware brings it back, and the
-// answer stays correct, so nothing fails. Every field below is already kept for other reasons, so
-// asking costs a load and nothing is counted or wrapped for the sake of being asked.
-//
-// Not here: whether the constructor copied the headers out of uWS. That is about the chain and
-// `routeReport().skipHeaders` reports it already.
-//
-// Read by `express.testing.expectLazy` and by `express.serverTiming()`.
+// What one request made this framework build (Readable, Writable, folded headers, parsed query,
+// socket stand-in), read from state already kept: one careless middleware brings it all back and
+// nothing fails. Whether the headers were copied is the chain's, see routeReport().skipHeaders.
+// Read by express.testing.expectLazy and express.serverTiming()
 
 "use strict";
 

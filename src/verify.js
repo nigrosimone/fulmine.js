@@ -14,16 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// npx fulmine verify
-//
-// Whether this machine, and the image it will be deployed in, can run the thing at all. Not whether
-// the application behaves the same, which is the test suite's job.
-//
-// There is a uWebSockets.js binary underneath, built per platform, per architecture and per node
-// ABI, and linked against glibc. An Alpine image, a node version with no binary for it, a musl
-// base: each one fails at require time with a message about a missing module.
-//
-// Thirty seconds here instead.
+// npx fulmine verify: whether this machine and the image it deploys in can run it at all. The uWS
+// binary is per platform, architecture and node ABI, glibc only, and an Alpine image or a node
+// without a binary fails at require time with "missing module". Thirty seconds here instead.
 
 "use strict";
 

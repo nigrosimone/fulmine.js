@@ -199,15 +199,10 @@ function getPatternMeta(pattern) {
  */
 
 /**
- * Compiles a path into a regex, following path-to-regexp v8:
- *   - :param          a named parameter, one segment
- *   - /*splat         a named wildcard, one or more segments, captured as an array
- *   - {...}           an optional group
- *   - \x              an escaped literal
- *
- * A bare `*`, an unnamed parameter, an inline regex like :id(\\d+) and the `+`, `?`, `()` operators
- * throw: a route that quietly stops matching is worse than one that fails at startup. The names it
- * captures go in a WeakMap beside the regex, see PatternMeta.
+ * Compiles a path into a regex, following path-to-regexp v8: `:param` one segment, `/*splat` one
+ * or more captured as an array, `{...}` optional, `\x` an escaped literal. A bare `*`, an unnamed
+ * parameter, an inline regex and `+`, `?`, `()` throw at startup, as v8 does. The names go in a
+ * WeakMap beside the regex, see PatternMeta.
  *
  * @param {string|RegExp} pattern
  * @returns {RegExp}
@@ -430,14 +425,10 @@ function patternToRegex(pattern, isPrefix = false, caseSensitive = true, strict 
             }
             i++;
 
-            // When a :parameter precedes this group, that parameter is the one that gives ground
-            // while backtracking, so this one must not swallow the separator too. Express splits
-            // /a.b.c against /:file{.:ext} as file=a.b, ext=c, which only works if ext cannot
-            // contain a dot. After static text nothing gives ground, so the parameter takes
-            // everything: /file{.:ext} against /file.tar.gz gives ext=tar.gz.
-            // The whole separator, not its first character: /:foo{abc:bar} against /123abcabc
-            // splits as foo=123 and bar=abc on express, and reading it as "a" left bar unable to
-            // match its own text. More than one character cannot go in a class, so it is a lookahead
+            // After a :parameter this one must not swallow the separator: express splits /a.b.c
+            // against /:file{.:ext} as file=a.b, ext=c. After static text it takes everything:
+            // /file.tar.gz gives ext=tar.gz. The whole separator, as a lookahead: /:foo{abc:bar}
+            // on /123abcabc is foo=123, bar=abc
             const colon = groupContent.indexOf(":");
             const separator = lastTokenWasParam && colon > 0 ? groupContent.slice(0, colon) : "";
             const escapedSeparator = separator.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -574,14 +565,9 @@ function escapePathLiteral(literal) {
 const PATH_SYNTAX = /[:*{}?+()[\]!\\]/;
 
 /**
- * Whether a path has anything in it that a string comparison cannot answer, which is a parameter,
- * a wildcard, an optional group, or a reserved character. A regular expression is already
- * compiled, so it needs nothing.
- *
- * The escapes are what the short list of three used to miss: "/\\(a\\)" is the way to ask for a
- * literal parenthesis, and comparing it as text looked for the backslashes on the wire and
- * answered 404. A reserved character written bare, "/(a)", has to reach the compiler too, which
- * is what refuses it the way express does.
+ * Whether a path has anything a string comparison cannot answer: a parameter, a wildcard, an
+ * optional group, a reserved character or an escape. "/\\(a\\)" compared as text looked for the
+ * backslashes on the wire, and a bare "/(a)" has to reach the compiler, which refuses it as express.
  *
  * @param {string|RegExp} pattern
  * @returns {boolean}
@@ -647,17 +633,11 @@ function canBeOptimizedWithParams(pattern) {
 const NOT_A_LITERAL = /[:*{}\\]/;
 
 /**
- * Whether two paths could both match the same request.
- *
- * The answer is structural: no position where two different literals meet, and, when neither path
- * can change length, the same number of segments. `/orders/:id` and `/invoices/:id` cannot both
- * match, `/users/:id` and `/users/me` can. The caller reads "do not know" as yes: saying two paths
- * overlap only costs a native registration, while missing one lets uWS answer a request that
- * belonged to an earlier route.
- *
- * A parameter is not the only shape that matches more than itself. A wildcard and an optional group
- * do too, and reading `{:opt}` or `*splat` as literal text reported "cannot overlap" for a route
- * that plainly could.
+ * Whether two paths could both match the same request, structurally: no position where two
+ * different literals meet, and the same segment count when neither can change length.
+ * `/orders/:id` and `/invoices/:id` cannot, `/users/:id` and `/users/me` can. "Do not know" is
+ * yes: a wrong yes costs a native registration, a wrong no lets uWS answer an earlier route's
+ * request. A wildcard and an optional group match more than themselves too.
  *
  * @param {string} a
  * @param {string} b
@@ -894,14 +874,10 @@ const ENCODING_ZSTD = 8;
 const ENCODING_ANY = ENCODING_BR | ENCODING_GZIP | ENCODING_DEFLATE | ENCODING_ZSTD;
 
 /**
- * The encoding to answer with, read straight off Accept-Encoding rather than through negotiator:
- * the header is a short list of names with an optional q, and building a Negotiator per response
- * costs more than the scan does. The tie-break is negotiator's, for the list the compression module
- * hands it: brotli first, then gzip, then deflate, and identity last.
- *
- * Only the encodings named in `allowed` are on offer, since the caller may not produce all three:
- * express.static offers the two it can have lying on disk. An uncompressed answer is always on
- * offer, and is what an empty header chooses.
+ * The encoding to answer with, scanned off Accept-Encoding: a Negotiator per response costs more
+ * than the scan. The tie-break is negotiator's for the compression module's list, brotli, gzip,
+ * deflate, identity last. Only the encodings in `allowed` are on offer, express.static offers the
+ * two it can have on disk; uncompressed is always on offer and what an empty header chooses.
  *
  * @param {string} accept the header, or "" when the request carried none
  * @param {number} allowed ENCODING_BR, ENCODING_ZSTD, ENCODING_GZIP and ENCODING_DEFLATE, or'd

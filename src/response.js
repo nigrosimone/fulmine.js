@@ -251,16 +251,9 @@ module.exports = class Response extends LazyWritable {
         // false while the uWS route handler is still in its synchronous window, where uWS holds
         // the socket corked itself; the two uWS entry points flip it once that window closes
         this._corkNeeded = false;
-        // shared methods, not arrows: two closures and a once() wrapper here were four allocations
-        // per request. EventEmitter calls listeners with this = the emitter.
-        //
-        // Written into the map rather than through on(). A stream arrives with its _events already
-        // shaped, "close" and "error" among the keys and every value undefined, so filling two of
-        // them is the same hidden class on() would produce and none of its work. Two calls per
-        // response, and the profile put them at 6% of a hello-world.
-        //
-        // The condition is the safety of it: a fresh response has no listeners, so both slots are
-        // free, and anything else falls back to on(), which finds what this wrote.
+        // shared methods, not arrows: two closures and a once() were four allocations per request.
+        // Written into _events directly, which arrives shaped with these keys undefined: the two
+        // on() calls were 6% of a hello-world. Only on a fresh response, anything else uses on()
         const self = this;
         const events = self._events;
         if (
@@ -296,15 +289,10 @@ module.exports = class Response extends LazyWritable {
     }
 
     /**
-     * Drops the connection, which is how an application abandons a response it cannot finish: a
-     * download whose source dies mid-transfer has to leave the client with a reset rather than a
-     * truncated body. node destroys the socket here and uWS's close() is the same thing; without it
-     * the client waited for bytes that never came. LibreChat's download route is written that way,
-     * `stream.on("error", () => res.destroy())`.
-     *
-     * A response that is over, or one whose client is gone, only tears the stream down: touching an
-     * aborted uWS response is a use after free. writableEnded reads true after this, where node
-     * leaves it false until end() is called.
+     * Drops the connection, as node destroys the socket: a download whose source died must leave
+     * the client a reset, not a truncated body (LibreChat: `stream.on("error", () => res.destroy())`).
+     * A finished or aborted response only tears the stream down, touching an aborted uWS response
+     * is a use after free. writableEnded reads true after this, node keeps it false until end().
      *
      * @param {Error} [error] whatever the caller is destroying the response with
      * @returns {this}
@@ -558,15 +546,10 @@ module.exports = class Response extends LazyWritable {
     }
 
     /**
-     * Sets the status and, optionally, a batch of headers, the way node does. The second argument
-     * is either the status message or the headers, since node allows both shapes. The bytes go out
-     * with the body, but the head is settled here, as node's is: headersSent reads true from now
-     * on, what is set later throws, and a status written later never reaches the wire.
-     *
-     * Every header goes through setHeader and not through set. This is node's method, not
-     * Express's: a content-type given here keeps the value it was given, where res.set would append
-     * a charset. Every meta-framework on Express answers with writeHead, @astrojs/node and
-     * @sveltejs/adapter-node included, so the charset was added to pages nobody asked it for.
+     * Sets the status and optionally the headers, the way node does: the head is settled here,
+     * headersSent reads true, a later set throws. Every header goes through setHeader, not set:
+     * this is node's method, so a content-type keeps its value with no charset appended, which is
+     * what @astrojs/node and @sveltejs/adapter-node expect of their pages.
      *
      * @param {number} statusCode
      * @param {string|import("http").OutgoingHttpHeaders|import("http").OutgoingHttpHeader[]} [statusMessage] the
@@ -600,12 +583,9 @@ module.exports = class Response extends LazyWritable {
     }
 
     /**
-     * Writes every header set so far to uWS, which is the point of no return. Content-Length is not
-     * one of them: uWS wants the length through tryEnd or endWithoutBody, so it is taken out here
-     * and kept on totalSize, where it also turns chunked framing off.
-     *
-     * One writeHeader per header on purpose. Packing the whole head into a single writeStatus works
-     * on the wire and measured slower: constant header strings cross already flat, see issue #11.
+     * Writes every header set so far to uWS, the point of no return. Content-Length is kept on
+     * totalSize instead: uWS takes the length through tryEnd or endWithoutBody. One writeHeader
+     * per header: packing the head into one writeStatus measured slower, see issue #11.
      *
      * @param {boolean} utf8 unused, kept because node's equivalent takes it and the two callers
      *   differ on what they know about the body
@@ -772,25 +752,18 @@ module.exports = class Response extends LazyWritable {
         // res.write(), not whether this call is about to write the head itself
         const headWasAlreadyOut = this.#headOut;
         if (!this.#headOut) {
-            // freshness is not decided here. node's end() knows nothing about conditional requests,
-            // and Express answers 304 from send() and from sendFile(), each of which strips the
-            // entity headers first. Deciding it here made res.end("body") answer 304 and drop the
-            // body the caller had just written.
-            // "unknown" for a code without a message, as node's status line has it. The default 200
-            // with no phrase is not written at all: uWS emits the identical head on its own
+            // freshness is decided in send() and sendFile(), as in Express, not here: node's end()
+            // knows nothing of conditional requests. "unknown" for a code without a message, as
+            // node writes it; a plain 200 is not written at all, uWS emits the same head itself
             if (this.#status !== 200 || this.#statusText !== undefined) {
                 this._res.writeStatus(statusLine(this.#status, this.#statusText));
             }
             this.writeHeaders(true);
         }
         const contentLength = this.headers["content-length"];
-        // The client said this connection ends here, and it is this end() that has to make it so.
-        // uWS closes by itself for a bare "close" and not for a list, so "keep-alive, close" left
-        // the socket open and the bytes after that request were read as another one. See saysClose.
-        //
-        // Only where a length goes out with it: endWithoutBody takes the flag as its second
-        // argument and reads the first as the length whatever it holds, so asking it to close
-        // without one writes "Content-Length: 9223372036854775808" onto a 204.
+        // The client said the connection ends here: uWS closes by itself for a bare "close", not
+        // for "keep-alive, close", see saysClose. Only with a length: endWithoutBody reads its
+        // first argument as the length, and closing without one wrote a 2^63 Content-Length on a 204
         const closeConnection = this.req._connectionClose === true;
         // 204 and 304 carry no body, so no Content-Length may describe one either; 1xx is the
         // third case, by range
@@ -928,12 +901,9 @@ module.exports = class Response extends LazyWritable {
                 this.headers["content-type"] = "application/octet-stream";
             }
         }
-        // the ETag belongs here rather than in end(): node's end() does not produce one, so
-        // res.end() and res.redirect() must not either. It has to be set before end() reads
-        // req.fresh, which compares If-None-Match against it. body is defined by the time it gets
-        // here, so an empty one still earns an ETag; testing truthiness left send("") and
-        // send(null) without one. Every method by default, not only GET and HEAD: express's own
-        // suite has "should send ETag in response to <METHOD> request" per method, see issue #10
+        // the ETag is send()'s, not end()'s: res.end() and res.redirect() carry none, as in node.
+        // Set before end() reads req.fresh. An empty body still gets one (send("") and send(null)
+        // did not, testing truthiness), and every method, see issue #10
         const hot = this.app._hot();
         const etagFn = hot.etagFn;
         if (
@@ -979,12 +949,9 @@ module.exports = class Response extends LazyWritable {
     }
 
     /**
-     * Streams a file, setting Content-Type from the extension and answering conditional and range
-     * requests. The path must be absolute unless `options.root` is given, and a function in the
-     * options position is the callback.
-     *
-     * Options: `root`, `maxAge`, `lastModified`, `headers`, `dotfiles` ("allow", "deny" or
-     * "ignore"), `acceptRanges`, `cacheControl`, `immutable` and `etag`.
+     * Streams a file, with the Content-Type of its extension and conditional and range requests
+     * answered. The path is absolute unless `options.root` is given. Options: `root`, `maxAge`,
+     * `lastModified`, `headers`, `dotfiles`, `acceptRanges`, `cacheControl`, `immutable`, `etag`.
      *
      * @param {string} path
      * @param {import("./options").SendFileOptions|((err?: Error) => void)} [options] or the callback in
@@ -1018,12 +985,9 @@ module.exports = class Response extends LazyWritable {
                 if (err && err.code !== "ECONNABORTED" && err.syscall !== "write") next(err);
             }
         );
-        // default options
-        // Normalised the way send does: max-age takes a non-negative integer count of seconds, so
-        // 0.5, -1 and Infinity are all invalid, and a client that cannot read the directive may
-        // throw away the whole Cache-Control header. Number() around the lot and not only around
-        // the branch that is already a number: ms() answers undefined for a duration it cannot
-        // read, and Number.isNaN(undefined) is false, so an unreadable string reached it as NaN
+        // default options, normalised as send does: max-age is a non-negative integer of seconds,
+        // 0.5, -1 and Infinity are invalid. Number() around ms() too, which answers undefined for
+        // a string it cannot read, and Number.isNaN(undefined) is false
         const maxAge = Number(
             typeof options.maxAge === "string"
                 ? ms(/** @type {import("ms").StringValue} */ (options.maxAge))
@@ -1437,13 +1401,9 @@ module.exports = class Response extends LazyWritable {
     }
 
     /**
-     * Throws away any header that could not be written, so flushing this response cannot fail on
-     * one. setHeader refuses these on the way in, but `res.headers` is the live object, so an
-     * assignment into that still gets a value in here.
-     *
-     * Only the error page calls it. A throw out of the flush there is not recoverable: the error
-     * page is what runs after a throw, so nobody is left to catch it. Everything writable is left
-     * alone, since a middleware's own headers belong on the error response too.
+     * Throws away any header that could not be written: setHeader refuses them, but `res.headers`
+     * is the live object. Only the error page calls it, where a throw out of the flush has nobody
+     * left to catch it. Everything writable stays, a middleware's headers belong on the error too.
      *
      * @returns {void}
      */
@@ -1456,16 +1416,10 @@ module.exports = class Response extends LazyWritable {
     }
 
     /**
-     * Hands the status line and the headers over now, without waiting for a body, which is node's
-     * flushHeaders(). `@angular/ssr`'s writeResponseToNodeResponse calls it before streaming a page.
-     *
-     * **The head does not reach the wire here.** uWS holds it until the first body chunk, so a
-     * client sees nothing until then, where express answers at once. `beginWrite` is uWS's API for
-     * this and is unusable: it emits a stray CRLF before the first chunk size, which node's parser
-     * rejects as HPE_INVALID_CHUNK_SIZE. Checked against v20.69.0.
-     *
-     * A second call does nothing, as node's does. Nothing is written for a response already
-     * finished or aborted.
+     * node's flushHeaders(), which `@angular/ssr` calls before streaming a page. **The head does
+     * not reach the wire here:** uWS holds it until the first body chunk, and its `beginWrite`
+     * emits a stray CRLF before the first chunk size (HPE_INVALID_CHUNK_SIZE in node, checked on
+     * v20.69.0). A second call, a finished or an aborted response write nothing.
      *
      * @returns {void}
      */
