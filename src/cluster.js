@@ -89,15 +89,11 @@ function availableCores(read = readFile, cores = parallelism) {
 }
 
 /**
- * How many workers a `cluster` setting asks for. Zero means the setting is off and the process
- * serves by itself, which is the default.
- *
- * A value nobody can read throws instead of quietly meaning zero: `cluster: "atuo"` would run on
- * one core in production and say nothing about it.
+ * How many workers a `cluster` setting asks for, zero off. An unreadable value throws:
+ * `cluster: "atuo"` would run on one core and say nothing.
  *
  * @param {boolean|number|"auto"|undefined} setting
- * @param {number} [cores] counted only when the setting asks for it: every application calls this,
- *   and almost none of them wants the cgroup read
+ * @param {number} [cores] counted only when the setting asks, the cgroup read is not free
  * @returns {number}
  */
 function workerCount(setting, cores) {

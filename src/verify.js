@@ -45,8 +45,7 @@ const NEEDS_A_LOOK = {
 };
 
 /**
- * One line of the report. Only "no" is a failure: an image that cannot load the binary stops the
- * deployment, a dependency that wants a different call does not.
+ * One line of the report; only "no" is a failure.
  *
  * @param {"ok"|"note"|"no"} level
  * @param {string} what
@@ -58,8 +57,7 @@ function result(level, what, detail) {
 }
 
 /**
- * Whether a version string is at least the other, compared piece by piece so "2.38" and "2.9"
- * order the way versions do rather than the way strings do.
+ * Whether a version is at least the other, piece by piece: "2.38" is after "2.9".
  *
  * @param {string} version
  * @param {string} minimum
@@ -79,10 +77,7 @@ function atLeast(version, minimum) {
 }
 
 /**
- * The node this is running on, against what the package asks for.
- *
- * The version is an argument rather than read here, so a node this machine is not running is still
- * testable. Every check below takes what it judges for the same reason.
+ * The node this runs on against what the package asks; an argument, so a test can pass another.
  *
  * @param {string} [running] defaults to the node running this
  * @param {string} [required] defaults to what package.json asks for
@@ -97,8 +92,7 @@ function checkNode(running = process.versions.node, required = require("../packa
 }
 
 /**
- * The glibc this process is running against, or undefined when there is none to report, which is
- * what a musl build looks like from in here.
+ * The glibc this process runs against, undefined on musl.
  *
  * @returns {string|undefined}
  */
@@ -108,10 +102,8 @@ function currentGlibc() {
 }
 
 /**
- * Whether the C library is the one the binaries are linked against. Only linux has two of them.
- *
- * Both arguments are required on purpose: undefined means musl, and a default parameter fires on
- * an explicit undefined, so a default would turn the musl case into whatever this machine runs.
+ * Whether the C library is the one the binaries are linked against, on linux. No default for
+ * glibc: undefined means musl, and a default would fire on it.
  *
  * @param {string} platform
  * @param {string|undefined} glibc the runtime glibc, absent on musl
@@ -193,8 +185,7 @@ function checkBinary(platform = process.platform, arch = process.arch, abi = pro
 }
 
 /**
- * The node release line an ABI number belongs to, for the versions this package can meet. An
- * unknown one is reported as itself rather than guessed at.
+ * The node release an ABI number belongs to, or the number itself.
  *
  * @param {string} abi
  * @returns {string}
@@ -205,7 +196,7 @@ function abiToNode(abi) {
 }
 
 /**
- * The base images a Dockerfile names, which is where the musl question is usually answered.
+ * The base images the Dockerfiles name.
  *
  * @param {string} dir the project being verified
  * @returns {ReturnType<typeof result>[]}
@@ -246,7 +237,7 @@ function checkDockerfiles(dir) {
 }
 
 /**
- * The project's package.json, or nothing where there is none to read.
+ * The project's package.json, or undefined.
  *
  * @param {string} dir
  * @returns {any}
@@ -260,8 +251,7 @@ function readPackage(dir) {
 }
 
 /**
- * The dependencies that need a different API here. Read from package.json rather than from
- * node_modules, so a project is answered before it installs anything.
+ * The dependencies that need a different API here, from package.json so nothing need be installed.
  *
  * @param {string} dir
  * @returns {ReturnType<typeof result>[]}
@@ -284,11 +274,9 @@ function checkDependencies(dir) {
 const PNPM_BLOCKS_GIT_SUBDEPS = [10, 26];
 
 /**
- * Whether the package manager will install this at all. pnpm 10.26 and later refuse a dependency
- * of a dependency that comes from git, which µWebSockets.js does, so `pnpm add fulmine.js` fails
- * before anything runs. What lets it through is readable from the project: the two lines
- * `npx fulmine.js pnpm` writes, the setting turned off, or an override taking µWebSockets.js from
- * a registry. pnpm 11 reads its settings from pnpm-workspace.yaml only, so that is what is read.
+ * Whether pnpm will install this at all: 10.26 and later refuse a git dependency of a dependency
+ * unless the project has the two lines `npx fulmine.js pnpm` writes, read from pnpm-workspace.yaml
+ * as pnpm 11 reads them.
  *
  * @param {string} dir
  * @param {any} pkg the parsed package.json

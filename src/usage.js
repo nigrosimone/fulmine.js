@@ -192,10 +192,7 @@ function analyze(fn) {
             return;
         }
         if (name === nextName) {
-            // calling next is how a chain advances, and past its end the request lands in the
-            // framework's own final answer, which the constructor's accept pre-read covers.
-            // Anything but a direct call aliases the continuation, and an argument that could be
-            // the string "route" would leave the chain, so only non-string shapes pass.
+            // a direct next() call only, with an argument that cannot be the string "route"
             if (!parent || parent.type !== "CallExpression" || parent.callee !== node) {
                 mask |= UNKNOWN;
                 return;
@@ -231,14 +228,11 @@ function analyze(fn) {
 }
 
 /**
- * Walks every node, handing each its parent. Arrays and nested objects are entered, nothing
- * is interpreted: the judging happens in the visitor.
+ * Walks every node by key, handing each its parent.
  *
- * @param {any} node an acorn node, or an array or a scalar under one: walked by key, so no shape
- *   is assumed
- * @param {any} parent its parent node, or null at the root
- * @param {(node: any, parent: any) => void} visit handed every node, loose because the visitor
- *   reads edges of its own off each
+ * @param {any} node
+ * @param {any} parent null at the root
+ * @param {(node: any, parent: any) => void} visit
  */
 function walk(node, parent, visit) {
     if (!node || typeof node.type !== "string") {
@@ -267,9 +261,8 @@ function walk(node, parent, visit) {
  * skipHeaders the header copy, skipQuery the query fetch. A bare next() in the terminal route
  * passes only when no later route could catch the fall-through, the 404 reads the path alone.
  *
- * @param {RouteEntry[]} chain the routes the native handler runs, in order, this route last
- * @param {boolean} allowTerminalNext whether a fall-through past the chain lands only in the
- *   framework's own final answer
+ * @param {RouteEntry[]} chain the routes the native handler runs, this route last
+ * @param {boolean} allowTerminalNext whether a fall-through past the chain lands only in the 404
  * @returns {{skipHeaders: boolean, skipQuery: boolean}}
  */
 function chainUsage(chain, allowTerminalNext) {

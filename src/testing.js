@@ -29,8 +29,7 @@ const { work, names: workNames } = require("./work.js");
 /** @typedef {import("./router-utils.js").RouteEntry} RouteEntry */
 
 /**
- * Every route of an application and of the routers mounted under it, each with the path it answers
- * from the outside.
+ * Every route of an application and its mounted routers, with the path it answers from outside.
  *
  * @param {Router} router
  * @param {string} prefix
@@ -50,8 +49,7 @@ function collectRoutes(router, prefix, into = []) {
 }
 
 /**
- * Compiles the routes, which is what listen() does before it binds, without binding anything. Once
- * per application: a second compilation would register everything with µWS twice.
+ * Compiles the routes as listen() does, without binding, once per application.
  *
  * @param {Application} app
  */
@@ -64,10 +62,8 @@ function compileOnce(app) {
 }
 
 /**
- * What compiling the routes decided, one entry per route, in the order they were registered.
- *
- * The primitive the two assertions below are written on. Exported so an application with rules of
- * its own can assert them directly.
+ * What compiling the routes decided, one entry per route in registration order; what the two
+ * assertions below read.
  *
  * @param {Application} app an application, listening or not
  * @returns {{method: string, path: string, native: boolean, declarative: boolean, skipHeaders: boolean,
@@ -89,10 +85,8 @@ function routeReport(app) {
 }
 
 /**
- * Whether one of the patterns given names this route.
- *
- * A pattern is a path as registered, not a URL: "/api/items/:id", not "/api/items/7". It may carry
- * the method, "GET /health", and may end in "*" for everything under a prefix.
+ * Whether the pattern names this route: a registered path, an optional method in front, an
+ * optional "*" at the end.
  *
  * @param {{method: string, path: string}} entry
  * @param {string} pattern
@@ -115,8 +109,7 @@ function names(entry, pattern) {
 }
 
 /**
- * The routes the patterns name. A pattern that names none throws, so a misspelled route fails
- * instead of passing on an empty list.
+ * The routes the patterns name; a pattern naming none throws.
  *
  * @param {Application} app
  * @param {string|string[]} patterns
@@ -149,12 +142,10 @@ function select(app, patterns, caller) {
 }
 
 /**
- * Throws unless every route named is answered by uWS itself. The message names each route that
- * fell back and why, in the same words `npx fulmine profile` uses.
+ * Throws unless every route named is answered by uWS itself, with the reasons profile prints.
  *
  * @param {Application} app
- * @param {string|string[]} patterns paths as they were registered, "GET /path" to pin the method,
- *   a trailing "*" for everything under a prefix
+ * @param {string|string[]} patterns registered paths, "GET /path" to pin the method, a trailing "*"
  */
 function expectNative(app, patterns) {
     const lost = select(app, patterns, "expectNative").filter((entry) => !entry.native);
@@ -169,10 +160,7 @@ function expectNative(app, patterns) {
 }
 
 /**
- * Why a route uWS already matches is still not compiled into a response.
- *
- * The handler is the last answer, not the first: three refusals come before it, and blaming the
- * handler sends the reader to rewrite something that was already simple enough.
+ * Why a native route is still not compiled into a response, the handler being the last answer.
  *
  * @param {Application} app
  * @param {{path: string}} entry
@@ -198,8 +186,7 @@ function whyNotCompiled(app, entry) {
 }
 
 /**
- * Throws unless every route named is answered from a response written at startup. One step past
- * native: uWS answers it without entering javascript.
+ * Throws unless every route named is compiled into a response, answered without javascript.
  *
  * @param {Application} app
  * @param {string|string[]} patterns as in expectNative
@@ -223,8 +210,7 @@ function expectDeclarative(app, patterns) {
 }
 
 /**
- * What this one request made the framework do, asked from inside a handler or from a `finish`
- * listener. See src/work.js for what each field means and why asking is free.
+ * What this request made the framework do, see src/work.js.
  *
  * @param {Request} req
  * @param {Response} res
@@ -234,23 +220,17 @@ function workReport(req, res) {
     return work(req, res);
 }
 
-// The work a fast request does none of. The route verdict is not here, expectNative and
-// expectDeclarative assert on that.
+// the work a fast request does none of
 const LAZY = ["headers", "query", "body", "requestStream", "responseStream", "socket"];
 
 /**
- * Throws if this request built anything it did not have to.
- *
- * The route verdict holds for every request, this holds for one. A native route still slows down
- * request by request if a middleware reads `req.headers.host` or pipes instead of sending.
- *
- * `allow` names what is fine here: a route that parses a body is asserted as one that parses a
- * body and nothing else.
+ * Throws if this request built anything it did not have to: a native route still slows down if a
+ * middleware reads `req.headers.host`. `allow` names what is expected here.
  *
  * @param {Request} req
  * @param {Response} res
  * @param {object} [options]
- * @param {string[]} [options.allow] fields of the report this route is expected to do anyway
+ * @param {string[]} [options.allow]
  */
 function expectLazy(req, res, options) {
     const allowed = options?.allow ?? [];

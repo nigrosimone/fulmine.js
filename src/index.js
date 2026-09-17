@@ -53,11 +53,8 @@ try {
     // node below 22.8, or a disk the cache cannot be written to
 }
 
-// The factory doubles as a namespace, as in Express: Router, static and the body parsers hang off
-// the function that creates an app.
-//
-// Always `module.exports.name = ...`, never through an alias: cjs-module-lexer reads this file as
-// text to decide the named exports an ESM importer gets, and it cannot see through an alias.
+// the factory doubles as a namespace, as in Express. Always `module.exports.name = ...`, never
+// through an alias: cjs-module-lexer reads this file as text for the ESM named exports
 /**
  * @type {typeof Application & {
  *   Router: Function,

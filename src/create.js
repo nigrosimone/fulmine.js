@@ -14,12 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// npx fulmine.js create <dir> [--ts] [--pnpm]
-//
-// A new project, for whoever has no Express application to migrate. `migrate` and `override` start
-// from somebody's code; this starts from nothing and writes the few files a first run needs: a
-// server, a package.json, and the Dockerfile that works, since the base image is the one thing a
-// Dockerfile written for Express gets wrong here. Nothing is installed, that is the user's call.
+// npx fulmine.js create <dir> [--ts] [--pnpm]: a new project from nothing, a server, a package.json
+// and the Dockerfile that works (the base image is what a Dockerfile written for Express gets
+// wrong). Nothing is installed
 
 "use strict";
 

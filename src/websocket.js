@@ -53,16 +53,13 @@ function joinPaths(prefix, path) {
 }
 
 /**
- * Every websocket route reachable from this router, with the mount paths already applied.
- *
- * Walked separately from the HTTP routes: those fall back to ordinary routing when uWS cannot
- * match them, a websocket has no fallback, so an unmountable one is refused out loud.
+ * Every websocket route reachable from this router with the mount paths applied. A websocket
+ * has no fallback, so an unmountable one is refused out loud.
  *
  * @param {Router} router
- * @param {string|null} prefix the mount path accumulated so far, or null once a mount was a
- *   shape µWS cannot match, which makes everything below it unreachable
+ * @param {string|null} prefix the mount path so far, null once a mount was a shape µWS cannot match
  * @param {WsRoute[]} out
- * @param {Set<Router>} seen routers already walked, since a router may be mounted twice
+ * @param {Set<Router>} seen a router may be mounted twice
  */
 function collectRoutes(router, prefix, out, seen) {
     if (seen.has(router)) {

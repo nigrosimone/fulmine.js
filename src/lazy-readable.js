@@ -37,11 +37,8 @@ Object.setPrototypeOf(LazyReadableBase, Readable);
 const LazyReadable = /** @type {typeof Readable} */ (/** @type {unknown} */ (LazyReadableBase));
 
 /**
- * Builds the stream this object has been pretending to be. Idempotent: everything that can be
- * reached from outside goes through it, so it is called far more often than it does anything.
- *
- * EventEmitter's init keeps an _events that is already there, so listeners added before this
- * survive it.
+ * Builds the stream this object has been pretending to be, idempotent. EventEmitter's init keeps
+ * an _events already there, so earlier listeners survive.
  *
  * @param {any} stream the Request pretending to be one, before its state exists
  */

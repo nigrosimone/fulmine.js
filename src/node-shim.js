@@ -24,9 +24,7 @@ const { IncomingMessage } = require("http");
 const emptyAddress = new ArrayBuffer(0);
 
 /**
- * An IP address as the four or sixteen bytes uWS hands over, since that is what req.ip parses.
- * Anything unreadable comes back empty, which req.ip reports as undefined, the same answer it gives
- * for a unix socket.
+ * An IP address as the four or sixteen bytes uWS hands over; unreadable comes back empty.
  *
  * @param {string|undefined} address
  * @returns {ArrayBuffer}
@@ -35,11 +33,7 @@ function addressToBytes(address) {
     if (!address) {
         return new ArrayBuffer(0);
     }
-    // node reports an IPv4 client on a dual stack socket as ::ffff:127.0.0.1 and one on an IPv4
-    // socket as 127.0.0.1, which is the difference req.ip reads back out of the width: uWS hands
-    // the mapped peer over as the sixteen bytes, the plain one as four. Keeping node's own form
-    // rather than flattening both to four is what makes the shim answer what node answers,
-    // whichever socket accepted the connection
+    // ::ffff:127.0.0.1 as sixteen bytes and 127.0.0.1 as four, so req.ip reads back node's own form
     const mapped = address.startsWith("::ffff:") && address.includes(".");
     const dotted = mapped ? address.slice(7) : address;
     if (dotted.includes(".")) {
@@ -63,7 +57,7 @@ function addressToBytes(address) {
         return bytes.buffer;
     }
 
-    // IPv6, with the one "::" expanded to however many zero groups are missing
+    // IPv6, "::" expanded
     const [head, tail] = address.split("::");
     const headGroups = head ? head.split(":") : [];
     const tailGroups = tail ? tail.split(":") : [];
@@ -96,16 +90,10 @@ function toArrayBuffer(chunk) {
         return chunk;
     }
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    // node types the store as possibly shared, but a Buffer it made or was given here never is
     return /** @type {ArrayBuffer} */ (buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength));
 }
 
-/**
- * What uWS calls an HttpRequest, over node's IncomingMessage.
- *
- * Valid as long as the response is, which is longer than uWS allows: node keeps the headers alive.
- * Request copies them anyway, since it cannot tell which kind of request it is holding.
- */
+/** uWS's HttpRequest over node's IncomingMessage. */
 class NodeHttpRequest {
     /** @param {import("http").IncomingMessage} req */
     constructor(req) {
@@ -113,35 +101,41 @@ class NodeHttpRequest {
         const url = req.url || "/";
         const question = url.indexOf("?");
         this._path = question === -1 ? url : url.slice(0, question);
-        // uWS answers the query without its "?", undefined when the url carries none and "" when
-        // it carries an empty one, and req.url keeps that difference
+        // undefined with no "?", "" with an empty query, as uWS answers
         /** @type {string|undefined} */
         this._query = question === -1 ? undefined : url.slice(question + 1);
     }
 
-    /** The path, without the query, which is what uWS answers here. */
+    /**
+     *
+     */
     getUrl() {
         return this._path;
     }
 
-    /** The query string without its "?", undefined when the url has none, as uWS reports it. */
+    /**
+     *
+     */
     getQuery() {
         return this._query;
     }
 
-    /** The method as it arrived on the wire. */
+    /**
+     *
+     */
     getCaseSensitiveMethod() {
         return this._req.method || "GET";
     }
 
-    /** The method lowercased, which is the other spelling uWS offers. */
+    /**
+     *
+     */
     getMethod() {
         return (this._req.method || "GET").toLowerCase();
     }
 
     /**
-     * Every header, lowercased, in the order they arrived. rawHeaders and not headers, because the
-     * object node builds has already joined the repeated ones together.
+     * Every header lowercased in arrival order, off rawHeaders since headers joined the repeats.
      * @param {(key: string, value: string) => void} cb
      */
     forEach(cb) {
@@ -160,20 +154,15 @@ class NodeHttpRequest {
         return Array.isArray(value) ? value.join(", ") : value;
     }
 
-    /**
-     * There are no natively registered routes on this path, so nothing ever asks. Answering the
-     * empty string rather than throwing keeps a stray caller from taking the app down.
-     */
+    /** No native route exists on this path, so nothing asks. */
     getParameter() {
         return "";
     }
 }
 
 /**
- * What uWS calls an HttpResponse, over node's ServerResponse.
- *
- * The status and the headers are held until node writes the head, which it does with the first byte
- * of body. So writeStatus only remembers: sending it here would send the headers too early.
+ * uWS's HttpResponse over node's ServerResponse: the status and headers are held until node
+ * writes the head with the first byte of body.
  */
 class NodeHttpResponse {
     /**
@@ -183,13 +172,11 @@ class NodeHttpResponse {
     constructor(req, res) {
         this._nodeReq = req;
         this._nodeRes = res;
-        // how much of the body has gone out, which is what uWS reports through getWriteOffset and
-        // hands back to an onWritable callback
         this._offset = 0;
         /** @type {((offset: number) => boolean)|null} */
         this._onWritable = null;
         this._aborted = false;
-        // the current body handler: uWS keeps one and a second onData replaces it, so this does too
+        // a second onData replaces the handler, as uWS does
         this._onData = null;
         this._onDataPending = null;
         this._onDataListening = false;
@@ -204,9 +191,7 @@ class NodeHttpResponse {
     }
 
     /**
-     * uWS batches everything written inside this into one syscall. node has no equivalent that
-     * means the same thing, and its own cork would hold the write until the callback returned
-     * without changing what is sent, so this only runs it.
+     * Only runs the callback: node's cork would change nothing on the wire.
      *
      * @param {() => void} cb
      */
@@ -225,17 +210,14 @@ class NodeHttpResponse {
     }
 
     /**
-     * uWS writes a header line per call and never replaces one, which is what the code above this
-     * is written against: two calls for Set-Cookie are two cookies. setHeader would have kept only
-     * the last, and did, until supertest started serving applications through node's own server.
+     * A header line per call as uWS writes it: two calls for Set-Cookie are two cookies.
      *
      * @param {string} key
      * @param {string|number} value
      */
     writeHeader(key, value) {
         if (!this._nodeRes.headersSent) {
-            // String() because writeHeaders hands the recurring names and values over as
-            // Buffers for the uWS crossing, and node's appendHeader wants strings
+            // writeHeaders hands the recurring names and values over as Buffers
             this._nodeRes.appendHeader(String(key), String(value));
         }
         return this;
@@ -264,8 +246,7 @@ class NodeHttpResponse {
     }
 
     /**
-     * A response with a length but no body of its own: a HEAD, or a status that carries none. uWS
-     * takes the length here rather than as a header, so it is written as one on the way through.
+     * A response with a length and no body, a HEAD or a bodiless status.
      *
      * @param {string|number} [length]
      */
@@ -281,8 +262,7 @@ class NodeHttpResponse {
     }
 
     /**
-     * Writes a chunk of a response whose total length is known. Answers uWS's pair: whether the
-     * write got through, and whether that was the last of it.
+     * Writes a chunk of a response whose length is known: uWS's [ok, done] pair.
      *
      * @param {ArrayBuffer|Buffer} chunk
      * @param {number} totalSize
@@ -311,9 +291,7 @@ class NodeHttpResponse {
     }
 
     /**
-     * Called when there is room to write again. uWS asks the handler to answer whether it managed
-     * to write everything, and calls it again if not; node's drain says nothing, so the handler is
-     * kept until the next drain and its answer ignored.
+     * Called when there is room to write again; node's drain ignores the handler's answer.
      *
      * @param {(offset: number) => boolean} handler
      */
@@ -338,9 +316,8 @@ class NodeHttpResponse {
     }
 
     /**
-     * The body, in the chunks node hands over, as the ArrayBuffer and last-chunk flag uWS delivers.
-     * A second call replaces the handler, as uWS does: the body parsers rely on that, and a chunk
-     * held back before they attached has to reach them rather than the handler it arrived under.
+     * The body as uWS delivers it, an ArrayBuffer and a last-chunk flag. A second call replaces
+     * the handler, as uWS does and the body parsers rely on.
      * @param {(chunk: ArrayBuffer, isLast: boolean) => void} handler
      */
     onData(handler) {
@@ -356,8 +333,7 @@ class NodeHttpResponse {
             this._onDataPending = toArrayBuffer(chunk);
         });
         this._nodeReq.on("end", () => {
-            // uWS marks the last chunk rather than announcing the end separately, so the one in
-            // hand is held back until there is nothing after it
+            // uWS marks the last chunk, so the one in hand is held back until the end
             this._onData?.(this._onDataPending ?? new ArrayBuffer(0), true);
             this._onDataPending = null;
         });
@@ -383,20 +359,21 @@ class NodeHttpResponse {
         return this;
     }
 
-    /** The client address as the bytes uWS hands over, which is what req.ip parses. */
+    /**
+     *
+     */
     getRemoteAddress() {
         return addressToBytes(this._nodeReq.socket?.remoteAddress);
     }
 
-    /** The client address as text, which uWS also offers. */
+    /**
+     *
+     */
     getRemoteAddressAsText() {
         return Buffer.from(this._nodeReq.socket?.remoteAddress || "");
     }
 
-    /**
-     * Always empty: node's server does not read the PROXY protocol, so a request that arrived
-     * through it never carries an address a proxy declared, whatever "trust proxy protocol" says.
-     */
+    /** Always empty: node's server does not read the PROXY protocol. */
     getProxiedRemoteAddress() {
         return emptyAddress;
     }
@@ -408,8 +385,8 @@ class NodeHttpResponse {
 }
 
 /**
- * Whether these are node's own request and response rather than this project's.
- * @param {unknown} req anything a caller handed the router, which is the point of the check
+ * Whether this is node's own request rather than this project's.
+ * @param {unknown} req
  */
 function isNodeRequest(req) {
     return req instanceof IncomingMessage;
@@ -424,7 +401,6 @@ function isNodeRequest(req) {
  * @param {(err?: unknown) => void} [next] called when nothing in the router answered
  */
 function serveNodeRequest(router, nodeReq, nodeRes, next) {
-    // the shims stand in for uWS's pair, and the checker is told so once, here
     const shimRes = /** @type {import("uWebSockets.js").HttpResponse} */ (
         /** @type {unknown} */ (new NodeHttpResponse(nodeReq, nodeRes))
     );
@@ -433,13 +409,10 @@ function serveNodeRequest(router, nodeReq, nodeRes, next) {
     );
     const request = router.handleRequest(shimRes, shimReq);
     const response = request.res;
-    // the shim's onAborted rides node's own close event, needed on every request here
     router._armAbort(shimRes, response);
 
     return router._routeRequest(request, response).then((matched) => {
-        // a 404 after the head is out is left as it is, an error after it is not: it goes on to
-        // the final handler, which closes the connection as express's does. Same rule as the
-        // native path, see nativeDone in router-utils.js
+        // the same rule as nativeDone in router-utils.js
         if (matched || response.aborted || (response.headersSent && !request._error)) {
             return;
         }

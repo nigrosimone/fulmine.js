@@ -103,10 +103,8 @@ function isMappedIPv4(bytes) {
 }
 
 /**
- * Whether node would report an IPv4 peer of this app in mapped form, "::ffff:a.b.c.d". Node maps it
- * whenever the listener is dual stack, which is every listen() without an IPv4 address. Only the
- * address invented after the response has ended asks: every address actually read says which form
- * it is in by its width, uWS handing a mapped peer over as sixteen bytes and a plain one as four.
+ * Whether node would report an IPv4 peer as "::ffff:a.b.c.d", which it does on a dual stack
+ * listener. Only the address invented after the response asks, a read one says by its width.
  *
  * @param {import("./application.js").Application} app the application the request arrived at
  * @returns {boolean}
@@ -146,12 +144,9 @@ const discardedDuplicates = new Set([
 const KNOWN_METHODS = new Set(require("http").METHODS);
 
 /**
- * Whether a request target is bytes node's parser would have accepted, printable ASCII only.
- *
- * uWS takes the target as it finds it and decodes it as UTF-8, so `GET /cafÃ©` arrives with an é in
- * it and an overlong slash arrives as replacement characters. Node answers 400 instead, and it has
- * to: a proxy in front reading the same bytes would disagree about which path was asked for.
- * Control characters are uWS's own to refuse, so this is one comparison per character.
+ * Whether a request target is printable ASCII, as node's parser requires: uWS decodes it as UTF-8,
+ * and a proxy reading the same bytes would disagree about the path. Control characters are uWS's
+ * to refuse.
  *
  * @param {string} target the path or the query string, as µWS decoded it
  * @returns {boolean}
@@ -166,12 +161,8 @@ function isAsciiTarget(target) {
 }
 
 /**
- * Whether a transfer-encoding leaves the body's length knowable, RFC 9112's rule that `chunked`
- * comes last. `gzip, chunked` is fine, `chunked, gzip` is not, and node answers 400 rather than
- * guess. uWS guesses, and what it guesses wrong becomes the next request on the connection.
- *
- * Read per header, not over the joined value, so a request splitting the list across two headers is
- * refused too. Stricter than node by a hair, on a shape nothing sends.
+ * Whether `chunked` comes last, RFC 9112: `chunked, gzip` is a 400 to node, and uWS guesses.
+ * Read per header, so a list split across two headers is refused too.
  *
  * @param {string} value one transfer-encoding header, as uWS hands it over
  * @returns {boolean}
@@ -242,11 +233,8 @@ function saysClose(value) {
 }
 
 /**
- * The path of the url a request carries right now, without the query.
- *
- * Express reads it off req.url on every access, so a middleware that assigns req.url is seen by
- * whatever runs next, the callback after it in the same route included. The cached field answers
- * while the two agree.
+ * The path of the url the request carries now, off req.url on every access as Express reads it;
+ * the cached field answers while the two agree.
  *
  * @param {Request} req
  * @returns {string}

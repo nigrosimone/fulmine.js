@@ -68,11 +68,8 @@ function indentOf(source) {
 }
 
 /**
- * Reads a JSON file, or explains why it could not be read rather than throwing a parser error.
- *
- * The read is attempted rather than guarded by an existence check: both commands write the file
- * they read, and a check followed by a write to the same path is a race. `code` is what a caller
- * names the missing file by.
+ * Reads a JSON file, or explains why it could not be read. No existence check first, a check
+ * then a write is a race.
  *
  * @param {string} file
  * @returns {{data: any, source: string}|{error: string, code: string|undefined}}
@@ -343,10 +340,9 @@ function withPnpmOverride(source) {
 /**
  * npx fulmine.js pnpm [dir] [--dry-run]
  *
- * Makes a pnpm project install this package, which pnpm 10.26 and later otherwise refuse: the
- * project takes µWebSockets.js as a direct dependency, at the spec this package pins, and an
- * override in pnpm-workspace.yaml drops the copy this package asks for. pnpm 11 reads its
- * settings from that file only, so package.json's `pnpm` field is not where this goes.
+ * Makes a pnpm project install this package: µWebSockets.js as a direct dependency at the pinned
+ * spec, and an override in pnpm-workspace.yaml (the only file pnpm 11 reads) dropping the copy
+ * this package asks for.
  *
  * @param {string[]} argv everything after the command name
  * @returns {number} exit code

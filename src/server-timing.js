@@ -14,15 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// express.serverTiming(): Server-Timing with what only this framework can say, how the request was
-// routed and what it was made to build:
+// express.serverTiming(): Server-Timing with how the request was routed ("native" or "router") and
+// what it was made to build (`work`, see src/work.js). The duration ends where the header goes out.
 //
 //     Server-Timing: route;desc="native", hdr;desc="not copied", total;dur=0.42
-//
-// `route` is "native" (matched by uWS, chain worked out at startup) or "router" (matched here, layer
-// by layer); a compiled response never enters javascript, `npx fulmine profile` counts those. `work`
-// names what was built (headers, query, body, Readable, Writable, socket stand-in), see src/work.js.
-// The duration ends where the header goes out.
 
 "use strict";
 

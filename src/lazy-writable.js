@@ -33,11 +33,8 @@ Object.setPrototypeOf(LazyWritableBase, Writable);
 const LazyWritable = /** @type {typeof Writable} */ (/** @type {unknown} */ (LazyWritableBase));
 
 /**
- * Builds the stream this object has been pretending to be. Idempotent: everything reachable from
- * outside goes through it, so it is called far more often than it does anything.
- *
- * EventEmitter's init keeps an _events that is already there, so both the shape the constructor
- * wrote and any listener added before this survive it.
+ * Builds the stream this object has been pretending to be, idempotent. EventEmitter's init keeps
+ * an _events already there, so the constructor's shape and earlier listeners survive.
  *
  * @param {any} stream the Response pretending to be one, before its state exists
  */

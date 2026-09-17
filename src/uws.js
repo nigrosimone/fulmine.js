@@ -14,11 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// µWebSockets.js, loaded the first time something needs it rather than when this package is
-// required. An application that is built and never listens never loads the binary. Angular's
-// build imports server.ts in a worker thread to extract the routes and serves it through node's
-// http, and on Windows the binary crashes the process when a thread that loaded it exits
-// (uNetworking/uWebSockets.js#668), so the build only works if nothing in that thread loads it.
+// µWebSockets.js loaded on first use, not at require: Angular's build imports server.ts in a
+// worker thread and serves it through node's http, and on Windows the binary crashes the process
+// when that thread exits (uNetworking/uWebSockets.js#668)
 
 /** @type {any} */
 let uWS;

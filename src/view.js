@@ -97,15 +97,11 @@ module.exports = class View {
     }
 
     /**
-     * Renders the template through its engine.
+     * Renders the template through its engine. The callback is always delivered on a later tick,
+     * as Express does, even when the engine answered on the spot.
      *
-     * The callback is always delivered asynchronously, even when the engine answers on the spot:
-     * `sync` is true only if the engine called back before this returned, and then the callback
-     * goes to the next tick. Express does the same.
-     *
-     * @param {Record<string, any>} options locals and engine options, passed through untouched
-     * @param {Function} callback called with whatever the engine passed, which is normally
-     *   (err, html) but is forwarded as it came rather than reshaped
+     * @param {Record<string, any>} options locals and engine options, passed through
+     * @param {Function} callback called with whatever the engine passed
      */
     render(options, callback) {
         let sync = true;
