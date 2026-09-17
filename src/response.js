@@ -1924,6 +1924,11 @@ module.exports = class Response extends LazyWritable {
         // a BigInt for one, throws out of here with the response's headers as they were
         const json = stringify(body, hot.jsonReplacer, hot.jsonSpaces, hot.jsonEscape);
         if (!this.headers["content-type"]) {
+            // express sets it through res.set, which refuses once the head is out: json(undefined)
+            // after a writeHead has to throw here, since send() lets an undefined body through
+            if (this.headersSent) {
+                throw headersSentError("set");
+            }
             this.headers["content-type"] = JSON_UTF8;
         }
         return this.send(json);
@@ -1962,6 +1967,10 @@ module.exports = class Response extends LazyWritable {
             js = true;
         }
 
+        // as in json() above: express sets these through res.set, which refuses after the head
+        if (this.headersSent && (!this.headers["content-type"] || js)) {
+            throw headersSentError("set");
+        }
         if (!this.headers["content-type"]) {
             this.headers["x-content-type-options"] = "nosniff";
             this.headers["content-type"] = "application/json; charset=utf-8";
