@@ -41,9 +41,8 @@ const {
     isByteCount
 } = require("./request-utils.js");
 
-// Whose headers the shared collector below is filling. uWS's forEach is synchronous and runs no
-// user code, so the handoff cannot interleave; module-level so the callback exists once instead
-// of once per request.
+// whose headers #collectHeader is filling: uWS's forEach is synchronous, so one callback serves
+// every request
 let currentRequest = null;
 
 module.exports = class Request extends LazyReadable {
@@ -54,11 +53,8 @@ module.exports = class Request extends LazyReadable {
     #cachedDistinctHeaders = null;
 
     /**
-     * Every header, flat: name then value, name then value.
-     *
-     * An array of pairs meant one array per header on every request, and a request carries eight or
-     * ten, so everything that reads this walks it two at a time. The names are lowercase by
-     * contract: uWS lowers them on the wire and the node shim lowers them in its forEach.
+     * Every header, flat: name then value, walked two at a time (an array per pair was one
+     * allocation per header). Names are lowercase, uWS and the node shim both lower them.
      *
      * @type {string[]}
      */
@@ -67,34 +63,26 @@ module.exports = class Request extends LazyReadable {
     /** @type {string|undefined|null} */
     #cachedParsedIp = null;
 
-    /** Whether backpressure has asked uWS to stop delivering the body for now. */
+    /** Whether backpressure asked uWS to pause the body. */
     #paused = false;
 
     /** A bodyless request whose empty end has not been delivered yet, see the constructor. */
     #emptyBody = false;
 
-    // `body` is deliberately not declared here. A class field would put the property on every
-    // request, and on Express there is none until a body parser assigns one. `"body" in req` is how
-    // a library asks whether the body was read, and tRPC's express adapter does exactly that:
-    // answering yes turned every mutation into "Unexpected end of JSON input". Its type is in
-    // types.d.ts, with the rest of the public request surface.
+    // `body` is not declared: on Express there is none until a parser assigns one, and tRPC asks
+    // `"body" in req` to know whether the body was read. Its type is in types.d.ts
 
     /**
-     * The response this request arrived with, linked so either reaches the other.
-     *
-     * Typed loosely on purpose: it is linked right after construction rather than in the
-     * constructor, and the honest `Response|undefined` would put a check in front of every
-     * use of a field that is never observed unset.
+     * The response, linked right after construction. Loose: `Response|undefined` would put a
+     * check in front of every use.
      *
      * @type {any}
      */
     res;
 
     /**
-     * Copies one header out of uWS and notices the two things the constructor decides by.
-     *
-     * One function for every request, fed through currentRequest: an arrow in the constructor
-     * captured `this`, which cost a context and a function allocation per request.
+     * Copies one header out of uWS and notices what the constructor decides by. One function for
+     * every request through currentRequest, an arrow per request cost a closure.
      *
      * @param {string} headerKey lowercase, as uWS hands it over
      * @param {string} value
@@ -102,9 +90,7 @@ module.exports = class Request extends LazyReadable {
     static #collectHeader = (headerKey, value) => {
         const r = currentRequest;
         r.#rawHeadersEntries.push(headerKey, value);
-        // spotted in the loop that is running anyway: a client asking for the connection to be
-        // closed must not be answered that it is being kept alive. The response is built right
-        // after this and reads the flag.
+        // the response, built right after, must not answer keep-alive to a client that said close
         if (headerKey.length === 10 && headerKey === "connection" && saysClose(value)) {
             r._connectionClose = true;
         } else if (
@@ -112,27 +98,20 @@ module.exports = class Request extends LazyReadable {
             (headerKey.length === 17 && headerKey === "transfer-encoding")
         ) {
             if (headerKey.length === 14) {
-                // a second content-length whatever it says, and one that is not a count of bytes:
-                // both make uWS frame the request differently from what is on the wire, see
-                // _mustRefuse and isByteCount
+                // a second content-length, or one that is not a byte count, frames the request
+                // differently from the wire, see _mustRefuse and isByteCount
                 if (r._sawContentLength || !isByteCount(value)) {
                     r._mustRefuse = true;
                 }
                 r._sawContentLength = true;
             } else if (!endsWithChunked(value)) {
-                // chunked has to be the last coding: anything after it and the length of the body
-                // is not knowable, which node answers 400 to and µWS served. See endsWithChunked
                 r._mustRefuse = true;
             }
-            // saying anything about framing at all, "0" included. A parser that can see a
-            // content-length answers about the body it describes, even an empty one: a zero length
-            // with a charset nobody can decode is a 415 in express and here, so a chain may only
-            // step over a parser when the request said nothing about a body whatsoever
+            // "0" included: a parser seeing a content-length answers about that body, an empty
+            // one with a bad charset is a 415, so a chain may not step over it
             r._hasBodyHeaders = true;
-            // content-length: 0 declares that there is nothing, which is the same as declaring
-            // nothing: the stream ends empty either way, without the onData subscription
+            // content-length: 0 needs no onData subscription
             if (value !== "0" || headerKey.length === 17) {
-                // noticed here so the body decision in the constructor does not build the headers object
                 r._declaresBody = true;
             }
         }
@@ -157,72 +136,60 @@ module.exports = class Request extends LazyReadable {
     route;
 
     /**
-     * Which hop the error being carried came from, so an error handler declared before it does
-     * not catch what happened after it.
+     * Which hop the error being carried came from, so an earlier error handler does not catch it.
      * @type {number|undefined}
      */
     _errorKey;
 
     /**
-     * Which app.route() the failing route belonged to, when it belonged to one. Express builds one
-     * route out of everything hung off an app.route(), so an error handler written on it catches
-     * what its siblings raised, and nothing else does.
+     * Which app.route() the failing route belonged to: an error handler on it catches what its
+     * siblings raised, as Express builds one route out of them.
      * @type {number|undefined}
      */
     _errorGroup;
 
     /**
-     * How much of _originalPath the mounts entered so far have taken. Kept as a count rather than
-     * worked out from the mount patterns, because what a mount took is what it matched, and a
-     * pattern rebuilt from the whole stack does not always match the same thing.
+     * How much of _originalPath the mounts entered so far have taken, as a count: what a mount
+     * took is what it matched, a pattern rebuilt from the stack does not always match the same.
      * @type {number}
      */
     _consumed = 0;
 
     /**
-     * next() as the router means it: the rest of the route is skipped. res.sendFile reports its
-     * failures here, because express reports them to the router and not to the route.
+     * next() as the router means it, the rest of the route skipped: where res.sendFile reports.
      * @type {((err?: unknown) => void)|undefined}
      */
     _leaveRoute;
 
     /**
-     * What `readable` answers while there is no stream to ask, see LazyReadable. Declared so the
-     * class has one shape whether or not anything ever streams.
+     * What `readable` answers while there is no stream, see LazyReadable.
      * @type {boolean}
      */
     _readableFlag = true;
 
     /**
-     * The peer address as uWS hands it over, sixteen bytes or four.
-     *
-     * Declared although the constructor only sometimes fills it in: a property that appears on
-     * some requests and not others gives the class more than one shape, and every read of every
-     * other field pays for that.
+     * The peer address as uWS hands it, sixteen bytes or four. Declared although only sometimes
+     * filled: a property on some requests and not others is a second shape.
      *
      * @type {ArrayBuffer|undefined}
      */
     rawIp;
 
     /**
-     * Whether the request declared a body, content-length or transfer-encoding, spotted during
-     * the header copy. Declared for the same reason as rawIp.
+     * Whether the request declared a body, content-length or transfer-encoding.
      * @type {boolean|undefined}
      */
     _declaresBody;
 
     /**
-     * Whether the request said anything at all about framing, a content-length of "0" included.
-     * Wider than _declaresBody on purpose: a parser that can see a content-length answers about
-     * the body it describes even when that body is empty, so this is what decides whether a chain
-     * may step over one. Declared for the same reason as rawIp.
+     * Whether the request said anything about framing, a content-length of "0" included: a parser
+     * seeing one answers about that body, so a chain may not step over it.
      * @type {boolean|undefined}
      */
     _hasBodyHeaders;
 
     /**
-     * Whether a content-length has already been copied, so a second one is spotted. Declared for
-     * the same reason as rawIp.
+     * Whether a content-length was already copied, so a second one is spotted.
      * @type {boolean|undefined}
      */
     _sawContentLength;
@@ -231,25 +198,20 @@ module.exports = class Request extends LazyReadable {
      * Whether this request is refused before routing, as node's parser does with a 400. Each shape
      * lets bytes uWS did not frame as this request be served as the next one, which is smuggling:
      * a repeated content-length (uWS frames on the first), one that is not a byte count (see
-     * isByteCount), a method nobody defines (see KNOWN_METHODS). Declared for the same reason as rawIp.
+     * isByteCount), a method nobody defines (see KNOWN_METHODS).
      *
      * @type {boolean|undefined}
      */
     _mustRefuse;
 
     /**
-     * Whether the client asked for the connection to be closed. Declared for the same reason.
+     * Whether the client asked for the connection to be closed.
      * @type {boolean|undefined}
      */
     _connectionClose;
 
     /**
-     * The continuation of the chain currently running, which express also hands to a handler
-     * through the request. Declared rather than left to appear on assignment: runRoute sets it
-     * on every request, and an undeclared property is a shape change on each one.
-     *
-     * Typed loosely for the same reason as `res`: it is set by runRoute rather than here, and the
-     * honest `|undefined` would put a check in front of every call.
+     * The continuation of the running chain, set by runRoute. Loose for the same reason as `res`.
      *
      * @type {any}
      */
@@ -268,35 +230,31 @@ module.exports = class Request extends LazyReadable {
     noEtag;
 
     /**
-     * The decoded pairs of the first default-parser parse of req.query, flat key,value; false
-     * when it saw a repeated key, which a flat replay cannot reproduce. See `get query`.
+     * The decoded pairs of the first default-parser parse of req.query, flat; false after a
+     * repeated key, which a flat replay cannot reproduce. See `get query`.
      * @type {string[]|false|undefined}
      */
     _querySnap;
 
     /**
-     * The raw string _querySnap came from: a url rewrite replaces _rawQuery.
+     * The raw string _querySnap came from, a url rewrite replaces _rawQuery.
      * @type {string|undefined}
      */
     _querySnapRaw;
 
     /**
-     * Built for every request, which is why so little happens here. The headers are copied out
-     * because uWS only lends them for this call, everything derived from them waits until something
-     * asks, and the body is subscribed to only for the methods that carry one.
+     * Built for every request: the headers are copied out because uWS only lends them for this
+     * call, everything else waits until asked.
      *
      * @param {import("uWebSockets.js").HttpRequest} req the uWS request, readable only during this call
      * @param {import("uWebSockets.js").HttpResponse} res the uWS response
-     * @param {import("./application.js").Application} app the application this request arrived at
+     * @param {import("./application.js").Application} app
      * @param {import("./router-utils.js").NativePreset} [preset] a literal native registration's
-     *   constants: uWS matched the URL byte for byte against that exact pattern and dispatched by
-     *   method, so path, method and what derives from them are known without asking
+     *   constants: uWS matched that exact pattern and method, so both are known without asking
      * @param {import("./router-utils.js").SkipHolder} [skipHolder] where a granted header skip
-     *   lives: the preset itself for a literal registration, a holder of its own for a
-     *   parameterised one
+     *   lives, the preset itself for a literal registration
      */
     constructor(req, res, app, preset, skipHolder) {
-        // nothing: the stream is built on the first touch, see LazyReadable
         super();
         this._res = res;
         this._req = req;
@@ -325,9 +283,7 @@ module.exports = class Request extends LazyReadable {
                         this._connectionClose = true;
                     }
                 }
-                // send consults freshness whatever the etag setting: if-none-match can be "*"
-                // and a handler may set a validator by hand, so the conditional pair has to be
-                // really absent rather than merely uncopied
+                // send consults freshness whatever the etag setting, so the conditional pair is read
                 const ifNoneMatch = req.getHeader("if-none-match");
                 if (ifNoneMatch !== "") {
                     entries.push("if-none-match", ifNoneMatch);
@@ -336,8 +292,7 @@ module.exports = class Request extends LazyReadable {
                 if (ifModifiedSince !== "") {
                     entries.push("if-modified-since", ifModifiedSince);
                 }
-                // fresh() answers false before it reads cache-control unless a conditional
-                // arrived, so the read only pays on the requests that can use it
+                // fresh() reads cache-control only after a conditional
                 if (ifNoneMatch !== "" || ifModifiedSince !== "") {
                     const cacheControl = req.getHeader("cache-control");
                     if (cacheControl !== "") {
@@ -352,15 +307,13 @@ module.exports = class Request extends LazyReadable {
         }
         this.routeCount = 1;
         this.app = app;
-        // both forms are kept because both are asked for: the query with its "?" goes into req.url,
-        // and req.query parses the raw one. When the chain provably reads neither, the native call
-        // is not made at all: the framework's own answers are written from the path alone
+        // both forms are asked for: with the "?" in req.url, raw for req.query. When the chain
+        // provably reads neither the native call is skipped
         if (skipHolder !== undefined && skipHolder.skipQuery) {
             this._rawQuery = "";
             this.urlQuery = "";
         } else {
-            // getQuery tells "/a" from "/a?": no query string at all reads undefined, an empty
-            // one reads "". Express keeps that lone "?" in req.url, so the two are kept apart
+            // getQuery tells "/a" (undefined) from "/a?" (""), and Express keeps the lone "?" in req.url
             const rawQuery = req.getQuery();
             this._rawQuery = rawQuery ?? "";
             this.urlQuery = rawQuery === undefined ? "" : "?" + rawQuery;
@@ -369,7 +322,7 @@ module.exports = class Request extends LazyReadable {
             }
         }
         if (preset) {
-            // the registration's constants: two native crossings and their strings not asked for
+            // the registration's constants, two native crossings saved
             this._path = preset.path;
             this.originalUrl = preset.path + this.urlQuery;
             this.url = this.originalUrl;
@@ -381,38 +334,28 @@ module.exports = class Request extends LazyReadable {
             this._isOptions = preset.isOptions;
             this._isHead = preset.isHead;
         } else {
-            // getUrl() is the path already, so the query is joined on and then not split off
-            // again. Building originalUrl and picking the path back out of it with indexOf and
-            // substring was a search and a second string for something uWS had just handed over.
             this._path = req.getUrl();
-            // the target as it arrived, which node would have refused before this ran. A preset
-            // needs no check: it is a literal registration, and µWS only matched it because the
-            // bytes were that literal
+            // node refuses a non-ascii target before routing; a preset is a literal µWS matched
             if (!isAsciiTarget(this._path)) {
                 this._mustRefuse = true;
             }
             this.originalUrl = this._path + this.urlQuery;
             this.url = this.originalUrl;
-            // what the router last wrote to req.url. A middleware assigning something else is a
-            // rewrite, which express honours, and dispatch compares against this to notice it
+            // what the router last wrote to req.url: dispatch compares to notice a rewrite
             this._lastUrl = this.originalUrl;
-            // charCodeAt rather than indexing: s[i] builds a one character string to throw away
             this.endsWithSlash = this._path.charCodeAt(this._path.length - 1) === 0x2f;
             this._opPath = this._path;
             this._originalPath = this._path;
             const rawMethod = req.getCaseSensitiveMethod();
             if (skipHolder !== undefined && rawMethod === skipHolder.method) {
-                // the registration's constant, byte for byte; any other spelling, "get" that µWS
-                // folded here included, takes the full check below
+                // the registration's constant byte for byte, any other spelling takes the check below
                 this.method = rawMethod;
                 this._isOptions = skipHolder.isOptions;
                 this._isHead = skipHolder.isHead;
             } else {
                 this.method = rawMethod.toUpperCase();
-                // node's parser knows a fixed set and refuses everything else, uWS takes the token
-                // as it finds it, so a request line is anything with a space in it. Compared before
-                // the uppercasing on purpose: a method is case sensitive, node refuses "post" and
-                // uWS folds it to POST and serves it
+                // node knows a fixed set, uWS takes any token. Compared before the uppercasing:
+                // node refuses "post", uWS folds it and serves it
                 if (!KNOWN_METHODS.has(rawMethod)) {
                     this._mustRefuse = true;
                 }
@@ -420,73 +363,53 @@ module.exports = class Request extends LazyReadable {
                 this._isHead = this.method === "HEAD";
             }
         }
-        // what the router last saw as the method. A middleware assigning another one is a rewrite,
-        // which express honours because it reads req.method at every layer, and dispatch compares
-        // against this to notice it
+        // what the router last saw as the method, to notice a rewrite as express does
         this._lastMethod = this.method;
-        // the folded _opPath and the percent scan of _originalPath, built on the hop that first
-        // wants them and dropped by every rewrite, see _pathMatches and Walk#dispatch
+        // the folded _opPath and the percent scan, built on the first hop that wants them and
+        // dropped by every rewrite, see _pathMatches and Walk#dispatch
         /** @type {string|null} */
         this._opPathLower = null;
         /** @type {boolean|null} */
         this._mayFailDecode = null;
         this.params = {};
 
-        // Two Sets per request, for two things almost no request needs.
-        //
-        // _matchedMethods collects the verbs a path answers so an OPTIONS request can be told what
-        // they are, and every reader asks _isOptions first, so it is built only for those.
-        //
-        // _paramCalled remembers, per router, what each app.param() callback was called with, so
-        // only an application using app.param wants it. The router builds it when it has something.
+        // built only when needed: the verbs a path answers, for an OPTIONS; what each app.param()
+        // callback was called with, per router; the mount arrays, at their push sites
         this._matchedMethods = this._isOptions ? new Set() : null;
         this._paramCalled = null;
-        // null for the same reason as the two above: a request that never enters a mount never
-        // needs either array, and the push sites materialize them
         this._stack = null;
-        // whether one of them took a trailing slash, which only a RegExp mount can: see baseUrl
+        // whether a mount took a trailing slash, which only a RegExp mount can, see baseUrl
         this._mountSlash = false;
         this._paramStack = null;
-        // route and application in pairs, one pair per mounted application entered from another
-        // application, so handing back puts the one that was current back, see rememberApp
-        /** @type {any[]|undefined} route and app alternating, loose because the pairs share one array */
+        /** @type {any[]|undefined} route and app alternating, one pair per sub-app entered, see rememberApp */
         this._appStack = undefined;
         this.receivedData = false;
-        // node's IncomingMessage flag: false until the whole body has arrived. on-finished
-        // reads it to decide a request is done with, and body-parser asks on-finished before
-        // it reads, so a parser running after another one has to find it here
+        // node's flag, false until the whole body arrived: on-finished reads it for body-parser
         this.complete = false;
-        // reading ip is very slow in UWS, so its better to not do it unless truly needed
+        // reading the ip is slow in uWS and impossible once the response is over, so it is read up
+        // front for the first hundred requests, and always once an app was seen asking too late
         if (app.needsIpAfterResponse) {
-            // an app that has been seen asking after the response reads it now, because by then
-            // µWS has freed it
             this.rawIp = this._readRawIp();
         } else if (app._ipProbes < 100) {
-            // and until this app has been seen either way, the first hundred requests read it, so
-            // one of them can be the one that finds out
             app._ipProbes++;
             this.rawIp = this._readRawIp();
         }
 
-        // A body exists on the wire only when the request declares one, content-length or
-        // transfer-encoding, whatever the verb, and that was spotted during the header copy. The
-        // verb list this used to read said nothing the headers had not already said
+        // a body is on the wire only when declared, whatever the verb
         if (this._declaresBody) {
             this._subscribeBody();
         } else {
             this.receivedData = true;
             this.complete = true;
-            // not pushed here: ending a Readable costs a scheduled tick and its bookkeeping,
-            // and on a bodyless request nobody may ever look. The null goes out from _read(),
-            // which is where every consumer arrives
+            // the null goes out from _read(): ending a Readable costs a tick nobody may ever need
             this.#emptyBody = true;
         }
     }
 
     /**
-     * Subscribes to the uWS body stream. Out of the constructor so a bodyless request allocates
-     * no closure at all there; must still run during the constructor call, since uWS only feeds a
-     * handler registered before the route handler returns.
+     * Subscribes to the uWS body stream, out of the constructor so a bodyless request allocates no
+     * closure. Still during the constructor call: uWS only feeds a handler registered before the
+     * route handler returns.
      */
     _subscribeBody() {
         this._res.onData((ab, isLast) => {
@@ -494,13 +417,11 @@ module.exports = class Request extends LazyReadable {
             if (this.#responseEnded) {
                 return;
             }
-            // The bytes are copied because uWS neuters `ab` when this callback returns, and a
-            // view of it would corrupt whatever is still queued. Buffer.from over a view rather
-            // than ab.slice(0): the slice allocates an ArrayBuffer of its own for every chunk,
-            // which on a small body costs several times the copying it is there to do.
+            // copied, uWS neuters `ab` when this returns. Buffer.from over a view, ab.slice(0)
+            // allocates an ArrayBuffer per chunk
             const chunk = Buffer.from(new Uint8Array(ab));
             const accepted = this.push(chunk);
-            // push() may synchronously end the response via a flowing-mode listener.
+            // push() may end the response synchronously through a flowing-mode listener
             if (!accepted && !isLast && !this.#responseEnded) {
                 this._res.pause();
                 this.#paused = true;
@@ -513,17 +434,14 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * One header by its lowercase wire name, straight from the raw entries. The body parsers ask
-     * for three of these per request, and materializing the whole headers object for that costs
-     * more than all three scans together. Reads the built object instead when it already exists,
-     * so joined duplicates come out the same either way.
+     * One header by its lowercase name, off the raw entries: the body parsers ask three per
+     * request, cheaper than building the headers object. Off the built object once it exists.
      *
      * @param {string} name lowercase
      * @returns {string|undefined}
      */
     _rawHeader(name) {
         if (this.#cachedHeaders !== null) {
-            // a string for every name but set-cookie, which the callers never ask for
             return /** @type {string|undefined} */ (this.#cachedHeaders[name]);
         }
         const entries = this.#rawHeadersEntries;
@@ -536,9 +454,8 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * The same, with repeats folded exactly as the headers object folds them, so a reader of one
-     * name per request does not build the whole object to stay correct on a repeated header.
-     * Not for set-cookie, whose folded form is an array.
+     * The same with repeats folded as the headers object folds them. Not for set-cookie, whose
+     * folded form is an array.
      *
      * @param {string} name lowercase
      * @returns {string|undefined}
@@ -564,10 +481,7 @@ module.exports = class Request extends LazyReadable {
         return value;
     }
 
-    /**
-     * Whether there is any point still reading the body: once the response is finished or the
-     * connection is gone, uWS has nothing left to hand over.
-     */
+    /** Once the response is finished or aborted, uWS has no body left to hand over. */
     get #responseEnded() {
         return this.res?.finished || this.res?.aborted;
     }
@@ -576,11 +490,8 @@ module.exports = class Request extends LazyReadable {
     #abortController;
 
     /**
-     * node's `req.signal`, an AbortSignal that fires when the request is over, so work started for
-     * a visitor who has gone away can be stopped. `@angular/ssr` reads it when it builds a web
-     * Request out of this one, which is how an SSR render learns to give up.
-     *
-     * Made on the first ask: most requests never look at it.
+     * node's `req.signal`, fired when the request is over: `@angular/ssr` reads it to give up a
+     * render. Made on the first ask.
      *
      * @returns {AbortSignal}
      */
@@ -592,8 +503,7 @@ module.exports = class Request extends LazyReadable {
             if (this.res?.aborted || this.res?.finished) {
                 stop();
             } else {
-                // the request, not the response: a client abort is reported by destroying this
-                // stream and emitting "aborted" on it, and the response is never told to close
+                // a client abort is reported on the request, never as a close on the response
                 this.once("aborted", stop);
                 this.once("close", stop);
             }
@@ -603,8 +513,7 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * The trailing headers of a chunked request. µWebSockets.js does not surface them, so these
-     * stay empty, which is also what node hands back until the request has ended.
+     * The trailers of a chunked request, which µWebSockets.js does not surface.
      *
      * @returns {Record<string, string>}
      */
@@ -620,8 +529,8 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * node's per-request socket timeout. µWS runs its own idle timeout, set through
-     * `uwsOptions.idleTimeout`, and this cannot change it. The listener is registered as node's is.
+     * node's per-request socket timeout, which cannot change µWS's `uwsOptions.idleTimeout`. The
+     * listener is registered as node's is.
      *
      * @param {number} msecs
      * @param {() => void} [callback]
@@ -634,13 +543,9 @@ module.exports = class Request extends LazyReadable {
         return this;
     }
 
-    /**
-     * Readable's pull. uWS pushes the body rather than being pulled from, so all this does is
-     * lift the backpressure that a full queue put on it.
-     */
+    /** Readable's pull: uWS pushes, so this only lifts the backpressure a full queue put on it. */
     _read() {
-        // first, so a bodyless stream still ends for a consumer that arrives after the
-        // response finished, which express allows
+        // first, so a bodyless stream still ends for a consumer arriving after the response
         if (this.#emptyBody) {
             this.#emptyBody = false;
             this.push(null);
@@ -653,10 +558,7 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * The part of the path the routers mounted so far have consumed, which is the empty string at
-     * the top level. Matched rather than joined, because a mount path can be a pattern. The regex
-     * comes from the router's mountpath cache, since the same mount chain is walked by every
-     * request and compiling it per read was measurable.
+     * The part of the path the mounts entered so far consumed, "" at the top level.
      * @returns {string}
      */
     get baseUrl() {
@@ -666,13 +568,11 @@ module.exports = class Request extends LazyReadable {
         if (this._consumed === 0) {
             return "";
         }
-        // what the mounts took, which is where the path they left off begins
         if (this._mountSlash !== true) {
             return this._originalPath.slice(0, this._consumed);
         }
-        // Express drops one trailing slash off each mount before joining them, so this is a join of
-        // the pieces and not one slice of the path: a RegExp mount ending in "/" matched against
-        // "/a//b" takes "/a/" and reads back as "/a". Only a RegExp mount can take a trailing slash
+        // Express drops one trailing slash off each mount before joining: a RegExp mount that took
+        // "/a/" out of "/a//b" reads back as "/a"
         let out = "";
         let at = 0;
         for (let taken of this._stack) {
@@ -688,23 +588,19 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * Only here because a getter without a setter makes the property read-only, and middleware in
-     * the wild does assign to it. Express keeps it writable too. Kept apart from _originalPath,
-     * which routing matches against: assigning baseUrl must change what reads back, not what
-     * later routes see.
+     * Middleware does assign to it, and Express keeps it writable. Apart from _originalPath: what
+     * reads back changes, not what later routes match.
      */
     set baseUrl(x) {
         this._baseUrlOverride = x;
     }
 
     /**
-     * The Host header as sent, trimmed and resolved through trust proxy, port still attached.
-     * X-Forwarded-Host wins when the peer is trusted, and only its first entry: the header is
-     * meant to carry one value, but nothing stops a proxy from appending.
+     * The Host header, port attached, or the first entry of X-Forwarded-Host behind a trusted proxy.
      */
     get #authority() {
         const trust = this.app._hot().trustProxyFn;
-        // parsedIp is what connection.remoteAddress carries, without building the socket stand-in
+        // parsedIp is connection.remoteAddress without the socket stand-in
         const isTrusted = !!(trust && trust(this.parsedIp, 0));
         const rawHeader = (isTrusted && this.headers["x-forwarded-host"]) || this.headers["host"];
         let host = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
@@ -715,8 +611,6 @@ module.exports = class Request extends LazyReadable {
         if (isTrusted) {
             const commaIndex = host.indexOf(",");
             if (commaIndex !== -1) {
-                // Note: X-Forwarded-Host is normally only ever a
-                //       single value, but this is to be safe.
                 host = host.substring(0, commaIndex).trimEnd();
             }
         }
@@ -724,7 +618,7 @@ module.exports = class Request extends LazyReadable {
         return host || undefined;
     }
 
-    /** The authority with the port removed, taking care not to read an IPv6 literal's colons. */
+    /** The authority without the port, an IPv6 literal's colons left alone. */
     get #host() {
         const host = this.#authority;
         if (!host) return;
@@ -736,9 +630,8 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * The authority, port included, from Host or from X-Forwarded-Host behind a trusted proxy.
-     * `hostname` is the same value without the port.
-     * @returns {string|undefined} undefined when the request carries no Host
+     * The authority, port included; `hostname` is the same without the port.
+     * @returns {string|undefined} undefined with no Host
      */
     get host() {
         return this.#authority;
@@ -753,28 +646,26 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * Always "1.1". uWS speaks HTTP/1.1 and, when built for it, HTTP/3, and reports neither
-     * version through this API, so the value node code expects to find here is hardcoded.
+     * Always "1.1": uWS reports no version through this API.
      * @returns {string}
      */
     get httpVersion() {
         return "1.1";
     }
 
-    /** @returns {number} the 1 of HTTP/1.1, for code that reads the parts separately */
+    /** @returns {number} */
     get httpVersionMajor() {
         return 1;
     }
 
-    /** @returns {number} the second 1 of HTTP/1.1 */
+    /** @returns {number} */
     get httpVersionMinor() {
         return 1;
     }
 
     /**
-     * The client address. With "trust proxy" set this is the first address in X-Forwarded-For
-     * that the trust function accepts, otherwise it is the socket's own address.
-     * @returns {string|undefined} undefined on a unix socket, which has no address
+     * The client address, through X-Forwarded-For with "trust proxy" set.
+     * @returns {string|undefined} undefined on a unix socket
      */
     get ip() {
         const trust = this.app._hot().trustProxyFn;
@@ -800,24 +691,21 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * "http" or "https", taken from X-Forwarded-Proto when the connection comes from a
-     * trusted proxy.
+     * "http" or "https", from X-Forwarded-Proto behind a trusted proxy.
      * @returns {string}
      */
     get protocol() {
-        // express reads socket.encrypted, and middleware does assign to the stand-in; the app's
-        // own ssl flag answers when nothing has built the stand-in yet
+        // express reads socket.encrypted, which middleware assigns to; the app's ssl flag answers
+        // while no stand-in was built
         const conn = this.#cachedConnection;
         const proto = (conn ? conn.encrypted : this.app.ssl) ? "https" : "http";
         const trust = this.app._hot().trustProxyFn;
         if (!trust) {
             return proto;
         }
-        // parsedIp rather than connection.remoteAddress: same value, no socket stand-in built
         if (!trust(this.parsedIp, 0)) {
             return proto;
         }
-        // folded to one string, as every header but set-cookie is
         const header = /** @type {string|undefined} */ (this.headers["x-forwarded-proto"]) || proto;
         const index = header.indexOf(",");
 
@@ -825,9 +713,8 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * The path of the current url, without the query and relative to the mount the request is in.
-     * A getter rather than a field, because express recomputes it from req.url on every read, see
-     * currentPath.
+     * The path of the current url, no query, relative to the mount; recomputed from req.url on
+     * every read as express does, see currentPath.
      *
      * @returns {string}
      */
@@ -836,26 +723,21 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * Takes over what a middleware assigned to req.url: the remaining routing matches the new
-     * path, and req.query reflects the new query string. The assigned url is relative to the
-     * mount the request is currently in, as it is in express, so the absolute path is rebuilt
-     * from the piece the mounts had consumed.
+     * Takes over what a middleware assigned to req.url, relative to the current mount as in
+     * express: routing matches the new path and req.query the new query.
      *
      * @param {boolean} [leavingMount] the caller is popping the mount the rewrite happened in
      */
     _absorbUrlRewrite(leavingMount) {
         const assignedUrl = String(this.url);
         let newUrl = assignedUrl;
-        // the prefix the mounts consumed: everything of the absolute path the relative one was not
         const lastQueryIndex = this._lastUrl.indexOf("?");
         const oldPath = lastQueryIndex === -1 ? this._lastUrl : this._lastUrl.slice(0, lastQueryIndex);
         let prefix;
         if (oldPath === "/" && !this._originalPath.endsWith("/")) {
             prefix = this._originalPath;
-            // express's slashAdded restore, applied where express applies it, on the way out of a
-            // mount that consumed the whole path: the "/" the middleware saw was invented, and the
-            // rejoin strips the first character of whatever was assigned ("/found" + "target" is
-            // "/foundtarget"). Inside the mount the assigned url routes as it is, as express does
+            // express's slashAdded restore on the way out of a mount that consumed the whole path:
+            // the "/" was invented, and the rejoin strips the first assigned character
             if (leavingMount === true) {
                 newUrl = newUrl.slice(1);
             }
@@ -873,15 +755,13 @@ module.exports = class Request extends LazyReadable {
         this._opPath = newPath;
         this._opPathLower = null;
         this._mayFailDecode = null;
-        // the assigned string, not the mangled one: the compare against req.url must go quiet or
-        // the next hop absorbs the same rewrite again with a different prefix
+        // the assigned string, or the next hop absorbs the same rewrite again
         this._lastUrl = assignedUrl;
     }
 
     /**
-     * Takes over what a middleware assigned to req.method. Both flags are read as bare fields by
-     * the routing scan rather than compared against req.method, so they are what has to follow it,
-     * and an OPTIONS the request has just become still needs the set the verbs are collected in.
+     * Takes over what a middleware assigned to req.method: the two flags the routing scan reads,
+     * and the verb set an OPTIONS needs.
      */
     _absorbMethodRewrite() {
         const method = this.method;
@@ -931,9 +811,7 @@ module.exports = class Request extends LazyReadable {
             this._querySnap = capture.invalid === true ? false : capture;
             return out;
         }
-        // The other two parsers keep no snapshot, so they only leave the mark that says a parse
-        // happened: false is "there is nothing to replay", which is what the branch above already
-        // does for a query it cannot replay. Two stores next to two allocations.
+        // the other parsers keep no snapshot, only the mark that a parse happened
         this._querySnapRaw = this._rawQuery;
         this._querySnap = false;
         if (qp === fastQueryParse) {
@@ -954,8 +832,7 @@ module.exports = class Request extends LazyReadable {
     #cachedSubdomains = null;
 
     /**
-     * The hostname's subdomains, furthest from the root first, dropping the last
-     * "subdomain offset" labels. An IP host is one label, never split on its dots.
+     * The subdomains, furthest from the root first, minus "subdomain offset" labels. An IP is one label.
      * @returns {string[]}
      */
     get subdomains() {
@@ -975,8 +852,7 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * Whether X-Requested-With says XMLHttpRequest. Only libraries that set that header are
-     * detected, which today is mostly jQuery and not fetch.
+     * Whether X-Requested-With says XMLHttpRequest.
      * @returns {boolean}
      */
     get xhr() {
@@ -995,7 +871,7 @@ module.exports = class Request extends LazyReadable {
         const uwsRes = this._res;
         if (this.app._hot().trustProxyProtocol) {
             const proxied = uwsRes.getProxiedRemoteAddress();
-            // empty unless a preamble arrived, which is the only thing that tells the two apart
+            // empty unless a preamble arrived
             if (proxied.byteLength !== 0) {
                 return proxied;
             }
@@ -1004,10 +880,8 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * The peer address as text, read from uWS and cached. Reading it is expensive and it is gone
-     * once the response has finished, so it is read up front for the first hundred requests, and
-     * for every request once an application has been seen asking too late. That app gets 127.0.0.1
-     * once and the real address from the next request on.
+     * The peer address as text, cached. An app asking after the response is over gets 127.0.0.1
+     * once and the real address from the next request on, see the constructor.
      *
      * @returns {string|undefined} undefined over a unix socket, which has no address
      */
@@ -1017,36 +891,27 @@ module.exports = class Request extends LazyReadable {
         }
         const finished = this.res.finished;
         if (finished) {
-            // mark app as one that needs ip after response
             this.app.needsIpAfterResponse = true;
         }
         if (!this.rawIp) {
             if (finished) {
-                // fallback once
                 return mapsIPv4Peer(this.app) ? "::ffff:127.0.0.1" : "127.0.0.1";
             }
             this.rawIp = this._readRawIp();
         }
-        // read once: the branch above settled it, and every use below wants the bytes
         const rawIp = /** @type {ArrayBuffer} */ (this.rawIp);
         /** @type {string|undefined} */
         let ip;
         if (rawIp.byteLength === 4) {
-            // ipv4, and plain: four bytes mean the peer arrived over IPv4 on an IPv4 socket, which
-            // is what node writes plain as well. A dual stack listener hands an IPv4 peer over as
-            // the mapped sixteen below, the node shim passes node's own form through, and an
-            // address a proxy declared is the four numbers the proxy sent, so none of them wants
-            // a prefix invented here
+            // plain, as node writes an IPv4 peer on an IPv4 socket
             ip = new Uint8Array(rawIp).join(".");
         } else if (rawIp.byteLength === 16) {
             const bytes = new Uint8Array(rawIp);
             if (isMappedIPv4(bytes)) {
-                // ::ffff:a.b.c.d, what a dual stack listener hands over for every IPv4 peer, so
-                // nearly every request here. The general path below reaches the same string through
-                // a DataView and a scan for the longest zero run, 157ns more per request
+                // ::ffff:a.b.c.d, nearly every request on a dual stack listener: the general
+                // path below costs 157ns more
                 ip = "::ffff:" + bytes[12] + "." + bytes[13] + "." + bytes[14] + "." + bytes[15];
             } else {
-                // ipv6
                 const dv = new DataView(rawIp);
                 const groups = new Array(8);
                 for (let i = 0; i < 8; i++) {
@@ -1055,7 +920,7 @@ module.exports = class Request extends LazyReadable {
                 ip = formatIPv6(groups);
             }
         } else {
-            ip = undefined; // unix sockets dont have ip
+            ip = undefined; // a unix socket has no address
         }
         this.#cachedParsedIp = ip;
         return ip;
@@ -1065,31 +930,23 @@ module.exports = class Request extends LazyReadable {
     #cachedConnection = null;
 
     /**
-     * The socket node would have handed over, which is the same object as `res.socket`: one
-     * stand-in for the pair, as node has one socket for both. Built on first read and kept, so it
-     * keeps its identity across reads, and kept here as well so that it still answers once the
-     * response is over and `res.socket` has gone null.
+     * The socket stand-in, the same object as `res.socket`, kept here so it still answers once
+     * the response is over and `res.socket` is null.
      * @returns {import("./socket.js")}
      */
     get connection() {
         return (this.#cachedConnection ??= this.res._socketShim());
     }
 
-    /**
-     * The same object `connection` builds. node carries both names and middleware reaches for
-     * either one, so both are here.
-     */
+    /** node's other name for `connection`. */
     get socket() {
         return this.connection;
     }
 
     /**
-     * Cuts this request loose from the uWS response it arrived on, keeping the two things only
-     * that response could answer.
-     *
-     * A websocket upgrade hands the request to the socket, which outlives the response. Reading the
-     * peer address through the freed response is a use after free, so the values are taken while it
-     * is still alive and an inert stand-in answers later.
+     * Cuts this request loose from its uWS response, for a websocket upgrade where the request
+     * outlives it: the peer address is read while the response is alive, an inert stand-in
+     * answers later.
      */
     _detachFromResponse() {
         const uwsRes = this._res;
@@ -1098,15 +955,11 @@ module.exports = class Request extends LazyReadable {
         }
         const remotePort = uwsRes.getRemotePort();
         const rawIp = this.rawIp;
-        // a stand-in with the members a detached request still asks for, told to the checker once
         this._res = /** @type {import("uWebSockets.js").HttpResponse} */ (
             /** @type {unknown} */ ({
                 getRemoteAddress: () => rawIp,
-                // whatever a preamble said is already in rawIp, and asking again is the use after free
-                // this method exists to avoid
                 getProxiedRemoteAddress: () => emptyAddress,
                 getRemotePort: () => remotePort,
-                // a body cannot arrive on an upgraded socket, and a stray reader must not reach µWS
                 onData() {},
                 pause() {},
                 resume() {},
@@ -1125,17 +978,13 @@ module.exports = class Request extends LazyReadable {
             return false;
         }
         if ((this.res.statusCode >= 200 && this.res.statusCode < 300) || this.res.statusCode === 304) {
-            // fast path: res.send() reads req.fresh on every response it sends, but fresh() can
-            // only return true when the request carries a conditional header. Scan the raw entries
-            // instead of materializing the full headers object, which is lazy by design.
-            // Only valid while headers are untouched: both the getter and the setter populate #cachedHeaders.
+            // send() asks on every response: without a conditional header the answer is no, read
+            // off the raw entries instead of building the headers object
             if (this.#cachedHeaders === null) {
                 let hasConditional = false;
                 const entries = this.#rawHeadersEntries;
                 for (let i = 0, len = entries.length; i < len; i += 2) {
                     const key = entries[i];
-                    // 'if-none-match'.length === 13, 'if-modified-since'.length === 17; the
-                    // entries carry lowercase names by contract, so this compares them as they are
                     if (key.length === 13 || key.length === 17) {
                         if (key === "if-none-match" || key === "if-modified-since") {
                             hasConditional = true;
@@ -1164,8 +1013,7 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * Reads a request header, case insensitively. "referer" and "referrer" both work, whichever
-     * one the client sent.
+     * Reads a request header, case insensitively; "referer" and "referrer" both work.
      *
      * @param {string} field header name
      * @returns {string|string[]|undefined}
@@ -1290,42 +1138,29 @@ module.exports = class Request extends LazyReadable {
         return parseRange(size, range, options);
     }
 
-    /**
-     * Only here so a getter does not make the property read-only. Middleware that rewrites the
-     * request headers wholesale assigns to it, and Express lets it.
-     */
+    /** Middleware does assign to it, and Express lets it. */
     set headers(headers) {
         this.#cachedHeaders = headers;
     }
 
     /**
-     * The request headers as node presents them: lowercased names, and repeats folded the way node
-     * folds them. Set-Cookie stays an array, Cookie is joined with "; ", the fields listed in
-     * discardedDuplicates keep only the first value, everything else is joined with ", ".
-     *
-     * Built on first read and cached: routing works from the raw entries and most requests never
-     * ask for this.
+     * The headers as node presents them, repeats folded node's way: Set-Cookie an array, Cookie
+     * joined with "; ", discardedDuplicates first value only, the rest ", ". Built on first read.
      *
      * @returns {import("http").IncomingHttpHeaders}
      */
     get headers() {
-        // https://nodejs.org/api/http.html#messageheaders
         if (this.#cachedHeaders) {
             return this.#cachedHeaders;
         }
-        // built into a local and published at the end, so a throw partway through cannot leave a
-        // half-filled object cached. A plain object because node's is one and inspect prints the
-        // difference; Object.hasOwn keeps a header named "constructor" or "toString" from finding
-        // Object.prototype's member and folding a first value into it.
+        // a plain object as node's, so Object.hasOwn keeps a header named "constructor" from
+        // folding into Object.prototype's member
         /** @type {import("http").IncomingHttpHeaders} */
         const headers = {};
         const entries = this.#rawHeadersEntries;
         for (let index = 0, len = entries.length; index < len; index += 2) {
             const value = entries[index + 1];
-            // lowercase by the entries' contract, see the field declaration
             const key = entries[index];
-            // own values are never undefined, so the read answers "absent" without the hasOwn
-            // call; a prototype-named header reads truthy and still takes the hasOwn check
             if (headers[key] !== undefined && Object.hasOwn(headers, key)) {
                 if (discardedDuplicates.has(key)) {
                     continue;
@@ -1350,9 +1185,7 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * The same headers with every repeat kept, each name mapping to an array. node exposes this
-     * alongside the folded form for the callers that need to tell one header sent twice from one
-     * header carrying a comma.
+     * node's headersDistinct: every repeat kept, each name an array.
      *
      * @returns {Record<string, string[]>}
      */
@@ -1360,8 +1193,6 @@ module.exports = class Request extends LazyReadable {
         if (this.#cachedDistinctHeaders) {
             return this.#cachedDistinctHeaders;
         }
-        // null prototype and undefined check for the same reason as `headers`: a header named
-        // after an Object.prototype member must not collide with it
         const distinct = /** @type {Record<string, string[]>} */ (Object.create(null));
         const entries = this.#rawHeadersEntries;
         for (let index = 0, len = entries.length; index < len; index += 2) {
@@ -1378,23 +1209,18 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * The headers as a flat list, name then value, in the order they arrived and with the case
-     * they arrived in. Same shape as node.
+     * node's rawHeaders, a flat list of name then value in arrival order.
      * @returns {string[]}
      */
     get rawHeaders() {
-        // a copy, since this is exactly how the headers are kept and handing the array itself out
-        // would let a caller rewrite what routing reads
+        // a copy: the array itself is what routing reads
         return this.#rawHeadersEntries.slice();
     }
 
-    // The three below report work this request was made to do, for src/work.js: they exist because
-    // the state that answers them is private, and they compute nothing that was not already there.
-    // Reading one costs a load; not reading one costs nothing at all, which is the point.
+    // the three below report work this request was made to do, for src/work.js
 
     /**
-     * Whether the folded `req.headers` object has been built. Most requests never ask for it, and
-     * a middleware that does puts it back on all of them.
+     * Whether the folded `req.headers` object was built.
      * @returns {boolean}
      */
     get _headersBuilt() {
@@ -1402,8 +1228,7 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * Whether the query string has been parsed. `req.query` caches nothing, so this says a parse
-     * happened and not how many.
+     * Whether the query string was parsed at least once.
      * @returns {boolean}
      */
     get _queryParsed() {
@@ -1419,7 +1244,6 @@ module.exports = class Request extends LazyReadable {
     }
 };
 
-// req.header is req.get under Express's other name. On the prototype rather than an instance
-// field, which wrote one own property per request in the constructor.
+// Express's other name for req.get, on the prototype so no own property is written per request
 /** @type {{header?: typeof module.exports.prototype.get}} */ (module.exports.prototype).header =
     module.exports.prototype.get;
