@@ -32,10 +32,7 @@ const { kGetSafe } = require("./usage.js");
 const { AsyncResource } = require("async_hooks");
 
 /**
- * What AsyncResource.bind answers, without node's generic wrapper: that one builds a rest-args
- * closure and defines properties onto it per call, ~1.9us on this node, where the resource plus
- * an arrow through runInAsyncScope restores the same context for ~0.08. The type keeps the bound
- * function's name, as node's does.
+ * AsyncResource.bind without node's generic wrapper: ~1.9us per call there, ~0.08 here.
  *
  * @param {(...args: any[]) => any} fn called with at most one argument by every caller here
  * @returns {(err?: any) => any}
@@ -58,17 +55,15 @@ const {
     ENCODING_GZIP
 } = require("./utils.js");
 
-// largest content-length we will allocate a body buffer for up front. above this the body is
-// collected chunk by chunk instead, so a declared-but-unsent body cannot pin more memory than a
-// real one of the same size would
+// the largest content-length a body buffer is allocated for up front, so a declared and never
+// sent body cannot pin more memory than a real one
 const MAX_PREALLOCATED_BODY = 1024 * 1024;
 
 // what the finish pass feeds zlib: no bytes, only the flush flag
 const EMPTY_BUFFER = Buffer.alloc(0);
 
-// What express.static serves instead of the file itself when preCompressed is on and the client
-// takes it: the suffix nginx, brotli_static and every build tool that writes these agree on.
-// Ordered by what is worth having, and negotiation decides between them.
+// the twins express.static serves with preCompressed on, the suffixes nginx and every build
+// tool agree on, ordered by what is worth having
 const PRECOMPRESSED = [
     { encoding: "br", suffix: ".br", flag: ENCODING_BR },
     { encoding: "gzip", suffix: ".gz", flag: ENCODING_GZIP }
@@ -84,9 +79,8 @@ const PRECOMPRESSED = [
  *   & {_finishFlag?: number}} Inflater
  */
 /**
- * What a parser does with the collected bytes: turns them into req.body and carries on. `body` is
- * deliberately not a field of Request, see the comment there, so it is added here. The charset is
- * undefined only for raw, which never decodes: the others settle it before a byte is read.
+ * What a parser does with the collected bytes. `body` is not a field of Request, see there, so it
+ * is added here; the charset is undefined only for raw.
  * @typedef {(
  *   req: Request & {body?: unknown},
  *   res: Response,
@@ -103,12 +97,8 @@ const PRECOMPRESSED = [
 const FALLTHROUGH_STATUSES = new Set([400, 403, 404]);
 
 /**
- * A path with any run of leading slashes reduced to one.
- *
- * This is not tidiness. A Location header beginning with "//" is a protocol-relative URL, so a
- * browser given "//assets/" goes to the host called "assets" rather than to a path on this server.
- * serve-static collapses them for exactly that reason, and a redirect that leaves the server is
- * not a redirect the server meant to issue.
+ * A run of leading slashes reduced to one, as serve-static does: a Location of "//assets/" is
+ * protocol-relative and sends the browser to a host called "assets".
  *
  * @param {string} path
  * @returns {string}
@@ -122,9 +112,7 @@ function collapseLeadingSlashes(path) {
 }
 
 /**
- * The text without a leading byte order mark, which is what a decoder would have handed over.
- * body-parser decodes through iconv and iconv removes it, so nothing downstream of it ever sees
- * one; reading the buffer directly, as here, means removing it explicitly.
+ * The text without a leading byte order mark, as iconv hands it to body-parser.
  *
  * @param {string} text
  * @returns {string}
@@ -137,8 +125,7 @@ function stripBom(text) {
 let iconv;
 
 /**
- * iconv-lite, loaded only when a request names a charset the Buffer cannot decode, so the common
- * utf-8 request never pays for it.
+ * iconv-lite, loaded only for a charset the Buffer cannot decode.
  *
  * @returns {typeof import("iconv-lite")}
  */
@@ -151,8 +138,7 @@ function loadIconv() {
 const BUFFER_CHARSETS = new Set(["utf-8", "utf-16le", "latin1", "iso-8859-1"]);
 
 /**
- * The charset parameter of a content-type, trimmed and lowercased, or undefined when there is
- * none. The value may be quoted, and the quotes are not part of the charset.
+ * The charset parameter of a content-type, lowercased and unquoted, or undefined.
  *
  * @param {string|undefined} contentType
  * @returns {string|undefined}
@@ -163,8 +149,7 @@ function charsetOf(contentType) {
     }
     let index = contentType.indexOf("charset=");
     if (index === -1) {
-        // parameter names are case-insensitive; the lowercase spelling is the fast path, and any
-        // other is only looked for when the type carries parameters at all
+        // the lowercase spelling is the fast path, other casings only when there are parameters
         if (contentType.indexOf(";") === -1) {
             return undefined;
         }
@@ -199,9 +184,8 @@ function charsetError(charset) {
 }
 
 /**
- * The body decoded under a charset: through the Buffer when node knows the name, through
- * iconv-lite otherwise. iconv strips a byte order mark on its own; the Buffer paths keep it,
- * which is why the json parser strips it separately.
+ * The body decoded under a charset, through the Buffer where node knows the name, iconv-lite
+ * otherwise. The Buffer keeps a byte order mark, so the json parser strips it itself.
  *
  * @param {Buffer} buf
  * @param {string} encoding already lowercased, and already known to be decodable
@@ -222,8 +206,8 @@ function decodeBody(buf, encoding) {
 }
 
 /**
- * Runs the caller's verify hook the way body-parser does, an empty body included; a throw becomes
- * the 403 entity.verify.failed error. Answers whether parsing may continue.
+ * Runs the verify hook as body-parser does, an empty body included; a throw is the 403
+ * entity.verify.failed. Answers whether parsing may continue.
  *
  * @param {Request} req
  * @param {Response} res
@@ -239,8 +223,7 @@ function runVerify(req, res, next, options, buf, encoding) {
         return true;
     }
     try {
-        // the charset goes too, as body-parser hands it over: a hook checking a signature over
-        // the decoded text needs it. raw gets null, which is what body-parser gives it there
+        // the charset too, as body-parser hands it; raw gets null
         options.verify(req, res, buf, encoding ?? null);
         return true;
     } catch (e) {
@@ -250,9 +233,8 @@ function runVerify(req, res, next, options, buf, encoding) {
 }
 
 /**
- * The error a verify hook's throw becomes, as http-errors shapes it for body-parser. An Error is
- * kept, with its own status when that is one a client can be answered with; a thrown string
- * becomes a 403 with that message, and anything else a plain 403.
+ * A verify hook's throw as body-parser shapes it: an Error kept with its own status, a string a
+ * 403 with that message, anything else a plain 403.
  *
  * @param {unknown} thrown
  * @param {Buffer} buf the body, which rides on the error as body-parser puts it there
@@ -261,24 +243,18 @@ function runVerify(req, res, next, options, buf, encoding) {
 function verifyError(thrown, buf) {
     const own = thrown instanceof Error ? /** @type {HttpError} */ (thrown) : undefined;
     let status = own ? own.status || own.statusCode || 403 : 403;
-    // http-errors answers 500 for a status it cannot answer with: not a number, or outside 4xx
-    // and 5xx with no message of its own
+    // http-errors answers 500 for a status it cannot answer with
     if (typeof status !== "number" || (!statuses.message[status] && (status < 400 || status >= 600))) {
         status = 500;
     }
     const err = own ?? httpError(status, typeof thrown === "string" ? thrown : undefined);
-    // read off whatever was thrown, as body-parser reads it
     const type = /** @type {{type?: string}|null|undefined} */ (thrown)?.type || "entity.verify.failed";
     return asBodyError(err, status, type, { body: buf });
 }
 
 /**
- * The message a strict violation gets, which is the one V8 would have produced had the body been
- * invalid JSON rather than merely not an object.
- *
- * body-parser builds a string that is the body up to the offending character followed by
- * placeholders, asks JSON.parse to fail on that, and puts the real characters back into what V8
- * said, so an application showing err.message reads the same sentence either way.
+ * The message a strict violation gets, V8's own as body-parser gets it: the body up to the
+ * offending character then placeholders, JSON.parse made to fail on it, the real characters put back.
  *
  * @param {string} text the body as sent
  * @param {string|undefined} char the first character that is neither whitespace nor { nor [
@@ -293,7 +269,6 @@ function strictSyntaxMessage(text, char) {
     try {
         JSON.parse(partial);
     } catch (e) {
-        // put the real characters back where the placeholders were named
         return /** @type {SyntaxError} */ (e).message.replace(/#+/g, (/** @type {string} */ placeholder) =>
             text.substring(index, index + placeholder.length)
         );
@@ -302,9 +277,7 @@ function strictSyntaxMessage(text, char) {
 }
 
 /**
- * The error a body parser hands to next(), shaped as body-parser shapes it: with a status, since
- * `res.status(err.status || 500)` would otherwise answer 500 to a request that was merely too
- * large, and with `type`, which applications branch on.
+ * The error a body parser hands to next(), as body-parser shapes it: a status and a `type`.
  *
  * @param {string} message
  * @param {number} status
@@ -315,26 +288,22 @@ function strictSyntaxMessage(text, char) {
 function bodyError(message, status, type, extra) {
     /** @type {HttpError} */
     const err = new Error(message);
-    // the name http-errors gives it: an application reading err.name, or a logger printing it,
-    // sees "PayloadTooLargeError" from Express and would have seen a bare "Error" here
+    // http-errors' name, "PayloadTooLargeError"
     err.name = httpErrorName(status);
     return asBodyError(err, status, type, extra);
 }
 
 /**
- * The same, for an error somebody else made: the SyntaxError JSON.parse threw, or whatever a
- * verify hook threw. http-errors decorates such an error rather than replacing it, so its name,
- * its stack and any property the thrower put on it are all still there when the application
- * reads it.
+ * The same on an error somebody else made, JSON.parse's SyntaxError or a verify hook's, decorated
+ * rather than replaced as http-errors does.
  *
- * @param {HttpError} err the error the fields go on: JSON.parse's SyntaxError, or a verify hook's own
+ * @param {HttpError} err
  * @param {number} status
  * @param {string} type body-parser's own name for the kind of failure
  * @param {object} [extra] anything else body-parser puts on that particular error
  * @returns {Error}
  */
 function asBodyError(err, status, type, extra) {
-    // 4xx is the client's to see; a 5xx here would be the server's own problem and stays hidden
     err.expose = status < 500;
     err.statusCode = status;
     err.status = status;
@@ -343,10 +312,8 @@ function asBodyError(err, status, type, extra) {
 }
 
 /**
- * Whether a file of this extension is one anybody writes a `.br` or a `.gz` next to. A webp or a
- * woff2 is already compressed and never has a twin, and looking for one costs two stats on a
- * request that could not have used it: on a mixed directory that is most of the stat time. An
- * extension nothing knows is looked up anyway, since it might well be text.
+ * Whether a file of this extension may have a `.br` or `.gz` twin: a webp or a woff2 never does,
+ * and looking cost two stats. An unknown extension is looked up, it might be text.
  *
  * @param {string} extension including the dot, or "" for a name without one
  * @returns {boolean}
@@ -356,16 +323,13 @@ const hasTwins = memoizeByString((extension) => {
     return type ? compressible(type) === true : true;
 });
 
-// Which twins a path has, remembered for a moment. What is cached is only whether they are there,
-// never their size or their mtime: those decide the ETag, the Last-Modified and the length, so they
-// are read fresh on every request and a file that changed is never described by a stale number.
-// The worst a stale entry can do is serve the file where it could have served the twin, or look for
-// a twin that has just been deleted and fall back. nginx's open_file_cache is the same trade.
+// which twins a path has, remembered for a moment: only their presence, never size or mtime, so a
+// changed file is never described by a stale number. The trade nginx's open_file_cache makes
 const twinCache = new Map();
 const TWIN_CACHE_LIMIT = 4096;
 
 /**
- * What is known about a path's twins right now, as a record to fill in.
+ * What is known about a path's twins, a record to fill in.
  *
  * @param {string} filePath
  * @param {number} ttl how long an answer stays good, in milliseconds
@@ -378,9 +342,6 @@ function twinsOf(filePath, ttl) {
         return known;
     }
     const entry = { br: undefined, gz: undefined, until: now + ttl };
-    // cleared rather than evicted one by one, as memoizeByString does: this holds one small object
-    // per path served, and a directory big enough to reach the limit is being served by something
-    // other than an application server anyway
     if (twinCache.size >= TWIN_CACHE_LIMIT) {
         twinCache.clear();
     }
@@ -406,7 +367,7 @@ function pickPrecompressed(filePath, accept, ttl, statTtl) {
     }
     const known = ttl > 0 ? twinsOf(filePath, ttl) : undefined;
     let allowed = ENCODING_BR | ENCODING_GZIP;
-    // twice at most: the second pass is the case where brotli won and there is no .br on disk
+    // twice at most: brotli won and there is no .br on disk
     for (let attempt = 0; attempt < 2; attempt++) {
         const chosen = negotiateEncoding(accept, allowed);
         const variant = PRECOMPRESSED.find((candidate) => candidate.encoding === chosen);
@@ -421,7 +382,7 @@ function pickPrecompressed(filePath, accept, ttl, statTtl) {
                     return { suffix: variant.suffix, encoding: variant.encoding, stat };
                 }
             } catch {
-                // not on disk, which is the ordinary case for a file nobody precompressed
+                // not on disk
             }
             if (known !== undefined) known[variant.encoding === "br" ? "br" : "gz"] = false;
         }
@@ -431,9 +392,8 @@ function pickPrecompressed(filePath, accept, ttl, statTtl) {
 }
 
 /**
- * The index file to serve from a directory, tried in the order the option lists them, which is
- * send's sendIndex. Throws the last failure when every name failed, and reports nothing when the
- * list ran out without one, since those are the two different answers send gives.
+ * send's sendIndex: the index names tried in order, the last failure thrown when every name
+ * failed, null when the list ran out without one.
  *
  * @param {string} dir the directory to look in
  * @param {string[]} indexList the index names, in order
@@ -450,9 +410,7 @@ function findIndexFile(dir, indexList) {
             lastError = err;
             continue;
         }
-        // a directory by that name is not an index and is not an error either: send's own loop
-        // carries on with nothing to report, so a later name still answers and an exhausted list
-        // is the plain 404 rather than whatever the name before it failed with
+        // a directory by that name is neither an index nor an error, as send's loop has it
         if (stat.isDirectory()) {
             lastError = undefined;
             continue;
@@ -466,28 +424,24 @@ function findIndexFile(dir, indexList) {
 }
 
 /**
- * express.static, which is a thin front for res.sendFile: it resolves the path, refuses anything
- * that climbs out of the root, applies the dotfiles and index rules, and hands the rest over.
+ * express.static, a front for res.sendFile: the path, the root, the dotfiles and index rules.
  *
  * @param {string} root directory to serve from
  * @param {import("./options").StaticOptions} [options]
  * @returns {(req: Request, res: Response, next: (err?: unknown) => void) => void}
  */
 function serveStatic(root, options) {
-    // serve-static's own messages, thrown where the middleware is written rather than where a
-    // request arrives, since a root that is not a path can never serve anything
+    // serve-static's messages
     if (!root) {
         throw new TypeError("root path required");
     }
     if (typeof root !== "string") {
         throw new TypeError("root path must be a string");
     }
-    // a copy, as serve-static's Object.create(options): everything below writes into it, and two
-    // mounts sharing one options object would otherwise also share one root
+    // a copy, as serve-static's Object.create(options): two mounts must not share one root
     options = Object.assign(new NullObject(), options);
     if (typeof options.index === "undefined") options.index = "index.html";
-    // send takes a list and tries the names in order, so one name is a list of one and `false` is
-    // an empty one. Passing the option along as it came handed an array to path.join, which throws
+    // a list as send takes it, `false` an empty one
     const indexList = options.index === false || options.index === "" ? [] : [options.index].flat();
     if (typeof options.redirect === "undefined") options.redirect = true;
     if (typeof options.fallthrough === "undefined") options.fallthrough = true;
@@ -504,12 +458,10 @@ function serveStatic(root, options) {
     if (options.setHeaders !== undefined && typeof options.setHeaders !== "function") {
         throw new TypeError("option setHeaders must be function");
     }
-    // serve-static's own option, which res.sendFile does not take, so it goes down under a name
-    // only this middleware writes, see sendFile
+    // serve-static's option, under a name only this middleware writes, see sendFile
     options._setHeaders = options.setHeaders;
-    // How long express.static remembers which twins a path has. A second is short enough that a
-    // deploy is picked up while it is still going out, and long enough that the lookup costs
-    // nothing under any traffic at all. { cache: false } asks the disk on every request.
+    // how long which twins a path has is remembered: a second picks up a deploy while it goes
+    // out and costs nothing under any traffic; { cache: false } asks the disk every time
     let twinTtl = 0;
     if (options.preCompressed) {
         const cache = typeof options.preCompressed === "object" ? options.preCompressed.cache : undefined;
@@ -526,22 +478,13 @@ function serveStatic(root, options) {
         }
     }
     options.root = root;
-    // resolved once here rather than on every request: the root cannot change under a mount
     const resolvedRoot = path.resolve(root);
-    // serve-static decides this for itself and never asks the app, so a static file keeps its
-    // ETag under app.set("etag", false) and only { etag: false } here turns it off. res.sendFile
-    // takes the app's setting instead, which is why this has to be said out loud.
+    // serve-static never asks the app: a static file keeps its ETag under app.set("etag", false)
     options.etag = options.etag !== false;
     options._ownEtag = true;
 
     return (req, res, next) => {
-        // Not bound here: every path down to sendFile is synchronous, statSync included, so the
-        // caller's async context is intact at each of these next() calls. Only sendFile's
-        // completion can arrive on a uWS callback that carries no context, and that one
-        // continuation is bound where it is handed over.
-
-        // a file is read, not written: anything but GET and HEAD belongs to whoever comes next, or
-        // is refused outright when this middleware is the last word
+        // everything down to sendFile is synchronous, so only its completion needs bindContext
         if (req.method !== "GET" && req.method !== "HEAD") {
             if (options.fallthrough) {
                 return next();
@@ -554,24 +497,21 @@ function serveStatic(root, options) {
 
         const iq = req.url.indexOf("?");
         let url;
-        // the path as it was written, before decoding: whether it names a directory is decided on
-        // this and not on what the escapes turn into, which is how send decides it. "/a/%2F" asks
-        // for a file called "/" inside "a", and not for the index of a directory
+        // before decoding: whether it names a directory is decided on this, as send does. "/a/%2F"
+        // asks for a file called "/" inside "a"
         const rawPath = iq !== -1 ? req.url.substring(0, iq) : req.url;
 
         try {
             url = decodeURIComponent(rawPath);
         } catch (e) {
-            // 400 and not 404: send answers a path it cannot decode with a Bad Request, since
-            // nothing was asked for that could be missing
+            // a 400 as send answers it
             if (!options.fallthrough) {
                 res.status(400);
                 return next(httpError(400));
             } else return next();
         }
-        // A decoded NUL is a bad request and not a missing file, which is how send reads it too.
-        // Without this the byte reaches fs, and what comes back is node's own complaint with the
-        // absolute path of the root inside it, so a request could ask the server where it lives.
+        // a decoded NUL is a 400 as in send: reaching fs it came back as node's error with the
+        // absolute root path inside
         if (url.indexOf("\0") !== -1) {
             if (!options.fallthrough) {
                 res.status(400);
@@ -587,8 +527,7 @@ function serveStatic(root, options) {
         if (fullpath.length > resolvedRoot.length && fullpath.endsWith(path.sep)) {
             fullpath = fullpath.slice(0, -1);
         }
-        // the same file as _path, absolute: the two move together through the index and extension
-        // rules below, and only the precompressed lookup needs the absolute one
+        // the same file as _path, absolute, for the precompressed lookup
         let filePath = fullpath;
         // The path serve-static hands send, except a bare "/" the request did not write becomes "":
         // a mount whose root is a file must not ask the disk for a directory. Then
@@ -602,11 +541,8 @@ function serveStatic(root, options) {
             } else return next();
         }
 
-        // Before the stat, because send judges the path before it looks at the disk: a hidden
-        // segment in a path that does not exist answers what the dotfiles rule says and not the
-        // ENOENT the disk would have given. Normalized first, as send normalizes before it judges:
-        // a ".." segment is not a hidden file. These are the segments path.normalize(url) would
-        // have produced, taken off the joined path rather than walked again
+        // before the stat, as send judges the path before the disk: a hidden segment in a missing
+        // path answers the dotfiles rule, not ENOENT. Normalised first, ".." is not a dotfile
         if (containsDotFile(fullpath.slice(resolvedRoot.length).split(/[\\/]/))) {
             const refusal = options.dotfiles === "deny" ? 403 : options.dotfiles === "allow" ? 0 : 404;
             if (refusal !== 0 && !(options.dotfiles === "ignore_files" && !path.basename(url).startsWith("."))) {
@@ -619,11 +555,8 @@ function serveStatic(root, options) {
         }
 
         let stat;
-        // The twin, looked for before the file itself rather than after it. When there is one, it
-        // is the file being served and its stat is the only one this request needs: the request
-        // that asks for /app.js and gets /app.js.br has no use for /app.js's size or mtime. A
-        // directory, or a path written with a trailing slash, keeps the ordinary order, since what
-        // decides those is the stat of the thing that was asked for.
+        // the twin first: when there is one its stat is the only one needed. A path written with a
+        // trailing slash keeps the ordinary order
         let twin;
         if (options.preCompressed && !rawPath.endsWith("/") && !req.endsWithSlash) {
             twin = pickPrecompressed(
@@ -641,13 +574,9 @@ function serveStatic(root, options) {
                 stat = cachedStat(statTarget, req.app._settings["stat cache ms"]);
             }
         } catch (err) {
-            // the one to report when nothing is found: send hands each failed attempt to the next
-            // one and reports whichever came last, so an extensions option that also missed names
-            // the file it looked for and not the bare path
+            // send reports the last failed attempt: the extension it tried, or the index inside a
+            // path written with a trailing slash
             let statError = err;
-            // a path written with a trailing slash asks for a directory, and send answers that by
-            // looking for the index inside it. With nothing there, the file it names is that
-            // index and not the directory that does not exist either
             if (rawPath.endsWith("/") && indexList.length > 0) {
                 try {
                     findIndexFile(fullpath, indexList);
@@ -657,10 +586,7 @@ function serveStatic(root, options) {
             }
             const ext = path.extname(fullpath);
             let i = 0;
-            // a path that resolves to a directory gets no extension hung off it. The test is on the
-            // decoded url and not on fullpath, because resolve() has already taken the trailing
-            // separator off that one, and not on the raw path either: send tries the extension on
-            // what the escapes decoded to, while it looks for an index on the path as written
+            // no extension on a directory; on the decoded url, as send tries it
             if (ext === "" && !url.endsWith("/") && options.extensions) {
                 while (i < options.extensions.length) {
                     try {
@@ -677,20 +603,14 @@ function serveStatic(root, options) {
             if (!stat) {
                 if (!options.fallthrough) {
                     res.status(404);
-                    // the error itself, not its message: serve-static hands the fs error to the
-                    // error handler with its errno, code, syscall and path still on it, and an
-                    // error handler doing res.send(err) sends those as JSON. Passing the string
-                    // sent an HTML page instead.
+                    // the fs error itself with errno, code, syscall and path, as serve-static hands it
                     return next(asStatError(/** @type {HttpError} */ (statError)));
                 } else return next();
             }
         }
 
-        // a file asked for with a trailing slash is not that file: send stats the path slash and
-        // all and gets ENOTDIR, so a root mounted as a file answers 404 there, not the file.
-        // With an index configured it never gets that far: a trailing slash sends send looking for
-        // the index inside whatever the path turned out to be, so what it reports is that the
-        // index under the file is missing, and the directory branch below does it for both
+        // a file asked for with a trailing slash is a 404, ENOTDIR to send; with an index
+        // configured the directory branch below reports the missing index instead
         if (req.endsWithSlash && !stat.isDirectory() && indexList.length === 0) {
             if (!options.fallthrough) {
                 res.status(404);
@@ -702,11 +622,8 @@ function serveStatic(root, options) {
         if (stat.isDirectory() || req.endsWithSlash) {
             if (!req.endsWithSlash) {
                 if (options.redirect) {
-                    // The query goes along and the leading slashes are collapsed. Both were wrong:
-                    // "/docs?page=3" redirected to "/docs/" and lost the page, and "//assets"
-                    // answered "Location: //assets/", which a browser reads as protocol-relative
-                    // and follows to the host "assets". serve-static locks its redirect page down
-                    // the way it locks an error page: the body names a target the request supplied
+                    // the query goes along, the leading slashes are collapsed, and the page is
+                    // locked down as serve-static locks it: the body names a target the request supplied
                     res.setHeader("Content-Security-Policy", "default-src 'none'");
                     res.setHeader("X-Content-Type-Options", "nosniff");
                     return res.redirect(301, collapseLeadingSlashes(req._originalPath + "/") + req.urlQuery, true);
@@ -724,14 +641,11 @@ function serveStatic(root, options) {
                 } catch (err) {
                     if (!options.fallthrough) {
                         res.status(404);
-                        // the fs error, as above: the index file is missing and the error handler
-                        // is told which one and where
                         return next(asStatError(/** @type {HttpError} */ (err)));
                     } else return next();
                 }
                 if (found === null) {
-                    // every name was a directory, which send reports as its plain 404 rather than
-                    // as a file that could not be read
+                    // every name was a directory, send's plain 404
                     if (!options.fallthrough) {
                         res.status(404);
                         return next(httpError(404));
@@ -742,9 +656,7 @@ function serveStatic(root, options) {
                 _path = path.join(url, found.name);
                 filePath = found.candidate;
             } else {
-                // a directory with no index to serve is a Not Found, and saying so is the whole
-                // point of fallthrough: false. This moved on to the next handler instead, so the
-                // application's own 404 answered where serve-static's error handler should have.
+                // a directory with no index is a 404, which fallthrough: false has to say
                 if (!options.fallthrough) {
                     res.status(404);
                     return next(httpError(404));
@@ -754,10 +666,8 @@ function serveStatic(root, options) {
         }
 
         if (options.preCompressed) {
-            // whatever is served, the answer depended on the header, so a shared cache has to be
-            // told. Said before the lookup, because it is true even when there is no variant
+            // whatever is served depended on the header, variant or not
             res.vary("Accept-Encoding");
-            // already found before the stat below, on the ordinary path
             const variant =
                 twin ??
                 pickPrecompressed(
@@ -770,9 +680,7 @@ function serveStatic(root, options) {
                 _path += variant.suffix;
                 stat = variant.stat;
                 res.setHeader("Content-Encoding", variant.encoding);
-                // from the name of the file that was asked for, since the one being sent ends in
-                // .br and nothing would call that javascript. sendFile leaves a content-type that
-                // is already there alone, which is what makes this the deciding one
+                // the type of the file asked for, not of the .br; sendFile leaves it alone
                 const type = mime.lookup(filePath);
                 res.type(type || "application/octet-stream");
             }
@@ -793,8 +701,7 @@ function serveStatic(root, options) {
 }
 
 /**
- * A zlib throw as the 400 body-parser answers a corrupt body with. zlib reports it twice, and the
- * 'error' a tick later would land on nothing and end the process, so the listener goes back on.
+ * A zlib throw as body-parser's 400. zlib reports it twice, so the 'error' a tick later gets a listener.
  *
  * @param {Inflater} inflate
  * @param {HttpError} err what inflate.process threw
@@ -809,8 +716,7 @@ function inflateError(inflate, err) {
 }
 
 /**
- * What a Content-Encoding means here: the decompressor to run, or the 415 it is refused with. An
- * empty body is judged the same way, so both callers share this.
+ * What a Content-Encoding means: the decompressor to run, or the 415 it is refused with.
  *
  * @param {string|undefined} rawContentEncoding
  * @param {any} options the parser's options, read loosely: only inflate is looked at
@@ -840,8 +746,7 @@ function encodingFor(rawContentEncoding, options) {
 }
 
 /**
- * The decompressor for a Content-Encoding, or undefined when the body is not compressed. An
- * encoding nobody knows throws, since decoding it wrong is worse than refusing.
+ * The decompressor for a Content-Encoding, undefined for identity, false for one nobody knows.
  *
  * @param {string|undefined} contentEncoding
  * @returns {Inflater|false|undefined}
@@ -871,49 +776,36 @@ function createInflate(contentEncoding) {
 }
 
 /**
- * Builds one of the body parsers. All four share the same work: deciding whether this request has
- * a body worth reading, collecting it within the size limit, decompressing it and handing the
- * bytes over. They differ in the content type they claim and in what they turn the bytes into.
+ * Builds a body parser: whether the request has a body, collecting it within the limit,
+ * decompressing, handing the bytes over. The four differ in the type they claim and what they make.
  *
  * @param {string} defaultType the type matched when the caller names none
- * @param {BodyHandler} beforeReturn turns the collected bytes into req.body. Called with the
- *   request, the response, next, the options, the body and its charset
- * @param {(options: BodyParserOptions) => void} [checkOptions] whatever this parser alone has to check
- * @param {string} [charsetPolicy] which charsets this parser accepts, as body-parser draws the
- *   lines: "utf" (json, utf-* only), "urlencoded" (utf-8 and iso-8859-1), "any" (anything iconv
- *   knows), or undefined for a parser that never decodes (raw)
- * @param {boolean} [keepsBuffer] whether the collected buffer itself escapes to the application,
- *   which rules out handing it a view over uWS memory
+ * @param {BodyHandler} beforeReturn turns the collected bytes into req.body
+ * @param {(options: BodyParserOptions) => void} [checkOptions] what this parser alone checks
+ * @param {string} [charsetPolicy] as body-parser draws it: "utf" (json), "urlencoded" (utf-8 and
+ *   iso-8859-1), "any" (iconv), undefined for raw
+ * @param {boolean} [keepsBuffer] the buffer itself escapes to the application, so no view over uWS memory
  * @returns {(options?: import("./options").BodyParserOptions) => Function} the middleware factory
  */
 function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy, keepsBuffer) {
     return function (userOptions) {
-        // a copy, because everything below writes the parsed values back: with the caller's own
-        // object, altering it after the parser was built would alter the parser. The type says
-        // settled because the block below fills in every default, which is what the middleware
-        // and its closures then rely on
+        // a copy, the defaults are written into it
         /** @type {import("./options").BodyParserOptions} */
         const options = userOptions && typeof userOptions === "object" ? { ...userOptions } : new NullObject();
-        // refused where it is written, not where it is used: an option nobody can honour is a
-        // mistake in the application, and body-parser throws for it at the same point
         if (options.verify !== undefined && options.verify !== false && typeof options.verify !== "function") {
             throw new TypeError("option verify must be function");
         }
         if (checkOptions) {
             checkOptions(options);
         }
-        // bytes() goes both ways: given a number it formats it, so bytes(1024) is the string "1KB"
-        // and every comparison against it is false. express.json({ limit: 5 * 1024 * 1024 }) had no
-        // limit at all. parse, and only what needs parsing
+        // bytes.parse only on a string: bytes(1024) formats it to "1KB" and no comparison held
         if (typeof options.limit === "undefined") {
             options.limit = /** @type {number} */ (bytes.parse("100kb"));
         } else if (typeof options.limit !== "number") {
-            // bytes.parse answers null for a size it cannot read, and body-parser passes that
-            // along untouched too: matching it matters more than improving on it here
+            // null for a size it cannot read, as body-parser passes it along
             options.limit = /** @type {number} */ (bytes.parse(options.limit));
         }
 
-        // settled above, and read once: every check below wants the value, not the bag
         const limit = /** @type {number} */ (options.limit);
         const defaultCharset = /** @type {string} */ (options.defaultCharset ?? "utf-8");
 
@@ -921,8 +813,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
         if (typeof options.type === "undefined") options.type = defaultType;
         if (typeof options.type === "string") {
             if (!options.type.includes("*")) {
-                // kept as written: type-is lowercases the header but not the option, so an option
-                // in the wrong case never matches, and the same has to hold here
+                // as written: type-is lowercases the header, not the option
                 options.simpleType = options.type;
             }
             options.type = [options.type];
@@ -931,8 +822,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
         }
         if (typeof options.defaultCharset === "undefined") options.defaultCharset = "utf-8";
 
-        // whether the collected bytes escape the collection callback: the raw parser hands the
-        // buffer itself to the application, and a verify hook may keep what it is shown
+        // whether the bytes escape the callback: raw hands the buffer over, a verify hook may keep it
         const copyBody = keepsBuffer || typeof options.verify === "function";
 
         // Whether a content-type is one this parser claims, memoised per parser: a wildcard or a
@@ -947,46 +837,31 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
         let additionalMethods;
 
         const parserMiddleware = (req, res, next) => {
-            // Not bound yet: every return in this prologue is synchronous, so the caller's async
-            // context is still intact and an AsyncResource here would be 1.4 microseconds of
-            // nothing. The bind happens below, only once a real read is about to go async.
+            // the prologue is synchronous, bindContext waits for the read (1.4us of nothing here)
 
-            // skip reading body twice. The second half is what body-parser asks on-finished
-            // before it reads, said in this project's own terms: the body has all arrived and
-            // the stream is no longer readable, so whoever read it left nothing to wait for.
-            // Not readableEnded, which is one of the wrapped Readable members and would build
-            // the stream this parser exists to avoid building
+            // already read, or what body-parser asks on-finished: all arrived and no longer
+            // readable. Not readableEnded, which would build the stream
             if (req.bodyRead || (req.complete === true && req.readable === false)) {
                 return next();
             }
 
-            // The property goes on the request before anything is decided, and its value stays
-            // undefined: body-parser's read() does the same, and both halves matter. Undefined, so
-            // a handler can tell "nothing parsed this" from "the body was empty". Present, because
-            // `"body" in req` is how a library asks whether a parser has run: Apollo's express
-            // middleware answers 500 when it is missing, and tRPC's adapter reads the body itself
+            // present and undefined, as body-parser's read() leaves it: Apollo answers 500 without
+            // the property, tRPC reads the body itself when it is set
             if (!("body" in req)) {
                 req.body = undefined;
             }
 
-            // straight from the raw entries: three headers do not justify building the object
             const type = req._rawHeader("content-type");
 
-            // skip reading body for no content type
-            // a function decides for itself, and body-parser lets it see a request that carries no
-            // content-type at all. Only the string and array forms need one to match against
+            // a type function sees a request with no content-type, as body-parser lets it
             if (!type && typeof options.type !== "function") {
                 return next();
             }
 
             const length = req._rawHeader("content-length");
-            // converted once: four sites read this number on the fast path
             const lengthNumber = length === undefined ? NaN : +length;
 
-            // No content-length and no transfer-encoding means the request carries no body at all,
-            // and a body parser must leave it alone rather than parse nothing into an empty value.
-            // type-is applies this before matching the type, but the simpleType shortcut below
-            // compares strings directly and would otherwise skip the check.
+            // no framing at all is no body, which type-is checks and the simpleType shortcut would skip
             if (req._rawHeader("transfer-encoding") === undefined && Number.isNaN(lengthNumber)) {
                 return next();
             }
@@ -994,8 +869,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             if (options.simpleType) {
                 const semicolonIndex = type.indexOf(";");
                 const clearType = semicolonIndex !== -1 ? type.substring(0, semicolonIndex) : type;
-                // the exact compare stays the fast path; the trim and lowercase only run when it
-                // fails, for "Application/JSON" and the legal whitespace before a ";"
+                // the trim and lowercase only when the exact compare fails
                 if (clearType !== options.simpleType && clearType.trim().toLowerCase() !== options.simpleType) {
                     return next();
                 }
@@ -1011,11 +885,8 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 }
             }
 
-            // The charset is settled before anything is read, as body-parser settles it: a bad one
-            // answers 415 even for an empty body, and before the verify hook can run. Its two
-            // halves sit on either side of the encoding, which is the order body-parser reads
-            // them in: the charset this parser accepts at all, then the Content-Encoding, then
-            // whether iconv knows the charset.
+            // the charset before anything is read, in body-parser's order: what this parser
+            // accepts, then the Content-Encoding, then whether iconv knows it
             /** @type {string|undefined} */
             let encoding;
             if (charsetPolicy) {
@@ -1038,17 +909,13 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 return next(charsetError(encoding));
             }
 
-            // an empty body still has to produce this parser's empty value the way express does -
-            // {} for json and urlencoded, '' for text, an empty Buffer for raw - rather than leaving
-            // req.body as the placeholder object. there is nothing to read, so run the tail directly,
-            // and the verify hook still runs first: webhook signature checks rely on that
+            // an empty body still produces the parser's empty value, verify hook first
             if (lengthNumber === 0) {
                 req.bodyRead = true;
-                /** @type {Buffer<ArrayBufferLike>} what the parser is handed: zlib's tail is wider */
+                /** @type {Buffer<ArrayBufferLike>} zlib's tail is wider */
                 let empty = Buffer.alloc(0);
                 if (inflate) {
-                    // nothing to inflate is a stream cut short for zlib, and body-parser answers
-                    // that with a 400 rather than with the empty value
+                    // nothing to inflate is a stream cut short, a 400 to body-parser
                     try {
                         empty = inflate.process(EMPTY_BUFFER, inflate._finishFlag);
                     } catch (e) {
@@ -1061,10 +928,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 return beforeReturn(req, res, next, options, empty, encoding);
             }
 
-            // skip reading too large body; NaN compares false, so no declared length passes.
-            // Not while inflating: content-length counts the compressed bytes and the limit is
-            // about the ones that come out, which body-parser says by leaving the length unset.
-            // The limit is still enforced per chunk as they inflate, see keepChunk
+            // not while inflating: content-length counts the compressed bytes, keepChunk counts the rest
             if (!inflate && lengthNumber > limit) {
                 return next(
                     bodyError("request entity too large", 413, "entity.too.large", {
@@ -1075,8 +939,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 );
             }
 
-            // skip reading body for non-POST requests
-            // this makes it +10k req/sec faster
+            // no body read for the verbs that carry none, +10k req/s
             if (additionalMethods === undefined) additionalMethods = req.app.get("body methods") ?? null;
             if (
                 req.method !== "POST" &&
@@ -1090,22 +953,16 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
 
             let totalSize = 0;
 
-            // From here the body really gets read, and uWS delivers it on native callbacks that
-            // carry no async context, so this is the one continuation that has to be bound: an
-            // upstream middleware's AsyncLocalStorage must still be there when next runs
+            // uWS delivers the body on native callbacks with no async context
             next = bindContext(next);
 
-            // with nothing to decompress, uWS can collect the whole body in native code: one
-            // callback instead of one per chunk, the limit enforced before any byte reaches JS, and
-            // no copy at all, since the parsers turn the bytes into req.body before the callback
-            // returns. A chunked body uses the same native vector and only loses the length check
+            // with nothing to decompress uWS collects the whole body natively: one callback, the
+            // limit enforced before any byte reaches JS, no copy
             const declared = lengthNumber;
             const declaresLength = !Number.isNaN(declared) && declared > 0;
             if (!req.receivedData && !inflate && req._res.collectBody && (declaresLength || isNaN(declared))) {
                 req.bodyRead = true;
-                // µWS hands the whole body over here and the Readable never runs, so the
-                // request has to look read anyway: a parser after this one asks the stream,
-                // not us, and would wait for an end that is never coming
+                // the Readable never runs, and a later parser asks it
                 req.complete = true;
                 req.readable = false;
                 req._res.collectBody(limit, (/** @type {ArrayBuffer|null} */ body) => {
@@ -1139,11 +996,8 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 return;
             }
 
-            // uWS neuters its ArrayBuffer after the callback, so every chunk has to be copied out of
-            // it, and then Buffer.concat copied the whole body a second time. When content-length is
-            // known and we are not inflating, the final size is known up front, so chunks go
-            // straight into one buffer and the body is copied once. The cap means a client that
-            // declares a body and never sends it costs no more than one that sends it
+            // every chunk is copied out of uWS's neutered ArrayBuffer; with a content-length the
+            // chunks go straight into one buffer instead of a concat
             /** @type {Buffer[]} */
             const abs = [];
             const declaredLength = inflate ? -1 : Number(length);
@@ -1155,14 +1009,11 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
 
             req.bodyRead = true;
 
-            // uWS keeps delivering chunks after we reject an oversized body, and the
-            // stream path still emits 'end', so without this every further chunk would
-            // call next() again and the second response would throw
+            // uWS keeps delivering chunks after an oversized body was refused
             let finished = false;
 
             /**
-             * A zlib throw becomes the 400 body-parser answers a corrupt body with, and what was
-             * kept of the body goes.
+             * A zlib throw as body-parser's 400, what was kept of the body dropped.
              *
              * @param {HttpError} err what inflate.process threw
              */
@@ -1174,8 +1025,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             }
 
             /**
-             * Counts a decompressed chunk against the limit and keeps it. Answers whether the
-             * caller may go on, since passing the limit answers the request right here.
+             * Counts a chunk against the limit and keeps it; false once the limit answered the request.
              *
              * @param {Buffer} buf
              * @returns {boolean}
@@ -1201,20 +1051,17 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                         targetOffset += buf.length;
                         return true;
                     }
-                    // more body than content-length promised: keep what we have and fall back
+                    // more body than content-length promised
                     abs.push(Buffer.from(target.subarray(0, targetOffset)));
                     target = null;
                 }
 
-                // shallow copy, to avoid shared references for large bodies.
                 abs.push(Buffer.from(buf));
                 return true;
             }
 
             /**
-             * One chunk from uWS. Decompresses it, counts it against the limit and keeps it. The
-             * finished flag matters: uWS goes on delivering chunks after an oversized body has
-             * been refused, and without it every further chunk would answer the request again.
+             * One chunk from uWS: decompressed, counted, kept.
              *
              * @param {Buffer|ArrayBuffer} buf a Buffer, or an ArrayBuffer straight from uWS
              */
@@ -1229,8 +1076,6 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                     try {
                         buf = inflate.process(buf);
                     } catch (e) {
-                        // a body that does not decompress is the client's mistake, and zlib
-                        // throwing here used to escape into whatever called us
                         return failInflate(/** @type {HttpError} */ (e));
                     }
                 }
@@ -1245,9 +1090,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 }
                 finished = true;
                 if (inflate) {
-                    // the flush per chunk cannot tell a complete stream from one cut short, so
-                    // the finish pass asks zlib outright: a truncated gzip body used to resolve
-                    // to whatever bytes had come out, where body-parser answers 400
+                    // the finish pass tells a truncated stream, a 400 to body-parser
                     let tail;
                     try {
                         tail = inflate.process(EMPTY_BUFFER, inflate._finishFlag);
@@ -1258,10 +1101,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                         return;
                     }
                 }
-                // fewer bytes than content-length promised: the request was cut short, and parsing
-                // what did arrive would answer as though it were the whole thing. Not when
-                // inflating, where content-length counts the compressed bytes and totalSize the
-                // ones that came out
+                // fewer bytes than content-length promised; not when inflating, it counts the compressed ones
                 if (!inflate && length !== undefined && !isNaN(length) && totalSize !== Number(length)) {
                     return next(
                         bodyError("request size did not match content length", 400, "request.size.invalid", {
@@ -1271,8 +1111,6 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                         })
                     );
                 }
-                // target holds the whole body already; otherwise a single chunk is the body, and
-                // only a genuinely chunked body needs the concat
                 const buf = target
                     ? targetOffset === target.length
                         ? target
@@ -1286,16 +1124,12 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 beforeReturn(req, res, next, options, buf, encoding);
             }
 
-            // reading data directly from uWS is faster than from a stream
-            // if we are fast enough (not async), we can do it
-            // otherwise we need to use a stream since it already started streaming it
+            // straight from uWS unless the stream already started
             if (!req.receivedData) {
                 req._res.onData((/** @type {ArrayBuffer} */ ab, /** @type {boolean} */ isLast) => {
                     onData(ab);
                     if (isLast) {
-                        // this subscription replaced the Readable's own, so the stream will
-                        // never end by itself. What an ended one leaves behind is set here
-                        // instead, since that is what the next parser looks at
+                        // this replaced the Readable's own subscription, so it never ends by itself
                         req.complete = true;
                         req.readable = false;
                         onEnd();
@@ -1306,10 +1140,8 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 req.on("end", onEnd);
             }
         };
-        // A GET without a declared body leaves this middleware through the synchronous
-        // no-body exit before anything type- or charset-shaped is read, and a GET that does
-        // declare one takes the full header copy in the constructor, so the header-skip
-        // analysis may trust it. A type function sees the request itself, so it may not.
+        // a request declaring no body leaves through the synchronous exit before any header is
+        // read, so the header-skip analysis may trust it; a type function sees the request
         if (typeof options.type !== "function") {
             parserMiddleware[kGetSafe] = true;
         }
@@ -1324,25 +1156,16 @@ const json = createBodyParser(
             req.body = {};
             return next();
         }
-        // A leading byte order mark is removed rather than parsed. body-parser never sees one
-        // either: it decodes through iconv, which strips it, so by the time the first character is
-        // looked at the mark is gone. JSON.parse would refuse it, so without this a body saved by
-        // an editor that writes a BOM is answered 400 here and 200 by Express.
+        // a byte order mark is stripped as iconv strips it for body-parser
         const text = stripBom(decodeBody(buf, /** @type {string} */ (encoding)));
 
-        // "strict" means only an object or an array is a body, which is body-parser's default and
-        // was not honoured here at all: the check read req.body before this function had parsed
-        // anything, so it looked at the previous request's body and passed. `express.json()`
-        // accepted a bare string or number where Express answers 400.
+        // strict: only an object or an array is a body
         if (options.strict !== false) {
-            // Exactly the four characters body-parser skips, and no more. A BOM or a non-breaking
-            // space is not whitespace to it, so a body starting with one is a violation rather than
-            // something to skip past, and a wider class here would accept bodies Express refuses.
+            // exactly the four characters body-parser skips
             // eslint-disable-next-line no-control-regex
             const first = text.match(/^[\x20\x09\x0a\x0d]*([^\x20\x09\x0a\x0d])/)?.[1];
             if (first !== "{" && first !== "[") {
-                // a SyntaxError rather than an Error, since that is what body-parser builds here and
-                // what an application testing `err instanceof SyntaxError` looks for
+                // a SyntaxError, as body-parser builds it
                 return next(
                     asBodyError(new SyntaxError(strictSyntaxMessage(text, first)), 400, "entity.parse.failed", {
                         body: text
@@ -1354,8 +1177,7 @@ const json = createBodyParser(
         try {
             req.body = JSON.parse(text, options.reviver);
         } catch (e) {
-            // V8's own error, which is what body-parser hands on: its message says where the parse
-            // gave up, and it is still the SyntaxError an application may be testing for
+            // V8's own SyntaxError, as body-parser hands it on
             const err = /** @type {SyntaxError} */ (e);
             return next(asBodyError(err, 400, "entity.parse.failed", { body: text }));
         }
@@ -1363,7 +1185,7 @@ const json = createBodyParser(
         next();
     },
     undefined,
-    // RFC 7159 sec 8.1, as body-parser reads it: json is a utf-* body or nothing
+    // json is a utf-* body or nothing, as body-parser reads RFC 7159
     "utf"
 );
 
@@ -1375,7 +1197,6 @@ const raw = createBodyParser(
     },
     undefined,
     undefined,
-    // req.body is the collected buffer itself, so it must not be a view over uWS memory
     true
 );
 
@@ -1391,18 +1212,14 @@ const text = createBodyParser(
         next();
     },
     undefined,
-    // body-parser's text has no allowlist: any charset iconv can decode is a body, and only an
-    // unknown one is the 415
     "any"
 );
 
-// what qs is given for an extended body, which is not what it is given for a query string: these
-// are body-parser's numbers and they bound how much work one request can ask for
+// body-parser's numbers for qs on an extended body
 const EXTENDED_QS_OPTIONS = { allowPrototypes: true, arrayLimit: 100, depth: 32, strictDepth: true };
 
 /**
- * How many parameters a urlencoded body holds, or undefined once it holds more than the limit.
- * Counted before parsing, so a body with a million keys is refused rather than parsed.
+ * How many parameters a urlencoded body holds, undefined past the limit; counted before parsing.
  *
  * @param {string} body
  * @param {number} limit
@@ -1426,30 +1243,24 @@ const urlencoded = createBodyParser(
     function (req, res, next, options, buf, encoding) {
         try {
             const body = decodeBody(buf, /** @type {string} */ (encoding));
-            // Express 5 defaults extended to false, so nested keys need opting in
+            // Express 5 defaults extended to false
             const extended = typeof options.extended !== "undefined" ? options.extended : false;
-            // qs has to know the charset itself for anything but utf-8, and the sentinel options
-            // change what a parse means, so those bodies skip the fast parsers
+            // qs alone knows a charset other than utf-8 and the sentinel options
             const needsQs = encoding !== "utf-8" || options.charsetSentinel || options.interpretNumericEntities;
             if (!extended && !needsQs) {
-                // the vendored parser, so an urlencoded body inspects like req.query does. The
-                // parameter limit is enforced inside its scan, so the body is not walked twice;
-                // assigned only when it held, so an overflow leaves req.body the placeholder
+                // the vendored parser, the limit enforced inside its scan
                 const parsed = parseQuery(body, undefined, options.parameterLimit);
                 if (parseQuery.overflow === true) {
                     return next(bodyError("too many parameters", 413, "parameters.too.many"));
                 }
                 req.body = parsed;
             } else {
-                // settled by the check below the parser, so it is a number by the time a body arrives
                 const count = parameterCount(body, /** @type {number} */ (options.parameterLimit));
                 if (count === undefined) {
                     return next(bodyError("too many parameters", 413, "parameters.too.many"));
                 }
                 if (extended) {
-                    // the ceiling body-parser gives qs: the array limit rises to the parameter
-                    // count, so a form posting 150 array members still yields an array. count
-                    // counts "&" separators where body-parser counts parameters, hence the + 1
+                    // body-parser's ceiling for qs: the array limit rises to the parameter count
                     const qsOptions = {
                         ...EXTENDED_QS_OPTIONS,
                         depth: options.depth !== undefined ? options.depth : 32,
@@ -1463,8 +1274,7 @@ const urlencoded = createBodyParser(
                         ? Object.assign(Object.create(null), qs.parse(body, qsOptions))
                         : fastQueryParse(body, qsOptions);
                 } else {
-                    // body-parser's extended: false is still qs, with depth 0 and the count as
-                    // the array ceiling; only qs decodes latin1 percent escapes as latin1
+                    // body-parser's extended: false is still qs, depth 0
                     req.body = Object.assign(
                         Object.create(null),
                         qs.parse(body, {
@@ -1481,8 +1291,7 @@ const urlencoded = createBodyParser(
                 }
             }
         } catch (e) {
-            // qs reports a depth overflow as a RangeError with its own wording; body-parser
-            // answers it 400, not a raw 500
+            // qs's depth overflow is a RangeError, a 400 to body-parser
             if (e instanceof RangeError) {
                 return next(bodyError("The input exceeded the depth", 400, "querystring.parse.rangeError"));
             }
@@ -1495,9 +1304,9 @@ const urlencoded = createBodyParser(
         if (isNaN(limit) || limit < 1) {
             throw new TypeError("option parameterLimit must be a positive number");
         }
-        // truncated the way body-parser truncates it, so parameterLimit 10.1 stops at ten
+        // truncated as body-parser truncates it
         options.parameterLimit = isFinite(limit) ? limit | 0 : limit;
-        // depth is only qs's to enforce, so body-parser validates it only when extended will use it
+        // depth is validated only when extended will use it, as body-parser does
         if (typeof options.extended !== "undefined" ? options.extended : false) {
             const depth = options.depth !== undefined ? options.depth : 32;
             if (isNaN(depth) || depth < 0) {

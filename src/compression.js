@@ -42,12 +42,10 @@ const {
     applyWriteHead
 } = require("./utils.js");
 
-// zstd arrived in node's zlib during the range of versions this supports, so whether it can be
-// answered at all is a question about the runtime rather than about the options
+// zstd arrived in node's zlib inside the range of versions this supports
 const HAS_ZSTD = typeof zlib.zstdCompressSync === "function";
 
-// what the `encodings` option may name, and the mask each name contributes. identity is 0: an
-// uncompressed answer is always on offer, naming it only makes the list read complete
+// what the `encodings` option may name; identity is 0, an uncompressed answer is always on offer
 const ENCODING_MASKS = new Map([
     ["br", ENCODING_BR],
     ["zstd", ENCODING_ZSTD],
@@ -56,15 +54,13 @@ const ENCODING_MASKS = new Map([
     ["identity", 0]
 ]);
 
-// everything on offer, which is everything the runtime can produce
 const ENCODING_DEFAULT = HAS_ZSTD ? ENCODING_ANY : ENCODING_ANY & ~ENCODING_ZSTD;
 
-// Cache-Control: no-transform forbids recoding the body, which is what this does
+// Cache-Control: no-transform forbids recoding the body
 const NO_TRANSFORM = /(?:^|,)\s*?no-transform\s*?(?:,|$)/;
 
 /**
- * Says the answer depends on Accept-Encoding. res.vary() parses what is there and merges, which on
- * the usual response is parsing an absent header: only a response that already varies pays for it.
+ * Vary: Accept-Encoding, through res.vary() only when there is a Vary to merge into.
  *
  * @param {Response} res
  */
@@ -76,21 +72,17 @@ function addVary(res) {
     res.vary("Accept-Encoding");
 }
 
-/**
- * res.flush for a response that is not being compressed. The compression module puts a function
- * there on every response it sees, and code written against it calls one without asking first.
- */
+/** res.flush for a response not being compressed: the compression module puts one on every response. */
 function noFlush() {}
 
-// what enforceEncoding is allowed to name, the compression module's list and ours
+// what enforceEncoding may name
 const ENFORCEABLE = new Set(["gzip", "deflate", "identity", "br"]);
 if (HAS_ZSTD) {
     ENFORCEABLE.add("zstd");
 }
 
-// Up to this many bytes a whole body is compressed on this thread, above it on the libuv pool. One
-// call either way, what changes is who waits. Measured with gzip at the default level: sync wins by
-// 43% at 1.4KB and by 22% at 16KB, and loses by 32% at 32KB and by 90% at 78KB.
+// up to this many bytes a whole body is compressed on this thread, above on the libuv pool: gzip
+// sync wins by 43% at 1.4KB and 22% at 16KB, loses by 32% at 32KB and 90% at 78KB
 const SYNC_LIMIT = 24 * 1024;
 
 const noop = () => {};
@@ -126,19 +118,17 @@ function reusableCompressor(create, finishFlag, oneShot) {
     const realClose = stream.close;
     const realHandleClose = handle.close;
     let broken = false;
-    // a compression is sync from its first byte to its last, so a second body can only arrive
-    // here from inside the first one; that one is answered the ordinary way
+    // a second body can only arrive from inside the first one, and goes the ordinary way
     let busy = false;
 
-    // a stream given up on is left half finished, and an abandoned zlib handle emits later on its
-    // own: an uncaught "buffer error" and a dead process
+    // an abandoned half-finished zlib handle emits an uncaught "buffer error" later
     const giveUp = () => {
         broken = true;
         try {
             stream.on("error", noop);
             stream.destroy();
         } catch {
-            // it is on its way out either way
+            // on its way out either way
         }
         return oneShot;
     };
@@ -152,8 +142,7 @@ function reusableCompressor(create, finishFlag, oneShot) {
         stream.close = noop;
         handle.close = noop;
         try {
-            // FINISH hands the member back and drops the handle off the stream on its way out,
-            // so the stream is only whole again once it is put back, and only reusable once reset
+            // FINISH drops the handle off the stream, put back below, then reset
             const out = Buffer.from(stream._processChunk(body, finishFlag));
             stream._handle = handle;
             stream.reset();
@@ -170,8 +159,7 @@ function reusableCompressor(create, finishFlag, oneShot) {
         }
     };
 
-    // twice per probe, because a stream that keeps state answers the first body correctly and the
-    // second one differently
+    // twice per probe: a stream that keeps state answers the second body differently
     for (const probe of [Buffer.alloc(64, 0x61), Buffer.from("{}".repeat(600))]) {
         const expected = oneShot(probe);
         if (!compress(probe).equals(expected) || !compress(probe).equals(expected)) {
@@ -182,8 +170,7 @@ function reusableCompressor(create, finishFlag, oneShot) {
 }
 
 /**
- * The default filter: whether the content type is worth compressing at all. A response with no
- * type is left alone, since nothing says what its bytes are.
+ * The default filter: whether the content type is compressible. No type, no compression.
  *
  * @param {Request} req
  * @param {Response} res
@@ -194,17 +181,16 @@ function shouldCompress(req, res) {
     if (type === undefined) {
         return false;
     }
-    // memoized, because an application answers with two or three content-types and compressible
-    // splits the parameters off and searches the mime database to reach the same answer each time
+    // memoised: compressible searches the mime database each time
     return isCompressible(typeof type === "string" ? type : String(type));
 }
 
 const isCompressible = memoizeByString((type) => compressible(type) === true);
 
 /**
- * How many bytes a chunk is, which is what the threshold is compared against.
+ * How many bytes a chunk is, for the threshold.
  *
- * @param {any} chunk a body piece, in whatever shape the caller wrote it
+ * @param {any} chunk
  * @param {BufferEncoding} [encoding]
  * @returns {number}
  */
@@ -216,9 +202,9 @@ function chunkLength(chunk, encoding) {
 }
 
 /**
- * The bytes of a chunk, whatever it arrived as.
+ * The bytes of a chunk.
  *
- * @param {any} chunk a body piece, in whatever shape the caller wrote it
+ * @param {any} chunk
  * @param {BufferEncoding} [encoding]
  * @returns {Buffer}
  */
@@ -226,8 +212,7 @@ function toBuffer(chunk, encoding) {
     if (Buffer.isBuffer(chunk)) {
         return chunk;
     }
-    // end() with nothing to send still has to hand the compressor something, and a threshold of 0
-    // lets an empty body reach it: Buffer.from(undefined) throws where this sends the empty answer
+    // an empty end() under a threshold of 0 still hands the compressor something
     if (chunk === undefined || chunk === null) {
         return Buffer.alloc(0);
     }
@@ -261,24 +246,19 @@ function toBuffer(chunk, encoding) {
  */
 function compression(options) {
     const opts = options || {};
-    // the whole bag goes to zlib, as the compression module does: level, memLevel, strategy,
-    // windowBits and chunkSize arrive under their own names and zlib ignores the rest
+    // the whole bag goes to zlib, as the compression module does
     const zlibOptions = /** @type {import("zlib").ZlibOptions} */ (opts);
     const brotliOptions = { ...opts.brotli };
     brotliOptions.params = {
         [zlib.constants.BROTLI_PARAM_QUALITY]: 4,
         ...(opts.brotli && /** @type {import("zlib").BrotliOptions} */ (opts.brotli).params)
     };
-    // node's default level, unlike brotli above: zstd at its default is already in the band where
-    // this middleware wants to be, and dropping it further buys nothing worth the ratio
+    // zstd at node's default level is already in the band this middleware wants
     const zstdOptions = { ...opts.zstd };
     const filter = opts.filter || shouldCompress;
     const enforceEncoding = opts.enforceEncoding || "identity";
-    // bytes.parse reads "1kb" and hands back null for anything it cannot, an absent option
-    // included, which is where the default comes in
     const threshold = bytes.parse(/** @type {string|number} */ (opts.threshold)) ?? 1024;
-    // the mask handed to the negotiation, built once here: a name nobody knows is a config
-    // mistake and throws now rather than serving the wrong bytes later
+    // the mask for the negotiation, an unknown name throws here
     let allowed = ENCODING_DEFAULT;
     if (opts.encodings !== undefined) {
         if (!Array.isArray(opts.encodings)) {
@@ -297,13 +277,12 @@ function compression(options) {
         }
     }
 
-    // built on first use, so an application that never answers gzip keeps no stream alive
+    // built on first use
     let gzipWhole;
     let deflateWhole;
 
     /**
-     * A whole body, compressed on this thread. Blocks the event loop for as long as it takes,
-     * which is why only a small one comes here, see SYNC_LIMIT.
+     * A whole body compressed on this thread, only a small one, see SYNC_LIMIT.
      *
      * @param {string} method
      * @param {Buffer} body
@@ -370,10 +349,8 @@ function compression(options) {
     }
 
     return function compression(req, res, next) {
-        // Negotiated here rather than when the body arrives: whether this request could take a
-        // compressed body at all decides how much of this middleware the response has to carry.
-        // Most requests cannot, and those get the Vary and nothing else. Read straight from the raw
-        // entries, folded: reading req.headers here built the whole object for one name
+        // negotiated now: a request that cannot take a compressed body, which is most, gets the
+        // Vary and none of the wrapping below. Off the raw entries, req.headers built the object
         const accept =
             typeof req._foldedHeader === "function"
                 ? req._foldedHeader("accept-encoding")
@@ -402,8 +379,7 @@ function compression(options) {
                     addVary(res);
                 }
             };
-            // writeHead settles the head, so a handler that calls it is answered there, with the
-            // headers it carries applied first, as on-headers orders it for the compression module
+            // at writeHead too, its headers applied first as on-headers orders it
             res.writeHead = function writeHead(statusCode, statusMessage, headers) {
                 const reason = applyWriteHead(this, statusMessage, headers);
                 vary();
@@ -426,14 +402,13 @@ function compression(options) {
         /** @type {(import("stream").Transform & import("zlib").Zlib)|null} */
         let stream = null;
         let decided = false;
-        // the encoding decided on, "" for none; the compressor itself starts with the first byte
+        // "" for none; the compressor starts with the first byte
         let method = "";
         let ended = false;
         /** what end() was given to call back, held until the compressor has finished */
         let endCallback = /** @type {(() => void)|undefined} */ (undefined);
 
-        // the compression module adds this, and code written against it calls it: an SSE feed
-        // pushes its event out with res.flush(). Nothing to flush before there is a compressor
+        // the compression module's, an SSE feed pushes its event out with it
         res.flush = function flush() {
             if (stream) {
                 stream.flush();
@@ -441,8 +416,7 @@ function compression(options) {
         };
 
         /**
-         * Hands back the parked drain listeners: this response is not being compressed, so the
-         * response itself is what a pipe should hear from.
+         * Hands the parked drain listeners back to the response, which is not being compressed.
          * @returns {string} the empty method, so the callers can `return noCompress()`
          */
         function noCompress() {
@@ -456,17 +430,15 @@ function compression(options) {
         }
 
         /**
-         * Whether this response is compressed, and how. Taken once, when the first byte of body
-         * arrives, which is also when the headers are decided. The order is the compression
-         * module's, and so is the Vary, added even when the answer goes out uncompressed.
+         * Whether this response is compressed and how, decided once at the first byte of body in
+         * the compression module's order, Vary included.
          *
          * @param {number} [length] the size of the body, when end() already has all of it
          * @returns {string} the encoding chosen, "" to send the body as it is
          */
         function decide(length) {
             decided = true;
-            // res.flushHeaders() commits the head here rather than holding it until the body, so a
-            // response that used it has no room left for a Content-Encoding
+            // after res.flushHeaders() there is no room for a Content-Encoding
             if (res.headersSent) {
                 return noCompress();
             }
@@ -478,8 +450,7 @@ function compression(options) {
                 return noCompress();
             }
             addVary(res);
-            // NaN when there is no Content-Length, and a comparison against NaN is false: a body
-            // whose size is not known yet is compressed whatever the threshold says
+            // NaN without a Content-Length, so an unknown size is compressed whatever the threshold
             if (Number(res.getHeader("Content-Length")) < threshold || Number(length) < threshold) {
                 return noCompress();
             }
@@ -487,15 +458,12 @@ function compression(options) {
             if (already && already !== "identity") {
                 return noCompress();
             }
-            // a range is a window into the bytes on disk, and a client that asked for one cannot
-            // decode a compressed answer to it
+            // a compressed byte range decodes nowhere
             if (res.statusCode === 206 || res.getHeader("Content-Range") !== undefined) {
                 return noCompress();
             }
-            // HEAD never reaches here: it took the Vary-only path above
             res.setHeader("Content-Encoding", chosen);
-            // what it says is the size of the body before this middleware saw it. The whole-body
-            // path below puts the right one back; the streaming one cannot know it in advance
+            // the whole-body path puts the right one back
             res.removeHeader("Content-Length");
             return chosen;
         }
@@ -505,11 +473,8 @@ function compression(options) {
          * @param {string} method
          */
         function startStream(method) {
-            // the closures below read the local: inside them the checker forgets the field is set
             const compressor = (stream = compressStream(method));
-            // The parked listeners, and the list itself stays rather than being emptied: res.on
-            // reads it to know a drain listener belongs on the compressor from here on. A pipe
-            // registers its own the first time write() says to slow down, which is after this
+            // the parked listeners; the list stays, res.on reads it
             for (const listener of /** @type {OnArgs[]} */ (listeners)) {
                 compressor.on(listener[0], listener[1]);
             }
@@ -522,14 +487,11 @@ function compression(options) {
                 _end.call(res, endCallback);
             });
             _on.call(res, "drain", () => compressor.resume());
-            // an aborted response never reaches the end of the stream, and the zlib context behind
-            // it is native memory that a garbage collector is in no hurry to reach
+            // an aborted response never ends the stream, and a zlib context is native memory
             _on.call(res, "close", () => compressor.destroy());
         }
 
-        // writeHead settles the head, so the decision is taken there when a handler calls it, as
-        // on-headers takes it for the compression module: with the headers it carries applied
-        // first, since a Content-Length among them is what the decision removes
+        // decided at writeHead too, its headers applied first as on-headers orders it
         res.writeHead = function writeHead(statusCode, statusMessage, headers) {
             const reason = applyWriteHead(this, statusMessage, headers);
             if (!decided) {
@@ -559,7 +521,6 @@ function compression(options) {
         };
 
         res.end = function end(chunk, encoding, callback) {
-            // node's shapes: the callback may sit in either position
             if (typeof chunk === "function") {
                 callback = chunk;
                 chunk = undefined;
@@ -574,8 +535,7 @@ function compression(options) {
             if (!decided) {
                 method = decide(chunkLength(chunk, encoding));
             }
-            // a head settled by writeHead can no longer take the length the whole-body answer
-            // below sets, so the body goes out in pieces, as node's does after one
+            // after a writeHead the head cannot take a length any more, so the body streams
             if (method && !stream && res.headersSent) {
                 startStream(method);
             }
@@ -590,8 +550,7 @@ function compression(options) {
                 return this;
             }
             if (method) {
-                // the whole answer is here, so it is compressed in one call rather than through a
-                // stream, and goes out with the length it ended up being
+                // the whole answer is here, one call and a Content-Length
                 ended = true;
                 const input = toBuffer(chunk, encoding);
                 if (input.length <= SYNC_LIMIT) {
@@ -600,8 +559,7 @@ function compression(options) {
                     return _end.call(this, body, callback);
                 }
                 compressWholeAsync(method, input, (err, body) => {
-                    // the client can leave while the pool is working, and writing to a response
-                    // that is already gone is not something uWS survives
+                    // the client can leave while the pool works
                     if (res.aborted || res.finished) {
                         return;
                     }
@@ -624,7 +582,6 @@ function compression(options) {
             if (stream) {
                 return stream.on(type, listener);
             }
-            // there is nothing to listen to yet: a compressor that does not exist has not filled up
             listeners.push([type, listener]);
             return this;
         };
@@ -634,6 +591,5 @@ function compression(options) {
 }
 
 module.exports = compression;
-// the compression module exports its default filter, and a front that wants to compress one more
-// type than the default calls it and adds to what it says
+// the compression module exports its default filter too
 module.exports.filter = shouldCompress;

@@ -27,7 +27,7 @@ limitations under the License.
 const fs = require("fs");
 const path = require("path");
 const acorn = require("acorn");
-// the same walk express.testing asserts on, so the command and the assertions cannot drift
+// the same walk express.testing asserts on
 const { collectRoutes } = require("./testing.js");
 const { verify } = require("./verify.js");
 const { override, angular, pnpm } = require("./adopt.js");
@@ -39,10 +39,8 @@ const { create } = require("./create.js");
 const FROM = "express";
 const TO = "fulmine.js";
 
-// Modules this has a faster version of, spotted while the files are being read anyway. They are
-// reported and not rewritten: the replacement is reached through the express import, which this
-// command cannot know is in scope in the file that requires them, and body-parser is four
-// functions rather than one.
+// modules this has a faster version of, reported and not rewritten: the replacement lives on the
+// express import, which may not be in scope where these are required
 const BUILT_IN_INSTEAD = {
     compression: "express.compression(), which takes the same options",
     "serve-static": "express.static()",
@@ -53,8 +51,8 @@ const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", "coverage", 
 const EXTENSIONS = new Set([".js", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".tsx"]);
 const TYPESCRIPT_EXTENSIONS = new Set([".ts", ".mts", ".cts", ".tsx"]);
 
-// Printed after a migration, and by `npx fulmine differences` on its own. Each one is something
-// a working Express 5 app can depend on and that Fulmine answers differently.
+// what a working Express 5 app can depend on and Fulmine answers differently, printed after a
+// migration and by `npx fulmine differences`
 const DIFFERENCES = [
     [
         "app.listen() returns the app, not an http.Server",
@@ -102,7 +100,7 @@ const DIFFERENCES = [
 ];
 
 /**
- * Every .js, .mjs and .cjs file under dir, skipping the directories nobody wants rewritten.
+ * Every source file under dir, skipping the directories nobody wants rewritten.
  * @param {string} dir
  * @returns {string[]}
  */
@@ -116,7 +114,7 @@ function collectFiles(dir) {
         try {
             entries = fs.readdirSync(current, { withFileTypes: true });
         } catch {
-            continue; // unreadable directory, nothing to migrate in it
+            continue;
         }
         for (const entry of entries) {
             const full = path.join(current, entry.name);
@@ -156,8 +154,7 @@ function loadTypeScript(target) {
     try {
         const { createScanner } = load("typescript/unstable/ast/scanner");
         const { LanguageVariant, SyntaxKind } = load("typescript/unstable/ast");
-        // an unstable subpath, so the name the token loop stops on is checked here rather than read
-        // as undefined and scanned past the end of the file forever
+        // an unstable subpath: without EndOfFile the token loop would never stop
         if (SyntaxKind.EndOfFile === undefined) return null;
         const ts = { createScanner, LanguageVariant, SyntaxKind };
         return (source, fileName, seen) => findSpecifiersScanner(source, fileName, ts, seen);
@@ -167,11 +164,10 @@ function loadTypeScript(target) {
 }
 
 /**
- * The same specifiers, out of a TypeScript file. A separate walk because the compiler's tree is
- * not ESTree: the node kinds are different and children are visited through forEachChild.
+ * The same specifiers out of a TypeScript file, whose tree is not ESTree.
  *
  * @param {string} source
- * @param {string} fileName decides whether JSX is allowed, so a .tsx angle bracket is not a cast
+ * @param {string} fileName decides whether JSX is allowed
  * @param {typeof import("typescript")} ts the compiler
  * @param {Set<string>} [seen] as in findSpecifiers
  * @returns {{start: number, end: number}[]}
@@ -198,8 +194,7 @@ function findSpecifiersTypeScript(source, fileName, ts, seen) {
 
     /** @param {import("typescript").Node} node */
     const visit = (node) => {
-        // import express from "express", import type { Request } from "express", export * from it.
-        // A type-only import is rewritten too: the types come from the new package as well.
+        // import, import type and export from: a type-only import is rewritten too
         if (
             (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
             node.moduleSpecifier &&
@@ -207,7 +202,7 @@ function findSpecifiersTypeScript(source, fileName, ts, seen) {
         ) {
             take(node.moduleSpecifier);
         } else if (
-            // import express = require("express"), which is TypeScript's own spelling
+            // import express = require("express")
             ts.isImportEqualsDeclaration(node) &&
             ts.isExternalModuleReference(node.moduleReference) &&
             ts.isStringLiteral(node.moduleReference.expression)
@@ -229,14 +224,12 @@ function findSpecifiersTypeScript(source, fileName, ts, seen) {
 }
 
 /**
- * The same specifiers again, read from the token stream instead of from a tree. typescript 7 has
- * no parser to give a tree, and its scanner already does the part that a search over the text gets
- * wrong: comments, template literals and strings that only look like imports are not tokens here.
+ * The same specifiers off typescript 7's token stream, which has no parser: comments and strings
+ * that only look like imports are not tokens.
  *
  * @param {string} source
- * @param {string} fileName decides whether JSX is allowed, as above
- * @param {any} ts the scanner and the two enums loadTypeScript kept, from typescript 7's unstable
- *   API, which the typings this project compiles against do not describe
+ * @param {string} fileName decides whether JSX is allowed
+ * @param {any} ts the scanner and the two enums, from the unstable API the typings do not describe
  * @param {Set<string>} [seen] as in findSpecifiers
  * @returns {{start: number, end: number}[]}
  */
@@ -256,8 +249,7 @@ function findSpecifiersScanner(source, fileName, ts, seen) {
     let back3 = -1;
 
     for (let token = scanner.scan(); token !== kind.EndOfFile; token = scanner.scan()) {
-        // from "express", and import("express") or require("express") as a call. The dot rules out
-        // obj.require("express"), which is somebody else's require and not a module specifier
+        // from "express", import("express"), require("express"); not obj.require("express")
         const isFrom = back1 === kind.FromKeyword;
         const isRequire = back2 === kind.RequireKeyword && back3 !== kind.DotToken && back3 !== kind.QuestionDotToken;
         const isCall = back1 === kind.OpenParenToken && (back2 === kind.ImportKeyword || isRequire);
@@ -277,20 +269,17 @@ function findSpecifiersScanner(source, fileName, ts, seen) {
 }
 
 /**
- * The string literals naming the module, found through the parser rather than by searching the
- * text. "express" appears inside express-session, inside comments and inside strings that are not
- * imports at all, and none of those may be rewritten.
+ * The string literals naming the module, through the parser: "express" also appears in
+ * express-session, in comments and in other strings.
  *
  * @param {string} source
- * @param {Set<string>} [seen] collects the names of the modules with something built in here,
- *   which are recognised on the same walk rather than on one of their own
+ * @param {Set<string>} [seen] collects the modules with something built in here
  * @returns {{start: number, end: number}[]|null} null when the file does not parse
  */
 function findSpecifiers(source, seen) {
     /** @type {import("acorn").Program|null|undefined} */
     let tree;
-    // A file is either a module or a script and the parser has to be told which. Try module first,
-    // since it also accepts everything a script can contain except a bare `return`.
+    // module first, it accepts everything a script can but a bare `return`
     for (const sourceType of ["module", "script"]) {
         try {
             tree = acorn.parse(source, {
@@ -320,7 +309,6 @@ function findSpecifiers(source, seen) {
         }
     };
     walk(tree, (node) => {
-        // import express from "express", export * from "express"
         if (
             (node.type === "ImportDeclaration" ||
                 node.type === "ExportNamedDeclaration" ||
@@ -330,7 +318,6 @@ function findSpecifiers(source, seen) {
             record(node.source);
             return;
         }
-        // require("express") and import("express"), the second being a node of its own
         const isRequire =
             node.type === "CallExpression" && node.callee?.type === "Identifier" && node.callee.name === "require";
         const isDynamicImport = node.type === "ImportExpression";
@@ -345,13 +332,9 @@ function findSpecifiers(source, seen) {
 }
 
 /**
- * Visits every node. acorn produces plain objects, so the shape is walked rather than dispatched
- * on: a table of node types would have to be kept in step with the parser, and being out of step
- * would mean silently skipping an import.
- * @param {any} node an acorn node, or an array or a scalar under one: walked by key, so no shape
- *   is assumed
- * @param {(node: any) => void} visit handed every node, loose because the visitor reads edges of
- *   its own off each
+ * Visits every node by key rather than by a table of node types, which could skip an import.
+ * @param {any} node
+ * @param {(node: any) => void} visit
  */
 function walk(node, visit) {
     if (!node || typeof node !== "object") return;
@@ -366,15 +349,11 @@ function walk(node, visit) {
     }
 }
 
-/** Where an application usually is, when the command was given no entry to load. */
+/** Where an application usually is. */
 const DEFAULT_ENTRIES = ["server.js", "app.js", "index.js", "src/server.js", "src/app.js", "src/index.js"];
 
 /**
- * The file a start script runs, when it runs node on one.
- *
- * "main" is about what a package exports, and a service usually exports nothing: the entry of a
- * deployed application is far more often the one written here, which is also the only place that
- * knows about a src/ or a bin/ the usual names do not cover.
+ * The file a start script runs node on: a service's entry is more often here than in "main".
  *
  * @param {unknown} script the "start" script, as package.json wrote it
  * @returns {string|null}
@@ -385,25 +364,24 @@ function entryFromScript(script) {
     }
     const words = script.split(/\s+/).filter(Boolean);
     if (!/^(node|nodejs)$/.test(path.basename(words[0] ?? "", ".exe"))) {
-        // ts-node, nodemon, a shell pipeline: what that runs is not a file this can load
+        // ts-node, nodemon, a shell pipeline
         return null;
     }
     for (const word of words.slice(1)) {
         if (word.startsWith("-")) {
-            continue; // --env-file=.env, --watch, and the rest of node's own flags
+            continue;
         }
         const candidate = path.resolve(word);
         if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
             return candidate;
         }
-        break; // the first thing that is not a flag is the file, and it is not there
+        break;
     }
     return null;
 }
 
 /**
- * The file to load, from the argument, from package.json's main or start script, or from the
- * usual names.
+ * The file to load: the argument, package.json's main or start script, or the usual names.
  *
  * @param {string|undefined} given
  * @returns {string|null}
@@ -418,14 +396,13 @@ function findEntry(given) {
         if (pkg.main && fs.existsSync(path.resolve(pkg.main))) {
             return path.resolve(pkg.main);
         }
-        // a main that names a file nobody built, dist/server.js in a TypeScript project, is worth
-        // no more than no main at all
+        // a main naming a file nobody built, dist/server.js, is no main
         const started = entryFromScript(pkg.scripts?.start);
         if (started) {
             return started;
         }
     } catch {
-        // no package.json, or one that will not parse: the usual names are still worth trying
+        // no package.json, or one that will not parse
     }
     for (const name of DEFAULT_ENTRIES) {
         const resolved = path.resolve(name);
@@ -450,7 +427,7 @@ function listenOwners(entry) {
         try {
             builds.add(require(require.resolve(specifier, { paths: [path.dirname(entry), process.cwd()] })));
         } catch {
-            // not installed next to the application, or not resolvable from there
+            // not installed next to the application
         }
     }
 
@@ -464,9 +441,9 @@ function listenOwners(entry) {
         try {
             app = build();
         } catch {
-            continue; // not an application factory, or one that will not build without arguments
+            continue;
         }
-        // real express resolves under the same two names, and has none of this to stub
+        // real express resolves under the same names
         if (typeof app._compileOptimizedRoutes !== "function") {
             continue;
         }
@@ -482,12 +459,8 @@ function listenOwners(entry) {
 }
 
 /**
- * The applications a file builds, compiled but not listening.
- *
- * listen() is where the routes are compiled and also where the port is bound, and only the first
- * of those is wanted here: an application that answered on its port while being read would be a
- * surprise, and a second copy of a running service is worse than a surprise. So listen is replaced
- * by the half that matters, and the callback it was given is not run for the same reason.
+ * The applications a file builds, compiled but not listening: listen() is replaced by the half
+ * that compiles the routes, and its callback is not run.
  *
  * @param {string[]} argv
  * @param {string} command the word for the message when there is nothing to load
@@ -534,8 +507,7 @@ ${error.stack ?? error}`);
 
     let apps = listened;
     if (apps.length === 0) {
-        // an application that exports itself rather than listening, which is how a testable one is
-        // usually written. Compiling it here is the same work listen() would have done
+        // an application that exports itself rather than listening
         const exported = require(entry);
         const candidate = exported?.default ?? exported?.app ?? exported;
         if (candidate && Array.isArray(candidate._routes)) {
@@ -578,19 +550,14 @@ function stopFileWorkers(apps) {
             try {
                 worker.terminate();
             } catch {
-                // a thread that never started, or already ended, needs nothing
+                // already gone
             }
         }
     }
 }
 
 /**
- * Loads an application without letting it listen, and prints what compiling its routes decided.
- *
- * listen() is where the routes are compiled and also where the port is bound, and only the first
- * of those is wanted here: an application that answered on its port while being profiled would be
- * a surprise, and a second copy of a running service is worse than a surprise. So listen is
- * replaced by the half that matters. The callback it was given is not run, for the same reason.
+ * Loads an application without letting it listen and prints what compiling its routes decided.
  *
  * @param {string[]} argv
  * @returns {number} exit code
@@ -606,9 +573,7 @@ function profile(argv) {
     return 0;
 }
 
-// what a reason means for whoever wrote the route, when it means anything they can act on. A
-// method µWS does not serve, or a path only a regular expression can match, is not something to
-// go and fix; an ordering that costs the native match is.
+// what a reason means for whoever wrote the route, only where they can act on it
 /** @type {[RegExp, (match: RegExpExecArray) => string][]} */
 const ADVICE = [
     [
@@ -632,12 +597,8 @@ const ADVICE = [
 ];
 
 /**
- * The plan for one route, the way a database explains a query.
- *
- * `profile` answers "how much of this application is on the fast path", which is a question about
- * the whole table. This one answers "what happens when this request arrives", which is the question
- * somebody has when one endpoint is slower than they expected: how it is matched, what is copied
- * out of it, what runs, and what each layer costs the route.
+ * The plan for one route, as a database explains a query: how it is matched, what is copied out
+ * of the request, what runs.
  *
  * @param {string[]} argv the path to explain, then the entry
  * @returns {number} exit code
@@ -713,8 +674,8 @@ ${String(route.method).toUpperCase()} ${full}
 }
 
 /**
- * Whether a route answers to the name given on the command line: the path as registered, with an
- * optional method in front and an optional "*" at the end for a prefix.
+ * Whether a route answers to the name given: the registered path, an optional method in front,
+ * an optional "*" at the end.
  *
  * @param {string} full
  * @param {string} method
@@ -734,12 +695,8 @@ function matchesWanted(full, method, wanted) {
 }
 
 /**
- * A summary that says how much of this application the native router carries, and what could be
- * changed to make it carry more.
- *
- * There is no score here on purpose. A percentage of routes is not a percentage of traffic: an
- * application with a thousand cold routes and one hot one that fell back would score well and
- * serve badly. What is printed is counted rather than judged.
+ * How much of the application the native router carries and what could change that. No score: a
+ * percentage of routes is not a percentage of traffic.
  *
  * @param {{route: RouteEntry, full: string}[]} routes
  * @param {{route: RouteEntry, full: string}[]} native
@@ -769,7 +726,6 @@ function printSummary(routes, native, declarative) {
         );
     }
 
-    // the routes whose reason somebody can do something about
     const worth = [];
     for (const { route, full } of routes) {
         if (route._native || !route._whyGeneric) continue;
@@ -824,9 +780,7 @@ function printProfile(app, several) {
         }
     }
 
-    // a mount holding a router is one the compiler could have walked into; anything else is
-    // middleware, and listing every helmet and cors as a mount that "was not walked into" says
-    // nothing anyone can act on
+    // only a mount holding a router could have been walked into, the rest is middleware
     const routers = mounts.filter(
         ({ route }) => route.callbacks?.length === 1 && Array.isArray(route.callbacks[0]?._routes)
     );
@@ -925,14 +879,12 @@ Options:
     /** @type {Set<string>} */
     const builtInInstead = new Set();
 
-    // resolved once, and only if there is anything to use it on
     const hasTypeScriptFiles = files.some((file) => TYPESCRIPT_EXTENSIONS.has(path.extname(file)));
     const readTypeScript = hasTypeScriptFiles ? loadTypeScript(target) : null;
 
     for (const file of files) {
         const source = fs.readFileSync(file, "utf8");
-        // reading every file's AST to find nothing is the common case, so skip the ones that
-        // cannot contain any of the names being looked for
+        // most files contain none of the names, no need to parse them
         if (!source.includes(FROM) && !Object.keys(BUILT_IN_INSTEAD).some((name) => source.includes(name))) continue;
 
         const isTypeScript = TYPESCRIPT_EXTENSIONS.has(path.extname(file));
@@ -951,7 +903,7 @@ Options:
         }
         if (!specifiers.length) continue;
 
-        // right to left, so an earlier replacement does not move the offsets of a later one
+        // right to left, so the offsets hold
         let rewritten = source;
         for (const { start, end } of specifiers.sort((a, b) => b.start - a.start)) {
             const quote = source[start];
@@ -981,9 +933,7 @@ Options:
         `\n${dryRun ? "would rewrite" : "rewrote"} ${changedImports} import(s) in ${changedFiles} file(s) of ${files.length} scanned`
     );
 
-    // said whether or not anything was rewritten: an application migrated last month still has
-    // these, and they are the difference between running on µWS and running through a middleware
-    // that was written for node streams
+    // said whether or not anything was rewritten, an application migrated last month still has these
     if (builtInInstead.size) {
         console.log(`\n${builtInInstead.size} module(s) with a faster one built in here, worth replacing by hand:`);
         for (const name of builtInInstead) {
@@ -999,7 +949,7 @@ Options:
     return 0;
 }
 
-/** Prints the list above, which is what migrate ends with and what the differences command prints alone. */
+/** What migrate ends with and the differences command prints alone. */
 function printDifferences() {
     console.log(`\nWhat to check by hand, since no rewrite can find these for you:\n`);
     for (const [title, detail] of DIFFERENCES) {
@@ -1012,9 +962,8 @@ function printDifferences() {
 if (require.main === module) {
     const code = main(process.argv.slice(2));
     if (process.argv[2] === "profile") {
-        // profile loaded somebody's application, and loading it may have opened a database handle,
-        // a timer or a µWS app of its own. None of that is ours to unwind, and there is nothing
-        // left to print. Only here, so the command itself stays a function a test can call
+        // the loaded application may hold a database handle or a timer open; only here, so the
+        // command stays a function a test can call
         process.exit(code);
     }
     process.exitCode = code;

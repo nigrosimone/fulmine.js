@@ -25,14 +25,12 @@ const { METHODS } = require("http");
 /** @typedef {import("./walk.js")} Walk */
 /** @typedef {import("./router.js")} Router */
 /**
- * One entry of a router's table, as createRoute in router.js builds it. Left loose on purpose: the
- * optimizer hangs half a dozen more fields on it after registration, and writing them all out here
- * would be a second copy of createRoute that nothing keeps in step.
+ * One entry of a router's table as createRoute builds it, loose: the optimizer hangs more fields
+ * on it after registration.
  * @typedef {any} RouteEntry
  */
 /**
- * What nativePreset builds for a literal registration: the constants every request to that route
- * shares, read off the preset instead of the URL.
+ * The constants every request to a literal registration shares, see nativePreset.
  * @typedef {object} NativePreset
  * @property {string} path
  * @property {string} method
@@ -40,13 +38,12 @@ const { METHODS } = require("http");
  * @property {string} opPath
  * @property {boolean} isOptions
  * @property {boolean} isHead
- * @property {boolean} skipHeaders written at registration, and taken back by a middleware added
- *   after listen, see _skipPresets
+ * @property {boolean} skipHeaders taken back by a middleware added after listen, see _skipPresets
  * @property {boolean} skipQuery the same, for the query
  */
 /**
- * Where a granted header skip lives: the preset itself for a literal registration, a holder of its
- * own for a parameterised one, see makeHandler in optimizer.js.
+ * Where a granted header skip lives: the preset for a literal registration, a holder of its own
+ * for a parameterised one, see makeHandler in optimizer.js.
  * @typedef {object} SkipHolder
  * @property {boolean} skipHeaders
  * @property {boolean} skipQuery
@@ -59,7 +56,7 @@ const { METHODS } = require("http");
  * @typedef {{path: string, use: boolean, method: string, all: boolean}} MountGuard
  */
 /**
- * A layer as express shapes it, which is what app.stack and router.stack hand out.
+ * A layer as express shapes it, for app.stack and router.stack.
  * @typedef {object} Layer
  * @property {Function} handle
  * @property {string} name
@@ -73,8 +70,7 @@ const { METHODS } = require("http");
  * @typedef {{path: string, behavior: Record<string, unknown>, owner: Router}} WsRoute
  */
 
-// whether a registered path could be asked for in another case, which is what decides whether the
-// native router can be trusted to prefer it, see _optimizeRoute
+// whether a registered path could be asked for in another case, see _optimizeRoute
 const HAS_LETTER = /[a-zA-Z]/;
 
 /**
@@ -105,7 +101,7 @@ function anyGuardHits(guards, path) {
         let same = true;
         for (let j = 0; j < guard.length; j++) {
             let code = path.charCodeAt(j);
-            // A to Z only, which is the fold express's insensitive routing does
+            // A to Z only, express's fold
             if (code >= 65 && code <= 90) {
                 code += 32;
             }
@@ -121,8 +117,7 @@ function anyGuardHits(guards, path) {
     return false;
 }
 
-// every method the declarative compiler can emit: a patched one must disable compilation, or the
-// patch would be honoured everywhere but on compiled routes
+// every method the declarative compiler can emit: a patched one disables compilation
 const resCodes = {},
     resDecMethods = ["set", "setHeader", "header", "send", "end", "append", "status", "json", "sendStatus"];
 for (const method of resDecMethods) {
@@ -130,21 +125,17 @@ for (const method of resDecMethods) {
 }
 
 /**
- * The layer Express makes for one mounted handler. `name` is what a caller matches on: a function's
- * own name, "router" for a mounted router, and "<anonymous>" for the rest, exactly as express reads
- * them off the handle.
+ * The layer Express makes for one mounted handler, with the name a caller matches on.
  *
  * @param {RouteEntry} route
- * @param {Function & {_routes?: RouteEntry[], _isApplication?: boolean}} callback a handler, or a
- *   mounted router, which is callable and carries _routes
- * @returns {Layer} the layer object, which is express's shape and not one of ours
+ * @param {Function & {_routes?: RouteEntry[], _isApplication?: boolean}} callback a handler or a
+ *   mounted router
+ * @returns {Layer}
  */
 function layerFor(route, callback) {
     const layer = {
         handle: callback,
-        // express reads the name off the handle, and its own handles are named: a mounted
-        // application is "app" and a mounted router "router", whatever this project happens
-        // to call the function underneath
+        // express names its own handles "app" and "router"
         name: Array.isArray(callback._routes)
             ? callback._isApplication
                 ? "app"
@@ -160,12 +151,10 @@ function layerFor(route, callback) {
 }
 
 /**
- * The layer Express makes for a route, whose handle runs the route's own handlers one after
- * another. Express calls that handle `handle`, and a caller that looks for a route layer looks for
- * that name.
+ * The layer Express makes for a route: a handle named `handle` running the route's handlers.
  *
  * @param {RouteEntry} route
- * @returns {Layer} the layer object, which is express's shape and not one of ours
+ * @returns {Layer}
  */
 function routeLayer(route) {
     /**
@@ -211,8 +200,8 @@ function nativeDone(matched) {
     if (!matched) {
         queueMicrotask(() => {
             const response = this.res;
-            // a 404 after the head is left as it is, as express's final handler leaves it; an error
-            // after it goes on to _handleError, which closes the connection as that handler does
+            // a 404 after the head is left as it is, an error after it closes the connection, as
+            // express's final handler does
             if (response.aborted || (response.headersSent && !this.req._error)) {
                 return;
             }
@@ -230,9 +219,7 @@ function nativeDone(matched) {
 }
 
 /**
- * The native handler's reject: answers 500 as express's final handler would, instead of dying as
- * an unhandled rejection. Deferred like the resolve, since every rejection used to reach the
- * handler's catch through an await.
+ * The native handler's reject: a 500 as express's final handler, deferred like the resolve.
  * @this {Walk}
  * @param {unknown} err
  */
@@ -261,12 +248,11 @@ function nativeFail(err) {
  * @returns {number}
  */
 function mountPrefixLength(route, req) {
-    // a use with no path is EMPTY_REGEX, which matches "" at 0 whatever the path is. Answered
-    // without the exec, since this runs per hop and most middleware is pathless
+    // pathless, most middleware is
     if (route.pattern === EMPTY_REGEX) {
         return 0;
     }
-    // the registration-time constant of a literal mount, exec-free. See createRoute
+    // a literal mount's constant, see createRoute
     if (route.mountLen !== undefined) {
         return route.mountLen;
     }
@@ -279,8 +265,7 @@ function mountPrefixLength(route, req) {
 }
 
 /**
- * Writes the path the routes below a mount see: the original with what the mounts took off the
- * front. The root reads as "/" rather than as nothing, which is how express hands it over.
+ * Writes the path the routes below a mount see, the root as "/" as express hands it over.
  *
  * @param {Request} req
  */
@@ -292,17 +277,13 @@ function setMountedPath(req) {
     req._lastUrl = req.url;
 }
 
-// req.path as the request class declares it, taken off the prototype rather than written out a
-// second time. A request the router adopts is a plain object and gets it defined on itself, see
-// adoptPlainRequest. Enumerable, as express's own is.
+// req.path off the prototype, for an adopted plain request; enumerable as express's is
 const PATH_PROPERTY = {
     .../** @type {PropertyDescriptor} */ (Object.getOwnPropertyDescriptor(Request.prototype, "path")),
     enumerable: true
 };
 
-// and the two the walk calls when a middleware rewrote req.url or req.method, for the same reason:
-// an adopted request has no prototype of ours to find them on, and a rewrite through one of those
-// routers threw instead of being taken over
+// and the two the walk calls on a rewrite, which an adopted request has no prototype to find
 const ABSORB_URL = Request.prototype._absorbUrlRewrite;
 const ABSORB_METHOD = Request.prototype._absorbMethodRewrite;
 
@@ -322,12 +303,10 @@ function ownParamNames(route) {
         return names;
     }
     if (route.optimizedParams) {
-        // µWS matched the pattern and hands the values back by position, under these names
         names = route.optimizedParams;
     } else if (route.pattern instanceof RegExp) {
         const meta = getPatternMeta(route.pattern);
-        // outputNames is what _extractParams writes into params; a RegExp the application wrote
-        // itself was never compiled here, so its capture groups are the names
+        // outputNames is what _extractParams writes; an application's RegExp has its groups
         names = meta ? meta.outputNames : regexpGroupKeys(route.pattern);
     } else {
         names = NO_PARAM_NAMES;
@@ -337,9 +316,8 @@ function ownParamNames(route) {
 }
 
 /**
- * Whether this route reads the parameters of the mounts above it, which is its own router asking
- * for them. The stack holds what a mergeParams router captured on the way in, and a plain router
- * mounted inside one must not read it: express asks each router in turn, not the outermost.
+ * Whether this route's own router asks for the mounts' parameters: express asks each router in
+ * turn, a plain router inside a mergeParams one does not read them.
  *
  * @param {RouteEntry} route
  * @param {Router} fallback the router dispatching, when the route names no owner
@@ -350,14 +328,11 @@ function mergesParams(route, fallback) {
     return Boolean(owner?._settings?.mergeParams);
 }
 
-// shared empty candidate list, so _scanFrom never tests for a missing map entry twice
 const EMPTY_INDICES = /** @type {number[]} */ ([]);
 
 /**
- * The generic scan's index over a router's literal routes: route positions by folded pattern, so
- * a scan visits the routes registered for this exact path instead of comparing every one. String
- * patterns are pure literals, everything else, "/*" included, stays in alwaysVisit and is still
- * matched per request by _pathMatches.
+ * The generic scan's index: route positions by folded literal pattern, everything else ("/*"
+ * included) in alwaysVisit.
  *
  * @param {RouteEntry[]} routes the router's own table
  * @param {boolean} caseFlag the frozen case-sensitivity flag
@@ -384,8 +359,7 @@ function buildLiteralIndex(routes, caseFlag) {
 }
 
 /**
- * The position of the first value >= from in an ascending list, which is list.length when there
- * is none: where a scan resuming at `from` enters a candidate list.
+ * The position of the first value >= from in an ascending list, list.length when there is none.
  *
  * @param {number[]} list
  * @param {number} from
@@ -406,9 +380,8 @@ function firstAtLeast(list, from) {
 }
 
 /**
- * The route's own params merged with those of the mounts it sits under, in express's order: an
- * outer mount first, the route's own last. Numbered captures do not overwrite each other, they
- * shift, so a RegExp mount capturing one group leaves the route's own group numbered from one.
+ * The route's own params merged with the mounts', outer first, own last. Numbered captures
+ * shift rather than overwrite, as in express.
  *
  * @param {Record<string, any>} own what this route's own pattern captured
  * @param {Record<string, any>[]} stack the mounts, outermost first
@@ -419,7 +392,6 @@ function mergeParams(own, stack) {
     for (const params of stack) {
         Object.assign(merged, params);
     }
-    // both sides numbering from zero means the outer ones keep their places and these move up
     if (own[0] !== undefined && merged[0] !== undefined) {
         let count = 0;
         while (merged[count] !== undefined) {
@@ -440,11 +412,8 @@ function mergeParams(own, stack) {
 }
 
 /**
- * The scheme and authority of an absolute request target, or "" for the ordinary kind.
- *
- * A request line may carry the whole URI, and express matches on the path while leaving req.url as
- * it arrived. Same rule it uses: a "://" before any "?" means everything up to the slash after it
- * is not path.
+ * The scheme and authority of an absolute request target, "" for the ordinary kind: express
+ * matches on the path and leaves req.url as it arrived.
  *
  * @param {string} url
  * @returns {string}
@@ -494,8 +463,6 @@ function adoptPlainRequest(req, router) {
     req.urlQuery = queryIndex === -1 ? "" : raw.slice(queryIndex);
     req._rawQuery = req.urlQuery.slice(1);
     req._path = path;
-    // an adopted request is a plain object, so it carries no prototype of ours and reads its path
-    // off a property of its own. The class's getter itself, so there is one of it
     Object.defineProperty(req, "path", PATH_PROPERTY);
     req._absorbUrlRewrite = ABSORB_URL;
     req._absorbMethodRewrite = ABSORB_METHOD;
@@ -510,23 +477,18 @@ function adoptPlainRequest(req, router) {
     req._isOptions = req.method === "OPTIONS";
     req._isHead = req.method === "HEAD";
     req.params = req.params ?? Object.create(null);
-    // null, not fresh arrays: the push sites materialize them on the first mount, and most
-    // requests never see one, same as the Request constructor
+    // null as in the Request constructor, the push sites materialise them
     req._stack = null;
     req._consumed = 0;
     req._mountSlash = false;
     req._paramStack = null;
     req._matchedMethods = req._isOptions ? new Set() : null;
     req.routeCount = 1;
-    // read when a mount is left, and there is no application here to read it from
     req.app = req.app ?? router;
 }
 
 /**
- * What express's logerror does. Its final handler prints the error it is about to answer with,
- * unless the application runs under `env: "test"`, which is how its own suite stays quiet, and it
- * prints the stack rather than the object. A falsy throw is not printed at all, since finalhandler
- * only calls onerror when there is an error to call it with.
+ * express's logerror: the stack of the error about to be answered, quiet under `env: "test"`.
  *
  * @param {Router} router the router whose settings decide it
  * @param {any} err whatever was thrown, which need not be an Error
@@ -539,39 +501,32 @@ function logError(router, err) {
 }
 
 /**
- * The uWS onAborted handler, bound to the response: a closure here captured two locals and cost
- * a context plus a function per request, for a path that only ever runs on a client abort.
- * @this {Response} the response, with the request linked as this.req
+ * The uWS onAborted handler, bound to the response rather than a closure per request.
+ * @this {Response}
  */
 function onNativeAborted() {
     const response = this;
     const request = response.req;
-    // node's wording for a client abort, which is what body consumers match on
+    // node's wording, what body consumers match on
     /** @type {NodeJS.ErrnoException} */
     const err = new Error("aborted");
     err.code = "ECONNRESET";
     response.aborted = true;
     response.finished = true;
-    // node's order on the request: 'aborted', then the stream dies, then 'close'. The
-    // error goes only to whoever listens for it, since a destroy(err) with no listener
-    // would take down the process
+    // node's order: 'aborted', the response destroyed ('close' once, a later write
+    // ERR_STREAM_DESTROYED, no 'error'), then the request. The error only to a listener, a
+    // destroy(err) without one takes down the process
     request.emit("aborted");
-    // and the response dies between the two, as in node. Destroyed, not told to emit 'close', so
-    // the rest follows: 'close' once, a later write ERR_STREAM_DESTROYED, no 'error'. Without it a
-    // quiet handler never learnt of the abort, and `res.on("close")` is where cancellation hangs in
-    // every proxy and every streaming endpoint
     response.destroy();
     request.destroy(request.listenerCount("error") > 0 ? err : undefined);
     response.socket?.emit("error", err);
 }
 
 /**
- * The per-request constants of a fully literal native registration. µWS matched the URL byte for
- * byte against this exact pattern and dispatches by method, so the request constructor can take
- * these as given instead of asking uWS and recomputing them on every request.
+ * The constants of a literal native registration, which the request constructor takes as given.
  *
- * @param {string} path the registered pattern, which is what getUrl() would have answered
- * @param {string} method uppercase, fixed by which uWS verb the registration used
+ * @param {string} path the registered pattern
+ * @param {string} method uppercase
  */
 function nativePreset(path, method) {
     const endsWithSlash = path.charCodeAt(path.length - 1) === 0x2f;
@@ -582,17 +537,15 @@ function nativePreset(path, method) {
         opPath: path,
         isOptions: method === "OPTIONS",
         isHead: method === "HEAD",
-        // set at registration when the whole chain provably never reads a header, or never
-        // reads the query; mutable, because a middleware added after listen takes them back
+        // granted at registration, taken back by a middleware added after listen
         skipHeaders: false,
         skipQuery: false
     };
 }
 
 /**
- * Whether any error middleware exists anywhere under this router, mounted routers and sub-apps
- * included. The header-skip analysis needs the answer to be no: a throw inside an analyzed
- * handler would hand the request to code nobody analyzed.
+ * Whether any error middleware exists under this router, sub-apps included: a throw would hand
+ * the request to code the header-skip analysis never saw.
  *
  * @param {Router} router
  * @returns {boolean}
@@ -600,8 +553,7 @@ function nativePreset(path, method) {
 function hasErrorMiddleware(router) {
     for (const route of router._routes) {
         for (const callback of route.callbacks) {
-            // a mounted router or a callable sub-app carries routes of its own; the callable
-            // app is also a function, so the routes are looked for first
+            // a callable sub-app is also a function, so the routes are looked for first
             if (callback && callback._routes) {
                 if (hasErrorMiddleware(callback)) {
                     return true;
@@ -629,7 +581,7 @@ function checkHandlers(handlers, emptyMessage = "argument handler is required") 
     }
 }
 
-// what a route's callback is, so that a hop reads a number instead of asking instanceof and length
+// what a route's callback is, a number per hop instead of instanceof and length
 const CALLBACK_PLAIN = 0;
 const CALLBACK_ERROR = 1;
 const CALLBACK_ROUTER = 2;
@@ -652,8 +604,7 @@ function raiseDecodeFailure(req, route, err) {
     req._errorGroup = route.group;
 }
 
-// the verbs a body is read for unless the application says otherwise, which is the parsers' own
-// list. A request with any other verb reaches a parser's method check and leaves through it
+// the verbs the parsers read a body for unless "body methods" says otherwise
 const BODY_METHODS = new Set(["POST", "PUT", "PATCH", "QUERY"]);
 
 /**
@@ -673,30 +624,22 @@ function stepsOver(route, req) {
     if (BODY_METHODS.has(req.method)) {
         return false;
     }
-    // an application can add its own. Read once and kept, which is what the parser behind this
-    // layer does with the same setting: asking on every request measured 17 microseconds per
-    // thousand, a third of what stepping over the layer saves
+    // read once, as the parser does: per request it measured 17us per thousand, a third of the saving
     if (route.bodyMethods === undefined) {
         route.bodyMethods = req.app.get("body methods") ?? null;
     }
     if (route.bodyMethods !== null && route.bodyMethods.includes(req.method)) {
         return false;
     }
-    // The layer is not entered, so it leaves the one mark it would have left: the parser puts
-    // `body` on the request before it works out that there is nothing to read. A library asks
-    // `"body" in req` to tell "a parser has run" from "none has", and a skip that did not leave
-    // it would answer a GET differently from express. See the same seeding in middlewares.js
+    // the one mark the parser would have left, `"body" in req`, see middlewares.js
     if (!("body" in req)) {
-        // cast because `body` is deliberately not a field of Request, see the comment there
         /** @type {{body?: unknown}} */ (req).body = undefined;
     }
     return true;
 }
 
 /**
- * Whether a route could answer a request for this path, judged on the pattern it was compiled to.
- * A literal answers only itself; anything with a parameter or a wildcard answers what its regex
- * says. Used where the question is "would this earlier route have had its turn first".
+ * Whether a route could answer this path: a literal only itself, a pattern what its regex says.
  *
  * @param {RouteEntry} route
  * @param {string} path
@@ -793,20 +736,17 @@ function restoreApp(route, req) {
 }
 
 /**
- * useApp
+ * An application takes the request over, see rememberApp.
  * @param {Request} req
- * @param {Router & {request?: object, response?: object}} app the application taking the request
- *   over. Typed as a router because the callers hold one, and only an application carries the two
- *   prototype layers read below
+ * @param {Router & {request?: object, response?: object}} app typed as a router because the
+ *   callers hold one
  */
 function useApp(req, app) {
-    // only an application takes a request over, see rememberApp
     req.app = /** @type {import("./application.js").Application} */ (app);
     if (req.res) {
         req.res.app = app;
     }
-    // an app's own request/response extensions apply while it runs: express re-parents both
-    // objects on entering a mounted app, and this is the equivalent hop
+    // the app's own request and response layers, as express re-parents both on entering a sub-app
     if (app.request && Object.getPrototypeOf(req) !== app.request) {
         Object.setPrototypeOf(req, app.request);
     }
@@ -815,32 +755,24 @@ function useApp(req, app) {
     }
 }
 
-// Every verb node knows about, which is the list the methods package hands Express, and "all" on
-// top of it. Taken from node rather than written out: the written out one was missing acl, bind,
-// link, rebind, source, unbind, unlink and unlock, and had four of the others twice.
-//
-// GET is left out on purpose. get() is declared in the class, because it doubles as the settings
-// reader, and the loop at the end of this file would replace it.
+// every verb node knows, as the methods package hands Express, plus "all". Not GET: get() is
+// declared in the class, it doubles as the settings reader
 const methods = ["all", ...METHODS.filter((method) => method !== "GET").map((method) => method.toLowerCase())];
 const supportedUwsMethods = new Set(["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD", "CONNECT", "TRACE"]);
 
 // the same name rule patternToRegex reads, so a unicode name is found here too
 const regExParam = /:([$_\p{ID_Start}][$\u200c\u200d\p{ID_Continue}]*)/gu;
 
-// Internals here are _underscore and not #private: a callable router is a function with the
-// router's properties copied onto it, and a # field cannot be copied, so #routes would throw
-// "Cannot read private member" on the first call.
+// internals are _underscore, not #private: a callable router copies the properties onto a
+// function, and a # field cannot be copied
 
-// one intermediate prototype per class, built the first time a callable of that class is made
+// one intermediate prototype per class
 const callablePrototypes = new WeakMap();
 
 /**
- * The prototype for a callable router or app: the class prototype, with apply and call put back.
- *
- * Setting a function's prototype to a class prototype drops Function.prototype from the chain, and
- * node calls a request listener with handler.apply. An intermediate object, so express.application
- * stays in the chain. constructor and bind are not restored: the code asks constructor.name, and
- * BIND is an HTTP verb, so app.bind registers a route as it does in Express.
+ * The prototype for a callable router or app: the class prototype with apply and call put back,
+ * since a function's prototype set to it drops Function.prototype. Not bind: BIND is an HTTP verb,
+ * app.bind registers a route as in Express.
  *
  * @param {object} classPrototype
  * @returns {object}
@@ -864,12 +796,8 @@ function callablePrototypeFor(classPrototype) {
 }
 
 /**
- * The default error page, the one Express produces: the stack in a pre, and nothing else. What
- * reaches it has already been redacted when the environment calls for it.
- *
- * The text is escaped, which is not decoration. An error message can carry anything a client sent,
- * and writing it into the page unescaped put that into the markup. The Content-Security-Policy on
- * this response stops a script from running, but a policy is a second line and not the first.
+ * Express's default error page, the stack in a pre. Escaped: a message can carry anything a
+ * client sent, and the CSP is a second line, not the first.
  *
  * @param {any} err whatever was thrown, which need not be an Error
  * @returns {string}

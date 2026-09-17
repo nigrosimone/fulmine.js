@@ -43,8 +43,7 @@ const { workerCount, forkWorkers, isSupervising, becomeSupervisor } = require(".
 
 const cpuCount = os.cpus().length;
 
-// marks a "trust proxy" that was never set by the application, under the key express uses, so a
-// mounted sub-app knows it may inherit the parent's
+// marks a "trust proxy" the application never set, under express's key, so a sub-app may inherit
 const trustProxyDefaultSymbol = "@@symbol:trust_proxy_default";
 
 const workers = /** @type {FSWorker[]} */ ([]);
@@ -53,28 +52,23 @@ const workerTasks = new NullObject();
 
 class FSWorker {
     /**
-     * A worker thread that does nothing but read files, so a read does not sit on the event loop.
-     * It is unref'd, so an idle one does not keep the process alive, and it is shared between every
-     * app in the process rather than started per app.
+     * A worker thread that only reads files, unref'd and shared by every app in the process.
      */
     constructor() {
         this.busy = false;
-        // its own execArgv, not the parent thread's: a worker inherits them, and a --require or
-        // --import written for the parent (Angular's route extraction registers a loader that reads
-        // workerData) throws inside a thread that only reads files
+        // its own execArgv: a --import written for the parent (Angular's route extraction loader
+        // reads workerData) throws in a thread that only reads files
         this.worker = new Worker(path.join(__dirname, "worker.js"), { execArgv: [] });
 
         this.worker.on("message", (message) => {
-            // node speaks on this channel too: under --watch a worker reports the files it loaded
-            // as {"watch:import": [...]}, which carries no key of ours
+            // under --watch node reports {"watch:import": [...]} here too, with no key of ours
             if (workerTasks[message.key] === undefined) return;
             this.busy = false;
             if (message.err) {
                 workerTasks[message.key].reject(new Error(message.err));
             } else {
-                // worker transfers file contents as an ArrayBuffer; wrap it in a Buffer (zero-copy) so
-                // consumers get the same type as fs.readFile. A bare ArrayBuffer is rejected by wrapped
-                // res.end() implementations (e.g. express-session calls Buffer.byteLength on the chunk).
+                // the transferred ArrayBuffer as a Buffer, zero-copy: express-session calls
+                // Buffer.byteLength on what res.end() gets
                 workerTasks[message.key].resolve(
                     message.data instanceof ArrayBuffer ? Buffer.from(message.data) : message.data
                 );
@@ -87,31 +81,27 @@ class FSWorker {
     }
 }
 
-// the worker path's own bound: a file bigger than this streams instead, so the cache never
-// holds an entry the read path would not have produced whole
+// the worker path's bound, a bigger file streams
 const FILE_CACHE_MAX_ENTRY = 768 * 1024;
-// oldest-first once the budget is spent. A static directory that beats this is being served by
-// something other than an application server anyway
+// oldest-first once the budget is spent
 const FILE_CACHE_BUDGET = 64 * 1024 * 1024;
 
 class Application extends Router {
     /**
-     * An application reads an unset routing flag from the app it is mounted on, which a plain
-     * Router does not: express chains a mounted app's settings onto its parent's.
+     * A mounted app's settings chain onto its parent's, as in express.
      *
      * @type {boolean}
      */
     _inheritsSettings = true;
 
     /**
-     * An application, which a plain Router is not. See Router#_isApplication.
+     * See Router#_isApplication.
      * @type {boolean}
      */
     _isApplication = true;
 
     /**
-     * Whether express.testing already compiled the routes of this app. Written there and nowhere
-     * else: a second compilation would register everything with uWS twice. See src/testing.js.
+     * Whether express.testing already compiled the routes, a second time would register them twice.
      * @type {boolean|undefined}
      */
     _testingCompiled;
@@ -126,11 +116,9 @@ class Application extends Router {
     _uwsOptions;
 
     /**
-     * @param {object} [settings] the options express() takes. uwsOptions goes to uWS and decides
-     *   between an HTTP, an HTTPS and an HTTP/3 server; threads sizes the file-reading pool, and 0
-     *   turns it off; cluster forks one process per core over the same port; uwsApp adopts an
-     *   existing uWS app instead of making one. Everything else is an application setting and
-     *   lands next to the defaults.
+     * @param {object} [settings] the options express() takes: uwsOptions (HTTP or HTTPS), threads
+     *   (the file-reading pool, 0 off), cluster, uwsApp (an existing uWS app); the rest are
+     *   application settings
      */
     constructor(settings = new NullObject()) {
         super(settings);
@@ -140,42 +128,34 @@ class Application extends Router {
         if (typeof settings.threads !== "number") {
             settings.threads = cpuCount > 1 ? 1 : 0;
         }
-        // how many processes listen() should fork, counted here so a setting nobody can read is a
-        // throw where the application is written and not where it is started. Saying it here also
-        // settles it for the whole process before any app has listened, see becomeSupervisor
+        // counted here so a bad setting throws where the app is written, and the process becomes
+        // the supervisor before any app listens
         this._clusterWorkers = workerCount(settings.cluster);
         if (this._clusterWorkers > 0 && cluster.isPrimary) {
             becomeSupervisor();
         }
         if (settings.http3) {
-            // uWS.H3App exists in the pinned build but its QUIC stack does not: the constructor
-            // segfaults on Linux and hangs forever on Windows before serving a single request,
-            // verified 2026-08-05 with uWS alone. A clear throw beats a native crash; this
-            // branch goes back to H3App once uNetworking ships working QUIC in the prebuilts.
+            // uWS.H3App segfaults on Linux and hangs on Windows in the pinned build, verified
+            // 2026-08-05 with uWS alone
             throw new Error(
                 "http3 is not usable with the pinned uWebSockets.js build: its H3App crashes " +
                     "during construction. Track uNetworking/uWebSockets.js for working QUIC support."
             );
         }
         this.ssl = settings.uwsOptions.key_file_name && settings.uwsOptions.cert_file_name;
-        // the uWS app is made on first use, see the uwsApp getter: what listen(), ws() and the
-        // optimizer need, and what an app served through node's http never asks for
+        // the uWS app is made on first use, see the uwsApp getter
         this._uwsApp = settings.uwsApp;
         this._uwsOptions = settings.uwsOptions;
         this.cache = new NullObject();
         this.engines = { __proto__: null };
-        // a null prototype, as express gives app.locals, so a local named like an Object method
-        // is just a local
+        // a null prototype, as express gives app.locals
         this.locals = Object.create(null);
         this.locals.settings = this.settings;
-        // each app gets its own request/response prototype layer, so extending app.request cannot
-        // leak into another app; a mounted sub-app re-parents its layer onto the parent's below.
-        // The constructors are written out: the implicit derived one spreads its arguments, which
-        // was an allocation on every request
+        // a request/response prototype layer per app, so extending app.request cannot leak into
+        // another app. The constructors are written out: the implicit one spreads its arguments,
+        // an allocation per request
         this._request = class extends Request {
             /**
-             * The base constructor's arguments, written out rather than spread. See Request.
-             *
              * @param {import("uWebSockets.js").HttpRequest} req uWS request
              * @param {import("uWebSockets.js").HttpResponse} res uWS response
              * @param {Application} app the application this request arrived at
@@ -188,8 +168,6 @@ class Application extends Router {
         };
         this._response = class extends Response {
             /**
-             * The base constructor's arguments, written out rather than spread. See Response.
-             *
              * @param {import("uWebSockets.js").HttpResponse} res uWS response
              * @param {Request} req the Request, already built
              * @param {Application} app the application this request arrived at
@@ -201,22 +179,17 @@ class Application extends Router {
         this.request = this._request.prototype;
         this.response = this._response.prototype;
         this.on("mount", (parent) => {
-            // the parent's extensions show through, and an override here stays here. Only an
-            // application has a layer to hang onto: a plain router mount leaves things alone
+            // the parent's extensions and engines show through, as express chains them
             if (parent.request) {
                 Object.setPrototypeOf(this.request, parent.request);
             }
             if (parent.response) {
                 Object.setPrototypeOf(this.response, parent.response);
             }
-            // and the engines with them, which is the same chaining express does: a sub-app renders
-            // with whatever the parent registered unless it registered its own. Without this a
-            // render inside a mounted app looked for a module named after the extension.
             if (parent.engines) {
                 Object.setPrototypeOf(this.engines, parent.engines);
             }
-            // a "trust proxy" this app never set is inherited from the parent, as express does:
-            // the defaults are deleted so get() falls through to the parent's value
+            // a "trust proxy" never set here is inherited: the defaults are deleted so get() falls through
             if (
                 this._settings[trustProxyDefaultSymbol] === true &&
                 typeof parent._settings["trust proxy fn"] === "function"
@@ -236,28 +209,23 @@ class Application extends Router {
         }
         this.port = undefined;
         this.listening = false;
-        // the host handed to listen(), which is all address() has to go on
+        // what address() has to go on
         this._listenHost = undefined;
-        // the uWS listen socket, and the responses being served right now: close() stops the
-        // first and waits for the second, the way node's server.close() does
+        // close() stops the listen socket, then waits for the pending responses, as node does
         this._listenSocket = undefined;
-        // the fork supervisor, in the primary of a clustered app and nowhere else
+        // the fork supervisor, in the primary of a clustered app only
         /** @type {{stop: () => void}|undefined} */
         this._clusterHandle = undefined;
-        // readSmallFile's cache and its in-flight reads, see the method
+        // readSmallFile's cache and in-flight reads
         this._fileCache = new Map();
         this._fileCacheBytes = 0;
         this._fileReadsInFlight = new Map();
-        // the responses being served right now, an intrusive list: linking is three pointer
-        // stores where a Set paid identity hashing and table upkeep per request. A holder object
-        // rather than a bare field, because the callable app copies own scalars by value and two
-        // copies of a head would disagree; an object rides by reference, the way the Set did
+        // the responses being served, an intrusive list (a Set paid hashing per request). A
+        // holder object: the callable app copies own scalars by value
         this._pending = /** @type {{ head: Response|null }} */ ({ head: null });
-        // on the per-app prototype layer, not per response, same as the Set was
         /** @type {{_pendingIn?: {head: Response|null}}} */ (this.response)._pendingIn = this._pending;
         this._draining = false;
-        // read here, at construction, the way express does; an empty NODE_ENV means development,
-        // which the ?? in the shared default would miss
+        // at construction as express reads it; an empty NODE_ENV is development
         if (typeof this._settings.env === "undefined") {
             this._settings.env = process.env.NODE_ENV || "development";
         }
@@ -270,7 +238,6 @@ class Application extends Router {
                 }
             }
         }
-        // non-enumerable, so the marker never shows up walking the settings
         Object.defineProperty(this._settings, trustProxyDefaultSymbol, {
             configurable: true,
             value: true
@@ -280,9 +247,8 @@ class Application extends Router {
     }
 
     /**
-     * Parks a promise's settle functions under a key the worker can send back, since a worker
-     * message carries data and not closures. The counter wraps rather than growing without bound,
-     * a million tasks being far more than can be outstanding at once.
+     * Parks a promise's settle functions under a key the worker sends back. The counter wraps at a
+     * million.
      *
      * @param {(value: Buffer) => void} resolve
      * @param {(err: Error) => void} reject
@@ -298,9 +264,8 @@ class Application extends Router {
     }
 
     /**
-     * Reads a file on one of the file threads, picked at random, rather than on the event loop.
-     * Only worth it below the size where the copy back costs more than the read, which is why
-     * res.sendFile uses it for small files and streams the rest.
+     * Reads a file on a file thread picked at random. Only worth it for a small file, res.sendFile
+     * streams the rest.
      *
      * @param {string} path absolute path to read
      * @returns {Promise<Buffer>}
@@ -315,11 +280,9 @@ class Application extends Router {
     }
 
     /**
-     * A small file through the worker pool, with two things on top: concurrent asks for the same
-     * path share one read, and the bytes of an unchanged file come from a bounded cache, validated
-     * against the stat the caller already paid for, so a touched file is re-read. A hit completes
-     * on a macrotask, which is when a worker's answer would have arrived.
-     * `app.set("file cache", false)` turns the cache off, the shared read stays.
+     * A small file through the worker pool: concurrent asks share one read, and an unchanged file
+     * (by the stat the caller paid for) comes from a bounded cache, on a macrotask as a worker's
+     * answer would. `app.set("file cache", false)` keeps only the shared read.
      *
      * @param {string} fullpath
      * @param {import("fs").Stats} stat
@@ -357,17 +320,14 @@ class Application extends Router {
             return data;
         });
         this._fileReadsInFlight.set(fullpath, pending);
-        // never cached past settlement: a rejection clears the slot the same way
         const clear = () => this._fileReadsInFlight.delete(fullpath);
         pending.then(clear, clear);
         return pending;
     }
 
     /**
-     * Reads or writes an application setting. One argument is the getter, and the check is on
-     * `arguments.length`, so `set(key, undefined)` still writes. Some keys have a side effect:
-     * `trust proxy`, `query parser` and `etag` compile the value into a function kept beside it,
-     * and `views` becomes an absolute path.
+     * Reads or writes a setting; `set(key, undefined)` still writes. `trust proxy`, `query parser`
+     * and `etag` compile the value into a function kept beside it.
      *
      * @param {string} key setting name
      * @param {*} [value] value to store; omit to read instead
@@ -379,19 +339,16 @@ class Application extends Router {
         }
         if (key === "trust proxy") {
             if (!value) {
-                // compiled, not deleted: an explicit false must shadow a parent's setting when
-                // this app is mounted, and a deleted key would read straight through to it
+                // compiled, not deleted: an explicit false must shadow a parent's setting
                 this._settings["trust proxy fn"] = compileTrust(false);
             } else {
                 this._settings["trust proxy fn"] = compileTrust(value);
             }
-            // set explicitly, so a mount no longer inherits the parent's
             Object.defineProperty(this._settings, trustProxyDefaultSymbol, {
                 configurable: true,
                 value: false
             });
         } else if (key === "stat cache") {
-            // compiled here so the read path is a number and not a duration to parse per request
             this._settings["stat cache ms"] = durationSetting(value, "stat cache");
         } else if (key === "query parser") {
             if (value === "extended") {
@@ -403,24 +360,18 @@ class Application extends Router {
             } else if (value === false) {
                 this._settings["query parser fn"] = undefined;
             } else {
-                // express's wording, which applications match on
                 throw new TypeError("unknown value for query parser function: " + value);
             }
         } else if (key === "etag methods") {
-            // fulmine's own: the methods whose send() computes a generated ETag. Unset means all
-            // of them, which is express's behaviour and what its suite asserts per method; naming
-            // ["GET", "HEAD"] skips the digest everywhere a validator can never match, which
-            // measured +21% on a 4KB POST answer. See issue #10.
+            // fulmine's own: the methods whose send() computes an ETag, all of them unset as
+            // express does; ["GET", "HEAD"] measured +21% on a 4KB POST answer, see issue #10
             if (value != null && (!Array.isArray(value) || value.some((m) => typeof m !== "string"))) {
                 throw new TypeError('"etag methods" wants an array of method names, or null for all of them');
             }
             value = value == null ? undefined : value.map((/** @type {string} */ m) => m.toUpperCase());
         } else if (key === "etag") {
-            // The skips are not taken back here. They used to be, because send consults freshness,
-            // but that branch reads if-none-match, if-modified-since and cache-control by name
-            // whatever this setting says, and req.fresh reads nothing else off the request.
-            // Registering a route after listen still takes them back: that is a different
-            // question, about code the analysis never saw
+            // the header skips stay: the skip branch reads the conditional pair by name whatever
+            // this says
             if (typeof value === "function") {
                 this._settings["etag fn"] = value;
             } else {
@@ -436,14 +387,13 @@ class Application extends Router {
                         delete this._settings["etag fn"];
                         break;
                     default:
-                        // express's wording, which applications match on
                         throw new TypeError("unknown value for etag function: " + value);
                 }
             }
         }
 
         this._settings[key] = value;
-        // any app's hot-settings copy may resolve through this one, see Router#_hot
+        // see Router#_hot
         settingsEpoch.n++;
         return this;
     }
@@ -469,8 +419,7 @@ class Application extends Router {
     }
 
     /**
-     * Whether a setting is truthy. Reads through to the app this one is mounted on, as get() does
-     * and as express does: mounting chains a sub-app's settings onto its parent's.
+     * Whether a setting is truthy, through the parent as get() reads it.
      * @param {string} key setting name
      * @returns {boolean}
      */
@@ -488,25 +437,19 @@ class Application extends Router {
     }
 
     /**
-     * Router's handleRequest plus the bookkeeping a graceful close() needs: every live response
-     * is held in a set until it finishes, so close() knows when the last one is done. Native
-     * routes and the catch-all both come through here, since both call it on the app.
+     * Router's handleRequest plus the pending list a graceful close() drains.
      *
      * @param {import("uWebSockets.js").HttpResponse} res uWS response
      * @param {import("uWebSockets.js").HttpRequest} req uWS request, readable only during this call
-     * @param {import("./router-utils.js").NativePreset} [preset] a literal registration's constants,
-     *   see nativePreset in the router
-     * @param {import("./router-utils.js").SkipHolder} [skipHolder] where a granted header skip lives,
-     *   forwarded whole: dropping it here silently turned every skip off, since the native closures
-     *   call this override
-     * @returns {Request} the request, with the response reachable as request.res
+     * @param {import("./router-utils.js").NativePreset} [preset] see nativePreset
+     * @param {import("./router-utils.js").SkipHolder} [skipHolder] forwarded whole, dropping it
+     *   silently turned every skip off
+     * @returns {Request} the request, with the response as request.res
      */
     handleRequest(res, req, preset, skipHolder) {
         const request = super.handleRequest(res, req, preset, skipHolder);
-        // removal rides the close listener the Response constructor already has, since a second
-        // once() per request measured a tenth of a microsecond on the hot path.
-        // An aborted response only flips its flags without emitting 'close', which is why
-        // close()'s drain also sweeps the list by those flags instead of trusting this alone
+        // unlinked by the close listener the Response already has; an aborted response only
+        // flips its flags, so close()'s drain sweeps by them too
         const response = request.res;
         const pending = this._pending;
         response._pendingLinked = true;
@@ -520,10 +463,8 @@ class Application extends Router {
     }
 
     /**
-     * The µWS app underneath, for anything µWS offers that this does not: socket.io attaches to
-     * it. Made the first time it is asked for, so an application that only ever answers through
-     * node's http, a test through supertest or Angular's build extracting routes in a worker
-     * thread, never loads the binary. See src/uws.js for why that matters.
+     * The µWS app, for what µWS offers that this does not (socket.io attaches to it). Made on
+     * first ask, so an app served through node's http never loads the binary, see src/uws.js.
      *
      * @returns {any}
      */
@@ -535,19 +476,14 @@ class Application extends Router {
         return this._uwsApp;
     }
 
-    /**
-     * Registers the catch-all uWS handler, which is what serves every request that no optimized
-     * route took natively. It walks this app's own chain and, when nothing in it answered, decides
-     * between an error, the automatic OPTIONS reply and a 404.
-     */
+    /** The catch-all uWS handler, for every request no native route took. */
     _createRequestHandler() {
         this.uwsApp.any("/*", (res, req) => this._serveGeneric(res, req));
     }
 
     /**
-     * Serves one request by walking this app's chain, with no registration-time shortcut. It is
-     * what the catch-all runs, and also what a native registration falls back to when it sees a
-     * request it must not answer itself, see the case guard in Router#_registerUwsRoute.
+     * Serves one request by walking the chain: the catch-all, and what a native registration
+     * falls back to on a request it must not answer itself, see the case guard in _registerUwsRoute.
      *
      * @param {import("uWebSockets.js").HttpResponse} res the uWS response
      * @param {import("uWebSockets.js").HttpRequest} req the uWS request
@@ -561,11 +497,9 @@ class Application extends Router {
         try {
             this._routeRequestDirect(request, response);
         } finally {
-            // the synchronous stretch has run under the cork uWS holds for this callback, and
-            // whatever comes after it is outside
+            // the synchronous stretch ran under uWS's own cork
             response._corkNeeded = true;
-            // an abort can only arrive after this callback returns, as the native handler's
-            // finally says: a response that finished inside it never needs uWS told at all
+            // an abort can only arrive after this callback returns
             if (!response.finished) {
                 this._armAbort(res, response);
             }
@@ -573,12 +507,8 @@ class Application extends Router {
     }
 
     /**
-     * Binds the server and starts accepting requests.
-     *
-     * Returns the app and not an `http.Server`, since there is no node server underneath. The app
-     * carries `address()`, `close()`, `listening` and the 'listening' and 'close' events; anything
-     * needing a real server, socket.io being the usual case, wants `app.uwsApp`. A path instead of
-     * a port is a unix socket.
+     * Binds and starts accepting. Returns the app, which answers as an `http.Server`; socket.io
+     * wants `app.uwsApp`. A path instead of a port is a unix socket.
      *
      * @param {number|string} [port] port, or a unix socket path; 0 picks a free port
      * @param {string} [host] interface to bind; every interface when omitted
@@ -597,11 +527,9 @@ class Application extends Router {
             return this;
         }
         this._compileOptimizedRoutes();
-        // before the catch-all: µWS sends an upgrade to the websocket route even when a
-        // catch-all covers the same path, so the two coexist and the order is only tidiness
         registerWebSocketRoutes(this);
         this._createRequestHandler();
-        // node's shapes: (cb), (port, cb), (port, host, cb) and (port, host, backlog, cb)
+        // node's shapes: (cb), (port, cb), (port, host, cb), (port, host, backlog, cb)
         if (typeof port === "function") {
             callback = port;
             port = 0;
@@ -611,45 +539,36 @@ class Application extends Router {
         } else if (typeof backlog === "function") {
             callback = backlog;
         }
-        // bare listen() and listen(undefined, cb) bind an OS-assigned port, as node does; left
-        // undefined the port fell through to the unix-socket branch below
+        // a bare listen() binds an OS-assigned port, as node does
         if (port == null) {
             port = 0;
         }
-        // uWS runs this handler from inside its own listen(), so everything it hands back to the
-        // caller is deferred a tick. Express binds synchronously too but reports through events,
-        // and node emits both 'listening' and 'error' from a process.nextTick.
+        // uWS runs this inside its own listen(), so everything reported to the caller is deferred
+        // a tick, as node emits 'listening' and 'error'
         const onListen = (/** @type {import("uWebSockets.js").us_listen_socket|false} */ socket) => {
             if (!socket) {
                 /** @type {NodeJS.ErrnoException} */
                 const err = new Error("listen EADDRINUSE: address already in use :::" + port);
                 err.code = "EADDRINUSE";
-                // Express 5 registers the listen callback on 'error' as well as on 'listening',
-                // so a failed bind arrives at the callback rather than being thrown past it
+                // Express 5 hands a failed bind to the listen callback
                 if (callback) {
                     return process.nextTick(() => callback.call(this, err));
                 }
-                // no callback means no 'error' listener either, and an EventEmitter carrying an
-                // unhandled error rethrows it from the tick that emitted it, not from listen()
+                // without one it is thrown from the tick, as an unhandled 'error' would be
                 return process.nextTick(() => {
                     throw err;
                 });
             }
-            // the port is known synchronously, as it is in Express, so address() works as soon as
-            // listen() returns. The callback is not: running it here would run it before listen()
-            // had returned, and `const server = app.listen(p, () => server.address())` - the form
-            // the Express docs use - would die on the temporal dead zone.
+            // the port synchronously, so address() works as soon as listen() returns; the
+            // callback on a tick, `const server = app.listen(p, () => server.address())` would
+            // hit the temporal dead zone
             this.port = loadUWS().us_socket_local_port(socket);
             this.listening = true;
             this._listenHost = host;
-            // kept so close() can stop accepting without dropping what is in flight
             this._listenSocket = socket;
             process.nextTick(() => {
-                // `this` is the app, which is what listen() returns here. Express binds it to the
-                // http.Server, which is what listen() returns there, so
-                // `function () { this.address() }` reads the same on both.
-                // The callback goes first: in Express it is registered as a 'listening' listener
-                // before the caller can add any of their own.
+                // `this` is what listen() returns, as in Express; the callback first, as the
+                // first 'listening' listener
                 if (callback) callback.call(this);
                 this.emit("listening");
             });
@@ -681,10 +600,7 @@ class Application extends Router {
     }
 
     /**
-     * Publishes a message to every socket subscribed to a topic, from outside any of them.
-     *
-     * The socket's own `publish` reaches the same topics; this one is for the sender that is
-     * not a socket, a timer or a route handler broadcasting to a room.
+     * Publishes a message to every socket subscribed to a topic, from outside any socket.
      *
      * @param {string} topic
      * @param {string|ArrayBuffer|Buffer} message
@@ -707,9 +623,7 @@ class Application extends Router {
     }
 
     /**
-     * The router the application routes through, which express 5 hands out so that a caller can
-     * walk `app.router.stack`. Here the application is the router, so it hands back itself and the
-     * walk finds the same layers.
+     * express 5's `app.router`, for a caller walking `app.router.stack`: the application itself.
      *
      * @returns {this}
      */
@@ -725,10 +639,8 @@ class Application extends Router {
         if (!this.listening || !this.port) {
             return null;
         }
-        // uWS hands back the port and nothing else, so the address reported is the one we asked
-        // it to bind. No host means every interface, which node reports as "::". A hostname is
-        // reported as written, since what it resolved to is not readable back from here: node
-        // would say "::1" where this says "localhost".
+        // uWS hands back only the port: no host is "::" as node reports it, a hostname is
+        // reported as written where node would say "::1"
         const host = this._listenHost;
         if (!host) {
             return { address: "::", family: "IPv6", port: this.port };
@@ -737,8 +649,7 @@ class Application extends Router {
     }
 
     /**
-     * The full mount path of this app, walking up through every parent it is mounted on.
-     * A top level app returns the empty string rather than "/".
+     * The full mount path through every parent, "" at the top level.
      * @returns {string}
      */
     path() {
@@ -753,9 +664,7 @@ class Application extends Router {
     }
 
     /**
-     * Registers a template engine for a file extension.
-     *
-     * The leading dot is optional: "pug" and ".pug" register the same thing.
+     * Registers a template engine for an extension, with or without the dot.
      *
      * @param {string} ext file extension the engine handles
      * @param {(path: string, options: object, callback: (err: Error|null, rendered?: string) => void) => void} fn
@@ -778,21 +687,17 @@ class Application extends Router {
      * follows the "view cache" setting unless `options.cache` says otherwise.
      *
      * @param {string} name view name, resolved against the "views" setting
-     * @param {Record<string, any>|((err: Error|null, html?: string) => void)} [options] locals for
-     *   the view, or the callback in its place
-     * @param {(err: Error|null, html?: string) => void} [callback] receives the rendered view. It
-     *   is what render is for, so leaving it out throws, as it does in Express
+     * @param {Record<string, any>|((err: Error|null, html?: string) => void)} [options] locals, or
+     *   the callback in its place
+     * @param {(err: Error|null, html?: string) => void} [callback] required, as in Express
      */
     render(name, options, callback) {
         if (typeof options === "function") {
             callback = /** @type {(err: Error|null, html?: string) => void} */ (options);
             options = new NullObject();
         }
-        // render exists to hand the result somewhere, so there is always a callback by this point:
-        // either the third argument or the second one, shuffled above
         const done = /** @type {(err: Error|null, html?: string) => void} */ (callback);
-        // express's order, least specific first: app.locals, then res.locals riding in as _locals,
-        // and what was passed to this call wins over both
+        // express's order: app.locals, then res.locals as _locals, then what was passed
         const opts = options || new NullObject();
         options = new NullObject();
         for (const key in this.locals) {
@@ -821,11 +726,8 @@ class Application extends Router {
             view = new View(name, {
                 defaultEngine: this.get("view engine"),
                 root: this.get("views"),
-                // the object itself, not a copy of it: a mounted app reaches its parent's engines
-                // through the prototype chain, and a spread only carries what the app owns, so a
-                // sub-app rendering with the parent's engine went off to require() a module named
-                // after the extension. Express hands its own object over too, and means to: a view
-                // that loads an engine by require caches it back here
+                // the object itself, as express hands it: a sub-app reaches its parent's engines
+                // through the prototype chain, and a view caches a required engine back here
                 engines: this.engines
             });
             if (!view.path) {
@@ -866,9 +768,8 @@ class Application extends Router {
      * @returns {this} the app, for chaining
      */
     close(callback) {
-        // the primary of a clustered app never bound anything, so closing it means stopping the
-        // workers. They are killed rather than drained: each one holds its own listening socket
-        // and drains itself when the signal reaches it
+        // the primary of a clustered app never bound anything: it stops the workers, each of
+        // which drains itself
         if (this._clusterHandle) {
             this._clusterHandle.stop();
             this._clusterHandle = undefined;
@@ -880,8 +781,7 @@ class Application extends Router {
         }
         const wasListening = this.listening;
         this.listening = false;
-        // in Express the close callback is nothing more than the first 'close' listener, and a
-        // server that was not running still gets called back, with an error
+        // the callback is the first 'close' listener, as in Express
         if (callback) {
             this.once("close", () => {
                 if (wasListening) {
@@ -894,8 +794,7 @@ class Application extends Router {
             });
         }
         if (!this.listenCalled || !wasListening) {
-            // a close while a drain is underway does not emit again: the pending drain's single
-            // 'close' serves both calls, which is what node does too
+            // a close during a drain does not emit again, as in node
             if (!this._draining) {
                 process.nextTick(() => this.emit("close"));
             }
@@ -915,12 +814,11 @@ class Application extends Router {
             process.nextTick(finish);
             return this;
         }
-        // a finished response emits 'close' and unlinks itself; an aborted one only flips its
-        // flags, so the drain sweeps by them. The timer also keeps the loop alive until done.
+        // an aborted response only flips its flags, so the drain sweeps by them; the timer keeps
+        // the loop alive
         const sweep = setInterval(() => {
             let response = this._pending.head;
             while (response !== null) {
-                // taken before the unlink, which nulls the pointers
                 const next = response._pendingNext;
                 if (response.finished || response.aborted) {
                     response._unlinkPending();
@@ -943,10 +841,8 @@ module.exports = function (options) {
     return new Application(options)._asCallable();
 };
 
-// the class itself, so index.js can expose its prototype as express.application does. Adding a
-// method to that prototype adds it to every app, which is what the property is for.
+// the class, so index.js exposes its prototype as express.application
 module.exports.Application = Application;
 
-// and what makes an application answer as an http.Server, since that is what a library handed the
-// result of listen() looks for. See server-shape.js for what is answered and what is not.
+// what makes an application answer as an http.Server, see server-shape.js
 addServerMembers(Application.prototype);
