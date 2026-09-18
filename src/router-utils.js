@@ -261,7 +261,22 @@ function mountPrefixLength(route, req) {
     }
     const path = req._opPath;
     const matched = route.pattern.exec(path === "" ? "/" : path);
-    return matched ? Math.min(matched[0].length, path.length) : 0;
+    if (!matched) {
+        return 0;
+    }
+    const taken = Math.min(matched[0].length, path.length);
+    // path-to-regexp lets a mount take the slash that ends the path, `(?:\/$)?`, which only shows
+    // when the piece already ends with one: /{:o} on "//" takes both and reads back as baseUrl
+    // "/". An application's own RegExp matches as written
+    if (
+        taken + 1 === path.length &&
+        path.charCodeAt(taken) === 0x2f &&
+        path.charCodeAt(taken - 1) === 0x2f &&
+        getPatternMeta(route.pattern) !== undefined
+    ) {
+        return taken + 1;
+    }
+    return taken;
 }
 
 /**
