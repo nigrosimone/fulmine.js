@@ -25,11 +25,11 @@ const express = require("fulmine.js"); // instead of require("express")
 ## Why Fulmine
 
 - **Faster than Express, measured.** 1.3x to 4.9x on plain routing, 2x to 5x on a request with a body,
-  7x to 20x on a large route table, on every CI run. Routes are matched in C++ by µWS's own router,
+  7x to 20x on a large route table. Routes are matched in C++ by µWS's own router,
   and a simple enough handler is answered without running any JavaScript at all.
 - **Zero rewrite.** `helmet`, `cors`, `passport`, `morgan`, `multer`, `express-session` and the rest of
   the Express ecosystem keep working. Not "mostly": every test runs against real Express first and the
-  output must match byte for byte, and Express 5's own test suite passes whole, 1130 of 1130.
+  output must match byte for byte, and Express 5's own test suite passes whole.
 - **Your framework works too.** NestJS, Next.js, Astro, SvelteKit, React Router, Angular SSR, Apollo
   Server, tRPC, tsoa, MCP servers: each one is served twice in CI, on Express and on Fulmine, and compared.
 - **Ranked in public.** See [HttpArena](https://www.http-arena.com/#sort=rps:-1&q=Js) and
