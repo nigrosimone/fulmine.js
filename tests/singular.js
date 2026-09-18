@@ -1,6 +1,5 @@
 const childProcess = require("child_process");
 const fs = require("fs");
-const exitHook = require("exit-hook");
 
 let args = process.argv.slice(2);
 
@@ -42,7 +41,9 @@ node.stderr.on("data", (data) => {
     console.error(data.toString());
 });
 
-exitHook(() => {
+// exit-hook is ESM only since v5, so the restore hangs on the exit event itself
+process.on("SIGINT", () => process.exit(130));
+process.on("exit", () => {
     const code = fs.readFileSync(path, "utf8");
     fs.writeFileSync(
         path,
