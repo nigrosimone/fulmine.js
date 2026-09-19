@@ -51,11 +51,16 @@ let taskKey = 0;
 const workerTasks = new NullObject();
 
 class FSWorker {
+    /** Whether a read is in flight on it. @type {boolean} */
+    busy = false;
+
+    /** @type {Worker} */
+    worker;
+
     /**
      * A worker thread that only reads files, unref'd and shared by every app in the process.
      */
     constructor() {
-        this.busy = false;
         // its own execArgv: a --import written for the parent (Angular's route extraction loader
         // reads workerData) throws in a thread that only reads files
         this.worker = new Worker(path.join(__dirname, "worker.js"), { execArgv: [] });
@@ -115,8 +120,69 @@ class Application extends Router {
     /** What uWS.App or uWS.SSLApp is given, kept until the app is made. */
     _uwsOptions;
 
+    /** The forks the cluster setting asks for, 0 when none. @type {number} */
+    _clusterWorkers;
+
+    /** Whether uwsOptions carries a key and a certificate, which picks uWS.SSLApp. @type {string|undefined} */
+    ssl;
+
+    /** express's app.cache, the view cache. @type {Record<string, any>} */
+    cache = new NullObject();
+
+    /** The view engines by extension, chained onto the parent's on mount. @type {Record<string, any>} */
+    engines = { __proto__: null };
+
+    /** A null prototype, as express gives app.locals. @type {Record<string, any>} */
+    locals = Object.create(null);
+
+    /** The request prototype layer of this app, what app.request extends. @type {Request} */
+    request;
+
+    /** @type {Response} */
+    response;
+
+    /** @type {boolean} */
+    listenCalled = false;
+
+    /** @type {FSWorker[]} */
+    workers = [];
+
+    /** @type {number|undefined} */
+    port;
+
+    /** @type {boolean} */
+    listening = false;
+
+    /** What address() has to go on. @type {string|undefined} */
+    _listenHost;
+
+    /** close() stops the listen socket, then waits for the pending responses, as node does. @type {import("uWebSockets.js").us_listen_socket|undefined} */
+    _listenSocket;
+
+    /** The fork supervisor, in the primary of a clustered app only. @type {{stop: () => void}|undefined} */
+    _clusterHandle;
+
+    /** readSmallFile's cache, by absolute path. @type {Map<string, {mtimeMs: number, size: number, data: Buffer}>} */
+    _fileCache = new Map();
+
+    /** @type {number} */
+    _fileCacheBytes = 0;
+
+    /** readSmallFile's reads in flight, so concurrent asks share one. @type {Map<string, Promise<Buffer>>} */
+    _fileReadsInFlight = new Map();
+
     /**
-     * @param {object} [settings] the options express() takes: uwsOptions (HTTP or HTTPS), threads
+     * The responses being served, an intrusive list (a Set paid hashing per request). A holder
+     * object: the callable app copies own scalars by value.
+     * @type {{head: Response|null}}
+     */
+    _pending = { head: null };
+
+    /** Whether close() is waiting for the pending responses. @type {boolean} */
+    _draining = false;
+
+    /**
+     * @param {Record<string, any>} [settings] the options express() takes: uwsOptions (HTTP or HTTPS), threads
      *   (the file-reading pool, 0 off), cluster, uwsApp (an existing uWS app); the rest are
      *   application settings
      */
@@ -146,10 +212,6 @@ class Application extends Router {
         // the uWS app is made on first use, see the uwsApp getter
         this._uwsApp = settings.uwsApp;
         this._uwsOptions = settings.uwsOptions;
-        this.cache = new NullObject();
-        this.engines = { __proto__: null };
-        // a null prototype, as express gives app.locals
-        this.locals = Object.create(null);
         this.locals.settings = this.settings;
         // a request/response prototype layer per app, so extending app.request cannot leak into
         // another app. The constructors are written out: the implicit one spreads its arguments,
@@ -198,8 +260,6 @@ class Application extends Router {
                 delete this._settings["trust proxy fn"];
             }
         });
-        this.listenCalled = false;
-        this.workers = [];
         for (let i = 0; i < settings.threads; i++) {
             if (workers[i]) {
                 this.workers[i] = workers[i];
@@ -207,24 +267,7 @@ class Application extends Router {
                 this.workers[i] = new FSWorker();
             }
         }
-        this.port = undefined;
-        this.listening = false;
-        // what address() has to go on
-        this._listenHost = undefined;
-        // close() stops the listen socket, then waits for the pending responses, as node does
-        this._listenSocket = undefined;
-        // the fork supervisor, in the primary of a clustered app only
-        /** @type {{stop: () => void}|undefined} */
-        this._clusterHandle = undefined;
-        // readSmallFile's cache and in-flight reads
-        this._fileCache = new Map();
-        this._fileCacheBytes = 0;
-        this._fileReadsInFlight = new Map();
-        // the responses being served, an intrusive list (a Set paid hashing per request). A
-        // holder object: the callable app copies own scalars by value
-        this._pending = /** @type {{ head: Response|null }} */ ({ head: null });
         /** @type {{_pendingIn?: {head: Response|null}}} */ (this.response)._pendingIn = this._pending;
-        this._draining = false;
         // at construction as express reads it; an empty NODE_ENV is development
         if (typeof this._settings.env === "undefined") {
             this._settings.env = process.env.NODE_ENV || "development";

@@ -25,6 +25,29 @@ const { EventEmitter } = require("events");
 const { kShapeMode } = require("./response-utils.js");
 
 class Socket extends EventEmitter {
+    /** @type {Response} */
+    response;
+
+    /** node's flag: a removed listener is tombstoned, which keeps _events in one shape. */
+    [kShapeMode] = true;
+
+    /**
+     * Middleware assigns to it, which is why it is a field rather than a getter: express reads
+     * socket.encrypted for req.protocol and a proxy shim writes it.
+     * @type {any}
+     */
+    encrypted;
+
+    /** @type {number|undefined} */
+    localPort;
+
+    /**
+     * on-finished reads socket.readable before anything else, and a socket without one reads as a
+     * request that is already over.
+     * @type {boolean}
+     */
+    readable = true;
+
     /**
      * The Socket's error listener, shared across sockets: an error closes the stand-in, which is
      * the close connection trackers wait for. EventEmitter calls it with this = the emitter.
@@ -45,14 +68,8 @@ class Socket extends EventEmitter {
     constructor(response) {
         super();
         this.response = response;
-        this[kShapeMode] = true;
-        // middleware assigns to this one, which is why it is a field rather than a getter: express
-        // reads socket.encrypted for req.protocol and a proxy shim writes it
         this.encrypted = response.req.app.ssl;
         this.localPort = response.req.app.port;
-        // on-finished reads socket.readable before anything else, and a socket without one reads
-        // as a request that is already over
-        this.readable = true;
 
         // shared, not an arrow: one per process instead of one per materialized socket
         this.on("error", Socket._onError);

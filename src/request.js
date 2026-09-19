@@ -80,6 +80,9 @@ module.exports = class Request extends LazyReadable {
      */
     res;
 
+    /** @type {string[]|null} */
+    #cachedSubdomains = null;
+
     /**
      * Copies one header out of uWS and notices what the constructor decides by. One function for
      * every request through currentRequest, an arrow per request cost a closure.
@@ -243,6 +246,110 @@ module.exports = class Request extends LazyReadable {
     _querySnapRaw;
 
     /**
+     * The uWS response, an inert stand-in once the request outlives it, see _detachFromResponse.
+     * @type {import("uWebSockets.js").HttpResponse}
+     */
+    _res;
+
+    /**
+     * The uWS request, readable only during the constructor call.
+     * @type {import("uWebSockets.js").HttpRequest}
+     */
+    _req;
+
+    /** @type {import("./application.js").Application} */
+    app;
+
+    /**
+     * How many routes this request entered, a microtask every 300 keeps a long chain off the stack.
+     * @type {number}
+     */
+    routeCount = 1;
+
+    /** The query string without its "?", "" for none. @type {string} */
+    _rawQuery;
+
+    /** The query string with its "?", "" for none, what req.url carries. @type {string} */
+    urlQuery;
+
+    /** The path `path` reads, relative to the current mount. @type {string} */
+    _path;
+
+    /** @type {string} */
+    originalUrl;
+
+    /** @type {string} */
+    url;
+
+    /** What the router last wrote to req.url: dispatch compares to notice a rewrite. @type {string} */
+    _lastUrl;
+
+    /** @type {boolean} */
+    endsWithSlash;
+
+    /** The path the routing scan matches, _originalPath minus what the mounts consumed. @type {string} */
+    _opPath;
+
+    /** The path as it arrived, a url rewrite replaces it. @type {string} */
+    _originalPath;
+
+    /** @type {string} */
+    method;
+
+    /** @type {boolean} */
+    _isOptions;
+
+    /** @type {boolean} */
+    _isHead;
+
+    /** What the router last saw as the method, to notice a rewrite as express does. @type {string} */
+    _lastMethod;
+
+    /**
+     * The folded _opPath and the percent scan, built on the first hop that wants them and dropped
+     * by every rewrite, see _pathMatches and Walk#dispatch.
+     * @type {string|null}
+     */
+    _opPathLower = null;
+
+    /** @type {boolean|null} */
+    _mayFailDecode = null;
+
+    /** @type {Record<string, any>} */
+    params = {};
+
+    /** The verbs a path answers, for an OPTIONS; null on every other method. @type {Set<string>|null} */
+    _matchedMethods = null;
+
+    /** What each app.param() callback was called with, per router, made on first use. @type {Map<any, Map<any, any>>|null} */
+    _paramCalled = null;
+
+    /**
+     * What each mount entered took of _originalPath, negative for one that consumed the whole
+     * path; made at its push site, see Walk#runRoute.
+     * @type {number[]|null}
+     */
+    _stack = null;
+
+    /** Whether a mount took a trailing slash, which only a RegExp mount can, see baseUrl. @type {boolean} */
+    _mountSlash = false;
+
+    /** The params of the mounts entered, outermost first, made at its push site. @type {Record<string, any>[]|null} */
+    _paramStack = null;
+
+    /** Route and app alternating, one pair per sub-app entered, see rememberApp. @type {any[]|undefined} */
+    _appStack;
+
+    /** Whether a body chunk arrived, true from the start when none was declared. @type {boolean} */
+    receivedData = false;
+
+    /** node's flag, false until the whole body arrived: on-finished reads it for body-parser. @type {boolean} */
+    complete = false;
+
+    /** What a middleware assigned to req.baseUrl, see the setter. @type {string|undefined} */
+    _baseUrlOverride;
+
+    /**
      * Built for every request: the headers are copied out because uWS only lends them for this
      * call, everything else waits until asked.
      *
@@ -305,7 +412,6 @@ module.exports = class Request extends LazyReadable {
             this._req.forEach(Request.#collectHeader);
             currentRequest = null;
         }
-        this.routeCount = 1;
         this.app = app;
         // both forms are asked for: with the "?" in req.url, raw for req.query. When the chain
         // provably reads neither the native call is skipped
@@ -363,29 +469,10 @@ module.exports = class Request extends LazyReadable {
                 this._isHead = this.method === "HEAD";
             }
         }
-        // what the router last saw as the method, to notice a rewrite as express does
         this._lastMethod = this.method;
-        // the folded _opPath and the percent scan, built on the first hop that wants them and
-        // dropped by every rewrite, see _pathMatches and Walk#dispatch
-        /** @type {string|null} */
-        this._opPathLower = null;
-        /** @type {boolean|null} */
-        this._mayFailDecode = null;
-        this.params = {};
-
-        // built only when needed: the verbs a path answers, for an OPTIONS; what each app.param()
-        // callback was called with, per router; the mount arrays, at their push sites
-        this._matchedMethods = this._isOptions ? new Set() : null;
-        this._paramCalled = null;
-        this._stack = null;
-        // whether a mount took a trailing slash, which only a RegExp mount can, see baseUrl
-        this._mountSlash = false;
-        this._paramStack = null;
-        /** @type {any[]|undefined} route and app alternating, one pair per sub-app entered, see rememberApp */
-        this._appStack = undefined;
-        this.receivedData = false;
-        // node's flag, false until the whole body arrived: on-finished reads it for body-parser
-        this.complete = false;
+        if (this._isOptions) {
+            this._matchedMethods = new Set();
+        }
         // reading the ip is slow in uWS and impossible once the response is over, so it is read up
         // front for the first hundred requests, and always once an app was seen asking too late
         if (app.needsIpAfterResponse) {
@@ -575,7 +662,8 @@ module.exports = class Request extends LazyReadable {
         // "/a/" out of "/a//b" reads back as "/a"
         let out = "";
         let at = 0;
-        for (let taken of this._stack) {
+        // _mountSlash is only ever set beside a push, so the stack is there
+        for (let taken of /** @type {number[]} */ (this._stack)) {
             // negative marks a mount that consumed the whole path, see the push in runRoute
             if (taken < 0) {
                 taken = -taken;
@@ -827,9 +915,6 @@ module.exports = class Request extends LazyReadable {
     get secure() {
         return this.protocol === "https";
     }
-
-    /** @type {string[]|null} */
-    #cachedSubdomains = null;
 
     /**
      * The subdomains, furthest from the root first, minus "subdomain offset" labels. An IP is one label.

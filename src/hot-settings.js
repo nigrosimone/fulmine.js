@@ -23,27 +23,35 @@ const { settingsEpoch } = require("./utils.js");
 // rest array escapes into createRoute, plus a dictionary miss per mount level for the json keys.
 // One shape for every router, stale when the epoch moves.
 class HotSettings {
-    /** Every field declared up front, one hidden class for every router's copy. */
-    constructor() {
-        this.epoch = 0;
-        this.xPoweredBy = false;
-        /** @type {((body: string|Buffer|import("fs").Stats, encoding?: BufferEncoding) => string)|undefined} */
-        this.etagFn = undefined;
-        // null means every method, which is express's behaviour and the default
-        /** @type {Set<string>|null} */
-        this.etagMethods = null;
-        /** @type {((query: string|null) => Record<string, any>)|undefined} */
-        this.queryParserFn = undefined;
-        /** @type {import("./utils.js").TrustFn|undefined} */
-        this.trustProxyFn = undefined;
-        this.trustProxyProtocol = false;
-        /** @type {boolean|undefined} */
-        this.jsonEscape = undefined;
-        /** @type {any} the "json replacer" setting, as stringify takes it */
-        this.jsonReplacer = undefined;
-        /** @type {string|number|undefined} */
-        this.jsonSpaces = undefined;
-    }
+    /** The settings epoch these fields were resolved at, see _hot(). @type {number} */
+    epoch = 0;
+
+    /** @type {boolean} */
+    xPoweredBy = false;
+
+    /** @type {((body: string|Buffer|import("fs").Stats, encoding?: BufferEncoding) => string)|undefined} */
+    etagFn = undefined;
+
+    /** null means every method, which is express's behaviour and the default. @type {Set<string>|null} */
+    etagMethods = null;
+
+    /** @type {((query: string|null) => Record<string, any>)|undefined} */
+    queryParserFn = undefined;
+
+    /** @type {import("./utils.js").TrustFn|undefined} */
+    trustProxyFn = undefined;
+
+    /** @type {boolean} */
+    trustProxyProtocol = false;
+
+    /** @type {boolean|undefined} */
+    jsonEscape = undefined;
+
+    /** The "json replacer" setting, as stringify takes it. @type {any} */
+    jsonReplacer = undefined;
+
+    /** @type {string|number|undefined} */
+    jsonSpaces = undefined;
 }
 
 /**

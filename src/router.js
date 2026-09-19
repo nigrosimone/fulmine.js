@@ -150,38 +150,75 @@ module.exports = class Router extends EventEmitter {
      */
     _hotSettings = new HotSettings();
 
+    /** app.param() callbacks by parameter name. @type {Map<string, Function[]>} */
+    _paramCallbacks = new Map();
+
+    /** The pattern of what the mounts consumed, by the joined stack, see getFullMountpath. @type {Map<string, RegExp>} */
+    _mountpathCache = new Map();
+
+    /** @type {RouteEntry[]} */
+    _routes = [];
+
+    /** Websocket routes, µWS serves them itself and listen() hands them over whole. @type {WsRoute[]|null} */
+    _wsRoutes = null;
+
     /**
-     * @param {object} [settings] router options. caseSensitive and strict are accepted under the
+     * The native presets allowed to skip the header copy, so a route added after listen can take
+     * the permission back.
+     * @type {Set<SkipHolder>|null}
+     */
+    _skipPresets = null;
+
+    /** Whether the table holds error middleware, undefined until the optimizer asks. @type {boolean|undefined} */
+    _hasErrMwCache;
+
+    /** An array when mounted on several paths at once. @type {string|string[]} */
+    mountpath = "/";
+
+    /**
+     * The settings: the plain object for the inside, the Proxy for the outside, where a write to
+     * app.settings["x"] bumps the epoch so _hot() refreshes. A Proxy read costs about 20ns.
+     * @type {Record<string, any>}
+     */
+    _settings;
+
+    /** @type {Record<string, any>} */
+    settings;
+
+    /** An Application replaces both with per-app subclasses, loose for strictFunctionTypes. @type {any} */
+    _request = Request;
+
+    /** @type {any} */
+    _response = Response;
+
+    /**
+     * The generic scan's index over the literal patterns, built on the first scan and dropped by
+     * a registration, see _scanFrom.
+     * @type {ReturnType<typeof buildLiteralIndex>|undefined}
+     */
+    _literalIndex;
+
+    /**
+     * The app.route() chain being registered, so its routes share one error group, one method
+     * map and one stack as express's Route has, see createRoute.
+     * @type {number|undefined}
+     */
+    _pendingGroup;
+
+    /** @type {Record<string, any>|undefined} */
+    _pendingGroupMethods;
+
+    /** @type {(Omit<Layer, "route"> & {method: string|undefined})[]|undefined} */
+    _pendingGroupStack;
+
+    /**
+     * @param {Record<string, any>} [settings] router options. caseSensitive and strict are accepted under the
      *   names Express's Router takes, and stored under the setting names the rest of the code reads
      */
     constructor(settings = {}) {
         super();
-
-        this._paramCallbacks = new Map();
-        this._mountpathCache = new Map();
-        /** @type {RouteEntry[]} */
-        this._routes = [];
-        // websocket routes, µWS serves them itself and listen() hands them over whole
-        /** @type {WsRoute[]|null} */
-        this._wsRoutes = null;
-        // the native presets allowed to skip the header copy, so a route added after listen can
-        // take the permission back
-        /** @type {Set<SkipHolder>|null} */
-        this._skipPresets = null;
-        /** @type {boolean|undefined} */
-        this._hasErrMwCache = undefined;
-        // an array when mounted on several paths at once
-        /** @type {string|string[]} */
-        this.mountpath = "/";
-        // the plain object for the inside, the Proxy for the outside: a write to app.settings["x"]
-        // bumps the epoch so _hot() refreshes. A Proxy read costs about 20ns
         this._settings = settings;
         this.settings = new Proxy(settings, settingsWriteTraps);
-        // an Application replaces both with per-app subclasses, loose for strictFunctionTypes
-        /** @type {any} */
-        this._request = Request;
-        /** @type {any} */
-        this._response = Response;
 
         if (typeof settings.caseSensitive !== "undefined") {
             settings["case sensitive routing"] = settings.caseSensitive;
@@ -1094,10 +1131,11 @@ module.exports = class Router extends EventEmitter {
         }
         const names = Array.isArray(name) ? name : [name];
         for (const key of names) {
-            if (!this._paramCallbacks.has(key)) {
-                this._paramCallbacks.set(key, []);
+            let callbacks = this._paramCallbacks.get(key);
+            if (callbacks === undefined) {
+                this._paramCallbacks.set(key, (callbacks = []));
             }
-            this._paramCallbacks.get(key).push(fn);
+            callbacks.push(fn);
         }
         return this;
     }

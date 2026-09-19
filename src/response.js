@@ -159,6 +159,100 @@ module.exports = class Response extends LazyWritable {
     req;
 
     /**
+     * The EventEmitter half stays eager, the constructor writes its two listeners straight into
+     * this map. Same five keys in node's own order, so the hidden class is every other stream's.
+     * @type {Record<string, Function|undefined>}
+     */
+    _events = {
+        close: undefined,
+        error: undefined,
+        prefinish: undefined,
+        finish: undefined,
+        drain: undefined
+    };
+
+    /** @type {number} */
+    _eventsCount = 0;
+
+    /** Tombstone removed listeners, as node's streams do: a delete flipped _events to dictionary mode. */
+    [kShapeMode] = true;
+
+    /** on-finished stores its state here, declared so the store is not a shape change. @type {any} */
+    __onFinished = null;
+
+    /** @type {InstanceType<typeof import("./request.js")>} */
+    _req;
+
+    /** @type {import("uWebSockets.js").HttpResponse} */
+    _res;
+
+    /** @type {boolean} */
+    headersSent = false;
+
+    /**
+     * Whether the wire carries a body, decided from the method that arrived as node does:
+     * method-override rewriting req.method later changes what the router matches, not the wire.
+     * @type {boolean}
+     */
+    _hasBody;
+
+    /** @type {import("./application.js").Application} */
+    app;
+
+    /** @type {Record<string, any>} */
+    locals = new NullObject();
+
+    /** Whether end() ran through, or the response was torn down. @type {boolean} */
+    finished = false;
+
+    /** @type {boolean} */
+    aborted = false;
+
+    /** @type {number} */
+    statusCode = 200;
+
+    /** @type {string|undefined} */
+    statusText = undefined;
+
+    /** Whether the body goes out chunked, false once a Content-Length is known, see writeHeaders. @type {boolean} */
+    chunkedTransfer = true;
+
+    /** The Content-Length handed to uWS, see writeHeaders. @type {number} */
+    totalSize = 0;
+
+    /** Whether a chunk is still in uWS's hands, so the next write waits for the drain. @type {boolean} */
+    writingChunk = false;
+
+    /** The headers set so far, by lowercase name. @type {Record<string, any>} */
+    headers;
+
+    /** A slot for whatever a middleware puts on res.body, never read here. @type {unknown} */
+    body = undefined;
+
+    /**
+     * What was handed to uWS, for a content-length asked after the fact, see get().
+     * @type {string|Buffer|Uint8Array|undefined}
+     */
+    _sentBody = undefined;
+
+    /** False while the uWS route handler is in its synchronous window, where uWS corks itself. @type {boolean} */
+    _corkNeeded = false;
+
+    /**
+     * The app's pending list that close() drains, intrusive and doubly linked, see
+     * Application#handleRequest. Declared here: linked after construction, the three were a
+     * shape change on every response.
+     * @type {boolean}
+     */
+    _pendingLinked = false;
+
+    /** @type {Response|null} */
+    _pendingPrev = null;
+
+    /** @type {Response|null} */
+    _pendingNext = null;
+
+    /**
      * Built for every request, right after its Request.
      *
      * @param {import("uWebSockets.js").HttpResponse} res the uWS response
@@ -167,37 +261,11 @@ module.exports = class Response extends LazyWritable {
      */
     constructor(res, req, app) {
         super();
-        // the EventEmitter half stays eager, the two listeners below are written straight into this
-        // map. Same five keys in node's own order, so the hidden class is every other stream's
-        /** @type {Record<string, Function|undefined>} */
-        this._events = {
-            close: undefined,
-            error: undefined,
-            prefinish: undefined,
-            finish: undefined,
-            drain: undefined
-        };
-        this._eventsCount = 0;
-        // tombstone removed listeners, as node's streams do: a delete flipped this to dictionary mode
-        this[kShapeMode] = true;
-        // on-finished stores its state here, declared so the store is not a shape change
-        this.__onFinished = null;
         this._req = req;
         this.req = req;
         this._res = res;
-        this.headersSent = false;
-        // decided from the method that arrived, as node does: method-override rewriting req.method
-        // later changes what the router matches, not what the wire carries
         this._hasBody = req._isHead !== true;
         this.app = app;
-        this.locals = new NullObject();
-        this.finished = false;
-        this.aborted = false;
-        this.statusCode = 200;
-        this.statusText = undefined;
-        this.chunkedTransfer = true;
-        this.totalSize = 0;
-        this.writingChunk = false;
         // timeout=10 is uWS's idle timeout. On the node shim node writes its own pair; "connection
         // headers" off advertises neither, as Express always does
         this.headers =
@@ -214,14 +282,6 @@ module.exports = class Response extends LazyWritable {
         if (app._hot().xPoweredBy) {
             this.headers["x-powered-by"] = "Fulmine";
         }
-
-        /** @type {unknown} a slot for whatever a middleware puts on res.body, never read here */
-        this.body = undefined;
-        // what was handed to uWS, for a content-length asked after the fact, see get()
-        /** @type {string|Buffer|Uint8Array|undefined} */
-        this._sentBody = undefined;
-        // false while the uWS route handler is in its synchronous window, where uWS corks itself
-        this._corkNeeded = false;
         // shared methods, not arrows: two closures and a once() were four allocations per request.
         // Written into _events directly, which arrives shaped with these keys undefined: the two
         // on() calls were 6% of a hello-world. Only on a fresh response, anything else uses on()
@@ -317,7 +377,7 @@ module.exports = class Response extends LazyWritable {
                     return true;
                 },
                 get: (obj, prop) => {
-                    return obj[prop];
+                    return obj[/** @type {string} */ (prop)];
                 }
             });
         }

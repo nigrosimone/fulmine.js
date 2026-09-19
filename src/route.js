@@ -29,16 +29,20 @@ const SYNC_LIMIT = 100;
  * per verb, then `dispatch(req, res, done)`. It does no matching, only which verb a handler answers.
  */
 class Route {
+    /** What this route was registered for, kept for whoever reads it: matching happens before dispatch. @type {string} */
+    path;
+
+    /** @type {{method: string|undefined, handle: Function}[]} */
+    stack = [];
+
+    /** Which verbs have a handler, which is what an OPTIONS reply is built from. @type {Record<string, any>} */
+    methods = new NullObject();
+
     /**
-     * @param {string} path what this route was registered for. Kept for whoever reads it, since
-     *   matching happens before dispatch
+     * @param {string} path what this route was registered for
      */
     constructor(path) {
         this.path = path;
-        /** @type {{method: string|undefined, handle: Function}[]} */
-        this.stack = [];
-        // which verbs have a handler, which is what an OPTIONS reply is built from
-        this.methods = new NullObject();
     }
 
     /**

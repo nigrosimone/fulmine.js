@@ -22,6 +22,27 @@ const fs = require("fs");
 const { NullObject } = require("./utils.js");
 
 module.exports = class View {
+    /** The template name as render() was given it. @type {string} */
+    name;
+
+    /** A copy of the render options: defaultEngine, root and engines. @type {any} */
+    options;
+
+    /** @type {string|undefined} */
+    defaultEngine;
+
+    /** The extension, the default engine's when the name has none. @type {string} */
+    ext;
+
+    /** The views directory, or a list of them. @type {string|string[]} */
+    root;
+
+    /** @type {Function} */
+    engine;
+
+    /** The file resolved, undefined when no root holds it. @type {string|undefined} */
+    path;
+
     /**
      * Resolves a template name to a file, so that render() has something to hand the engine. An
      * absolute name is taken as it stands; anything else is looked for under each configured root.
@@ -43,7 +64,9 @@ module.exports = class View {
 
         let fileName = name;
         if (!this.ext) {
-            this.ext = this.defaultEngine[0] !== "." ? "." + this.defaultEngine : this.defaultEngine;
+            // the throw above: no extension means there is a default engine
+            const defaultEngine = /** @type {string} */ (this.defaultEngine);
+            this.ext = defaultEngine[0] !== "." ? "." + defaultEngine : defaultEngine;
 
             fileName += this.ext;
         }
@@ -81,7 +104,7 @@ module.exports = class View {
      */
     lookup(name) {
         let _path;
-        const roots = [].concat(this.root);
+        const roots = /** @type {string[]} */ ([]).concat(this.root);
         for (let i = 0; i < roots.length && !_path; i++) {
             const root = roots[i];
 

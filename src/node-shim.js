@@ -95,14 +95,21 @@ function toArrayBuffer(chunk) {
 
 /** uWS's HttpRequest over node's IncomingMessage. */
 class NodeHttpRequest {
+    /** @type {import("http").IncomingMessage} */
+    _req;
+
+    /** @type {string} */
+    _path;
+
+    /** undefined with no "?", "" with an empty query, as uWS answers. @type {string|undefined} */
+    _query;
+
     /** @param {import("http").IncomingMessage} req */
     constructor(req) {
         this._req = req;
         const url = req.url || "/";
         const question = url.indexOf("?");
         this._path = question === -1 ? url : url.slice(0, question);
-        // undefined with no "?", "" with an empty query, as uWS answers
-        /** @type {string|undefined} */
         this._query = question === -1 ? undefined : url.slice(question + 1);
     }
 
@@ -165,6 +172,30 @@ class NodeHttpRequest {
  * writes the head with the first byte of body.
  */
 class NodeHttpResponse {
+    /** @type {import("http").IncomingMessage} */
+    _nodeReq;
+
+    /** @type {import("http").ServerResponse} */
+    _nodeRes;
+
+    /** How many body bytes went out, what uWS's getWriteOffset answers. @type {number} */
+    _offset = 0;
+
+    /** @type {((offset: number) => boolean)|null} */
+    _onWritable = null;
+
+    /** @type {boolean} */
+    _aborted = false;
+
+    /** A second onData replaces the handler, as uWS does. @type {((chunk: ArrayBuffer, isLast: boolean) => void)|null} */
+    _onData = null;
+
+    /** The chunk held back until the next one or the end says whether it is the last. @type {ArrayBuffer|null} */
+    _onDataPending = null;
+
+    /** @type {boolean} */
+    _onDataListening = false;
+
     /**
      * @param {import("http").IncomingMessage} req
      * @param {import("http").ServerResponse} res
@@ -172,14 +203,6 @@ class NodeHttpResponse {
     constructor(req, res) {
         this._nodeReq = req;
         this._nodeRes = res;
-        this._offset = 0;
-        /** @type {((offset: number) => boolean)|null} */
-        this._onWritable = null;
-        this._aborted = false;
-        // a second onData replaces the handler, as uWS does
-        this._onData = null;
-        this._onDataPending = null;
-        this._onDataListening = false;
 
         res.on("drain", () => {
             const handler = this._onWritable;

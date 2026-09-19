@@ -38,6 +38,52 @@ const {
  * per hop captured eleven bindings). A nested router gets its own walk.
  */
 class Walk {
+    /** @type {Router} */
+    router;
+
+    /** @type {Request} */
+    req;
+
+    /** @type {Response} */
+    res;
+
+    /** The route table, or a compiled chain. @type {RouteEntry[]} */
+    routes;
+
+    /** Take the route at the index without matching it, a compiled chain. @type {boolean} */
+    skipCheck;
+
+    /** The route to resume after when a compiled chain runs out. @type {RouteEntry|undefined} */
+    skipUntil;
+
+    /** @type {(value: RouteEntry|false) => void} */
+    resolve;
+
+    /** @type {(err: unknown) => void} */
+    reject;
+
+    /** Whether the walk answered, read by the native pair only. @type {boolean} */
+    settled = false;
+
+    /** @type {number} */
+    routeIndex = 0;
+
+    /** The route being run. @type {RouteEntry|null} */
+    route = null;
+
+    /** @type {number} */
+    callbackIndex = 0;
+
+    /** step() bound once: an arrow forwarding into it measured 495us per thousand requests. @type {(thingamabob?: unknown) => void} */
+    next;
+
+    /**
+     * What res.sendFile reports a failure to, the router next as express's req.next; bound on the
+     * first route with more than one callback.
+     * @type {((err?: unknown) => void)|null}
+     */
+    leaveRoute = null;
+
     /**
      * @param {Router} router
      * @param {Request} req
@@ -57,17 +103,7 @@ class Walk {
         this.skipUntil = skipUntil;
         this.resolve = resolve;
         this.reject = reject;
-        // read by the native pair only, initialised so every walk has one shape
-        this.settled = false;
-        this.routeIndex = 0;
-        this.route = null;
-        this.callbackIndex = 0;
-        // bound, an arrow forwarding into step() measured 495us per thousand requests
         this.next = this.step.bind(this);
-        // what res.sendFile reports a failure to, the router next as express's req.next; bound on
-        // the first route with more than one callback
-        /** @type {((err?: unknown) => void)|null} */
-        this.leaveRoute = null;
     }
 
     /**
@@ -336,7 +372,8 @@ class Walk {
         const req = this.req;
         const route = this.route;
         if (route.use && !route.keepMount) {
-            const pushed = req._stack.pop();
+            // runRoute pushed for this mount, so the stack is there and not empty
+            const pushed = /** @type {number} */ (/** @type {number[]} */ (req._stack).pop());
             const taken = pushed < 0 ? -pushed : pushed;
             // a rewrite inside this middleware is taken now, the pop would revert it
             if (req.url !== req._lastUrl) {
@@ -429,7 +466,7 @@ class Walk {
                 ._routeRequest(req, res, 0)
                 .then((/** @type {RouteEntry|false} */ routed) => {
                     if (pushedParams) {
-                        req._paramStack.pop();
+                        /** @type {Record<string, any>[]} */ (req._paramStack).pop();
                     }
                     req.params = parentParams;
                     if (req._error) {

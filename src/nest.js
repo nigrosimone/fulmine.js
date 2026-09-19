@@ -40,16 +40,17 @@ const fulmine = require("./index.js");
  */
 class FulmineExpressAdapter extends ExpressAdapter {
     /**
+     * Stands in for the layer array Express has. See registerParserMiddleware below.
+     * @type {boolean}
+     */
+    _parsersRegistered = false;
+
+    /**
      * @param {import("fulmine.js").FulmineApplication} [instance] an application from `fulmine()`; one is
      *   created when omitted
      */
     constructor(instance) {
         super(instance || fulmine());
-        /**
-         * Stands in for the layer array Express has. See registerParserMiddleware below.
-         * @type {boolean}
-         */
-        this._parsersRegistered = false;
     }
 
     /**

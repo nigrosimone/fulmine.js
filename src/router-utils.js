@@ -47,9 +47,9 @@ const { METHODS } = require("http");
  * @typedef {object} SkipHolder
  * @property {boolean} skipHeaders
  * @property {boolean} skipQuery
- * @property {string|null} [method]
- * @property {boolean} [isOptions]
- * @property {boolean} [isHead]
+ * @property {string|null} method
+ * @property {boolean} isOptions
+ * @property {boolean} isHead
  */
 /**
  * An earlier registration a mount is guarded by, see guardsInside.
