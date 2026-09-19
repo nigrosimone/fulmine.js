@@ -283,8 +283,9 @@ module.exports = class Router extends EventEmitter {
                 // an error nobody handled belongs to the caller
                 const err = req._error;
                 if (err !== undefined) {
-                    delete req._error;
-                    delete req._errorKey;
+                    // cleared, not deleted: a delete puts the request in dictionary mode
+                    req._error = undefined;
+                    req._errorKey = undefined;
                     return next(err);
                 }
                 next();
@@ -835,8 +836,10 @@ module.exports = class Router extends EventEmitter {
         if (handler) {
             /** @param {unknown} [pass] */
             const next = (pass) => {
-                delete request._error;
-                delete request._errorKey;
+                // cleared, not deleted: a delete put every request that went on after an error
+                // handler in dictionary mode, each field read a hash lookup from there on
+                request._error = undefined;
+                request._errorKey = undefined;
                 return request.next(pass);
             };
             try {
