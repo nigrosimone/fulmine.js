@@ -242,7 +242,9 @@ module.exports = class Router extends EventEmitter {
                 return fn.handle(req, res, next);
             }
         );
-        Object.assign(fn, this);
+        // defineProperties, not Object.assign: past a dozen keyed stores V8 puts a function in
+        // dictionary mode, and every field read on the request path was a hash lookup
+        Object.defineProperties(fn, Object.getOwnPropertyDescriptors(this));
         Object.setPrototypeOf(fn, callablePrototypeFor(Object.getPrototypeOf(this)));
         return fn;
     }
