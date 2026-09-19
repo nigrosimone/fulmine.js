@@ -1,5 +1,18 @@
 # Changelog
 
+## [5.21.2](https://github.com/nigrosimone/fulmine.js/compare/v5.21.1...v5.21.2) (2026-09-19)
+
+### Bug Fixes
+
+* **res:** json and jsonp refuse to set the content-type once the head is out, as express does ([f8dfd7f](https://github.com/nigrosimone/fulmine.js/commit/f8dfd7f6135b931c2fc80f57fcfcf525345655b3))
+* **router:** an optional mount takes the slash that ends the path, as path-to-regexp does ([77c6d4e](https://github.com/nigrosimone/fulmine.js/commit/77c6d4e301979a44b59c765eacbdd298d2775eb9))
+* **tests:** singular.js restores the file without exit-hook, which is ESM only now ([053ca16](https://github.com/nigrosimone/fulmine.js/commit/053ca165af960c0096d69be07ab3ed5128806401))
+
+### Performance Improvements
+
+* **router:** an error handler's next() clears the error fields, the delete put the request in dictionary mode ([74aa501](https://github.com/nigrosimone/fulmine.js/commit/74aa50147a46645263994a285125e6d8c83d33c9))
+* **router:** the callable app and router keep fast properties, Object.assign had put them in dictionary mode ([a37b511](https://github.com/nigrosimone/fulmine.js/commit/a37b511d311ea8abd84a904928ec28149334562b))
+
 ## [5.21.1](https://github.com/nigrosimone/fulmine.js/compare/v5.21.0...v5.21.1) (2026-09-16)
 
 ### Bug Fixes
