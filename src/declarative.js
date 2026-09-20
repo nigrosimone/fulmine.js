@@ -236,6 +236,11 @@ function readStatusAndHeaders(callExprs, headers) {
 
             for (let [header, value] of pairs) {
                 const name = String(header).toLowerCase();
+                // a chunked framing the handler asked for: a compiled response is one end() with a
+                // length, the ordinary path frames it through write(), see Response#writeHeaders
+                if (name === "transfer-encoding") {
+                    return null;
+                }
                 // res.set resolves a content-type through the mime database, setHeader does not
                 if (call.obj.propertyName !== "setHeader" && name === "content-type") {
                     const resolved = contentTypeSet(String(value));
@@ -264,6 +269,9 @@ function readStatusAndHeaders(callExprs, headers) {
             }
         } else if (call.obj.propertyName === "append") {
             if (call.arguments[0].type !== "Literal" || call.arguments[1].type !== "Literal") {
+                return null;
+            }
+            if (String(call.arguments[0].value).toLowerCase() === "transfer-encoding") {
                 return null;
             }
             if (!headerIsWritable(String(call.arguments[0].value), String(call.arguments[1].value))) {

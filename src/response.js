@@ -115,6 +115,9 @@ const MAX_MAXAGE = 60 * 60 * 24 * 365 * 1000;
 // what send takes as a range request, checked on the header's text before parsing
 const BYTES_RANGE = /^ *bytes=/;
 
+// node's test for a Transfer-Encoding that means chunked framing
+const CHUNKED_VALUE = /(?:^|\W)chunked(?:$|\W)/i;
+
 module.exports = class Response extends LazyWritable {
     /** @type {Socket|null} */
     #socket = null;
@@ -141,6 +144,13 @@ module.exports = class Response extends LazyWritable {
 
     /** Whether the status line and the headers have reached uWS, which only a body write does. */
     #headOut = false;
+
+    /**
+     * Whether the application set Transfer-Encoding: chunked itself. The body then goes out
+     * through uWS's write(), which frames it and writes the header, and no Content-Length is
+     * added beside it, as express 5.3 and node do. See writeHeaders and _finish.
+     */
+    #userChunked = false;
 
     /**
      * The status as writeHead settled it, the one the wire gets: a status set later never reaches
@@ -619,6 +629,17 @@ module.exports = class Response extends LazyWritable {
                 this.totalSize = parseInt(value);
                 continue;
             }
+            if (
+                header === "transfer-encoding" &&
+                typeof value === "string" &&
+                res._nodeRes === undefined &&
+                CHUNKED_VALUE.test(value)
+            ) {
+                // not written: uWS writes its own on the write() path, two came out before. Node's
+                // own response, behind the shim, frames by the header itself
+                this.#userChunked = true;
+                continue;
+            }
             // the recurring names and values cross as cached Buffers, see HEADER_NAME_BUF
             const name = HEADER_NAME_BUF[header] || header;
             if (Array.isArray(value)) {
@@ -759,9 +780,10 @@ module.exports = class Response extends LazyWritable {
             this._res.endWithoutBody();
         } else if (!data && contentLength) {
             this._res.endWithoutBody(contentLength.toString(), closeConnection);
-        } else if (headWasAlreadyOut && this.chunkedTransfer) {
+        } else if ((headWasAlreadyOut && this.chunkedTransfer) || (this.#userChunked && this._hasBody && data)) {
             // the queue first, then the last piece as a chunk: the head already went out without a
-            // length, and uWS's end() would append one
+            // length, or the application asked for chunked framing, and uWS's end() would append one.
+            // An empty body under that header takes end() below: uWS frames nothing without a write()
             this.#flushQueued(null);
             if (data) {
                 this._res.write(data);
@@ -770,9 +792,15 @@ module.exports = class Response extends LazyWritable {
             this._res.endWithoutBody();
         } else {
             if (!this._hasBody) {
-                const length = Buffer.byteLength(data ?? "");
-                this.headers["content-length"] = String(length);
-                this._res.endWithoutBody(length, closeConnection);
+                if (this.#userChunked) {
+                    // a HEAD under the application's chunked framing carries no length, as node.
+                    // No arguments: given a close flag alone, uWS writes a 2^63 length
+                    this._res.endWithoutBody();
+                } else {
+                    const length = Buffer.byteLength(data ?? "");
+                    this.headers["content-length"] = String(length);
+                    this._res.endWithoutBody(length, closeConnection);
+                }
             } else {
                 this._sentBody = data ?? "";
                 // null is the empty body: uWS never ends a response given end(null)
@@ -892,9 +920,10 @@ module.exports = class Response extends LazyWritable {
             body = "";
         }
         // by req.method as express's send does, so a GET a middleware made a HEAD answers its
-        // length and no body; end() alone decides by the wire, see _hasBody
+        // length and no body; end() alone decides by the wire, see _hasBody. No length beside a
+        // Transfer-Encoding the application set, as express 5.3
         if (this.req.method === "HEAD") {
-            if (this.statusCode !== 204 && this.statusCode !== 304) {
+            if (this.statusCode !== 204 && this.statusCode !== 304 && !this.headers["transfer-encoding"]) {
                 this.headers["content-length"] = String(Buffer.byteLength(body));
             }
             return this.end();
