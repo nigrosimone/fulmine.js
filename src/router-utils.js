@@ -143,7 +143,7 @@ function layerFor(route, callback) {
             : callback.name || "<anonymous>",
         params: undefined,
         path: undefined,
-        keys: [],
+        keys: /** @type {never[]} */ ([]),
         route: undefined
     };
     route._layers.set(callback, layer);
