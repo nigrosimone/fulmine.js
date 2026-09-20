@@ -840,6 +840,12 @@ module.exports = class Response extends LazyWritable {
                     delete this.headers["content-length"];
                     delete this.headers["transfer-encoding"];
                 }
+            } else if (this.req.fresh || this.statusCode === 204 || this.statusCode === 304) {
+                // express strips the content headers through removeHeader, which node refuses
+                // once the head is out; a fresh request is made a 304 first and lands here too
+                throw headersSentError("remove");
+            } else if (this.statusCode === 205) {
+                throw headersSentError("set");
             }
             return this.end("");
         }
