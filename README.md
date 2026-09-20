@@ -1,6 +1,6 @@
 <img src="./assets/logo-mark.svg" alt="" width="88" align="right">
 
-# Fulmine.js: the drop-in Express 5 replacement, up to 20x faster
+# Fulmine.js: the drop-in Express 5 replacement, up to 22x faster
 
 **Fulmine** (lightning in Italian ⚡) is an Express 5 compatible web framework for Node.js, built on
 [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js) instead of `node:http`. Same API, same
@@ -24,8 +24,8 @@ const express = require("fulmine.js"); // instead of require("express")
 
 ## Why Fulmine
 
-- **Faster than Express, measured.** 1.3x to 4.9x on plain routing, 2x to 5x on a request with a body,
-  7x to 20x on a large route table. Routes are matched in C++ by µWS's own router,
+- **Faster than Express, measured.** 1.2x to 4.5x on plain routing, 1.7x to 5x on a request with a body,
+  7x to 22x on a large route table. Routes are matched in C++ by µWS's own router,
   and a simple enough handler is answered without running any JavaScript at all.
 - **Zero rewrite.** `helmet`, `cors`, `passport`, `morgan`, `multer`, `express-session` and the rest of
   the Express ecosystem keep working. Not "mostly": every test runs against real Express first and the

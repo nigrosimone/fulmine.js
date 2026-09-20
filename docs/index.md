@@ -27,7 +27,7 @@ import CopyCommand from '../site/.vitepress/theme/CopyCommand.vue'
 <div class="fm-speed-field">
 <div class="fm-field-top"><span>NATIVE ENGINE</span><span>01 / µWS</span></div>
 <img class="fm-speed-art" src="/speed-field.svg" alt="" width="600" height="500" fetchpriority="high" decoding="async">
-<div class="fm-speed-readout"><span class="fm-up-to">UP TO</span><strong>20<span>×</span></strong><span class="fm-speed-label">faster than Express<span>on large route tables</span></span></div>
+<div class="fm-speed-readout"><span class="fm-up-to">UP TO</span><strong>22<span>×</span></strong><span class="fm-speed-label">faster than Express<span>on large route tables</span></span></div>
 <a class="fm-field-footnote" href="/performance">Measured in CI. Explore the conditions <span aria-hidden="true">↗</span></a>
 </div>
 </section>

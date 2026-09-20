@@ -11,7 +11,7 @@ const origin = "https://fulmine.sndesign.it";
 export default defineConfig({
     srcDir: "../docs",
     title: "Fulmine.js",
-    description: "Drop-in Express 5 replacement on uWebSockets.js, up to 20x faster. Your middleware keeps working.",
+    description: "Drop-in Express 5 replacement on uWebSockets.js, up to 22x faster. Your middleware keeps working.",
     lang: "en",
     cleanUrls: true,
     // Load documentation when requested instead of downloading every visible homepage link.

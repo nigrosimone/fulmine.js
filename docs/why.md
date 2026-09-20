@@ -16,7 +16,7 @@ A change that answers differently from Express is a bug here, even when the new 
 
 ## Where the speed comes from
 
-Express finds a route by walking its stack and testing each layer against the path, on every request. Fulmine hands every route it can to µWS's own router, which matches in C++, and works out at `listen()` which middlewares stand in front of each one. Arriving at a handler costs no matching at all, and the gap grows with the route table instead of shrinking: a handful of routes measures 1.3x to 4.9x, a thousand measures 7x to 20x.
+Express finds a route by walking its stack and testing each layer against the path, on every request. Fulmine hands every route it can to µWS's own router, which matches in C++, and works out at `listen()` which middlewares stand in front of each one. Arriving at a handler costs no matching at all, and the gap grows with the route table instead of shrinking: a handful of routes measures 1.2x to 4.5x, a thousand measures 7x to 22x.
 
 Most of the rest is work that does not happen. The body is not read unless a handler asks, the headers are not copied out of µWS unless something reads them, the request is not turned into a stream unless something streams it. A handler simple enough to be read at registration time is compiled into a static response and answered by µWS itself, without entering JavaScript.
 
