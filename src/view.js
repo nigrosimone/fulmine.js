@@ -172,6 +172,7 @@ module.exports = class View {
         if (stat && stat.isFile()) {
             return _path;
         }
+        return undefined;
     }
 };
 

@@ -720,7 +720,7 @@ function inflateError(inflate, err) {
  *
  * @param {string|undefined} rawContentEncoding
  * @param {any} options the parser's options, read loosely: only inflate is looked at
- * @returns {{inflate?: Inflater, error?: HttpError}}
+ * @returns {{inflate?: Inflater|undefined, error?: HttpError}}
  */
 function encodingFor(rawContentEncoding, options) {
     if (!options.inflate) {

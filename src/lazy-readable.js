@@ -71,21 +71,21 @@ for (const member of [
     } else if (descriptor.get || descriptor.set) {
         const innerGet = descriptor.get;
         const innerSet = descriptor.set;
-        Object.defineProperty(LazyReadableBase.prototype, member, {
-            ...descriptor,
-            get: innerGet
-                ? /** @this {import("stream").Readable} */ function () {
-                      materialise(this);
-                      return innerGet.call(this);
-                  }
-                : undefined,
-            set: innerSet
-                ? /** @this {import("stream").Readable} @param {unknown} value */ function (value) {
-                      materialise(this);
-                      innerSet.call(this, value);
-                  }
-                : undefined
-        });
+        // the original's accessor pair, each half wrapped where there is one
+        const wrapped = { ...descriptor };
+        if (innerGet) {
+            wrapped.get = /** @this {import("stream").Readable} */ function () {
+                materialise(this);
+                return innerGet.call(this);
+            };
+        }
+        if (innerSet) {
+            wrapped.set = /** @this {import("stream").Readable} @param {unknown} value */ function (value) {
+                materialise(this);
+                innerSet.call(this, value);
+            };
+        }
+        Object.defineProperty(LazyReadableBase.prototype, member, wrapped);
     }
 }
 

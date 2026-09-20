@@ -301,6 +301,7 @@ module.exports = class Response extends LazyWritable {
      * A finished or aborted response only tears the stream down, touching an aborted uWS response
      * is a use after free. writableEnded reads true after this, node keeps it false until end().
      *
+     * @override
      * @param {Error} [error] whatever the caller is destroying the response with
      * @returns {this}
      */
@@ -449,6 +450,7 @@ module.exports = class Response extends LazyWritable {
      * Writable's sink: the head if not out yet, then the chunk to uWS through the queue for a
      * chunked response or tryEnd with a Content-Length. Backpressure defers the callback.
      *
+     * @override
      * @param {any} chunk whatever a Writable was handed
      * @param {BufferEncoding} encoding
      * @param {(err?: Error|null) => void} callback
@@ -458,11 +460,13 @@ module.exports = class Response extends LazyWritable {
             /** @type {NodeJS.ErrnoException} */
             const err = new Error("Request aborted");
             err.code = "ECONNABORTED";
-            return this.destroy(err);
+            this.destroy(err);
+            return;
         }
         if (this.finished) {
             const err = new Error("Response already finished");
-            return this.destroy(err);
+            this.destroy(err);
+            return;
         }
 
         this.writingChunk = true;
@@ -667,6 +671,7 @@ module.exports = class Response extends LazyWritable {
     }
 
     /**
+     * @override
      * @param {string|Buffer|Uint8Array|null|(() => void)} [data] the last body piece, or the callback in
      *   node's one-argument shape
      * @param {BufferEncoding|(() => void)} [encoding] how a string body is encoded, or the callback in

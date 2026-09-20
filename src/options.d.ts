@@ -43,7 +43,7 @@ export interface SendFileOptions {
     /** Extra headers for the response. */
     headers?: Record<string, string>;
     /** Internal: express.static's setHeaders, which res.sendFile itself does not take. */
-    _setHeaders?: (res: any, path: string, stat: any) => void;
+    _setHeaders?: ((res: any, path: string, stat: any) => void) | undefined;
     /** First byte of the window to send. */
     start?: number;
     /** Last byte of the window to send. */

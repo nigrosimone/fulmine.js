@@ -56,6 +56,7 @@ class FulmineExpressAdapter extends ExpressAdapter {
     /**
      * The app is the server. Nest calls this once, from NestApplication's constructor.
      *
+     * @override
      * @param {import("@nestjs/common").NestApplicationOptions} [options] the options NestFactory.create was given
      * @returns {void}
      */
@@ -84,6 +85,7 @@ class FulmineExpressAdapter extends ExpressAdapter {
      * for them in `app.router.stack`; there is no such array here, so a second call was putting a
      * second pair in front of every request.
      *
+     * @override
      * @param {string} [prefix]
      * @param {boolean} [rawBody]
      * @returns {void}

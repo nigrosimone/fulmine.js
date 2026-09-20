@@ -98,12 +98,14 @@ class Application extends Router {
     /**
      * A mounted app's settings chain onto its parent's, as in express.
      *
+     * @override
      * @type {boolean}
      */
     _inheritsSettings = true;
 
     /**
      * See Router#_isApplication.
+     * @override
      * @type {boolean}
      */
     _isApplication = true;
@@ -144,7 +146,7 @@ class Application extends Router {
     /** @type {Response} */
     response;
 
-    /** @type {boolean} */
+    /** @override @type {boolean} */
     listenCalled = false;
 
     /** @type {FSWorker[]} */
@@ -490,6 +492,7 @@ class Application extends Router {
      * @param {import("./router-utils.js").NativePreset} [preset] see nativePreset
      * @param {import("./router-utils.js").SkipHolder} [skipHolder] forwarded whole, dropping it
      *   silently turned every skip off
+     * @override
      * @returns {Request} the request, with the response as request.res
      */
     handleRequest(res, req, preset, skipHolder) {
@@ -512,6 +515,7 @@ class Application extends Router {
      * The µWS app, for what µWS offers that this does not (socket.io attaches to it). Made on
      * first ask, so an app served through node's http never loads the binary, see src/uws.js.
      *
+     * @override
      * @returns {any}
      */
     get uwsApp() {

@@ -13,6 +13,18 @@
         // one unreadable pile; noImplicitAny was the last. That one also gives JSDoc's `object`
         // its real meaning, without it TypeScript reads it as `any`.
         "strict": true,
+        // the checks outside strict that cost nothing, or close to it. Left out on purpose:
+        // noUnusedParameters (Express signatures keep parameters they do not read),
+        // noUncheckedIndexedAccess and noPropertyAccessFromIndexSignature (a cast or a bracket
+        // at every index, for nothing the suites do not already catch)
+        "noImplicitReturns": true,
+        "noImplicitOverride": true,
+        "noFallthroughCasesInSwitch": true,
+        "noUnusedLocals": true,
+        "noUncheckedSideEffectImports": true,
+        "exactOptionalPropertyTypes": true,
+        "allowUnreachableCode": false,
+        "allowUnusedLabels": false,
         "noEmit": true,
         // the declaration files shipped by the dependencies are their problem, not ours
         "skipLibCheck": true,

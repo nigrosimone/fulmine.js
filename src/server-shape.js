@@ -104,7 +104,7 @@ function addServerMembers(prototype) {
      * Registers the callback like node's does and remembers the value, which is all a caller can
      * observe. The timeout belongs to uWS and is set through uwsOptions.idleTimeout.
      *
-     * @this {Application & {timeout?: number}}
+     * @this {Application & {timeout?: number|undefined}}
      * @param {number} [msecs]
      * @param {() => void} [callback]
      * @returns {Application}

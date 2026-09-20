@@ -65,21 +65,21 @@ for (const member of [
     } else if (descriptor.get || descriptor.set) {
         const innerGet = descriptor.get;
         const innerSet = descriptor.set;
-        Object.defineProperty(LazyWritableBase.prototype, member, {
-            ...descriptor,
-            get: innerGet
-                ? /** @this {import("stream").Writable} */ function () {
-                      materialiseWritable(this);
-                      return innerGet.call(this);
-                  }
-                : undefined,
-            set: innerSet
-                ? /** @this {import("stream").Writable} @param {unknown} value */ function (value) {
-                      materialiseWritable(this);
-                      innerSet.call(this, value);
-                  }
-                : undefined
-        });
+        // the original's accessor pair, each half wrapped where there is one
+        const wrapped = { ...descriptor };
+        if (innerGet) {
+            wrapped.get = /** @this {import("stream").Writable} */ function () {
+                materialiseWritable(this);
+                return innerGet.call(this);
+            };
+        }
+        if (innerSet) {
+            wrapped.set = /** @this {import("stream").Writable} @param {unknown} value */ function (value) {
+                materialiseWritable(this);
+                innerSet.call(this, value);
+            };
+        }
+        Object.defineProperty(LazyWritableBase.prototype, member, wrapped);
     }
 }
 

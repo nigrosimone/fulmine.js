@@ -638,7 +638,10 @@ module.exports = class Request extends LazyReadable {
         return this;
     }
 
-    /** Readable's pull: uWS pushes, so this only lifts the backpressure a full queue put on it. */
+    /**
+     * Readable's pull: uWS pushes, so this only lifts the backpressure a full queue put on it.
+     * @override
+     */
     _read() {
         // first, so a bodyless stream still ends for a consumer arriving after the response
         if (this.#emptyBody) {
