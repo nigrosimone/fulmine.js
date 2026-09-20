@@ -143,6 +143,20 @@ function analyze(fn) {
         if (mask & UNKNOWN) {
             return;
         }
+        // a member read off what a call returned: res.status(200).sendFile() is a sendFile on res,
+        // every chainable method returns res itself, so it is judged as one. Reading it off the
+        // call had let sendFile and redirect through, and a Range or an Accept then went unread
+        if (
+            node.type === "MemberExpression" &&
+            node.object.type === "CallExpression" &&
+            resName !== null &&
+            chainRoot(node.object) === resName
+        ) {
+            if (node.computed || !RES_OK.has(node.property.name)) {
+                mask |= UNKNOWN;
+            }
+            return;
+        }
         if (node.type === "MemberExpression" && !node.computed && node.object.type === "Identifier") {
             const owner = node.object.name;
             if (owner !== reqName) {
@@ -225,6 +239,25 @@ function analyze(fn) {
         }
     });
     return mask;
+}
+
+/**
+ * The identifier a chain of members and calls starts from: res for res.status(200).sendFile().
+ *
+ * @param {any} node
+ * @returns {string|null} null when the chain does not start from a plain identifier
+ */
+function chainRoot(node) {
+    while (node) {
+        if (node.type === "MemberExpression") {
+            node = node.object;
+        } else if (node.type === "CallExpression") {
+            node = node.callee;
+        } else {
+            return node.type === "Identifier" ? node.name : null;
+        }
+    }
+    return null;
 }
 
 /**

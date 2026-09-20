@@ -58,6 +58,15 @@ test("what a single callback is allowed to do", () => {
         (req, res) => req.res.send("hi"), // reaches res through req, and vice versa
         (req, res) => res.req && res.send("hi"),
         (req, res) => res.send(req["hea" + "ders"]), // computed access is unreadable
+        // the same methods reached through a chain: what res.status() returns is res
+        (req, res) => res.status(200).sendFile("/x"),
+        (req, res) => res.set("x-a", "b").redirect("/elsewhere"),
+        (req, res) =>
+            res
+                .status(200)
+                .type("json")
+                .format({ json: () => res.json({}) }),
+        (req, res) => res.status(200)["send" + "File"]("/x"),
         // a rewrite re-enters routing and lands on routes nobody analyzed
         (req, res, next) => {
             req.url = "/elsewhere";
@@ -75,6 +84,17 @@ test("what a single callback is allowed to do", () => {
     for (const fn of distrusted) {
         assert.ok(callbackUsage(fn) & UNKNOWN, fn.toString());
     }
+
+    // a chain of trusted methods stays trusted, and a chain off req is not judged: req.query.x
+    // is not req, and no trusted req member answers req
+    assert.equal(
+        callbackUsage((req, res) => res.status(201).set("x-a", "b").type("json").send(req.params.id.toString())),
+        0
+    );
+    assert.equal(
+        callbackUsage((req, res) => res.json(req.query.list.split(",").map(Number))),
+        QUERY
+    );
 
     // writing a value member is not a rewrite
     assert.equal(
