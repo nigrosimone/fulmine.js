@@ -1943,9 +1943,21 @@ const SETS_A_HEADER =
  * @returns {{params: string, statements: string[]}[]}
  */
 function everyProgram(plan) {
+    return everyRoute(plan)
+        .filter((route) => route.program)
+        .map((route) => route.program);
+}
+
+/**
+ * Every route a plan registers, wherever it sits.
+ *
+ * @param {any} plan
+ * @returns {any[]}
+ */
+function everyRoute(plan) {
     const out = [];
     const take = (routes) => {
-        for (const route of routes ?? []) if (route.program) out.push(route.program);
+        for (const route of routes ?? []) out.push(route);
     };
     take(plan.routes);
     for (const spec of plan.routers ?? []) {
@@ -1956,6 +1968,26 @@ function everyProgram(plan) {
     }
     take(plan.subApp?.routes);
     return out;
+}
+
+/**
+ * The second difference kept, decided 2026-09-20. A handler that sends and then throws, behind a
+ * middleware that turned the GET into a HEAD: the answer goes out without a body, and express's
+ * final handler then destroys the socket, so the client fails at once. Here the response is
+ * complete and uWS forbids closing a connection after end(), so the client waits for the body
+ * the HEAD never carries. Narrow: that pair of callbacks in the plan, express with no answer,
+ * this framework with a timeout. Seeds 2370023460 and 2482457560.
+ *
+ * @param {any} plan
+ * @param {{line: string}} express
+ * @param {{line: string}} fulmine
+ * @returns {boolean}
+ */
+function errorAfterFinished(plan, express, fulmine) {
+    if (!express.line.startsWith("transport:") || fulmine.line !== "transport: timeout") {
+        return false;
+    }
+    return everyRoute(plan).some((route) => route.kind === "throw-after-send" && route.lead === "method");
 }
 
 /**
@@ -2023,7 +2055,7 @@ async function runPlan(plan, stopAtFirst) {
             answerOf(portB, url, method, plan.headers, undefined, body)
         ]);
         checked++;
-        if (ra.line !== rb.line && !headerAfterWrite(plan, ra, rb)) {
+        if (ra.line !== rb.line && !headerAfterWrite(plan, ra, rb) && !errorAfterFinished(plan, ra, rb)) {
             divergences.push({ url, method, express: ra.line, fulmine: rb.line });
             if (stopAtFirst) stop = true;
         } else if (ra.line === rb.line && ra.etag && ra.etag === rb.etag) {

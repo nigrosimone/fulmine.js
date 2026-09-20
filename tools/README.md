@@ -140,15 +140,20 @@ one corrupt byte while µWS writes proper utf-8. Both compute the same value; on
 Keep generated filenames and header values ASCII. The rest of what is not compared is in
 `tests/helpers.js`: `x-powered-by`, `content-length` and `transfer-encoding`.
 
-One more is a difference this project has looked at and decided to keep, the way `fuzz:wire` keeps
-`closeThenPipelined`. Decided on 2026-09-11, narrow, and one named function so a reader can see
-what it excludes:
+Two more are differences this project has looked at and decided to keep, the way `fuzz:wire` keeps
+`closeThenPipelined`. Each is narrow and one named function, so a reader can see what it excludes:
 
-- **A header set after `res.write()`**, `headerAfterWrite`. Express flushes the head inside
-  `write()`, so a header written after one throws there and the socket goes. Here the head is
-  queued and leaves on the next tick, so the same header is taken and the request is answered. It
-  takes a handler that writes and then sets a header, Express answering nothing at all, and this
-  framework answering.
+- **A header set after `res.write()`**, `headerAfterWrite`, decided on 2026-09-11. Express flushes
+  the head inside `write()`, so a header written after one throws there and the socket goes. Here
+  the head is queued and leaves on the next tick, so the same header is taken and the request is
+  answered. It takes a handler that writes and then sets a header, Express answering nothing at all,
+  and this framework answering.
+- **A throw after a finished send, behind a method override**, `errorAfterFinished`, decided on
+  2026-09-20. A middleware turns the GET into a HEAD, the handler sends and throws: the answer went
+  out without a body, and Express's final handler destroys the socket, so the client fails at once.
+  Here the response is complete, and uWS forbids closing a connection after `end()`, so the client
+  waits for a body the HEAD never carries. It takes that pair of callbacks, Express with no answer
+  and this framework with a timeout. Seeds 2370023460 and 2482457560.
 
 It was checked the way the rest of this file is: with the exception in, three fixed bugs put back
 one at a time were still reported, so it does not blind the tool. A second exception, a missing
