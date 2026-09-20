@@ -799,11 +799,16 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             checkOptions(options);
         }
         // bytes.parse only on a string: bytes(1024) formats it to "1KB" and no comparison held
-        if (typeof options.limit === "undefined") {
-            options.limit = /** @type {number} */ (bytes.parse("100kb"));
+        if (options.limit === undefined || options.limit === null) {
+            options.limit = 100 * 1024;
         } else if (typeof options.limit !== "number") {
-            // null for a size it cannot read, as body-parser passes it along
-            options.limit = /** @type {number} */ (bytes.parse(options.limit));
+            // a size it cannot read is refused here, as body-parser 2.3 does: passed along as
+            // null it disabled the limit (CVE-2026-12590)
+            const parsed = bytes.parse(options.limit);
+            if (parsed === null) {
+                throw new TypeError(`option limit "${String(options.limit)}" is invalid`);
+            }
+            options.limit = parsed;
         }
 
         const limit = /** @type {number} */ (options.limit);
