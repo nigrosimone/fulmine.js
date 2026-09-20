@@ -3,23 +3,16 @@
     // too, which is useful while writing them but drowns the source: those two carry well over
     // a thousand findings between them, so a regression in src would never be noticed.
     //
-    // This one is scoped to the shipped source, and it is the number that has to reach zero
-    // before the TypeScript conversion can turn `strict` on.
+    // This one is scoped to the shipped source, and it is the number that has to stay at zero.
     "compilerOptions": {
         "module": "commonjs",
         "target": "ES2022",
         "allowJs": true,
         "checkJs": true,
-        // Turned on one flag at a time, so each lands with the count back at zero rather than
-        // arriving as one unreadable pile. These five cost five findings between them.
-        "strict": false,
-        "noImplicitThis": true,
-        "useUnknownInCatchVariables": true,
-        "strictFunctionTypes": true,
-        "strictBindCallApply": true,
-        "alwaysStrict": true,
-        "strictNullChecks": true,
-        "strictPropertyInitialization": true,
+        // Turned on one flag at a time, each landing with the count back at zero rather than as
+        // one unreadable pile; noImplicitAny was the last. That one also gives JSDoc's `object`
+        // its real meaning, without it TypeScript reads it as `any`.
+        "strict": true,
         "noEmit": true,
         // the declaration files shipped by the dependencies are their problem, not ours
         "skipLibCheck": true,

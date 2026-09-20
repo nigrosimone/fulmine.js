@@ -74,7 +74,7 @@ const verdicts = new WeakMap();
  * What one callback provably does, as a mask of the facts above. The default is UNKNOWN: any shape
  * this walk does not understand, and any alias of req, res or next, could do anything.
  *
- * @param {Function} fn
+ * @param {Function & {[kGetSafe]?: boolean}} fn
  * @returns {number}
  */
 function callbackUsage(fn) {

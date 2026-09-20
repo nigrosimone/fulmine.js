@@ -25,6 +25,12 @@ const { work, names } = require("./work.js");
 const { applyWriteHead } = require("./utils.js");
 
 /** @typedef {import("./response.js")} Response */
+/**
+ * What the hooks below take: writeHead's arguments in node's two shapes, see applyWriteHead, and
+ * the callback write() and end() may carry in place of the encoding.
+ * @typedef {Parameters<Response["writeHead"]>} WriteHeadArgs
+ * @typedef {(err?: Error|null) => void} WriteCallback
+ */
 
 /**
  * A duration in milliseconds, as Server-Timing writes them: two decimals.
@@ -167,15 +173,30 @@ function serverTiming(options) {
         const _writeHead = res.writeHead;
         // writeHead settles the head, so a handler that calls it is stamped there, with the headers
         // it carries applied first, as on-headers orders it
+        /**
+         * @param {WriteHeadArgs[0]} statusCode
+         * @param {WriteHeadArgs[1]} [statusMessage]
+         * @param {WriteHeadArgs[2]} [headers]
+         */
         res.writeHead = function writeHead(statusCode, statusMessage, headers) {
             const reason = applyWriteHead(this, statusMessage, headers);
             stamp();
             return _writeHead.call(this, statusCode, reason);
         };
+        /**
+         * @param {any} chunk
+         * @param {BufferEncoding|WriteCallback} [encoding]
+         * @param {WriteCallback} [callback]
+         */
         res.write = function write(chunk, encoding, callback) {
             stamp();
             return _write.call(this, chunk, encoding, callback);
         };
+        /**
+         * @param {any} [chunk]
+         * @param {BufferEncoding|WriteCallback} [encoding]
+         * @param {WriteCallback} [callback]
+         */
         res.end = function end(chunk, encoding, callback) {
             stamp();
             return _end.call(this, chunk, encoding, callback);

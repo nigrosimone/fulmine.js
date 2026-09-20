@@ -841,6 +841,11 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
         /** @type {string[]|null|undefined} the "body methods" setting, read on the first request */
         let additionalMethods;
 
+        /**
+         * @param {Request & {body?: unknown}} req
+         * @param {Response} res
+         * @param {(err?: unknown) => void} next
+         */
         const parserMiddleware = (req, res, next) => {
             // the prologue is synchronous, bindContext waits for the read (1.4us of nothing here)
 
@@ -872,8 +877,11 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             }
 
             if (options.simpleType) {
-                const semicolonIndex = type.indexOf(";");
-                const clearType = semicolonIndex !== -1 ? type.substring(0, semicolonIndex) : type;
+                // only a type function lets a request without a content-type past the check above,
+                // and simpleType is never set beside one
+                const header = /** @type {string} */ (type);
+                const semicolonIndex = header.indexOf(";");
+                const clearType = semicolonIndex !== -1 ? header.substring(0, semicolonIndex) : header;
                 // the trim and lowercase only when the exact compare fails
                 if (clearType !== options.simpleType && clearType.trim().toLowerCase() !== options.simpleType) {
                     return next();
@@ -884,7 +892,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                         return next();
                     }
                 } else {
-                    if (!claimsType(type)) {
+                    if (!claimsType(/** @type {string} */ (type))) {
                         return next();
                     }
                 }
@@ -1107,11 +1115,11 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                     }
                 }
                 // fewer bytes than content-length promised; not when inflating, it counts the compressed ones
-                if (!inflate && length !== undefined && !isNaN(length) && totalSize !== Number(length)) {
+                if (!inflate && !Number.isNaN(lengthNumber) && totalSize !== lengthNumber) {
                     return next(
                         bodyError("request size did not match content length", 400, "request.size.invalid", {
-                            expected: Number(length),
-                            length: Number(length),
+                            expected: lengthNumber,
+                            length: lengthNumber,
                             received: totalSize
                         })
                     );

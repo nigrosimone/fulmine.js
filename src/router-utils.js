@@ -118,8 +118,19 @@ function anyGuardHits(guards, path) {
 }
 
 // every method the declarative compiler can emit: a patched one disables compilation
+/** @type {Record<string, string>} */
 const resCodes = {},
-    resDecMethods = ["set", "setHeader", "header", "send", "end", "append", "status", "json", "sendStatus"];
+    resDecMethods = /** @type {const} */ ([
+        "set",
+        "setHeader",
+        "header",
+        "send",
+        "end",
+        "append",
+        "status",
+        "json",
+        "sendStatus"
+    ]);
 for (const method of resDecMethods) {
     resCodes[method] = Response.prototype[method].toString();
 }
@@ -821,7 +832,7 @@ function callablePrototypeFor(classPrototype) {
         return prototype;
     }
     prototype = Object.create(classPrototype);
-    for (const name of ["apply", "call", "toString"]) {
+    for (const name of /** @type {const} */ (["apply", "call", "toString"])) {
         Object.defineProperty(prototype, name, {
             value: Function.prototype[name],
             writable: true,

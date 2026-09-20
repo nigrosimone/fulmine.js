@@ -166,12 +166,14 @@ function checkRouteHandlers(method, handlers) {
 }
 
 // every verb, plus all(), registered the same way: flattened, checked, then pushed with the verb
-// they answer. all() pushes handlers with no verb at all, which matches every request
+// they answer. all() pushes handlers with no verb at all, which matches every request. Loose:
+// the members are written here by name and not declared on the class
+const prototype = /** @type {any} */ (Route.prototype);
 for (const method of ["all", ...METHODS.map((verb) => verb.toLowerCase())]) {
-    if (method !== "all" && typeof Route.prototype[method] === "function") {
+    if (method !== "all" && typeof prototype[method] === "function") {
         continue;
     }
-    Route.prototype[method] = function (/** @type {unknown[]} */ ...handlers) {
+    prototype[method] = function (/** @type {unknown[]} */ ...handlers) {
         const flattened = handlers.flat(Infinity);
         checkRouteHandlers(method, flattened);
         // the check above threw on anything else

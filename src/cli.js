@@ -41,6 +41,7 @@ const TO = "fulmine.js";
 
 // modules this has a faster version of, reported and not rewritten: the replacement lives on the
 // express import, which may not be in scope where these are required
+/** @type {Record<string, string>} */
 const BUILT_IN_INSTEAD = {
     compression: "express.compression(), which takes the same options",
     "serve-static": "express.static()",

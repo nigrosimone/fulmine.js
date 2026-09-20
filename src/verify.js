@@ -36,6 +36,7 @@ const SWAP_IMAGE = `node:${MIN_NODE_MAJOR}-trixie-slim`;
 
 // What a project may carry that needs a different API here. Everything that just works is
 // `npx fulmine migrate`'s business.
+/** @type {Record<string, string>} */
 const NEEDS_A_LOOK = {
     "socket.io": "attach it with io.attachApp(app.uwsApp), not io.attach(server): there is no node socket to take over",
     ws: "the websocket server is µWS's own, through app.ws(path, behavior)",
@@ -191,6 +192,7 @@ function checkBinary(platform = process.platform, arch = process.arch, abi = pro
  * @returns {string}
  */
 function abiToNode(abi) {
+    /** @type {Record<string, string>} */
     const known = { 108: "18", 115: "20", 127: "22", 131: "23", 137: "24", 147: "26" };
     return known[abi] ?? `ABI ${abi}`;
 }

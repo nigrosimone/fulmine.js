@@ -242,7 +242,8 @@ function expectLazy(req, res, options) {
     const done = work(req, res);
     const unwanted = { ...done };
     for (const field of allowed) {
-        unwanted[field] = false;
+        // checked against LAZY above
+        unwanted[/** @type {keyof import("./work.js").Work} */ (field)] = false;
     }
     const listed = workNames(unwanted);
     if (listed.length === 0) {

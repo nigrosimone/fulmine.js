@@ -32,7 +32,7 @@ const kIsApplication = Symbol.for("fulmine.application");
  * Teaches `instanceof` that an application is a server, once per class. The original answer is
  * asked first and never overruled.
  *
- * @param {Function} klass http.Server or net.Server
+ * @param {Function & {[kIsApplication]?: boolean}} klass http.Server or net.Server
  */
 function acceptApplications(klass) {
     const previous = klass[Symbol.hasInstance];
@@ -48,7 +48,7 @@ function acceptApplications(klass) {
             }
             // an application is a function and a property read works on one. The guard is for the
             // primitives and nulls that reach any instanceof
-            return value != null && value[kIsApplication] === true;
+            return value != null && /** @type {{[kIsApplication]?: unknown}} */ (value)[kIsApplication] === true;
         },
         configurable: true,
         writable: true

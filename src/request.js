@@ -43,6 +43,7 @@ const {
 
 // whose headers #collectHeader is filling: uWS's forEach is synchronous, so one callback serves
 // every request
+/** @type {import("./request.js")|null} */
 let currentRequest = null;
 
 module.exports = class Request extends LazyReadable {
@@ -97,7 +98,8 @@ module.exports = class Request extends LazyReadable {
      * @param {string} value
      */
     static #collectHeader = (headerKey, value) => {
-        const r = currentRequest;
+        // set by the two forEach callers, never null while uWS is calling back
+        const r = /** @type {Request} */ (currentRequest);
         r.#rawHeadersEntries.push(headerKey, value);
         // the response, built right after, must not answer keep-alive to a client that said close
         if (headerKey.length === 10 && headerKey === "connection" && saysClose(value)) {
@@ -327,7 +329,10 @@ module.exports = class Request extends LazyReadable {
     /** The verbs a path answers, for an OPTIONS; null on every other method. @type {Set<string>|null} */
     _matchedMethods = null;
 
-    /** What each app.param() callback was called with, per router, made on first use. @type {Map<any, Map<any, any>>|null} */
+    /**
+     * What each app.param() callback was called with, per router, made on first use.
+     * @type {Map<Map<string, Function[]>, Map<string, import("./router.js").ParamCall>>|null}
+     */
     _paramCalled = null;
 
     /**
@@ -1214,8 +1219,8 @@ module.exports = class Request extends LazyReadable {
      *
      * @param {number} size length of the resource being served
      * @param {{combine?: boolean}} [options] combine adjacent and overlapping ranges
-     * @returns {Array|number|undefined} the ranges, -1 when unsatisfiable, -2 when malformed,
-     *   or undefined when there is no Range header
+     * @returns {import("range-parser").Ranges|-1|-2|undefined} the ranges, -1 when unsatisfiable,
+     *   -2 when malformed, or undefined when there is no Range header
      */
     range(size, options) {
         const range = this.headers["range"];

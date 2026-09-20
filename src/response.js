@@ -350,8 +350,9 @@ module.exports = class Response extends LazyWritable {
     get [kOutHeaders]() {
         if (!this.#outHeaders) {
             this.#outHeaders = new Proxy(this.headers, {
+                // node keys the slot by lowercased name, and stores [name, value]
                 set: (obj, prop, value) => {
-                    this.set(prop, value[1]);
+                    this.set(/** @type {string} */ (prop), value[1]);
                     return true;
                 },
                 get: (obj, prop) => {
@@ -362,6 +363,7 @@ module.exports = class Response extends LazyWritable {
         return this.#outHeaders;
     }
 
+    /** @param {Response["headers"]|null} value */
     set [kOutHeaders](value) {
         this.#outHeaders = value;
     }
@@ -793,7 +795,8 @@ module.exports = class Response extends LazyWritable {
      * Sends the body, with a Content-Type when none was set and an ETag when the setting asks.
      * A number is a value to serialise, never a status: that is `sendStatus()`.
      *
-     * @param {string|number|boolean|object|Buffer|null} [body]
+     * @param {string|number|boolean|object|null} [body] a Buffer or a Uint8Array is sent as bytes,
+     *   any other object is serialised
      * @returns {this}
      */
     send(body) {
@@ -842,11 +845,12 @@ module.exports = class Response extends LazyWritable {
         } else if (!isBuffer && typeof body !== "string") {
             // a symbol, a bigint or a function: what node's byteLength or from() throws is the
             // answer. A string never gets here, measuring it twice cost 157us per thousand requests
+            const unsendable = /** @type {any} */ (body);
             const generateETag = !this.headers["etag"] && typeof this.app._hot().etagFn === "function";
-            if (!generateETag && body.length < 1000) {
-                Buffer.byteLength(body, "utf8");
+            if (!generateETag && unsendable.length < 1000) {
+                Buffer.byteLength(unsendable, "utf8");
             }
-            Buffer.from(body, "utf8");
+            Buffer.from(unsendable, "utf8");
         }
         if (typeof body === "string" && !isBuffer) {
             const contentType = this.headers["content-type"];
@@ -874,7 +878,7 @@ module.exports = class Response extends LazyWritable {
             !this.req.noEtag &&
             (hot.etagMethods === null || hot.etagMethods.has(this.req.method))
         ) {
-            const etag = etagFn(body);
+            const etag = etagFn(/** @type {string|Buffer} */ (body));
             // an application's own etag function may decline
             if (etag) {
                 this.headers["etag"] = etag;
@@ -900,11 +904,11 @@ module.exports = class Response extends LazyWritable {
         // Transfer-Encoding the application set, as express 5.3
         if (this.req.method === "HEAD") {
             if (this.statusCode !== 204 && this.statusCode !== 304 && !this.headers["transfer-encoding"]) {
-                this.headers["content-length"] = String(Buffer.byteLength(body));
+                this.headers["content-length"] = String(Buffer.byteLength(/** @type {string|Buffer} */ (body)));
             }
             return this.end();
         }
-        return this.end(body);
+        return this.end(/** @type {string|Buffer} */ (body));
     }
 
     /**
@@ -1171,6 +1175,7 @@ module.exports = class Response extends LazyWritable {
                 });
         } else {
             // large files and ranges are piped
+            /** @type {{highWaterMark: number, start?: number, end?: number}} */
             const opts = {
                 highWaterMark: HIGH_WATERMARK
             };
@@ -1234,6 +1239,7 @@ module.exports = class Response extends LazyWritable {
         }
 
         // a header option of sendFile, as Express does: it only goes out once the stat succeeded
+        /** @type {Record<string, string>} */
         const headers = {
             "Content-Disposition": contentDisposition(name || path)
         };
@@ -1526,8 +1532,9 @@ module.exports = class Response extends LazyWritable {
      */
     set(field, value) {
         if (typeof field === "object") {
-            for (const header in field) {
-                this.set(header, field[header]);
+            const fields = /** @type {Record<string, string|string[]>} */ (field);
+            for (const header in fields) {
+                this.set(header, fields[header]);
             }
         } else {
             const name = field.toLowerCase();
@@ -1869,8 +1876,10 @@ module.exports = class Response extends LazyWritable {
             url = status;
             status = 302;
         }
+        // read from the closures below too, where the checker does not see the shuffle above
+        const code = /** @type {number} */ (status);
         this.location(/** @type {string} */ (url));
-        this.status(/** @type {number} */ (status));
+        this.status(code);
 
         const address = /** @type {string} */ (this.get("Location"));
         let body;
@@ -1893,11 +1902,11 @@ module.exports = class Response extends LazyWritable {
             this.format({
                 text: () => {
                     this.set("Content-Type", "text/plain; charset=utf-8");
-                    body = `${statuses.message[status]}. Redirecting to ${address}`;
+                    body = `${statuses.message[code]}. Redirecting to ${address}`;
                 },
                 html: () => {
                     this.set("Content-Type", "text/html; charset=utf-8");
-                    body = `<p>${statuses.message[status]}. Redirecting to ${escapeHtml(address)}</p>`;
+                    body = `<p>${statuses.message[code]}. Redirecting to ${escapeHtml(address)}</p>`;
                 },
                 default: () => {
                     // no Content-Type, as Express leaves it when the client accepts neither

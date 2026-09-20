@@ -20,6 +20,8 @@ limitations under the License.
 /** @typedef {import("./router.js")} Router */
 /** @typedef {import("./router-utils.js").RouteEntry} RouteEntry */
 /** @typedef {import("./application.js").Application} Application */
+/** @typedef {import("uWebSockets.js").HttpRequest} UwsRequest */
+/** @typedef {import("uWebSockets.js").HttpResponse} UwsResponse */
 
 const {
     patternToRegex,
@@ -124,7 +126,7 @@ function optimizeRoute(router, route, routes) {
                 route.path.slice(0, matched[0].length) === matched[0] &&
                 (route.path.length === matched[0].length || route.path[matched[0].length] === "/");
             if (runsAlways) {
-                if (r.callbacks.some((c) => c instanceof Router)) {
+                if (r.callbacks.some((/** @type {unknown} */ c) => c instanceof Router)) {
                     return false;
                 }
                 optimizedPath.push(r);
@@ -146,7 +148,7 @@ function optimizeRoute(router, route, routes) {
                     (!caseSensitive && r.pattern.toLowerCase() === routePathFolded) ||
                     r.pattern === "/*"))
         ) {
-            if (r.callbacks.some((c) => c instanceof Router)) {
+            if (r.callbacks.some((/** @type {unknown} */ c) => c instanceof Router)) {
                 return false;
             }
             optimizedPath.push(r);
@@ -173,7 +175,7 @@ function optimizeRoute(router, route, routes) {
         }
         // the same path lands on the same µWS registration, so the earlier route runs from the chain
         if (rPathFolded === routePathFolded) {
-            if (r.callbacks.some((c) => c instanceof Router)) {
+            if (r.callbacks.some((/** @type {unknown} */ c) => c instanceof Router)) {
                 return false;
             }
             optimizedPath.push(r);
@@ -414,6 +416,7 @@ function registerUwsRoute(router, route, optimizedPath) {
      * @param {import("./router-utils.js").NativePreset|undefined} preset
      * @param {{skipHeaders: boolean, skipQuery: boolean}} skips
      * @param {string|null} wireMethod
+     * @returns {(res: UwsResponse, req: UwsRequest) => unknown} what µWS calls
      */
     const makeHandler = (chain, preset, skips, wireMethod) => {
         // where a granted skip lives, so a middleware added after listen can take it back: the
@@ -449,10 +452,11 @@ function registerUwsRoute(router, route, optimizedPath) {
                 return router._refuseRequest(response);
             }
             if (optimizedParams) {
-                // slicing them out of the path instead measured a wash
+                // slicing them out of the path instead measured a wash. The index is one the
+                // registered path declares, so the value is never undefined
                 request.optimizedParams = new NullObject();
                 for (let i = 0; i < optimizedParams.length; i++) {
-                    request.optimizedParams[optimizedParams[i]] = req.getParameter(i);
+                    request.optimizedParams[optimizedParams[i]] = /** @type {string} */ (req.getParameter(i));
                 }
             }
             const walk = new Walk(router, request, response, chain, true, skipUntil, nativeDone, nativeFail);

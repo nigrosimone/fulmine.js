@@ -38,9 +38,12 @@ const kShapeMode =
 const VALIDATED_HEADER_NAMES = new Map();
 // The names and values that recur on every response, kept as Buffers for the uWS crossing: a Buffer
 // is memcpy'd as it is, a string pays a UTF-8 scan and copy per call. A header that is not here
-// crosses as the string it was. Names must stay lowercase, as writeHeaders receives them.
-const HEADER_NAME_BUF = { __proto__: null };
-const HEADER_VALUE_BUF = { __proto__: null };
+// crosses as the string it was. Names must stay lowercase, as writeHeaders receives them. The
+// casts are for the __proto__ key, which the type checker reads as a property
+/** @type {Record<string, Buffer>} */
+const HEADER_NAME_BUF = /** @type {any} */ ({ __proto__: null });
+/** @type {Record<string, Buffer>} */
+const HEADER_VALUE_BUF = /** @type {any} */ ({ __proto__: null });
 for (const s of ["connection", "keep-alive", "content-type", "vary", "x-powered-by", "content-encoding"]) {
     HEADER_NAME_BUF[s] = Buffer.from(s);
 }

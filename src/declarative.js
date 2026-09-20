@@ -144,6 +144,7 @@ function literalValue(node) {
                 return literalValue(element);
             });
         case "ObjectExpression": {
+            /** @type {Record<string, unknown>} */
             const out = {};
             for (const property of node.properties) {
                 if (property.type !== "Property" || property.computed || property.kind !== "init") {
@@ -537,7 +538,8 @@ function readHandler(cb) {
         }
     }
 
-    const args = fn.params.map((param) => param.name);
+    // undefined for a destructured one, which readParamNames reads by hand
+    const args = fn.params.map((/** @type {any} */ param) => param.name);
 
     if (args.length < 2) {
         return null;
@@ -607,12 +609,14 @@ function readBindings(pattern, into) {
 function readParamNames(fn, args) {
     const [req, res] = args;
     let queryName, paramsName;
-    const queries = [],
-        params = [];
+    /** @type {Binding[]} */
+    const queries = [];
+    /** @type {Binding[]} */
+    const params = [];
 
     if (fn.params[0].type === "ObjectPattern") {
-        const query = fn.params[0].properties.find((prop) => prop.key.name === "query");
-        const param = fn.params[0].properties.find((prop) => prop.key.name === "params");
+        const query = fn.params[0].properties.find((/** @type {any} */ prop) => prop.key.name === "query");
+        const param = fn.params[0].properties.find((/** @type {any} */ prop) => prop.key.name === "params");
 
         if (query?.value?.type === "Identifier") {
             queryName = query.value.name;

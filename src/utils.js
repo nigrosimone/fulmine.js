@@ -896,6 +896,8 @@ function negotiateEncoding(accept, allowed) {
     return best;
 }
 
+// a function here is called with the application at construction, see Application's constructor
+/** @type {Record<string, unknown>} */
 const defaultSettings = {
     "jsonp callback name": "callback",
     env: () => process.env.NODE_ENV ?? "development",
@@ -1501,6 +1503,7 @@ function headerIsWritable(name, value) {
 }
 
 // the status send picks for a failed stat; anything else is the server's 500
+/** @type {Record<string, number>} */
 const STAT_ERROR_STATUS = { ENAMETOOLONG: 404, ENOTDIR: 404, ENOENT: 404 };
 
 /**
@@ -1548,7 +1551,7 @@ function httpErrorName(status) {
  */
 function asStatError(err) {
     err.expose = false;
-    err.statusCode = STAT_ERROR_STATUS[err.code] ?? 500;
+    err.statusCode = STAT_ERROR_STATUS[/** @type {string} */ (err.code)] ?? 500;
     err.status = err.statusCode;
     return err;
 }

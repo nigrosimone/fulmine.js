@@ -61,6 +61,7 @@ function work(req, res) {
 }
 
 // The order both readers list them in, cheapest first, so a header and a failure message agree.
+/** @type {[keyof Work, string][]} */
 const NAMES = [
     ["headers", "headers"],
     ["query", "query"],

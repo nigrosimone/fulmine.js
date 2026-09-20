@@ -41,6 +41,9 @@ const { registerWebSocketRoutes } = require("./websocket.js");
 const { addServerMembers } = require("./server-shape.js");
 const { workerCount, forkWorkers, isSupervising, becomeSupervisor } = require("./cluster.js");
 
+/** @typedef {import("uWebSockets.js").HttpRequest} UwsRequest */
+/** @typedef {import("uWebSockets.js").HttpResponse} UwsResponse */
+
 const cpuCount = os.cpus().length;
 
 // marks a "trust proxy" the application never set, under express's key, so a sub-app may inherit
@@ -521,7 +524,9 @@ class Application extends Router {
 
     /** The catch-all uWS handler, for every request no native route took. */
     _createRequestHandler() {
-        this.uwsApp.any("/*", (res, req) => this._serveGeneric(res, req));
+        this.uwsApp.any("/*", (/** @type {UwsResponse} */ res, /** @type {UwsRequest} */ req) =>
+            this._serveGeneric(res, req)
+        );
     }
 
     /**

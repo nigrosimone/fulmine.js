@@ -237,8 +237,9 @@ function checkBehavior(path, behavior) {
                 "parameters that are a whole segment, as in /room/:id."
         );
     }
+    const handlers = /** @type {Record<string, unknown>} */ (behavior);
     for (const name of [...SOCKET_HANDLERS, "upgrade"]) {
-        if (behavior[name] !== undefined && typeof behavior[name] !== "function") {
+        if (handlers[name] !== undefined && typeof handlers[name] !== "function") {
             throw new TypeError(`app.ws() behavior.${name} must be a function`);
         }
     }

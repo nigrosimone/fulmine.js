@@ -74,6 +74,11 @@ const {
 /** @typedef {import("./router-utils.js").WsRoute} WsRoute */
 /** @typedef {import("uWebSockets.js").HttpRequest} UwsRequest */
 /** @typedef {import("uWebSockets.js").HttpResponse} UwsResponse */
+/**
+ * One app.param() call as _runParamCallbacks records it: the value its callbacks were given, the
+ * one they left in req.params, and what they ended with.
+ * @typedef {{error: unknown, match: unknown, value: unknown}} ParamCall
+ */
 
 // one number per app.route(), so the routes it creates know they belong together
 let routeGroups = 0;
@@ -238,6 +243,11 @@ module.exports = class Router extends EventEmitter {
      */
     _asCallable() {
         const fn = /** @type {any} */ (
+            /**
+             * @param {any} req loose as handle() is
+             * @param {any} res
+             * @param {(err?: unknown) => void} [next]
+             */
             function (req, res, next) {
                 return fn.handle(req, res, next);
             }
@@ -668,6 +678,8 @@ module.exports = class Router extends EventEmitter {
                 // a RegExp mount matches a piece of path known only per request
                 regexMount: method === "USE" && path instanceof RegExp,
                 userRegexp: path instanceof RegExp,
+                // a compiled pattern that cannot be compared as text, decided below
+                complex: false,
                 methods: methodMap,
                 stack,
                 // the route as a request sees it, a view with the written path when normalised
@@ -1052,6 +1064,7 @@ module.exports = class Router extends EventEmitter {
             let name = "";
             /** @type {unknown} */
             let value;
+            /** @type {ParamCall} */
             let entry;
             /** @type {Function[]} */
             let fns = [];
@@ -1074,10 +1087,10 @@ module.exports = class Router extends EventEmitter {
                 }
                 name = names[index++];
                 value = req.params[name];
-                entry = called.get(name);
-                if (entry && (entry.match === value || (entry.error && entry.error !== "route"))) {
-                    req.params[name] = entry.value;
-                    return nextParam(entry.error);
+                const earlier = called.get(name);
+                if (earlier && (earlier.match === value || (earlier.error && earlier.error !== "route"))) {
+                    req.params[name] = earlier.value;
+                    return nextParam(earlier.error);
                 }
                 entry = { error: null, match: value, value };
                 called.set(name, entry);
@@ -1298,7 +1311,7 @@ module.exports = class Router extends EventEmitter {
      * @param {Record<string, any>} [carried] the headers the error asked for, written last
      */
     _sendErrorPage(request, response, err, checkEnv = false, carried = undefined) {
-        err = this._generateErrorPage(err, response.statusCode, checkEnv);
+        const page = this._generateErrorPage(err, response.statusCode, checkEnv);
         request.noEtag = true;
         // a header that cannot be written may be what brought the request here
         response._dropUnwritableHeaders();
@@ -1312,7 +1325,7 @@ module.exports = class Router extends EventEmitter {
         response.setHeader("Content-Type", "text/html; charset=utf-8");
         response.setHeader("X-Content-Type-Options", "nosniff");
         response.setHeader("Content-Security-Policy", "default-src 'none'");
-        response.send(err);
+        response.send(page);
     }
 
     /**
@@ -1368,10 +1381,11 @@ module.exports = class Router extends EventEmitter {
 useRouterClass(module.exports);
 
 // the verb methods on the prototype: as own arrows they closed over the instance they were built
-// on, and express.Router().post(...) answered with the object the callable was copied from
-
+// on, and express.Router().post(...) answered with the object the callable was copied from.
+// Loose: the members are written here by name and not declared on the class
+const prototype = /** @type {any} */ (module.exports.prototype);
 for (const method of methods) {
-    module.exports.prototype[method] = function (
+    prototype[method] = function (
         /** @type {string|RegExp|(string|RegExp)[]} */ path,
         /** @type {unknown[]} */ ...callbacks
     ) {

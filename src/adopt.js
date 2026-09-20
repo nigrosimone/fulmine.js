@@ -36,7 +36,10 @@ const UWS_SPEC = /** @type {string} */ (require("../package.json").dependencies[
 /** The pnpm override that drops this package's own copy, so the project's direct one is the only one. */
 const UWS_OVERRIDE = `${SELF}>${UWS}`;
 
-/** Where each manager keeps its substitutions, and what to call it when telling someone. */
+/**
+ * Where each manager keeps its substitutions, and what to call it when telling someone.
+ * @type {Record<string, {keys: string[], reinstall: string}>}
+ */
 const MANAGERS = {
     npm: { keys: ["overrides"], reinstall: "npm install" },
     pnpm: { keys: ["pnpm", "overrides"], reinstall: "pnpm install" },

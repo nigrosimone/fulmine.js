@@ -20,6 +20,12 @@ limitations under the License.
  * What res.on was given, parked until there is a compressor to hang it on.
  * @typedef {Parameters<import("stream").Writable["on"]>} OnArgs
  */
+/**
+ * What the hooks below take: writeHead's arguments in node's two shapes, see applyWriteHead, and
+ * the callback write() and end() may carry in place of the encoding.
+ * @typedef {Parameters<Response["writeHead"]>} WriteHeadArgs
+ * @typedef {(err?: Error|null) => void} WriteCallback
+ */
 
 // express.compression(): the compression module's options, defaults and decision order, with three
 // differences: a whole body (res.send, res.json) is compressed in one call and goes out with a
@@ -229,8 +235,10 @@ function toBuffer(chunk, encoding) {
  *   compressed at all. The default says yes to any compressible content type.
  * @param {string} [options.enforceEncoding] what to use when the request carries no
  *   Accept-Encoding at all. Default "identity", which is to say nothing is compressed.
- * @param {object} [options.brotli] brotli options, `params` included. The default quality is 4.
- * @param {object} [options.zstd] zstd options, `params` included, node's own defaults otherwise.
+ * @param {import("zlib").BrotliOptions} [options.brotli] brotli options, `params` included. The
+ *   default quality is 4.
+ * @param {import("zlib").ZstdOptions} [options.zstd] zstd options, `params` included, node's own
+ *   defaults otherwise.
  * @param {string[]} [options.encodings] the encodings this middleware may answer with, out of
  *   "br", "zstd", "gzip" and "deflate". What is not named is never used, however the client ranks
  *   it. An uncompressed answer is always on offer, and enforceEncoding is outside this list. This
@@ -251,7 +259,7 @@ function compression(options) {
     const brotliOptions = { ...opts.brotli };
     brotliOptions.params = {
         [zlib.constants.BROTLI_PARAM_QUALITY]: 4,
-        ...(opts.brotli && /** @type {import("zlib").BrotliOptions} */ (opts.brotli).params)
+        ...(opts.brotli && opts.brotli.params)
     };
     // zstd at node's default level is already in the band this middleware wants
     const zstdOptions = { ...opts.zstd };
@@ -380,11 +388,21 @@ function compression(options) {
                 }
             };
             // at writeHead too, its headers applied first as on-headers orders it
+            /**
+             * @param {WriteHeadArgs[0]} statusCode
+             * @param {WriteHeadArgs[1]} [statusMessage]
+             * @param {WriteHeadArgs[2]} [headers]
+             */
             res.writeHead = function writeHead(statusCode, statusMessage, headers) {
                 const reason = applyWriteHead(this, statusMessage, headers);
                 vary();
                 return _plainWriteHead.call(this, statusCode, reason);
             };
+            /**
+             * @param {any} [chunk]
+             * @param {BufferEncoding|WriteCallback} [encoding]
+             * @param {WriteCallback} [callback]
+             */
             res.end = function end(chunk, encoding, callback) {
                 vary();
                 return _plainEnd.call(this, chunk, encoding, callback);
@@ -492,6 +510,11 @@ function compression(options) {
         }
 
         // decided at writeHead too, its headers applied first as on-headers orders it
+        /**
+         * @param {WriteHeadArgs[0]} statusCode
+         * @param {WriteHeadArgs[1]} [statusMessage]
+         * @param {WriteHeadArgs[2]} [headers]
+         */
         res.writeHead = function writeHead(statusCode, statusMessage, headers) {
             const reason = applyWriteHead(this, statusMessage, headers);
             if (!decided) {
@@ -500,6 +523,11 @@ function compression(options) {
             return _writeHead.call(this, statusCode, reason);
         };
 
+        /**
+         * @param {any} chunk
+         * @param {BufferEncoding|WriteCallback} [encoding]
+         * @param {WriteCallback} [callback]
+         */
         res.write = function write(chunk, encoding, callback) {
             if (typeof encoding === "function") {
                 callback = encoding;
@@ -520,6 +548,11 @@ function compression(options) {
             return _write.call(this, chunk, encoding, callback);
         };
 
+        /**
+         * @param {any} [chunk]
+         * @param {BufferEncoding|WriteCallback} [encoding]
+         * @param {WriteCallback} [callback]
+         */
         res.end = function end(chunk, encoding, callback) {
             if (typeof chunk === "function") {
                 callback = chunk;
@@ -575,6 +608,10 @@ function compression(options) {
             return _end.call(this, chunk, callback);
         };
 
+        /**
+         * @param {OnArgs[0]} type
+         * @param {OnArgs[1]} listener
+         */
         res.on = function on(type, listener) {
             if (!listeners || type !== "drain") {
                 return _on.call(this, type, listener);
