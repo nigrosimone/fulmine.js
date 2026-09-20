@@ -53,7 +53,7 @@ const { METHODS } = require("http");
  */
 /**
  * An earlier registration a mount is guarded by, see guardsInside.
- * @typedef {{path: string, use: boolean, method: string, all: boolean}} MountGuard
+ * @typedef {{path: string, use: boolean, method: string, all: boolean, params: boolean}} MountGuard
  */
 /**
  * A layer as express shapes it, for app.stack and router.stack.
@@ -686,6 +686,22 @@ function shadowsLeaf(guard, leafPath, leaf) {
 }
 
 /**
+ * Whether a HEAD of this leaf's path could enter a route of another verb written before the mount,
+ * for its param() callbacks: Express exempts HEAD from the method check. The GET leaf keeps its
+ * registration, only its HEAD twin goes to the generic walk. See headEnters in optimizer.js.
+ *
+ * @param {MountGuard} guard
+ * @param {string} leafPath the leaf's absolute path, parameters and all
+ * @returns {boolean}
+ */
+function headEntersGuard(guard, leafPath) {
+    if (guard.all || guard.use || !guard.params || guard.method === "GET" || guard.method === "HEAD") {
+        return false;
+    }
+    return pathsCanOverlap(guard.path.toLowerCase(), leafPath.toLowerCase(), false);
+}
+
+/**
  * The layers before a mount that answer some of what is inside it and not all of it, which neither
  * the chain nor uWS's specificity can say. Carried down the walk and asked about every leaf, see
  * shadowsLeaf.
@@ -714,7 +730,14 @@ function guardsInside(router, mount, pathPrefix, chain, inherited) {
         if (guards === inherited) {
             guards = [...inherited];
         }
-        guards.push({ path: pathPrefix + r.path, use: r.use === true, method: r.method, all: r.all === true });
+        guards.push({
+            path: pathPrefix + r.path,
+            use: r.use === true,
+            method: r.method,
+            all: r.all === true,
+            // whether its router has param() callbacks, which a HEAD runs on any matching verb
+            params: r.paramCallbacks.size > 0
+        });
     }
     return guards;
 }
@@ -870,6 +893,7 @@ module.exports = {
     stepsOver,
     couldAnswer,
     shadowsLeaf,
+    headEntersGuard,
     guardsInside,
     rememberApp,
     restoreApp,

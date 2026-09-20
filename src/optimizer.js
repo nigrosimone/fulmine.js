@@ -44,6 +44,7 @@ const {
     hasErrorMiddleware,
     couldAnswer,
     shadowsLeaf,
+    headEntersGuard,
     guardsInside,
     supportedUwsMethods,
     regExParam
@@ -79,6 +80,8 @@ function optimizeRoute(router, route, routes) {
     const strictHere = (route.owner ?? router)._strictRouting();
     /** @type {string[]|null} earlier literals a case variant could smuggle a request past */
     let caseGuards = null;
+    // whether the HEAD twin has to stay generic, see headEnters
+    let headGeneric = false;
 
     for (let i = 0; i < routes.length; i++) {
         const r = routes[i];
@@ -94,6 +97,12 @@ function optimizeRoute(router, route, routes) {
                 // of another method belongs only in some leaves' chains: left to ordinary dispatch
                 if (route.use && typeof route.path === "string" && couldAnswer(r, route.path)) {
                     return false;
+                }
+                // Express exempts HEAD from the method check: a HEAD enters a matching route of
+                // any verb and its param() callbacks run, as the generic walk does. The chain
+                // cannot say whether such a route matches, so the HEAD twin stays generic
+                if (route.method === "GET" && headEnters(r, route, caseSensitive, strictHere)) {
+                    headGeneric = true;
                 }
                 continue;
             }
@@ -186,8 +195,43 @@ function optimizeRoute(router, route, routes) {
     }
     optimizedPath.push(route);
     route._caseGuards = caseGuards;
+    route._headGeneric = headGeneric;
 
     return optimizedPath;
+}
+
+/**
+ * Whether a HEAD of some path this GET route answers would enter the earlier route of another
+ * verb for its param() callbacks: the router has callbacks and the paths can meet. A wrong yes
+ * costs the HEAD twin its native registration and nothing else.
+ *
+ * @param {RouteEntry} r the earlier route, of another verb
+ * @param {RouteEntry} route the GET route
+ * @param {boolean} caseSensitive
+ * @param {boolean} strictHere
+ * @returns {boolean}
+ */
+function headEnters(r, route, caseSensitive, strictHere) {
+    if (r.paramCallbacks.size === 0 || typeof route.path !== "string") {
+        return false;
+    }
+    if (!route.path.includes(":")) {
+        if (typeof r.pattern === "string") {
+            return (
+                r.pattern === "/*" ||
+                (caseSensitive ? r.pattern === route.path : r.patternLower === route.path.toLowerCase())
+            );
+        }
+        return r.pattern.test(route.path) || (!strictHere && r.pattern.test(route.path + "/"));
+    }
+    if (typeof r.path !== "string" || !canBeOptimizedWithParams(r.path)) {
+        return true;
+    }
+    return pathsCanOverlap(
+        caseSensitive ? r.path : r.path.toLowerCase(),
+        caseSensitive ? route.path : route.path.toLowerCase(),
+        r.use
+    );
 }
 
 /**
@@ -283,6 +327,16 @@ function compileOptimizedRoutes(root) {
                 if (!leafPath) {
                     route._whyGeneric = "something before it in the same router overlaps its paths";
                     continue;
+                }
+                // a route of another verb before the mount that a HEAD would enter, see headEnters
+                if (
+                    !route._headGeneric &&
+                    route.method === "GET" &&
+                    outerGuards.length > 0 &&
+                    typeof route.path === "string" &&
+                    outerGuards.some((g) => headEntersGuard(g, pathPrefix + route.path))
+                ) {
+                    route._headGeneric = true;
                 }
                 // an earlier parameter route in the same router would take this literal path
                 if (leafPath.length > 1) {
@@ -513,7 +567,7 @@ function registerUwsRoute(router, route, optimizedPath) {
                   ? makeHandler(getChain, makePreset(route.path + "/", route.method, getSkips), getSkips, wireMethod)
                   : fn;
         router.uwsApp[method](replacedPath + "/", slashFn);
-        if (method === "get") {
+        if (method === "get" && !route._headGeneric) {
             router.uwsApp.head(
                 replacedPath + "/",
                 makeHandler(
@@ -525,7 +579,7 @@ function registerUwsRoute(router, route, optimizedPath) {
             );
         }
     }
-    if (method === "get") {
+    if (method === "get" && !route._headGeneric) {
         // its own handler, the shared one would carry GET
         router.uwsApp.head(
             replacedPath,
