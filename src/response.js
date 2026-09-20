@@ -1267,7 +1267,7 @@ module.exports = class Response extends LazyWritable {
         // a header option of sendFile, as Express does: it only goes out once the stat succeeded
         /** @type {Record<string, string>} */
         const headers = {
-            "Content-Disposition": contentDisposition(name || path)
+            "Content-Disposition": contentDisposition.create(Path.basename(name || path))
         };
 
         // the caller's headers never override the disposition
@@ -1748,10 +1748,11 @@ module.exports = class Response extends LazyWritable {
      * @returns {this}
      */
     attachment(filename) {
-        if (filename) {
-            this.type(Path.extname(filename));
+        const name = filename !== undefined ? Path.basename(filename) : undefined;
+        if (name) {
+            this.type(Path.extname(name));
         }
-        this.set("Content-Disposition", contentDisposition(filename));
+        this.set("Content-Disposition", contentDisposition.create(name));
         return this;
     }
 
@@ -1932,7 +1933,11 @@ module.exports = class Response extends LazyWritable {
                 },
                 html: () => {
                     this.set("Content-Type", "text/html; charset=utf-8");
-                    body = `<p>${statuses.message[code]}. Redirecting to ${escapeHtml(address)}</p>`;
+                    // express 5.3's markup, no <html> element, byte for byte
+                    const message = statuses.message[code];
+                    body =
+                        `<!DOCTYPE html><head><title>${message}</title></head>` +
+                        `<body><p>${message}. Redirecting to ${escapeHtml(address)}</p></body>`;
                 },
                 default: () => {
                     // no Content-Type, as Express leaves it when the client accepts neither

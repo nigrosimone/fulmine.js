@@ -514,7 +514,8 @@ function adoptPlainRequest(req, router) {
 }
 
 /**
- * express's logerror: the stack of the error about to be answered, quiet under `env: "test"`.
+ * express's logerror: the error about to be answered, whole as express 5.3 logs it so a cause or a
+ * library's own fields show, quiet under `env: "test"`.
  *
  * @param {Router} router the router whose settings decide it
  * @param {any} err whatever was thrown, which need not be an Error
@@ -522,7 +523,7 @@ function adoptPlainRequest(req, router) {
  */
 function logError(router, err) {
     if (err && router.get("env") !== "test") {
-        console.error(err.stack || err.toString());
+        console.error(err);
     }
 }
 
