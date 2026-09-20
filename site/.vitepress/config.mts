@@ -33,9 +33,6 @@ export default defineConfig({
         ];
         pageData.frontmatter.head = [...(pageData.frontmatter.head ?? []), ...head];
     },
-    transformHead({ pageData }) {
-        if (pageData.isNotFound) return [["meta", { name: "robots", content: "noindex, follow" }]];
-    },
     // llms.txt (the index) and llms-full.txt (every page in one file), for the models that read docs
     vite: {
         plugins: [llmstxt({ domain: origin })],
