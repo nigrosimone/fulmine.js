@@ -297,8 +297,8 @@ function readStatusAndHeaders(callExprs, headers) {
  * @param {[string, string][]} headers written to
  * @param {any[]} body written to, a literal's value kept as it is
  * @param {Application|Router} app for the json settings
- * @param {string[]} queries names bound by a destructured req.query
- * @param {string[]} params names bound by a destructured req.params
+ * @param {Binding[]} queries what a destructured req.query bound
+ * @param {Binding[]} params what a destructured req.params bound
  * @returns {{sendUsed: boolean, bodyFromSend: boolean}|null}
  */
 function readBody(callExprs, headers, body, app, queries, params) {
@@ -391,10 +391,14 @@ function readBody(callExprs, headers, body, app, queries, params) {
                             }
                             body.push({ type, value: expr.property.name });
                         } else if (expr.type === "Identifier") {
-                            if (queries.includes(expr.name)) {
-                                body.push({ type: "query", value: expr.name });
-                            } else if (params.includes(expr.name)) {
-                                body.push({ type: "params", value: expr.name });
+                            // the key, not the local name: a minifier renames the local and uWS
+                            // would be asked for a parameter that does not exist
+                            const query = queries.find((binding) => binding.local === expr.name);
+                            const param = params.find((binding) => binding.local === expr.name);
+                            if (query) {
+                                body.push({ type: "query", value: query.key });
+                            } else if (param) {
+                                body.push({ type: "params", value: param.key });
                             } else {
                                 return null;
                             }
@@ -558,9 +562,40 @@ function readHandler(cb) {
  * @property {string} res
  * @property {string|undefined} queryName
  * @property {string|undefined} paramsName
- * @property {string[]} queries
- * @property {string[]} params
+ * @property {Binding[]} queries
+ * @property {Binding[]} params
  */
+
+/**
+ * One name a destructured req.query or req.params bound, with the key it stands for: the same
+ * word in `{ id }`, two after a minifier has been through (`{ id: c }`).
+ * @typedef {object} Binding
+ * @property {string} local
+ * @property {string} key
+ */
+
+/**
+ * The bindings of one destructuring pattern, `{ id, name: n }`. False for a shape this cannot
+ * read: a computed key, a rest element, a default value or a nested pattern.
+ *
+ * @param {any} pattern an ObjectPattern node
+ * @param {Binding[]} into
+ * @returns {boolean}
+ */
+function readBindings(pattern, into) {
+    for (const prop of pattern.properties) {
+        if (
+            prop.type !== "Property" ||
+            prop.computed ||
+            prop.key.type !== "Identifier" ||
+            prop.value.type !== "Identifier"
+        ) {
+            return false;
+        }
+        into.push({ local: prop.value.name, key: prop.key.name });
+    }
+    return true;
+}
 
 /**
  * The names a destructured `req` binds for query and params; null for a pattern this cannot read.
@@ -582,11 +617,8 @@ function readParamNames(fn, args) {
         if (query?.value?.type === "Identifier") {
             queryName = query.value.name;
         } else if (query?.value?.type === "ObjectPattern") {
-            for (const prop of query.value.properties) {
-                if (prop.value.type !== "Identifier") {
-                    return null;
-                }
-                queries.push(prop.value.name);
+            if (!readBindings(query.value, queries)) {
+                return null;
             }
         } else {
             return null;
@@ -595,11 +627,8 @@ function readParamNames(fn, args) {
         if (param?.value?.type === "Identifier") {
             paramsName = param.value.name;
         } else if (param?.value?.type === "ObjectPattern") {
-            for (const prop of param.value.properties) {
-                if (prop.value.type !== "Identifier") {
-                    return null;
-                }
-                params.push(prop.value.name);
+            if (!readBindings(param.value, params)) {
+                return null;
             }
         } else {
             return null;
@@ -706,8 +735,8 @@ function identifiersAllowed(fn, args, names) {
             (identifiers[i - 2] === req && identifiers[i - 1] === "query") ||
             id === queryName ||
             id === paramsName ||
-            queries.includes(id) ||
-            params.includes(id)
+            queries.some((binding) => binding.local === id) ||
+            params.some((binding) => binding.local === id)
     );
 }
 // A uWS declarative response never enters node, so it is very fast. Only a handler that is simple
