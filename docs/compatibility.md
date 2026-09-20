@@ -1,3 +1,7 @@
+---
+description: Check Fulmine.js support for the Express 5 API, middleware and frameworks, with documented limitations and integrations tested against Express.
+---
+
 # Compatibility with Express 5
 
 In general, basically all features and options are supported. Use the [Express 5.x documentation](https://expressjs.com/en/5x/api.html) for API reference. Anything Express 5 removed is removed here too, so the list below covers only where this differs from Express 5 itself.
@@ -196,7 +200,7 @@ Fulmine adds nine of its own:
 Almost all middlewares that are compatible with Express are compatible with Fulmine. Here's list of middlewares that we test for compatibility:
 
 - ✅ [express-fast-json-stringify](https://npmjs.com/package/express-fast-json-stringify)
-- ✅ [socket.io](https://npmjs.com/package/socket.io) (via `io.attachApp(app.uwsApp)`, see [WebSockets](./websockets.md#socketio))
+- ✅ [socket.io](https://npmjs.com/package/socket.io) (via `io.attachApp(app.uwsApp)`, see [WebSockets](./websockets.md#socket-io))
 - ✅ [body-parser](https://npmjs.com/package/body-parser) (use `express.text()` etc instead for better performance)
 - ✅ [cookie-parser](https://npmjs.com/package/cookie-parser)
 - ✅ [cookie-session](https://npmjs.com/package/cookie-session)

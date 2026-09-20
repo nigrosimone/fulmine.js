@@ -1,8 +1,9 @@
-import { defineConfig } from "vitepress";
+import { defineConfig, type HeadConfig } from "vitepress";
 import llmstxt from "vitepress-plugin-llms";
 import { fileURLToPath } from "node:url";
 
 const repo = "https://github.com/nigrosimone/fulmine.js";
+const origin = "https://fulmine.sndesign.it";
 
 // The pages are the repository's own docs/, read in place, so there is one copy of everything.
 // A link there that climbs out of docs/ (../examples/x.js, ../README.md) is a file on GitHub
@@ -13,11 +14,31 @@ export default defineConfig({
     description: "Drop-in Express 5 replacement on uWebSockets.js, up to 20x faster. Your middleware keeps working.",
     lang: "en",
     cleanUrls: true,
+    // Load documentation when requested instead of downloading every visible homepage link.
+    router: { prefetchLinks: false },
     lastUpdated: true,
-    sitemap: { hostname: "https://fulmine.sndesign.it" },
+    sitemap: { hostname: origin },
+    // Store page-specific tags in page data so they also update on client-side navigation.
+    transformPageData(pageData) {
+        const pathname = pageData.relativePath.replace(/(^|\/)index\.md$/, "$1").replace(/\.md$/, "");
+        const url = new URL(pathname, `${origin}/`).href;
+        const title = pageData.titleTemplate === false ? pageData.title : `${pageData.title} | Fulmine.js`;
+        const head: HeadConfig[] = [
+            ["link", { rel: "canonical", href: url }],
+            ["meta", { property: "og:title", content: title }],
+            ["meta", { property: "og:description", content: pageData.description }],
+            ["meta", { property: "og:url", content: url }],
+            ["meta", { name: "twitter:title", content: title }],
+            ["meta", { name: "twitter:description", content: pageData.description }]
+        ];
+        pageData.frontmatter.head = [...(pageData.frontmatter.head ?? []), ...head];
+    },
+    transformHead({ pageData }) {
+        if (pageData.isNotFound) return [["meta", { name: "robots", content: "noindex, follow" }]];
+    },
     // llms.txt (the index) and llms-full.txt (every page in one file), for the models that read docs
     vite: {
-        plugins: [llmstxt({ domain: "https://fulmine.sndesign.it" })],
+        plugins: [llmstxt({ domain: origin })],
         // the pages live outside this directory, so vue has to be found from here and not from docs/
         resolve: { alias: { vue: fileURLToPath(new URL("../node_modules/vue", import.meta.url)) } }
     },
@@ -25,9 +46,8 @@ export default defineConfig({
         ["link", { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" }],
         ["meta", { name: "theme-color", content: "#ff6b2c" }],
         ["meta", { property: "og:type", content: "website" }],
-        ["meta", { property: "og:title", content: "Fulmine.js: the drop-in Express 5 replacement, up to 20x faster" }],
         ["meta", { property: "og:site_name", content: "Fulmine.js" }],
-        ["meta", { property: "og:url", content: "https://fulmine.sndesign.it/" }]
+        ["meta", { name: "twitter:card", content: "summary" }]
     ],
     markdown: {
         // the default github themes paint comments too light for the contrast audit

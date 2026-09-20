@@ -1,3 +1,7 @@
+---
+description: Add native WebSocket routes to Fulmine.js with app.ws(), authenticate upgrades, manage connection state and integrate socket.io through uWebSockets.js.
+---
+
 # WebSockets
 
 `app.ws()` registers a WebSocket route, served by µWS itself. The upgrade never reaches node, so `server.on("upgrade")` and the libraries built on it have nothing to hear; this is the replacement.

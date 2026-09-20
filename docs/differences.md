@@ -1,3 +1,7 @@
+---
+description: Review the differences between Fulmine.js and Express 5, including server behaviour, request handling, TLS and native uWebSockets.js limitations.
+---
+
 # Differences from Express
 
 What the two servers answer on the wire, probed from outside, malformed input and smuggling

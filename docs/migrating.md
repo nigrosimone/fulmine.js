@@ -1,3 +1,7 @@
+---
+description: Migrate an Express app to Fulmine.js, verify your environment and update imports, with guidance for NestJS, Angular SSR and framework integrations.
+---
+
 # Migrating to Fulmine.js
 
 In a lot of cases, replacing `require("express")` with `require("fulmine.js")` is the whole migration. `npx fulmine.js migrate` does that across a project:

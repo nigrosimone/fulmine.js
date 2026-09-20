@@ -1,3 +1,7 @@
+---
+description: Learn why Fulmine.js combines the Express 5 API with native uWebSockets.js routing, how compatibility is tested, and which trade-offs to consider.
+---
+
 # Why Fulmine
 
 There are several fast HTTP servers for Node built on [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js). What is scarce is one you can drop into an existing Express application without rewriting it. That is the whole project: **an Express 5 that runs on µWebSockets.js**, and everything else follows from taking both halves of that sentence seriously.

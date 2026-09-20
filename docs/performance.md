@@ -1,3 +1,7 @@
+---
+description: Explore Fulmine.js benchmarks against Express, how native routing reduces overhead, where gains are limited, and how to inspect and tune your routes.
+---
+
 # Performance
 
 Fulmine is faster than Express where the framework itself is doing the work, and the same speed where it is not. Both halves of that sentence matter, so here is the honest version.

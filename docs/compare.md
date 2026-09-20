@@ -1,3 +1,7 @@
+---
+description: Compare Fulmine.js with Express alternatives, Fastify, Hono and Elysia, including API compatibility, middleware support and migration trade-offs.
+---
+
 # Compared with the others
 
 The question behind every comparison here is the same one: **can you drop it into an existing Express application?** Speed without that is a rewrite, and a rewrite has its own candidates.

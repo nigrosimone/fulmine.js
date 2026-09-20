@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 500" fill="none">
+    <defs>
+        <linearGradient id="bolt-face" x1="275" y1="66" x2="452" y2="406" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#ffc24b" />
+            <stop offset=".44" stop-color="#ff9138" />
+            <stop offset="1" stop-color="#f15a24" />
+        </linearGradient>
+        <linearGradient id="bolt-edge" x1="420" y1="100" x2="342" y2="430" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#f15a24" />
+            <stop offset="1" stop-color="#a52d14" />
+        </linearGradient>
+        <linearGradient id="tracks" x1="24" y1="410" x2="541" y2="88" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#f15a24" stop-opacity="0" />
+            <stop offset=".3" stop-color="#f15a24" stop-opacity=".36" />
+            <stop offset=".7" stop-color="#ff9d38" stop-opacity=".58" />
+            <stop offset="1" stop-color="#f15a24" stop-opacity="0" />
+        </linearGradient>
+        <linearGradient id="slipstream" x1="12" y1="248" x2="330" y2="248" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#f15a24" stop-opacity="0" />
+            <stop offset="1" stop-color="#f15a24" stop-opacity=".6" />
+        </linearGradient>
+    </defs>
+    <g stroke="url(#tracks)">
+        <path d="M-40 363H105C154 363 179 336 215 297L532-37" />
+        <path d="M-40 384H118C177 384 203 354 236 319L558-24" />
+        <path d="M-40 408H126C193 408 222 377 259 337L582-10" stroke-width="1.5" />
+        <path d="M-40 434H140C208 434 241 400 281 358L610 6" />
+        <path d="M-40 465H149C225 465 267 424 307 380L640 24" />
+        <path d="M116 519 610-6" stroke-opacity=".3" />
+        <path d="M220 520 616 99" stroke-opacity=".3" />
+    </g>
+    <g stroke="url(#slipstream)">
+        <path d="M10 194H211" />
+        <path d="M51 219H259" stroke-width="2" />
+        <path d="M-20 247H195" />
+        <path d="M80 294H242" />
+        <path d="M10 318H194" stroke-width="2" />
+    </g>
+    <g stroke="#f15a24" stroke-opacity=".22">
+        <path d="M194 108H228M211 91V125M506 374H532M519 361V387" />
+        <path d="M48 453H117M48 449V457M61 451V455M74 451V455M87 449V457M100 451V455M113 451V455" />
+        <path d="M486 80H524V118M220 419V445H246" />
+        <circle cx="156" cy="158" r="3" />
+        <circle cx="533" cy="297" r="3" />
+    </g>
+    <path d="m427 75-172 213h100l-16 160 173-224H412Z" fill="#f15a24" opacity=".06" />
+    <path d="m416 60 12 12-15 149h-12Z" fill="#ffc24b" />
+    <path d="m500 209 12 12-173 224-12-12Z" fill="url(#bolt-edge)" />
+    <path d="m344 273 12 12H256l-12-12Z" fill="#b9461b" />
+    <path d="m416 60-172 213h100l-17 160 173-224H400Z" fill="url(#bolt-face)" />
+    <path d="m416 60-172 213h100" stroke="#fff1cb" stroke-opacity=".72" stroke-width="1.5" />
+    <path d="m416 60-57 169h90L327 433l173-224H400Z" fill="#f15a24" opacity=".12" />
+    <path d="m400 209 100 .001" stroke="#fff1cb" stroke-opacity=".6" stroke-width="1.5" />
+    <path d="M125 361h41l19-20M470 116l24-26M455 401l31-33" stroke="#f15a24" stroke-width="2" />
+    <path d="m90 362 7-7m-2 12 7-7m-2 12 7-7" stroke="#f15a24" stroke-opacity=".5" />
+</svg>

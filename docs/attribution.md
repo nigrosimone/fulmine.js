@@ -1,3 +1,7 @@
+---
+description: Credits and licences for Fulmine.js, its Ultimate Express origins, and the Express, compression and uWebSockets.js code it builds on.
+---
+
 # Attribution
 
 Fulmine is a derivative work of [Ultimate Express](https://github.com/dimdenGD/ultimate-express) by [@dimdenGD](https://github.com/dimdenGD), used under the Apache License 2.0. The full commit history is preserved, so the original authorship is visible in the repository itself.
