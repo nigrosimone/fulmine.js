@@ -206,6 +206,15 @@ test("a chain is judged whole, and the terminal next needs a clear path behind i
     // a terminal that calls next may fall through, so it needs the all-clear
     assert.deepEqual(chainUsage([safe, mid], false), { skipHeaders: false, skipQuery: false });
     assert.deepEqual(chainUsage([safe, mid], true), { skipHeaders: true, skipQuery: true });
+    // a middleware in front of the handler of the same route calls next() into that handler, not
+    // past the route: app.get("/x", auth, handler) keeps the skip whatever is registered after it
+    const guarded = { callbacks: [(req, res, next) => next(), (req, res) => res.send("x")], paramCallbacks: new Map() };
+    assert.deepEqual(chainUsage([guarded], false), { skipHeaders: true, skipQuery: true });
+    const trailing = {
+        callbacks: [(req, res) => res.send("x"), (req, res, next) => next()],
+        paramCallbacks: new Map()
+    };
+    assert.deepEqual(chainUsage([trailing], false), { skipHeaders: false, skipQuery: false });
     // a param callback is code nobody analyzed
     const withParam = { callbacks: [(req, res) => res.send("x")], paramCallbacks: new Map([["id", []]]) };
     assert.deepEqual(chainUsage([withParam], false), { skipHeaders: false, skipQuery: false });

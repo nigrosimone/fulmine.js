@@ -308,12 +308,16 @@ function chainUsage(chain, allowTerminalNext) {
             return none;
         }
         const terminal = i === chain.length - 1;
-        for (const cb of callbacks) {
+        for (let j = 0; j < callbacks.length; j++) {
+            const cb = callbacks[j];
             if (typeof cb !== "function") {
                 return none;
             }
             const mask = callbackUsage(cb);
-            if (mask & UNKNOWN || (mask & NEXT_PLAIN && terminal && !allowTerminalNext)) {
+            // a bare next() leaves the chain only from the route's last callback: from one in
+            // front of it, the step lands on the next callback of the same route, judged here too
+            const last = terminal && j === callbacks.length - 1;
+            if (mask & UNKNOWN || (mask & NEXT_PLAIN && last && !allowTerminalNext)) {
                 return none;
             }
             if (mask & QUERY) {
