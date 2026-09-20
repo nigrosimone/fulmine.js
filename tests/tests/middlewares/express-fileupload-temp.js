@@ -5,18 +5,24 @@ const express = require("express");
 const { fetchTest } = require("../../helpers.js");
 const fileUpload = require("express-fileupload");
 const fs = require("fs");
+const os = require("os");
+const path = require("path");
+
+// a directory of its own: "./tmp" was the repo's, and the cleanup below took whatever was in it
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "fulmine-fileupload-"));
+const moved = path.join(tmp, "test.txt");
 
 const app = express();
 
 app.post(
     "/file",
     fileUpload({
-        tempFileDir: "./tmp",
+        tempFileDir: tmp,
         useTempFiles: true,
         debug: false
     }),
     (req, res) => {
-        req.files.file.mv("./tmp/test.txt");
+        req.files.file.mv(moved);
         res.send(req.files.file.size.toString());
     }
 );
@@ -44,8 +50,8 @@ app.listen(13333, async () => {
     const text = await response.text();
     console.log(text);
 
-    console.log("temp file", fs.statSync("./tmp/test.txt").size);
-    fs.rmSync("./tmp", { recursive: true, force: true });
+    console.log("temp file", fs.statSync(moved).size);
+    fs.rmSync(tmp, { recursive: true, force: true });
 
     process.exit(0);
 });
