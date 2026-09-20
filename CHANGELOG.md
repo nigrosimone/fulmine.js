@@ -1,5 +1,18 @@
 # Changelog
 
+## [5.21.3](https://github.com/nigrosimone/fulmine.js/compare/v5.21.2...v5.21.3) (2026-09-20)
+
+### Bug Fixes
+
+* **body-parser:** a limit the parser cannot read is refused when it is built, it disabled the limit (CVE-2026-12590) ([6dad9dc](https://github.com/nigrosimone/fulmine.js/commit/6dad9dc8a3c79c250ee23c442944f21de1879471))
+* **declarative:** a destructured request value a minifier renamed is written by its key, the body came out empty ([34fb5f7](https://github.com/nigrosimone/fulmine.js/commit/34fb5f7bea13a4d88d07e5c264b22298e4d7335a))
+* **res:** a Transfer-Encoding the application set frames the body chunked, uWS added a length beside it ([3d41279](https://github.com/nigrosimone/fulmine.js/commit/3d412797ae84f30b0a512b29ae04d9062682c5c1))
+* **usage:** a member read off a res call chain is judged as one of res, res.status(200).sendFile() kept the header skip ([5bb2368](https://github.com/nigrosimone/fulmine.js/commit/5bb2368f140c790a63ae98df806be0b1dea861fc))
+
+### Performance Improvements
+
+* **usage:** a middleware's next() in front of the route's handler no longer costs the header skip ([fc19a19](https://github.com/nigrosimone/fulmine.js/commit/fc19a19c96faea538cd82b914a3f765997b8860f))
+
 ## [5.21.2](https://github.com/nigrosimone/fulmine.js/compare/v5.21.1...v5.21.2) (2026-09-19)
 
 ### Bug Fixes
