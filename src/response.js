@@ -49,39 +49,6 @@ const { isAbsolute } = require("path");
 const fs = require("fs");
 const Path = require("path");
 const statuses = require("statuses");
-
-/**
- * The TypeError node throws for a chunk that is not a string, a Buffer or a Uint8Array, worded as
- * node words it.
- *
- * @param {unknown} chunk what end() was handed, known here not to be a string or a Uint8Array
- * @returns {NodeJS.ErrnoException}
- */
-function invalidChunkError(chunk) {
-    let received;
-    if (chunk === null) {
-        received = "null";
-    } else if (typeof chunk === "object" || typeof chunk === "function") {
-        const name = /** @type {any} */ (chunk).constructor?.name;
-        received = name ? `an instance of ${name}` : "an instance of Object";
-    } else if (typeof chunk === "bigint") {
-        received = `type bigint (${chunk}n)`;
-    } else if (typeof chunk === "symbol") {
-        received = `type symbol (${String(chunk)})`;
-    } else {
-        received = `type ${typeof chunk} (${chunk})`;
-    }
-    /** @type {NodeJS.ErrnoException} */
-    const err = new TypeError(
-        `The "chunk" argument must be of type string or an instance of Buffer or Uint8Array. Received ${received}`
-    );
-    err.code = "ERR_INVALID_ARG_TYPE";
-    // as node: the bracketed name goes into the stack's first line, then err.name reads TypeError
-    err.name = "TypeError [ERR_INVALID_ARG_TYPE]";
-    void err.stack;
-    delete (/** @type {Record<string, unknown>} */ (/** @type {unknown} */ (err)).name);
-    return err;
-}
 const { sign } = require("cookie-signature");
 const ms = require("ms");
 const Socket = require("./socket.js");
@@ -92,7 +59,8 @@ const {
     VALIDATED_HEADER_NAMES,
     HEADER_NAME_BUF,
     HEADER_VALUE_BUF,
-    statusLine
+    statusLine,
+    invalidChunkError
 } = require("./response-utils.js");
 
 // How much a chunked response may gather before it goes to uWS: 33 KB in 500 pieces measured
@@ -726,7 +694,7 @@ module.exports = class Response extends LazyWritable {
         }
         // uWS takes a string as utf-8 only: res.end(data, "binary") is how old code sends an image
         if (typeof data === "string" && encoding !== undefined && encoding !== "utf8" && encoding !== "utf-8") {
-            data = Buffer.from(data, encoding);
+            data = Buffer.from(data, /** @type {BufferEncoding} */ (encoding));
         }
 
         if (this.writingChunk) {
@@ -743,10 +711,12 @@ module.exports = class Response extends LazyWritable {
             this.writeHead(this.statusCode);
         }
         // uWS corks itself for the synchronous window of its route handler, see _corkNeeded
+        // by now a function was moved to cb, which the editor's config cannot see
+        const chunk = /** @type {string|Uint8Array|null|undefined} */ (data);
         if (this._corkNeeded) {
-            this._res.cork(() => this._finish(data, cb));
+            this._res.cork(() => this._finish(chunk, cb));
         } else {
-            this._finish(data, cb);
+            this._finish(chunk, cb);
         }
         return this;
     }

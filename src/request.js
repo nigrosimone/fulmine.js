@@ -83,6 +83,12 @@ module.exports = class Request extends LazyReadable {
     /** @type {string[]|null} */
     #cachedSubdomains = null;
 
+    /** The socket stand-in `req.connection` once built, see the getter. @type {import("./socket.js")|null} */
+    #cachedConnection = null;
+
+    /** Behind `req.signal`, made on the first read. @type {AbortController|undefined} */
+    #abortController;
+
     /**
      * Copies one header out of uWS and notices what the constructor decides by. One function for
      * every request through currentRequest, an arrow per request cost a closure.
@@ -573,9 +579,6 @@ module.exports = class Request extends LazyReadable {
         return this.res?.finished || this.res?.aborted;
     }
 
-    /** @type {AbortController|undefined} */
-    #abortController;
-
     /**
      * node's `req.signal`, fired when the request is over: `@angular/ssr` reads it to give up a
      * render. Made on the first ask.
@@ -1011,9 +1014,6 @@ module.exports = class Request extends LazyReadable {
         return ip;
     }
 
-    /** @type {import("./socket.js")|null} */
-    #cachedConnection = null;
-
     /**
      * The socket stand-in, the same object as `res.socket`, kept here so it still answers once
      * the response is over and `res.socket` is null.
@@ -1302,10 +1302,8 @@ module.exports = class Request extends LazyReadable {
         return this.#rawHeadersEntries.slice();
     }
 
-    // the three below report work this request was made to do, for src/work.js
-
     /**
-     * Whether the folded `req.headers` object was built.
+     * Whether the folded `req.headers` object was built, which src/work.js reports.
      * @returns {boolean}
      */
     get _headersBuilt() {
@@ -1313,7 +1311,7 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * Whether the query string was parsed at least once.
+     * Whether the query string was parsed at least once, which src/work.js reports.
      * @returns {boolean}
      */
     get _queryParsed() {
@@ -1321,7 +1319,7 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * Whether the socket stand-in `req.connection` was allocated.
+     * Whether the socket stand-in `req.connection` was allocated, which src/work.js reports.
      * @returns {boolean}
      */
     get _socketBuilt() {

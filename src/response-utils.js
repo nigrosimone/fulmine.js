@@ -81,11 +81,45 @@ function statusLine(code, text) {
     return `${code} ${text ?? statuses.message[code] ?? "unknown"}`.trim();
 }
 
+/**
+ * The TypeError node throws for a chunk that is not a string, a Buffer or a Uint8Array, worded as
+ * node words it.
+ *
+ * @param {unknown} chunk what end() was handed, known here not to be a string or a Uint8Array
+ * @returns {NodeJS.ErrnoException}
+ */
+function invalidChunkError(chunk) {
+    let received;
+    if (chunk === null) {
+        received = "null";
+    } else if (typeof chunk === "object" || typeof chunk === "function") {
+        const name = /** @type {any} */ (chunk).constructor?.name;
+        received = name ? `an instance of ${name}` : "an instance of Object";
+    } else if (typeof chunk === "bigint") {
+        received = `type bigint (${chunk}n)`;
+    } else if (typeof chunk === "symbol") {
+        received = `type symbol (${String(chunk)})`;
+    } else {
+        received = `type ${typeof chunk} (${chunk})`;
+    }
+    /** @type {NodeJS.ErrnoException} */
+    const err = new TypeError(
+        `The "chunk" argument must be of type string or an instance of Buffer or Uint8Array. Received ${received}`
+    );
+    err.code = "ERR_INVALID_ARG_TYPE";
+    // as node: the bracketed name goes into the stack's first line, then err.name reads TypeError
+    err.name = "TypeError [ERR_INVALID_ARG_TYPE]";
+    void err.stack;
+    delete (/** @type {Record<string, unknown>} */ (/** @type {unknown} */ (err)).name);
+    return err;
+}
+
 module.exports = {
     kOutHeaders,
     kShapeMode,
     VALIDATED_HEADER_NAMES,
     HEADER_NAME_BUF,
     HEADER_VALUE_BUF,
-    statusLine
+    statusLine,
+    invalidChunkError
 };
