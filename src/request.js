@@ -1064,11 +1064,13 @@ module.exports = class Request extends LazyReadable {
 
     /**
      * Whether the client's cached copy is still good, from If-None-Match and If-Modified-Since
-     * against the response headers set so far. Only GET and HEAD can be fresh.
+     * against the response headers set so far. Only GET, HEAD and QUERY can be fresh, the last
+     * since express 5.3.
      * @returns {boolean}
      */
     get fresh() {
-        if (this.method !== "HEAD" && this.method !== "GET") {
+        const method = this.method;
+        if (method !== "HEAD" && method !== "GET" && method !== "QUERY") {
             return false;
         }
         if ((this.res.statusCode >= 200 && this.res.statusCode < 300) || this.res.statusCode === 304) {
