@@ -44,7 +44,12 @@ export default defineConfig({
         ["meta", { name: "theme-color", content: "#ff6b2c" }],
         ["meta", { property: "og:type", content: "website" }],
         ["meta", { property: "og:site_name", content: "Fulmine.js" }],
-        ["meta", { name: "twitter:card", content: "summary" }]
+        ["meta", { name: "twitter:card", content: "summary" }],
+        // GoatCounter, the visit count with no cookies and nothing that names the visitor
+        [
+            "script",
+            { "data-goatcounter": "https://fulmine.goatcounter.com/count", async: "", src: "//gc.zgo.at/count.js" }
+        ]
     ],
     markdown: {
         // the default github themes paint comments too light for the contrast audit
