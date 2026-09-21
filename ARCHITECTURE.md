@@ -1,7 +1,7 @@
 # Architecture
 
 How a request goes through this library, and who owns what. For the rules about working here read
-[`CLAUDE.md`](./CLAUDE.md) and [`CONTRIBUTING.md`](./CONTRIBUTING.md) instead.
+[`AGENTS.md`](./AGENTS.md) and [`CONTRIBUTING.md`](./CONTRIBUTING.md) instead.
 
 ## The one idea
 

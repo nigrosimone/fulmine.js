@@ -1,7 +1,7 @@
 # Working on Fulmine
 
 The README is for people using this. This is for people changing it, and for the agents that change
-it too: [`CLAUDE.md`](./CLAUDE.md) only adds what an agent needs on top of this file.
+it too: [`AGENTS.md`](./AGENTS.md) only adds what an agent needs on top of this file.
 [`ARCHITECTURE.md`](./ARCHITECTURE.md) is the map: which file owns what, and how a request goes
 through them. Read it first if you have not worked here before.
 
