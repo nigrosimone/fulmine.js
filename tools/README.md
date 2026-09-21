@@ -1,19 +1,20 @@
 # tools
 
-Six programs that are not the library and not its tests. Five of them look for compatibility bugs
-from the outside; the sixth publishes.
+Seven programs that are not the library and not its tests. Five of them look for compatibility bugs
+from the outside, one runs every check a commit needs, and one publishes.
 
 Each file's own header carries the detail, including what it got wrong before it was fixed. This is
 the map.
 
-|                                        | what it is                                    | run it                  |
-| -------------------------------------- | --------------------------------------------- | ----------------------- |
-| [`fuzz.js`](fuzz.js)                   | random applications, compared against Express | `npm run fuzz`          |
-| [`wire-fuzz.js`](wire-fuzz.js)         | raw bytes, compared against node's parser     | `npm run fuzz:wire`     |
-| [`header-fuzz.js`](header-fuzz.js)     | hostile values through the response API       | `npm run fuzz:headers`  |
-| [`session-fuzz.js`](session-fuzz.js)   | several requests down one connection          | `npm run fuzz:session`  |
-| [`express-suite.js`](express-suite.js) | Express's own test suite, run against this    | `npm run test:express`  |
-| [`release-local.js`](release-local.js) | publishing by hand, when the workflow cannot  | `npm run release:local` |
+|                                        | what it is                                      | run it                  |
+| -------------------------------------- | ----------------------------------------------- | ----------------------- |
+| [`fuzz.js`](fuzz.js)                   | random applications, compared against Express   | `npm run fuzz`          |
+| [`wire-fuzz.js`](wire-fuzz.js)         | raw bytes, compared against node's parser       | `npm run fuzz:wire`     |
+| [`header-fuzz.js`](header-fuzz.js)     | hostile values through the response API         | `npm run fuzz:headers`  |
+| [`session-fuzz.js`](session-fuzz.js)   | several requests down one connection            | `npm run fuzz:session`  |
+| [`express-suite.js`](express-suite.js) | Express's own test suite, run against this      | `npm run test:express`  |
+| [`release-local.js`](release-local.js) | publishing by hand, when the workflow cannot    | `npm run release:local` |
+| [`gates.js`](gates.js)                 | the checks under "Before you commit", summed up | `npm run gates`         |
 
 ## fuzz.js
 

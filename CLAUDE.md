@@ -28,7 +28,8 @@ gets wrong that a human reading them would not.
 
 ## What to say rather than assume
 
-- **Run the gates, do not predict them.** The list is in CONTRIBUTING under "Before you commit", and
+- **Run the gates, do not predict them.** `npm run gates` runs the list in CONTRIBUTING under "Before
+  you commit" and ends with one line per gate; quote that, and
   "it cannot have broken anything" is not a result.
 - **A fix is not covered until its test has failed without it.** Revert the fix, watch the test go
   red, put it back. Say that you did it, or say that you did not.

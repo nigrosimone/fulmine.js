@@ -21,6 +21,7 @@ npm test tests/tests/res/res-send.js   # one file
 npm test -- --self        # every file twice against this framework, the reference arm with its
                           # optimizer off, so a difference is the optimizer and not Express
 npm test -- --jobs 1      # one file at a time; the default runs half the threads' worth at once
+npm run gates             # everything under "Before you commit", one after the other, summed up
 
 npm run test:unit         # the pure functions, which the comparison cannot reach
 npm run test:types        # the TypeScript declarations, through tsd
@@ -71,6 +72,9 @@ npm run typecheck
 npm run lint
 npm run format:check
 ```
+
+`npm run gates` runs the six in that order, a red one does not stop the next, and ends with one line
+per gate: green, red or not run. That last line is the thing to quote.
 
 A behaviour fix needs a comparison test under `tests/tests/`, and the test has to be checked against
 the unfixed code before it can be said to cover anything. Reverting the fix and re-running is the
