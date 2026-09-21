@@ -328,10 +328,13 @@ async function execArm(job, module) {
                 throw error;
             }
             const what = timedOut ? `timed out at ${TEST_TIMEOUT}ms` : "crashed on exit in libuv";
+            // what the arm had printed when it stopped is the only thing that says where: a hang
+            // after the third request is a different bug from one at listen()
+            const sofar = timedOut ? `, printed so far:\n${String(error.stdout || "").trimEnd()}\n` : "";
             if (attempt > 1) {
-                throw new Error(`${module} ${what} twice running ${job.path}`, { cause: error });
+                throw new Error(`${module} ${what} twice running ${job.path}${sofar}`, { cause: error });
             }
-            console.error(`${module} ${what} running ${job.path}, retrying once`);
+            console.error(`${module} ${what} running ${job.path}, retrying once${sofar}`);
         }
     }
 }

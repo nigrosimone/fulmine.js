@@ -97,6 +97,15 @@ module.exports = class Response extends LazyWritable {
     #pendingCallback = null;
 
     /**
+     * An end() that arrived while uWS still held a chunk, run once that chunk is through. Not
+     * waited for on 'drain': node emits it only after a write() that said false, and a piece
+     * under the high-water mark never says it, so a stream ending on a small piece a slow client
+     * had not taken yet was never closed (compression-file under load, 2026-09-21).
+     * @type {(() => void)|null}
+     */
+    #deferredEnd = null;
+
+    /**
      * Chunks written but not yet handed to uWS: a write costs uWS everything buffered behind it, so
      * many small pieces cost quadratically, 500 writes of 66 bytes measured 13ms against 0.4ms in
      * blocks. Null until the first chunked write.
@@ -427,11 +436,24 @@ module.exports = class Response extends LazyWritable {
                 this.#pendingCallback = null;
                 this.writingChunk = false;
                 if (cb) cb(null);
+                this.#afterPending();
                 return true;
             });
         } else {
             // nothing is waiting on this one: uWS drains it and the next write finds out
             this.writingChunk = false;
+        }
+    }
+
+    /**
+     * After a held chunk went through and the stream's callback ran: the callback may have pushed
+     * the next buffered piece into uWS's hands, so the waiting end() runs only when nothing is.
+     */
+    #afterPending() {
+        if (this.#deferredEnd !== null && !this.writingChunk) {
+            const end = this.#deferredEnd;
+            this.#deferredEnd = null;
+            end();
         }
     }
 
@@ -528,6 +550,7 @@ module.exports = class Response extends LazyWritable {
                             this.writingChunk = false;
                             handlerUsed = true;
                             callback(null);
+                            this.#afterPending();
                         }
                         return ok;
                     });
@@ -705,9 +728,7 @@ module.exports = class Response extends LazyWritable {
         }
 
         if (this.writingChunk) {
-            this.once("drain", () => {
-                this.end(data, cb);
-            });
+            this.#deferredEnd = () => this.end(data, cb);
             return this;
         }
         if (this.finished) {

@@ -1,5 +1,6 @@
 // server.close() must let the request being served finish before closing
 // INSPECT
+// SERIAL: closes the server 50ms after the request, a window a loaded machine misses
 
 const express = require("express");
 const http = require("http");
