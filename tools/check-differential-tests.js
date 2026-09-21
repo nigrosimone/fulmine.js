@@ -14,9 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Refuses to commit a differential test pointing at the local source: the harness swaps the
-// express import for src/index.js while a run is going, and a commit in that window records a
-// test that compares fulmine against fulmine. Happened once. Run by lint-staged.
+// Refuses to commit a differential test pointing at the local source: tests/singular.js swaps the
+// express import for src/index.js while it runs, and a commit in that window records a test that
+// compares fulmine against fulmine. Happened once, when the suite itself still rewrote the file.
+// Run by lint-staged.
 
 "use strict";
 
@@ -28,8 +29,8 @@ const bad = process.argv.slice(2).filter((file) => fs.readFileSync(file, "utf8")
 
 if (bad.length > 0) {
     console.error(
-        `These tests import the local source instead of express, which is how the harness leaves them
-while it is running. Wait for the suite to finish, or restore them with git checkout:
+        `These tests import the local source instead of express, which is how tests/singular.js leaves
+them while it is running. Wait for it to finish, or restore them with git checkout:
 
 ` + bad.map((file) => "    " + file).join("\n")
     );

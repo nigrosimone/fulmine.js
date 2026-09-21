@@ -12,6 +12,9 @@ benchmark_summary.md
 benchmark_history.json
 .vscode.ab-worktree/
 
+# the copy of a test file one arm runs, see tests/index.js
+tests/tests/**/*.run.cjs
+
 # what a comparison test wrote when the two arms disagreed, kept so a failure that does not
 # happen again can still be read
 test-failures/

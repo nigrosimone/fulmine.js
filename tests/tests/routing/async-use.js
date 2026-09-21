@@ -1,5 +1,6 @@
 // must support async "use"
 // INSPECT
+// SERIAL: rounds a 100ms wait to the nearest 100ms, which a loaded machine tips over
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

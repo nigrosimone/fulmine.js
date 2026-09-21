@@ -20,6 +20,7 @@ npm test middlewares      # one category
 npm test tests/tests/res/res-send.js   # one file
 npm test -- --self        # every file twice against this framework, the reference arm with its
                           # optimizer off, so a difference is the optimizer and not Express
+npm test -- --jobs 1      # one file at a time; the default runs half the threads' worth at once
 
 npm run test:unit         # the pure functions, which the comparison cannot reach
 npm run test:types        # the TypeScript declarations, through tsd
@@ -50,6 +51,13 @@ The comparison suite is the load-bearing one. A test is a file that prints; the 
 twice, once with `express` and once with this, and fails on any difference. That is why adding a
 test means writing something that prints what you want compared, and why a test that prints from
 both the server and the client at once is a bug: the two orderings are a race.
+
+Several files run at once, so a file may not depend on the machine being otherwise idle. The runner
+gives each file ports of its own by rewriting the literals it names, `13333` and its neighbours,
+and runs a copy beside the file; a file that writes to disk uses `fs.mkdtempSync` or its pid in the
+name, never a fixed path two files could share. A file that measures time, or takes the whole
+machine, says `// SERIAL: reason` and runs alone before the rest. When a disagreement shows only
+in a parallel run, `--jobs 1` says whether it is the file or the change.
 
 ### Before you commit
 
@@ -103,6 +111,7 @@ and the rest sets up an app, makes requests and prints. `tests/helpers.js` has w
 | `sequential([() => ...])` | Runs requests one at a time. `Promise.all` starts them together and the two servers then answer in whatever order they scheduled, which is a difference the runner would report as a failure.                                                               |
 | `// INSPECT`              | On the second line. The runner then mounts `inspectRequest` in front of every app the file makes, and each request prints its `method`, `url`, `originalUrl`, `baseUrl`, `path`, `protocol`, `secure`, `hostname`, `host`, `xhr`, `subdomains` and `query`. |
 | `// OFF: reason`          | Skips the file.                                                                                                                                                                                                                                             |
+| `// SERIAL: reason`       | Runs the file alone, before the parallel ones. For a file that measures time or takes the whole machine.                                                                                                                                                    |
 
 `// INSPECT` is not free everywhere, which is why it is asked for rather than always on. It is a
 middleware, so a route behind it stops being compiled into a declarative response and is served by
