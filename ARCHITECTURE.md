@@ -34,6 +34,7 @@ Entry and wiring
 | `cluster.js`      | `{ cluster: "auto" }`: one process per core, all binding the same port                      |
 | `hot-settings.js` | the settings the hot paths read, resolved to plain fields                                   |
 | `nest.js`         | `fulmine.js/nest`, the NestJS HTTP adapter                                                  |
+| `uws.js`          | µWebSockets.js loaded on first use, not at require, for the worker thread that crashes      |
 
 Routing
 
@@ -75,11 +76,20 @@ Middleware and extras
 
 Tools
 
-| file        | what it is                                                    |
-| ----------- | ------------------------------------------------------------- |
-| `cli.js`    | `npx fulmine migrate / profile / verify / override / angular` |
-| `verify.js` | whether this machine and image can load the binary at all     |
-| `adopt.js`  | the two commands that edit a JSON file instead of source      |
+| file        | what it is                                                                     |
+| ----------- | ------------------------------------------------------------------------------ |
+| `cli.js`    | `npx fulmine migrate / profile / verify / override / angular / create / pnpm`  |
+| `verify.js` | whether this machine and image can load the binary at all                      |
+| `adopt.js`  | `angular` and `pnpm`, the two commands that edit a JSON file instead of source |
+| `create.js` | `npx fulmine.js create`, a new project with a Dockerfile that works            |
+
+Declarations
+
+| file           | what it is                                                                              |
+| -------------- | --------------------------------------------------------------------------------------- |
+| `types.d.ts`   | the public types, Express's plus what this adds, the entry `package.json` points at     |
+| `nest.d.ts`    | the same for `fulmine.js/nest`                                                          |
+| `options.d.ts` | the option bags of `sendFile`, `static` and the body parsers, referenced from the JSDoc |
 
 ## Startup
 
