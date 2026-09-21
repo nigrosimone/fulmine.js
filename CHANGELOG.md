@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.21.4](https://github.com/nigrosimone/fulmine.js/compare/v5.21.3...v5.21.4) (2026-09-21)
+
+### Bug Fixes
+
+* **optimizer:** a HEAD that Express lets into a route of another verb for its param() callbacks stays generic ([89a7083](https://github.com/nigrosimone/fulmine.js/commit/89a7083b34c2465cfcb17cd14cb9c805447878f7))
+* **res:** end() behind a chunk uWS still holds runs once the chunk is through, a slow client never saw the response close ([f3feee1](https://github.com/nigrosimone/fulmine.js/commit/f3feee1965ba8bd5ba955ffa717f26871ac1b82d))
+* **res:** send() with nothing after the head refuses a 204, 304, 205 or fresh answer as node refuses the header strip ([a2075a8](https://github.com/nigrosimone/fulmine.js/commit/a2075a8d13dcb515b3234f2fc6b89a558a2a1991))
+
 ## [5.21.3](https://github.com/nigrosimone/fulmine.js/compare/v5.21.2...v5.21.3) (2026-09-20)
 
 ### Bug Fixes
