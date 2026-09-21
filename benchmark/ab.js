@@ -7,8 +7,9 @@
 // code on both sides, and the per-round ratios still spread by about ten percent on a laptop that
 // warms up. Anything measured as "A then B" attributes that drift to the code.
 //
-//   node benchmark/ab.js --against main
+//   node benchmark/ab.js --against main         # the noise floor first, then the change against it
 //   node benchmark/ab.js --against main --scenario routes-1000 --rounds 9
+//   node benchmark/ab.js --against main --no-control   # the change alone, not a result on its own
 //   node benchmark/ab.js --null                 # same code both sides, to see the noise floor
 //   node benchmark/ab.js --against main --pipelining 1   # one request per connection at a time
 //   node benchmark/ab.js --null --node-options "--max-semi-space-size=32"   # a node flag, one arm only
@@ -18,7 +19,9 @@
 // Its control is the same command without it.
 //
 // The figure to read is the median of the per-round ratios. If it sits inside the spread that
-// --null produces on the same machine, the change did not move anything this can see.
+// --null produces on the same machine, the change did not move anything this can see. So
+// --against runs that --null first, in the same sitting, and says at the end which of the two it
+// was: a floor read once and quoted later is not a control, the floor moves with the machine.
 //
 // Requests are pipelined by default, which is not the shape of ordinary traffic but is the only
 // way this measures the server. autocannon is a single JS thread and runs out before either arm
@@ -90,49 +93,15 @@ function resolveRequest(scenario) {
     };
 }
 
-async function main() {
-    const args = parseArgs(process.argv.slice(2));
-    const scenarioName = args.scenario || "hello-world";
-    const rounds = Number(args.rounds || 7);
-    const durationSeconds = Number(args.duration || 5);
-    const against = args.null ? null : args.against;
-    if (args["node-options"] === true) {
-        throw new Error('give the flags to --node-options, as --node-options "--max-semi-space-size=32"');
-    }
-    const nodeOptions = args["node-options"] || null;
-
-    if (!against && !args.null) {
-        throw new Error("give a revision with --against <ref>, or --null to measure the noise floor");
-    }
-
-    const scenario = require(path.join(__dirname, "scenarios", `${scenarioName}.js`));
-    const request = resolveRequest(scenario);
-    // Fewer connections than run.js uses by default. That comparison wants both servers saturated;
-    // this one wants the server to be the bottleneck rather than the scheduler, and piling on
-    // connections here only widens what --null reports as the noise floor.
-    const connections = Number(args.connections || 50);
-    // Not 1, and it matters more than it looks. autocannon is one JS thread and tops out around
-    // 20k requests a second on a laptop, which is below what either arm can serve, so without
-    // pipelining both arms report the load generator's ceiling and every ratio comes back 1.00
-    // whatever the change did. Measured on a change worth a fifth: 1.00 at pipelining 1, 1.17 at 10.
-    // A scenario may refuse pipelining, in which case it is measured without and says why in its
-    // own file. The command line still wins over both.
-    const pipelining = Number(args.pipelining || (scenario.load && scenario.load.pipelining) || 10);
-
-    let baselineSrc = null;
-    if (against) {
-        process.stdout.write(`Checking out ${against} beside the working tree\n`);
-        baselineSrc = addWorktree(against);
-    }
-
-    const label = against ? `${against} (baseline) vs working tree (candidate)` : "working tree against itself";
-    if (nodeOptions) {
-        process.stdout.write(`candidate node options: ${nodeOptions}\n`);
-    }
-    process.stdout.write(
-        `${scenario.name}: ${label}, ${rounds} rounds of ${durationSeconds}s at ${connections} connections, pipelining ${pipelining}\n\n`
-    );
-
+/**
+ * Two servers, the load alternating between them, and the median of the per-round ratios.
+ *
+ * @param {string|null} baselineSrc the other revision's entry, or null for the working tree itself
+ * @param {object} run scenario, request, rounds, durationSeconds, connections, pipelining, nodeOptions
+ * @returns {Promise<{median: number, ratios: number[]}>} ratios sorted
+ */
+async function measure(baselineSrc, run) {
+    const { scenario, scenarioName, request, rounds, durationSeconds, connections, pipelining, nodeOptions } = run;
     const arms = [
         { framework: BASELINE, src: baselineSrc },
         { framework: CANDIDATE, src: null }
@@ -192,16 +161,96 @@ async function main() {
             `\nmedian candidate/baseline: ${median.toFixed(4)} (${((median - 1) * 100).toFixed(2)}%)\n` +
                 `spread: ${ratios[0].toFixed(4)} .. ${ratios[ratios.length - 1].toFixed(4)}\n`
         );
-        if (args.null) {
-            process.stdout.write(
-                "\nBoth arms ran the same code, so this is the noise floor. A real change has to " +
-                    "move the median further than this to mean anything.\n"
-            );
-        }
+        return { median, ratios };
     } finally {
         for (const handle of started) {
             await stopScenarioServer(handle.server, handle.stderrRef);
         }
+    }
+}
+
+/**
+ * What the change's median means next to the floor measured a minute before it.
+ *
+ * @param {{median: number}} change
+ * @param {{ratios: number[]}} control
+ * @returns {string}
+ */
+function verdict(change, control) {
+    // how far from 1.0 the same code got against itself, whichever side: the machine's own swing
+    const floor = Math.max(...control.ratios.map((ratio) => Math.abs(ratio - 1)));
+    const distance = Math.abs(change.median - 1);
+    const moved = `${((change.median - 1) * 100).toFixed(2)}%`;
+    const swing = `${(floor * 100).toFixed(2)}% either way`;
+    if (distance <= floor) {
+        return `within the noise: ${moved}, and the same code moved ${swing} against itself. Not a result.`;
+    }
+    // nine rounds do not resolve one percent, see benchmark/README.md
+    const small = distance < 0.03 ? " Under 3%: --rounds 15 before believing it." : "";
+    return `moved ${moved}, more than the ${swing} the same code moved against itself.${small}`;
+}
+
+async function main() {
+    const args = parseArgs(process.argv.slice(2));
+    const scenarioName = args.scenario || "hello-world";
+    const rounds = Number(args.rounds || 7);
+    const durationSeconds = Number(args.duration || 5);
+    const against = args.null ? null : args.against;
+    if (args["node-options"] === true) {
+        throw new Error('give the flags to --node-options, as --node-options "--max-semi-space-size=32"');
+    }
+    const nodeOptions = args["node-options"] || null;
+
+    if (!against && !args.null) {
+        throw new Error("give a revision with --against <ref>, or --null to measure the noise floor");
+    }
+
+    const scenario = require(path.join(__dirname, "scenarios", `${scenarioName}.js`));
+    const request = resolveRequest(scenario);
+    // Fewer connections than run.js uses by default. That comparison wants both servers saturated;
+    // this one wants the server to be the bottleneck rather than the scheduler, and piling on
+    // connections here only widens what --null reports as the noise floor.
+    const connections = Number(args.connections || 50);
+    // Not 1, and it matters more than it looks. autocannon is one JS thread and tops out around
+    // 20k requests a second on a laptop, which is below what either arm can serve, so without
+    // pipelining both arms report the load generator's ceiling and every ratio comes back 1.00
+    // whatever the change did. Measured on a change worth a fifth: 1.00 at pipelining 1, 1.17 at 10.
+    // A scenario may refuse pipelining, in which case it is measured without and says why in its
+    // own file. The command line still wins over both.
+    const pipelining = Number(args.pipelining || (scenario.load && scenario.load.pipelining) || 10);
+
+    let baselineSrc = null;
+    if (against) {
+        process.stdout.write(`Checking out ${against} beside the working tree\n`);
+        baselineSrc = addWorktree(against);
+    }
+
+    const label = against ? `${against} (baseline) vs working tree (candidate)` : "working tree against itself";
+    if (nodeOptions) {
+        process.stdout.write(`candidate node options: ${nodeOptions}\n`);
+    }
+    process.stdout.write(
+        `${scenario.name}: ${label}, ${rounds} rounds of ${durationSeconds}s at ${connections} connections, pipelining ${pipelining}\n\n`
+    );
+
+    const run = { scenario, scenarioName, request, rounds, durationSeconds, connections, pipelining, nodeOptions };
+    try {
+        if (against && !args["no-control"]) {
+            process.stdout.write("control: working tree against itself, the noise floor of this sitting\n\n");
+            const control = await measure(null, run);
+            process.stdout.write(`\nchange: ${label}\n\n`);
+            const change = await measure(baselineSrc, run);
+            process.stdout.write(`\n${verdict(change, control)}\n`);
+        } else {
+            await measure(baselineSrc, run);
+            if (args.null) {
+                process.stdout.write(
+                    "\nBoth arms ran the same code, so this is the noise floor. A real change has to " +
+                        "move the median further than this to mean anything.\n"
+                );
+            }
+        }
+    } finally {
         if (against) {
             removeWorktree();
         }

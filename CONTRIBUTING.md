@@ -256,10 +256,11 @@ Two differences must never be compared, because matching them would mean copying
 
 Use `npm run benchmark:ab -- --against <ref>`. Do not hand-roll an A/B by checking out `src/` and
 running `run.js` twice: that measures warm-up, not the change. Read the noise floor rules in
-[`benchmark/README.md`](./benchmark/README.md) before quoting a number, and run `--null` from the
-same sitting or the number is not evidence. Never run anything else on the machine while a
-benchmark measures: if the Express column moved between two runs, the machine moved and the run is
-void.
+[`benchmark/README.md`](./benchmark/README.md) before quoting a number. The tool measures the
+noise floor first, the same code against itself, and its last line says whether the change sits
+inside it; `--no-control` skips that, and a number taken that way is not evidence. Never run
+anything else on the machine while a benchmark measures: if the Express column moved between two
+runs, the machine moved and the run is void.
 
 Some changes need no benchmark at all. If the code sits behind a guard most applications never
 reach, say which guard and move on. Anything under about 20 ns per request is below what matters

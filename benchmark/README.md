@@ -48,6 +48,7 @@ the change I just made move anything".
 npm run benchmark:ab -- --against main
 npm run benchmark:ab -- --against main --scenario routes-1000 --rounds 9
 npm run benchmark:ab -- --null           # same code on both sides
+npm run benchmark:ab -- --against main --no-control   # the change alone, twice as fast, not evidence
 ```
 
 It puts the other revision in a `git worktree` inside the repo, so both trees can be loaded at
@@ -60,6 +61,8 @@ and the tool can show you why: `--null` puts the same code on both sides, so wha
 is noise. On the laptop this was written on, `--null` lands within about 2% of 1.0 once the two
 warmup rounds are discarded, and reported 0.65x per-round before they were. **If a change moves
 the median less than `--null` does on your machine, it did not move anything this can see.**
+`--against` runs that `--null` itself, first, and its last line says which side of the floor the
+change landed on: "within the noise" is the answer more often than not.
 
 Two rounds are run and thrown away first. Whichever server is hit first is hit cold, and without
 that the first recorded round came out 60% away from every round after it.
