@@ -8,6 +8,11 @@ const path = require("path");
 module.exports = {
     name: "middlewares/express-static-small",
     path: "/static/static-4kb.txt",
+    load: {
+        // answered from a later tick, uWS loses it when pipelined (uNetworking/uWebSockets.js#1301):
+        // 233 req/s at pipelining 10, 36229 at 1, p50 1.2s. Only ab.js and profile.js read this
+        pipelining: 1
+    },
     setup(app, express, context) {
         context.ensureAssets();
         const file = path.join(context.assetsDir, "static-4kb.txt");
