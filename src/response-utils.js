@@ -34,8 +34,30 @@ const kShapeMode =
     Symbol("shapeMode");
 // names setHeader has validated and lowercased, so the constant names middleware writes per
 // request are one Map hit. Insert-only after validation, bounded; only setHeader may insert,
-// the never-throwing readers keep their plain toLowerCase
+// the never-throwing readers have HEADER_KEYS below
 const VALIDATED_HEADER_NAMES = new Map();
+// lowercase names for the header readers, apart from the map above as nothing here is validated.
+// A fresh lowercase key goes through the V8 runtime on res.headers: 76ns against 6 cached, and
+// helmet's removeHeader("X-Powered-By") alone was 190us per thousand requests. Bounded too
+/** @type {Map<string, string>} */
+const HEADER_KEYS = new Map();
+
+/**
+ * The key a header lives under in res.headers, for the readers.
+ *
+ * @param {string} field the name as the caller wrote it
+ * @returns {string}
+ */
+function headerKey(field) {
+    let key = HEADER_KEYS.get(field);
+    if (key === undefined) {
+        key = field.toLowerCase();
+        if (HEADER_KEYS.size < 512 && typeof field === "string") {
+            HEADER_KEYS.set(field, key);
+        }
+    }
+    return key;
+}
 // The names and values that recur on every response, kept as Buffers for the uWS crossing: a Buffer
 // is memcpy'd as it is, a string pays a UTF-8 scan and copy per call. A header that is not here
 // crosses as the string it was. Names must stay lowercase, as writeHeaders receives them. The
@@ -121,6 +143,7 @@ module.exports = {
     kOutHeaders,
     kShapeMode,
     VALIDATED_HEADER_NAMES,
+    headerKey,
     HEADER_NAME_BUF,
     HEADER_VALUE_BUF,
     statusLine,

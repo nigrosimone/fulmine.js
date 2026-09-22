@@ -57,6 +57,7 @@ const {
     kOutHeaders,
     kShapeMode,
     VALIDATED_HEADER_NAMES,
+    headerKey,
     HEADER_NAME_BUF,
     HEADER_VALUE_BUF,
     statusLine,
@@ -1577,7 +1578,7 @@ module.exports = class Response extends LazyWritable {
      * @returns {boolean}
      */
     hasHeader(name) {
-        return this.headers[name.toLowerCase()] !== undefined;
+        return this.headers[headerKey(name)] !== undefined;
     }
 
     /**
@@ -1606,7 +1607,7 @@ module.exports = class Response extends LazyWritable {
      * @returns {this}
      */
     appendHeader(name, value) {
-        const key = name.toLowerCase();
+        const key = headerKey(name);
         const current = this.headers[key];
         if (current === undefined) {
             return this.setHeader(name, value);
@@ -1667,7 +1668,7 @@ module.exports = class Response extends LazyWritable {
                 this.set(header, fields[header]);
             }
         } else {
-            const name = field.toLowerCase();
+            const name = headerKey(field);
             // coerced here as Express does, so res.get answers what was sent
             let out = Array.isArray(value) ? value.map(String) : String(value);
             if (name === "content-type") {
@@ -1696,7 +1697,7 @@ module.exports = class Response extends LazyWritable {
      * @returns {string|string[]|undefined}
      */
     get(field) {
-        const name = field.toLowerCase();
+        const name = headerKey(field);
         const value = this.headers[name];
         // Content-Length is uWS's, measured from the body it was handed: worked out here only for
         // whoever asks, morgan's common and combined formats do, and kept
@@ -1735,7 +1736,7 @@ module.exports = class Response extends LazyWritable {
         if (this.headersSent) {
             throw headersSentError("remove");
         }
-        const key = field.toLowerCase();
+        const key = headerKey(field);
         // helmet removes a header most responses never carry, and a delete is a runtime call
         if (key in this.headers) {
             delete this.headers[key];
