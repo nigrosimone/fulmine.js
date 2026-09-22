@@ -8,7 +8,11 @@ module.exports = {
         ceiling: "~1.01x"
     },
     load: {
-        connections: 50
+        connections: 50,
+        // written from later ticks, so pipelined, µWS loses the answers the way
+        // compression-small-file describes (uNetworking/uWebSockets.js#1301): 1 req/s at
+        // pipelining 10 against 113 at 1. Only ab.js and profile.js read this
+        pipelining: 1
     },
     setup(app, express, context) {
         app.get("/stream-without-content-length", (req, res) => {
