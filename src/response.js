@@ -77,6 +77,10 @@ const JSON_UTF8 = "application/json; charset=utf-8";
 
 // the seeded Keep-Alive, a constant so setHeader can tell it from one the application set
 const SEEDED_KEEP_ALIVE = "timeout=10";
+// the seeded connection and keep-alive as one value, every response writes them in one call:
+// 572ns to 438 per head with a content-type, on node 26
+const SEEDED_PAIR = "keep-alive\r\nkeep-alive: " + SEEDED_KEEP_ALIVE;
+const SEEDED_PAIR_BUF = Buffer.from(SEEDED_PAIR);
 // send's ceiling for maxAge, one year
 const MAX_MAXAGE = 60 * 60 * 24 * 365 * 1000;
 
@@ -600,8 +604,11 @@ module.exports = class Response extends LazyWritable {
 
     /**
      * Writes every header set so far to uWS, the point of no return. Content-Length is kept on
-     * totalSize instead: uWS takes the length through tryEnd or endWithoutBody. One writeHeader
-     * per header: packing the head into one writeStatus measured slower, see issue #11.
+     * totalSize instead: uWS takes the length through tryEnd or endWithoutBody.
+     *
+     * From the third line on the head goes in one writeHeader, joined in the first value, as uWS
+     * writes `name: value\r\n` without reading it. Per head on node 26: helmet's set 3953ns to 1327,
+     * five lines 1013 to 531. One or two lines keep a call each, the join costs what it saves (issue #11).
      *
      * @param {boolean} utf8 unused, kept because node's equivalent takes it and the two callers
      *   differ on what they know about the body
@@ -614,6 +621,16 @@ module.exports = class Response extends LazyWritable {
         // length first: the value is nearly always "keep-alive", which paid a lowercase per response
         const closing =
             typeof connection === "string" && connection.length === 5 && connection.toLowerCase() === "close";
+        // the node shim writes a line with node's appendHeader, that refuses the CRLF of a join
+        const joins = res._nodeRes === undefined;
+        // lines not written yet: the first two apart, from the third on in joined
+        let lines = 0;
+        let pair = false;
+        let firstName = "";
+        let firstValue = "";
+        let secondName = "";
+        let secondValue = "";
+        let joined = "";
         // for..in over an object a few responses delete from (204, 304, 205, a 304 file,
         // removeHeader), rare enough to keep the shape, unlike the request side
         for (const header in headers) {
@@ -637,18 +654,105 @@ module.exports = class Response extends LazyWritable {
                 this.#userChunked = true;
                 continue;
             }
-            // the recurring names and values cross as cached Buffers, see HEADER_NAME_BUF
-            const name = HEADER_NAME_BUF[header] || header;
-            if (Array.isArray(value)) {
-                for (const val of value) {
-                    res.writeHeader(name, HEADER_VALUE_BUF[val] || val);
+            // a string first, nearly every value is one
+            const isText = typeof value === "string";
+            const list = isText || !Array.isArray(value) ? null : value;
+            // only text is joined, the rest crosses alone as before. false is joined as "false", the
+            // content-type res.set stores for an unknown type
+            let joinable = joins && (isText || list !== null || value === false);
+            if (joinable && list !== null) {
+                for (let i = 0; i < list.length; i++) {
+                    if (typeof list[i] !== "string") {
+                        joinable = false;
+                        break;
+                    }
                 }
-            } else {
-                res.writeHeader(name, HEADER_VALUE_BUF[value] || value);
             }
+            if (!joinable) {
+                // the lines before this one go first, so the order on the wire holds
+                if (lines !== 0) {
+                    Response.#writeLines(res, lines, pair, firstName, firstValue, secondName, secondValue, joined);
+                    lines = 0;
+                    pair = false;
+                }
+                // the recurring names and values cross as cached Buffers, see HEADER_NAME_BUF
+                const name = HEADER_NAME_BUF[header] || header;
+                if (list !== null) {
+                    for (const val of list) {
+                        res.writeHeader(name, HEADER_VALUE_BUF[val] || val);
+                    }
+                } else {
+                    res.writeHeader(name, HEADER_VALUE_BUF[value] || value);
+                }
+                continue;
+            }
+            const count = list === null ? 1 : list.length;
+            for (let i = 0; i < count; i++) {
+                const text = list === null ? (value === false ? "false" : value) : list[i];
+                if (
+                    lines === 1 &&
+                    !pair &&
+                    header === "keep-alive" &&
+                    text === SEEDED_KEEP_ALIVE &&
+                    firstName === "connection" &&
+                    firstValue === "keep-alive"
+                ) {
+                    // the seeded pair, one line from here on
+                    pair = true;
+                    continue;
+                }
+                if (lines === 0) {
+                    firstName = header;
+                    firstValue = text;
+                } else if (lines === 1) {
+                    secondName = header;
+                    secondValue = text;
+                } else if (lines === 2) {
+                    joined =
+                        (pair ? SEEDED_PAIR : firstValue) +
+                        "\r\n" +
+                        secondName +
+                        ": " +
+                        secondValue +
+                        "\r\n" +
+                        header +
+                        ": " +
+                        text;
+                } else {
+                    joined += "\r\n" + header + ": " + text;
+                }
+                lines++;
+            }
+        }
+        if (lines !== 0) {
+            Response.#writeLines(res, lines, pair, firstName, firstValue, secondName, secondValue, joined);
         }
         this.headersSent = true;
         this.#headOut = true;
+    }
+
+    /**
+     * Writes the lines of writeHeaders: one or two a call each, three or more in one call.
+     *
+     * @param {import("uWebSockets.js").HttpResponse} res
+     * @param {number} lines how many, the seeded pair counted as one
+     * @param {boolean} pair whether the first line is the seeded pair
+     * @param {string} firstName
+     * @param {string} firstValue
+     * @param {string} secondName
+     * @param {string} secondValue
+     * @param {string} joined the first value with the other lines after it
+     */
+    static #writeLines(res, lines, pair, firstName, firstValue, secondName, secondValue, joined) {
+        const name = HEADER_NAME_BUF[firstName] || firstName;
+        if (lines > 2) {
+            res.writeHeader(name, joined);
+            return;
+        }
+        res.writeHeader(name, pair ? SEEDED_PAIR_BUF : HEADER_VALUE_BUF[firstValue] || firstValue);
+        if (lines === 2) {
+            res.writeHeader(HEADER_NAME_BUF[secondName] || secondName, HEADER_VALUE_BUF[secondValue] || secondValue);
+        }
     }
 
     /**
