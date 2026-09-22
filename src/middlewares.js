@@ -586,8 +586,15 @@ function serveStatic(root, options) {
             }
             const ext = path.extname(fullpath);
             let i = 0;
-            // no extension on a directory; on the decoded url, as send tries it
-            if (ext === "" && !url.endsWith("/") && options.extensions) {
+            // no extension on a directory; on the decoded url, as send tries it, and only after a
+            // path that does not exist: through a file (ENOTDIR) or too long a name is reported as
+            // asked, where trying on reported the last extension (fuzzer seed 3561875562)
+            if (
+                /** @type {NodeJS.ErrnoException} */ (err).code === "ENOENT" &&
+                ext === "" &&
+                !url.endsWith("/") &&
+                options.extensions
+            ) {
                 while (i < options.extensions.length) {
                     try {
                         stat = fs.statSync(fullpath + "." + options.extensions[i]);
