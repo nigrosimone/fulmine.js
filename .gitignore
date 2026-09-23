@@ -10,7 +10,8 @@ benchmark_summary.md
 # the ratios a benchmark run leaves for the next one. Per machine, so it is never the same file
 # twice and never worth committing: in CI it travels as an artifact instead
 benchmark_history.json
-.vscode.ab-worktree/
+.vscode
+.ab-worktree/
 
 # the copy of a test file one arm runs, see tests/index.js
 tests/tests/**/*.run.cjs
