@@ -1857,10 +1857,12 @@ function framingFault(res, method, bytes) {
     }
     if (length !== null && chunked !== null) return "both content-length and transfer-encoding";
     // undici frames the body by the length, so only a length over what came is visible here; a
-    // length under it is read as the start of the next answer, which session-fuzz sees
+    // length under it is read as the start of the next answer, which session-fuzz sees. fetch
+    // gives no body for a 205 whatever came, so its length has nothing to be checked against
     if (
         length !== null &&
         method !== "HEAD" &&
+        res.status !== 205 &&
         !res.headers.has("content-encoding") &&
         Number(length) !== bytes.length
     ) {
