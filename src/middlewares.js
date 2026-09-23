@@ -31,13 +31,43 @@ const parseQuery = require("./parse-query.js");
 const { kGetSafe } = require("./usage.js");
 const { AsyncResource } = require("async_hooks");
 
+// node's unexported Symbol("context_frame"), where an AsyncResource keeps the store it captured,
+// read off the first resource. null when node has none, then every binding keeps its scope
+/** @type {symbol|null|undefined} */
+let kContextFrame;
+// set once an init hook was seen, never cleared: from then on every binding has its scope as before
+let initHooksSeen = false;
+
 /**
- * AsyncResource.bind without node's generic wrapper: ~1.9us per call there, ~0.08 here.
+ * raw-body's wrap: AsyncResource.bind without node's generic wrapper (~1.9us per call there), and no
+ * scope without an AsyncLocalStorage store or an init hook: 2.3 to 3.5us per request in a uWS
+ * callback, +9 to 16% on the arena's POST. new AsyncResource("") throws only while a hook listens.
  *
  * @param {(...args: any[]) => any} fn called with at most one argument by every caller here
  * @returns {(err?: any) => any}
  */
 function bindContext(fn) {
+    if (!initHooksSeen) {
+        /** @type {AsyncResource|undefined} */
+        let probe;
+        try {
+            probe = new AsyncResource("");
+        } catch {
+            initHooksSeen = true;
+        }
+        if (probe !== undefined) {
+            if (kContextFrame === undefined) {
+                kContextFrame =
+                    Object.getOwnPropertySymbols(probe).find((s) => s.description === "context_frame") ?? null;
+            }
+            if (kContextFrame !== null && /** @type {any} */ (probe)[kContextFrame] === undefined) {
+                return fn;
+            }
+            // a store to carry, and no init hook to have seen the empty type: the probe is the resource
+            const resource = probe;
+            return (err) => resource.runInAsyncScope(fn, undefined, err);
+        }
+    }
     const resource = new AsyncResource(fn.name || "bound-anonymous-fn");
     return (err) => resource.runInAsyncScope(fn, undefined, err);
 }
