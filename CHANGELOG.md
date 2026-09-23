@@ -1,5 +1,19 @@
 # Changelog
 
+## [5.21.5](https://github.com/nigrosimone/fulmine.js/compare/v5.21.4...v5.21.5) (2026-09-23)
+
+### Bug Fixes
+
+* **static:** the extensions are tried only after ENOENT, as send does ([d01ed4e](https://github.com/nigrosimone/fulmine.js/commit/d01ed4eb44bc3ee04590fe66848ec8d12d8c9a45))
+
+### Performance Improvements
+
+* **body-parser:** no async scope when nobody can see it ([7fc819b](https://github.com/nigrosimone/fulmine.js/commit/7fc819bbebab1e8aeaf859ced0c6420f75c4eddd))
+* **json:** the strict check scans instead of a regex ([ebf7755](https://github.com/nigrosimone/fulmine.js/commit/ebf77556e3fb8bdb1c50511268581dbafa3e4a7d))
+* **req:** req.ip joins an IPv4 peer by hand ([ea7dd5c](https://github.com/nigrosimone/fulmine.js/commit/ea7dd5cf3ee0e64d4bcc9b4b918a3d16fa225391))
+* **res:** the head goes to uWS in one call from the third line ([4a0c15a](https://github.com/nigrosimone/fulmine.js/commit/4a0c15ae70ec9c212dfe92916e1f4ae1f4816256))
+* **res:** the header readers cache the lowercase name ([8c90a61](https://github.com/nigrosimone/fulmine.js/commit/8c90a614cbc1b4d01f81f479363406dea2276a4d))
+
 ## [5.21.4](https://github.com/nigrosimone/fulmine.js/compare/v5.21.3...v5.21.4) (2026-09-21)
 
 ### Bug Fixes
