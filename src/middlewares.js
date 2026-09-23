@@ -31,13 +31,50 @@ const parseQuery = require("./parse-query.js");
 const { kGetSafe } = require("./usage.js");
 const { AsyncResource } = require("async_hooks");
 
+// Where an AsyncResource keeps the AsyncLocalStorage frame it captured: node declares it as
+// Symbol("context_frame") and exports nothing, so it is read off the first resource. null when a
+// future node keeps it elsewhere, and then every binding runs its scope
+/** @type {symbol|null|undefined} */
+let kContextFrame;
+// Set the first time an init hook was seen listening, and never cleared: from then on every binding
+// is a resource of raw-body's type. Node 22 runs AsyncLocalStorage itself on such a hook
+let initHooksSeen = false;
+
 /**
- * AsyncResource.bind without node's generic wrapper: ~1.9us per call there, ~0.08 here.
+ * raw-body's wrap, which carries the context of the read to its callback: AsyncResource.bind
+ * without node's generic wrapper, ~1.9us per call there. And no scope when nobody could see one.
+ * Inside a uWS callback the scope cost 2.3 to 3.5us per request where plain JS pays 0.1: node
+ * reconciles the async stack it pushed with the one uWS's MakeCallback pushed, and the arena's POST
+ * served 9 to 16% more requests without it. Nobody sees it when no AsyncLocalStorage store was
+ * captured (uWS enters every callback with none) and no init hook saw the resource. An empty type
+ * is refused only while an init hook listens, node's AsyncResource checks it under
+ * initHooksExist(), which makes the constructor the one public test for a hook.
  *
  * @param {(...args: any[]) => any} fn called with at most one argument by every caller here
  * @returns {(err?: any) => any}
  */
 function bindContext(fn) {
+    if (!initHooksSeen) {
+        /** @type {AsyncResource|undefined} */
+        let probe;
+        try {
+            probe = new AsyncResource("");
+        } catch {
+            initHooksSeen = true;
+        }
+        if (probe !== undefined) {
+            if (kContextFrame === undefined) {
+                kContextFrame =
+                    Object.getOwnPropertySymbols(probe).find((s) => s.description === "context_frame") ?? null;
+            }
+            if (kContextFrame !== null && /** @type {any} */ (probe)[kContextFrame] === undefined) {
+                return fn;
+            }
+            // a store to carry, and no init hook to have seen the empty type: the probe is the resource
+            const resource = probe;
+            return (err) => resource.runInAsyncScope(fn, undefined, err);
+        }
+    }
     const resource = new AsyncResource(fn.name || "bound-anonymous-fn");
     return (err) => resource.runInAsyncScope(fn, undefined, err);
 }
