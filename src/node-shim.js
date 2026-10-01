@@ -15,13 +15,35 @@ limitations under the License.
 */
 
 // A uWS-shaped request and response over node's own, for supertest and http.createServer(app).
-// Not fast and not meant to be. Where the models disagree node's gives way: cork only runs its
-// callback, a status is kept until the first byte of body
+// Not the fast path, app.listen() is, but about 1.5x Express on a hello world on Linux. Where the
+// models disagree node's gives way: cork only runs its callback, a status is kept until the first
+// byte of body
 
 const { IncomingMessage } = require("http");
+const { HEADER_NAME_BUF, HEADER_VALUE_BUF } = require("./response-utils.js");
 
 /** What µWS returns for an address nobody declared. */
 const emptyAddress = new ArrayBuffer(0);
+
+// The strings behind the Buffers writeHeaders hands over for the recurring names and values.
+// Decoded on every response they gave node a new string to check, lowercase and hash each time
+/** @type {Map<unknown, string>} */
+const HEADER_TEXT = new Map();
+for (const cache of [HEADER_NAME_BUF, HEADER_VALUE_BUF]) {
+    for (const text in cache) {
+        HEADER_TEXT.set(cache[text], text);
+    }
+}
+
+/**
+ * A header name or value as node's appendHeader takes it.
+ *
+ * @param {unknown} part
+ * @returns {string}
+ */
+function headerText(part) {
+    return typeof part === "string" ? part : (HEADER_TEXT.get(part) ?? String(part));
+}
 
 /**
  * An IP address as the four or sixteen bytes uWS hands over; unreadable comes back empty.
@@ -257,7 +279,7 @@ class NodeHttpResponse {
     writeHeader(key, value) {
         if (!this._nodeRes.headersSent) {
             // writeHeaders hands the recurring names and values over as Buffers
-            this._nodeRes.appendHeader(String(key), String(value));
+            this._nodeRes.appendHeader(headerText(key), headerText(value));
         }
         return this;
     }

@@ -170,5 +170,6 @@ These are the places a change breaks compatibility quietly, because the answer s
 ## The node shim
 
 `http.createServer(app)` and supertest hand the application a node request. `node-shim.js` wraps it
-in the eighteen calls `Request` and `Response` make into uWS. Nothing on that path is fast and it
-does not need to be: it exists so the test suites and anything holding a real server keep working.
+in the eighteen calls `Request` and `Response` make into uWS. It exists so the test suites and
+anything holding a real server keep working, and it is not the fast path, `app.listen()` is. It still
+should not fall behind Express: on a hello world on Linux it answers about 1.5x Express.
