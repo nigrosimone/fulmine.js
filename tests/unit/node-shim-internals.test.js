@@ -117,3 +117,36 @@ test("the response wrapper's edges: empty end, bare endWithoutBody, aborted tryE
     assert.equal(res.getRemotePort(), 7);
     assert.equal(new DataView(res.getRemoteAddress()).getUint16(14), 1);
 });
+
+test("a string body goes to node as it is, counted in utf-8 bytes; a Buffer is still copied", () => {
+    const passed = [];
+    const fakeRes = /** @type {any} */ ({
+        headersSent: false,
+        setHeader: () => {},
+        hasHeader: () => true,
+        write: (chunk) => passed.push(chunk) > 0,
+        end: (chunk) => passed.push(chunk),
+        on: () => {}
+    });
+    const res = new NodeHttpResponse(/** @type {any} */ ({ on: () => {} }), fakeRes);
+
+    // three bytes for the euro sign: the offset is what went on the wire, not the string length
+    res.write("€a");
+    assert.strictEqual(passed.pop(), "€a");
+    assert.equal(res.getWriteOffset(), 4);
+
+    const chunk = Buffer.from("bytes");
+    res.write(chunk);
+    const copy = passed.pop();
+    assert.notEqual(copy, chunk);
+    assert.equal(copy.toString(), "bytes");
+    assert.equal(res.getWriteOffset(), 9);
+
+    // the sized path ends once the bytes, not the characters, reach the total
+    assert.deepEqual(res.tryEnd("✓", 12), [true, true]);
+    assert.strictEqual(passed.shift(), "✓");
+
+    res.end("è");
+    assert.strictEqual(passed.pop(), "è");
+    assert.equal(res.getWriteOffset(), 14);
+});

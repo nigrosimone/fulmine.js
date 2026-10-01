@@ -93,6 +93,22 @@ function toArrayBuffer(chunk) {
     return /** @type {ArrayBuffer} */ (buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength));
 }
 
+/**
+ * A body chunk as node's write takes it: a string goes as it is and node encodes it once, with
+ * the head, anything else is copied as toArrayBuffer does.
+ *
+ * @param {ArrayBuffer|Buffer|string} chunk
+ * @returns {Buffer|string}
+ */
+function toNodeChunk(chunk) {
+    return typeof chunk === "string" ? chunk : Buffer.from(toArrayBuffer(chunk));
+}
+
+/** @param {Buffer|string} chunk */
+function byteLength(chunk) {
+    return typeof chunk === "string" ? Buffer.byteLength(chunk) : chunk.length;
+}
+
 /** uWS's HttpRequest over node's IncomingMessage. */
 class NodeHttpRequest {
     /** @type {import("http").IncomingMessage} */
@@ -248,9 +264,9 @@ class NodeHttpResponse {
 
     /** @param {ArrayBuffer|Buffer|string} chunk @returns {boolean} false when the socket is full */
     write(chunk) {
-        const buffer = Buffer.from(toArrayBuffer(chunk));
-        this._offset += buffer.length;
-        return this._nodeRes.write(buffer);
+        const data = toNodeChunk(chunk);
+        this._offset += byteLength(data);
+        return this._nodeRes.write(data);
     }
 
     /** @param {ArrayBuffer|Buffer|string} [body] */
@@ -262,9 +278,9 @@ class NodeHttpResponse {
             this._nodeRes.end();
             return this;
         }
-        const buffer = Buffer.from(toArrayBuffer(body));
-        this._offset += buffer.length;
-        this._nodeRes.end(buffer);
+        const data = toNodeChunk(body);
+        this._offset += byteLength(data);
+        this._nodeRes.end(data);
         return this;
     }
 
@@ -298,9 +314,9 @@ class NodeHttpResponse {
         if (!this._nodeRes.headersSent && !this._nodeRes.hasHeader("Content-Length")) {
             this._nodeRes.setHeader("Content-Length", String(totalSize));
         }
-        const buffer = Buffer.from(toArrayBuffer(chunk));
-        const ok = this._nodeRes.write(buffer);
-        this._offset += buffer.length;
+        const data = toNodeChunk(chunk);
+        const ok = this._nodeRes.write(data);
+        this._offset += byteLength(data);
         const done = this._offset >= totalSize;
         if (done) {
             this._nodeRes.end();
