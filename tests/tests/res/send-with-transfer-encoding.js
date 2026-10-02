@@ -1,13 +1,13 @@
 // res.send() under a Transfer-Encoding the application set itself: express 5.3 adds no
-// Content-Length next to it, so the body goes out chunked as the header says. Both set at once is
-// left out, express then writes both and a client refuses the response. end() and write() under
-// the header, which express 5.2 already framed, are res/end-with-transfer-encoding.js
+// Content-Length next to it, so the body goes out chunked as the header says, but still an ETag
+// (expressjs/express#7459). Both set at once is left out, express then writes both and a client
+// refuses the response. end() and write() under the header, which express 5.2 already framed, are
+// res/end-with-transfer-encoding.js
 
 const express = require("express");
 const { fetchTest, sequential } = require("../../helpers.js");
 
 const app = express();
-app.set("etag", false);
 app.get("/chunked", (req, res) => {
     res.set("Transfer-Encoding", "chunked");
     res.send("hello");
