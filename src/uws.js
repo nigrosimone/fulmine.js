@@ -22,6 +22,30 @@ limitations under the License.
 let uWS;
 
 /**
+ * A project on pnpm owns the uWebSockets.js dependency itself, see `npx fulmine.js pnpm`, so the
+ * one installed can drift from the one this package pins and was tested against. Said once, when
+ * it is loaded: an app served through node's http never loads it and has nothing to hear.
+ */
+function warnOnDrift() {
+    const pinned = /#v?([\d.]+)$/.exec(require("../package.json").dependencies["uWebSockets.js"])?.[1];
+    /** @type {string|undefined} */
+    let installed;
+    try {
+        // its exports map does not expose package.json, so it is read beside the entry point
+        const beside = require("path").join(require.resolve("uWebSockets.js"), "..", "package.json");
+        installed = JSON.parse(require("fs").readFileSync(beside, "utf8")).version;
+    } catch {
+        // nothing to compare against, which is not worth a warning of its own
+    }
+    if (pinned && installed && installed !== pinned) {
+        console.warn(
+            `fulmine.js: uWebSockets.js ${installed} is installed, this version was tested with ${pinned}.\n` +
+                "  On pnpm the pin is the project's own: `npx fulmine.js pnpm` writes the tested one."
+        );
+    }
+}
+
+/**
  * The µWS module. H3App, DeclarativeResponse and _cfg exist at runtime but are missing from the
  * .d.ts the package ships, so it is handed back loosely typed.
  *
@@ -29,6 +53,7 @@ let uWS;
  */
 function loadUWS() {
     if (uWS === undefined) {
+        warnOnDrift();
         uWS = /** @type {any} */ (require("uWebSockets.js"));
         try {
             // disable Uwebsockets header
