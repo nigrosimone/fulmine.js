@@ -3,9 +3,11 @@
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");
-const { fastJsonSchema } = require("express-fast-json-stringify");
+const { fastJsonSchema, installFastJson } = require("express-fast-json-stringify");
 
 const app = express();
+// since 2.0 res.fastJson() is added once on the app rather than by the route middleware
+installFastJson(app);
 
 const schema = {
     title: "Example Schema",
