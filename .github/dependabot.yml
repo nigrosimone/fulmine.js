@@ -34,3 +34,10 @@ updates:
             update-types: ["version-update:semver-major"]
           - dependency-name: content-disposition
             update-types: ["version-update:semver-major"]
+          # Express 5.2 depends on type-is 2, and 3 answers req.is() differently
+          - dependency-name: type-is
+            update-types: ["version-update:semver-major"]
+          # TypeScript 7 has no JS API, which eslint-plugin-sonarjs loads, and its checkJs reads the
+          # module.exports types differently (70 errors). Reopen when the tooling moves
+          - dependency-name: typescript
+            update-types: ["version-update:semver-major"]
