@@ -67,8 +67,12 @@ async function waitForFreePorts(ports) {
     }
 }
 
+// the clock a framework's log line starts with, Astro's "07:19:54 [WARN]", colours or not: the two
+// arms run one after the other and can fall either side of a second
+const LOG_CLOCK = /\d{2}:\d{2}:\d{2}(?=(?:.\[22m)? \[[A-Z]+\])/g;
+
 /**
- * Runs one case on one arm and hands back everything it wrote.
+ * Runs one case on one arm and hands back everything it wrote, log clocks blanked.
  *
  * stderr is kept: a case that dies before printing anything would otherwise fail as an empty
  * string against an empty string, which is the one way a comparison can pass by accident.
@@ -93,7 +97,7 @@ function runArm(file, arm) {
                     reject(new Error(`${path.basename(file)} on ${arm}: ${error.message}\n${stderr}`));
                     return;
                 }
-                resolve(stdout + (stderr ? `\n[stderr]\n${stderr}` : ""));
+                resolve((stdout + (stderr ? `\n[stderr]\n${stderr}` : "")).replace(LOG_CLOCK, "hh:mm:ss"));
             }
         );
     });
