@@ -53,6 +53,8 @@
     },
     "files": [
         "src",
+        "docs/*.md",
+        "!docs/index.md",
         "LICENSE",
         "NOTICE",
         "EXPRESS_LICENSE",
