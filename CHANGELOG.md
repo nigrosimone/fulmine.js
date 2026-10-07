@@ -1,5 +1,16 @@
 # Changelog
 
+## [5.21.6](https://github.com/nigrosimone/fulmine.js/compare/v5.21.5...v5.21.6) (2026-10-07)
+
+### Bug Fixes
+
+* **uws:** warn about the uWebSockets.js version only when it is loaded ([37098e5](https://github.com/nigrosimone/fulmine.js/commit/37098e5d4bf32bb7cb30843fd24a38f60a335052))
+
+### Performance Improvements
+
+* **node-shim:** string bodies go to node as they are, without a copy ([0427eb3](https://github.com/nigrosimone/fulmine.js/commit/0427eb3c8b2f81ce4c70f307e1d7190040fc68a9))
+* **node-shim:** the cached header Buffers reach node as the strings they hold ([f5bf4a7](https://github.com/nigrosimone/fulmine.js/commit/f5bf4a7ba82edfe6d7786bdac46cf80e944a3f2e))
+
 ## [5.21.5](https://github.com/nigrosimone/fulmine.js/compare/v5.21.4...v5.21.5) (2026-09-23)
 
 ### Bug Fixes
