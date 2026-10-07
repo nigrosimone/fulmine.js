@@ -236,7 +236,7 @@ surface than any application is, so those have a suite of their own, in
 with the two outputs compared byte for byte. The four that render pages, and the tsoa routes, are
 built first by that suite, so what is compared is what their own build produces.
 
-- ✅ [NestJS](https://nestjs.com) through [`fulmine.js/nest`](./migrating.md#nestjs)
+- ✅ [NestJS](https://nestjs.com) through [`fulmine.js/nest`](./nest.md)
 - ✅ [Next.js](https://nextjs.org) as a custom server, `next().getRequestHandler()`
 - ✅ [Astro](https://astro.build) through `@astrojs/node` in middleware mode
 - ✅ [SvelteKit](https://svelte.dev/docs/kit) through `@sveltejs/adapter-node`
@@ -255,7 +255,7 @@ built first by that suite, so what is compared is what their own build produces.
 
 Each of these mounts on an ordinary Express application, so there is nothing to install and nothing
 to configure beyond what that framework already asks for. Nest is the exception, and only because
-its adapter decides what to listen on: that one is [`fulmine.js/nest`](./migrating.md#nestjs).
+its adapter decides what to listen on: that one is [`fulmine.js/nest`](./nest.md).
 
 ## Tested view engines
 

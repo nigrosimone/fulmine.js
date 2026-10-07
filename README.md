@@ -90,7 +90,8 @@ npx fulmine.js pnpm                # the two lines a pnpm project needs before i
 npx fulmine.js differences         # just the list of what to check by hand
 ```
 
-NestJS is one import, `FulmineExpressAdapter` from `fulmine.js/nest`. Angular SSR's `server.ts` is
+NestJS is one import, `FulmineExpressAdapter` from `fulmine.js/nest`, about 2x the Fastify adapter
+with the Express middleware kept: [NestJS](./docs/nest.md). Angular SSR's `server.ts` is
 an ordinary Express application and takes the one-line change. A framework that requires Express in
 its own code, not in yours, is answered with a package manager override, and `override` writes it.
 The whole guide: [Migrating](./docs/migrating.md).
@@ -153,6 +154,7 @@ with the reason for each: [Differences from Express](./docs/differences.md).
 
 - [Why Fulmine](./docs/why.md): what it is, what it costs, who is behind it
 - [Migrating](./docs/migrating.md): the CLI, Angular SSR, NestJS, and when Express is somebody else's dependency
+- [NestJS](./docs/nest.md): the adapter, WebSocket gateways, against the Express and Fastify adapters
 - [Deploying](./docs/deployment.md): Docker, pnpm, a private npm registry, behind a proxy
 - [Performance](./docs/performance.md): the numbers, the tips, `profile`, `explain` and the testing helpers
 - [Differences from Express](./docs/differences.md): what answers differently and why

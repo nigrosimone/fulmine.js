@@ -93,7 +93,8 @@ export default defineConfig({
                 items: [
                     { text: "Deploying", link: "/deployment" },
                     { text: "Performance", link: "/performance" },
-                    { text: "WebSockets", link: "/websockets" }
+                    { text: "WebSockets", link: "/websockets" },
+                    { text: "NestJS", link: "/nest" }
                 ]
             },
             {
