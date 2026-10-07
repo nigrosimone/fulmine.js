@@ -75,7 +75,7 @@ class FulmineExpressAdapter extends ExpressAdapter {
             /** @type {any} */ (this).logger.warn(
                 "forceCloseConnections has no effect on fulmine.js: the sockets belong to µWS. " +
                     "app.close() stops accepting and waits for the requests in flight; an idle keep-alive " +
-                    "connection is closed by µWS through uwsOptions.idleTimeout, not by node."
+                    "connection is closed by µWS after its fixed 10 seconds, not by node."
             );
         }
     }

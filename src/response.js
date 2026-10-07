@@ -1529,7 +1529,7 @@ module.exports = class Response extends LazyWritable {
     addTrailers(headers) {}
 
     /**
-     * node's per-response socket timeout, which cannot change µWS's own `uwsOptions.idleTimeout`.
+     * node's per-response socket timeout, which cannot change µWS's fixed 10 second idle timeout.
      * The callback is registered on "timeout" as node's does, and nothing emits it.
      *
      * @param {number} msecs

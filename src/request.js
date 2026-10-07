@@ -624,7 +624,7 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * node's per-request socket timeout, which cannot change µWS's `uwsOptions.idleTimeout`. The
+     * node's per-request socket timeout, which cannot change µWS's fixed 10 second idle timeout. The
      * listener is registered as node's is.
      *
      * @param {number} msecs
