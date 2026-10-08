@@ -267,6 +267,10 @@ module.exports = class Response extends LazyWritable {
                       connection: "keep-alive",
                       "keep-alive": SEEDED_KEEP_ALIVE
                   };
+        // node writes its pair unless the header was removed, which still keeps the connection alive
+        if (res._nodeRes && app._settings["connection headers"] === false) {
+            res._nodeRes.removeHeader("connection");
+        }
         // the client asked to close and uWS closes: a declarative response, written once, cannot say so
         if (req._connectionClose) {
             this.headers.connection = "close";
