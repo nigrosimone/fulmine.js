@@ -21,6 +21,7 @@ limitations under the License.
 "use strict";
 
 const { work, names: workNames } = require("./work.js");
+const { otherRuntime } = require("./uws.js");
 
 /** @typedef {import("./request.js")} Request */
 /** @typedef {import("./response.js")} Response */
@@ -54,7 +55,8 @@ function collectRoutes(router, prefix, into = []) {
  * @param {Application} app
  */
 function compileOnce(app) {
-    if (app.listenCalled || app._testingCompiled) {
+    // Bun and Deno have no µWS to hand a route to, so nothing is compiled there
+    if (otherRuntime || app.listenCalled || app._testingCompiled) {
         return;
     }
     app._testingCompiled = true;
@@ -148,7 +150,12 @@ function select(app, patterns, caller) {
  * @param {string|string[]} patterns registered paths, "GET /path" to pin the method, a trailing "*"
  */
 function expectNative(app, patterns) {
-    const lost = select(app, patterns, "expectNative").filter((entry) => !entry.native);
+    const selected = select(app, patterns, "expectNative");
+    // on Bun and Deno there is no µWS, so only the paths are checked
+    if (otherRuntime) {
+        return;
+    }
+    const lost = selected.filter((entry) => !entry.native);
     if (lost.length === 0) {
         return;
     }
@@ -192,7 +199,12 @@ function whyNotCompiled(app, entry) {
  * @param {string|string[]} patterns as in expectNative
  */
 function expectDeclarative(app, patterns) {
-    const lost = select(app, patterns, "expectDeclarative").filter((entry) => !entry.declarative);
+    const selected = select(app, patterns, "expectDeclarative");
+    // as in expectNative: no µWS on Bun and Deno, nothing compiled to check
+    if (otherRuntime) {
+        return;
+    }
+    const lost = selected.filter((entry) => !entry.declarative);
     if (lost.length === 0) {
         return;
     }

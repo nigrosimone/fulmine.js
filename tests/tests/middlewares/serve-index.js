@@ -1,5 +1,6 @@
 // must support serve index
 // INSPECT
+// NODE: serve-index's batch dependency does not run on Deno
 
 const express = require("express");
 const { fetchTest, sequential } = require("../../helpers.js");

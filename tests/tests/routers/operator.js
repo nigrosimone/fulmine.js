@@ -1,4 +1,5 @@
 // must support router operators
+// NODE: Bun's node:http answers this differently from node's, and Express on Bun with it
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

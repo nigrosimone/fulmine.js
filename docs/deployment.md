@@ -4,7 +4,7 @@ description: Deploy Fulmine.js with Docker, pnpm, private registries and reverse
 
 # Deploying Fulmine.js
 
-Docker, pnpm, a private npm registry, and a proxy in front. Requirements first: Node 22, 24 or 26 on x64 or arm64, glibc 2.38 or newer, and no Bun. `npx fulmine.js verify` checks all of it in one run.
+Docker, pnpm, a private npm registry, and a proxy in front. Requirements first: Node 22, 24 or 26 on x64 or arm64, glibc 2.38 or newer. Bun and Deno run it without µWS, plain HTTP only, see [Express on Bun](./compare.md#express-on-bun). `npx fulmine.js verify` checks all of it in one run.
 
 ## Docker
 

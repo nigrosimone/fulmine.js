@@ -1,5 +1,6 @@
 // issue-304
 // INSPECT
+// NODE: Bun's node:http answers this differently from node's, and Express on Bun with it
 
 const express = require("express");
 

@@ -1,5 +1,6 @@
 // must support express-fast-json-stringify
 // INSPECT
+// NODE: ajv-formats does not start on Bun
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

@@ -6,6 +6,7 @@
 // half it happened to ask for. The members below are the ones an application calls on a request it
 // means to hold open or drop; what they do is this project's business, that they are there and
 // hand back what node hands back is Express's.
+// NODE: Bun's node:http answers this differently from node's, and Express on Bun with it
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

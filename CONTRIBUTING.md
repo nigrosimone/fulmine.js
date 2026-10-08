@@ -21,6 +21,7 @@ npm test tests/tests/res/res-send.js   # one file
 npm test -- --self        # every file twice against this framework, the reference arm with its
                           # optimizer off, so a difference is the optimizer and not Express
 npm test -- --jobs 1      # one file at a time; the default runs half the threads' worth at once
+npm test -- --runtime bun # both arms on Bun, or deno, found on the PATH; the runner stays on node
 npm run gates             # everything under "Before you commit", one after the other, summed up
 
 npm run test:unit         # the pure functions, which the comparison cannot reach
@@ -116,6 +117,7 @@ and the rest sets up an app, makes requests and prints. `tests/helpers.js` has w
 | `// INSPECT`              | On the second line. The runner then mounts `inspectRequest` in front of every app the file makes, and each request prints its `method`, `url`, `originalUrl`, `baseUrl`, `path`, `protocol`, `secure`, `hostname`, `host`, `xhr`, `subdomains` and `query`. |
 | `// OFF: reason`          | Skips the file.                                                                                                                                                                                                                                             |
 | `// SERIAL: reason`       | Runs the file alone, before the parallel ones. For a file that measures time or takes the whole machine.                                                                                                                                                    |
+| `// NODE: reason`         | Skipped under `--runtime bun` or `deno`: the file needs µWS, or tests something of node's own `http` that the other runtime answers differently.                                                                                                            |
 
 `// INSPECT` is not free everywhere, which is why it is asked for rather than always on. It is a
 middleware, so a route behind it stops being compiled into a declarative response and is served by

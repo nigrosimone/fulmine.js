@@ -17,7 +17,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-const { loadUWS } = require("./uws.js");
+const { loadUWS, otherRuntime } = require("./uws.js");
 const Router = require("./router.js");
 const {
     removeDuplicateSlashes,
@@ -163,6 +163,9 @@ class Application extends Router {
 
     /** close() stops the listen socket, then waits for the pending responses, as node does. @type {import("uWebSockets.js").us_listen_socket|undefined} */
     _listenSocket;
+
+    /** What listen() binds on Bun and Deno, where µWS does not load. @type {import("http").Server|undefined} */
+    _nodeServer;
 
     /** The fork supervisor, in the primary of a clustered app only. @type {{stop: () => void}|undefined} */
     _clusterHandle;
@@ -578,9 +581,6 @@ class Application extends Router {
             }
             return this;
         }
-        this._compileOptimizedRoutes();
-        registerWebSocketRoutes(this);
-        this._createRequestHandler();
         // node's shapes: (cb), (port, cb), (port, host, cb), (port, host, backlog, cb)
         if (typeof port === "function") {
             callback = port;
@@ -595,6 +595,12 @@ class Application extends Router {
         if (port == null) {
             port = 0;
         }
+        if (otherRuntime) {
+            return this._listenNodeHttp(port, host, callback);
+        }
+        this._compileOptimizedRoutes();
+        registerWebSocketRoutes(this);
+        this._createRequestHandler();
         // uWS runs this inside its own listen(), so everything reported to the caller is deferred
         // a tick, as node emits 'listening' and 'error'
         const onListen = (/** @type {import("uWebSockets.js").us_listen_socket|false} */ socket) => {
@@ -652,6 +658,56 @@ class Application extends Router {
     }
 
     /**
+     * listen() on Bun and Deno, where µWS does not load: their node:http serves the app, as
+     * http.createServer(app) would, with listen()'s own callback, events and return value.
+     *
+     * @param {number|string} port port, or a unix socket path
+     * @param {string|undefined} host
+     * @param {((err?: Error) => void)|undefined} callback
+     * @returns {this}
+     */
+    _listenNodeHttp(port, host, callback) {
+        // TLS and websockets need µWS, and loadUWS says so
+        if (this.ssl) {
+            loadUWS();
+        }
+        registerWebSocketRoutes(this);
+        const server = require("http").createServer(/** @type {any} */ (this));
+        const adoptAddress = () => {
+            const address = server.address();
+            this.port = address !== null && typeof address === "object" ? address.port : undefined;
+            this.listening = server.listening;
+        };
+        // Express 5 hands a failed bind to the listen callback; without one it is thrown
+        const onError = (/** @type {Error} */ err) => {
+            if (!callback) {
+                throw err;
+            }
+            callback.call(this, err);
+        };
+        server.once("error", onError);
+        server.once("listening", () => {
+            server.removeListener("error", onError);
+            adoptAddress();
+            if (callback) callback.call(this);
+            this.emit("listening");
+        });
+        this._nodeServer = server;
+        this._listenHost = host;
+        this.listenCalled = true;
+        if (typeof port === "string" && isNaN(Number(port))) {
+            server.listen(port);
+        } else if (host) {
+            server.listen(Number(port), host);
+        } else {
+            server.listen(Number(port));
+        }
+        // a port is bound synchronously, so address() works as soon as listen() returns, as on node
+        adoptAddress();
+        return this;
+    }
+
+    /**
      * Publishes a message to every socket subscribed to a topic, from outside any socket.
      *
      * @param {string} topic
@@ -688,6 +744,9 @@ class Application extends Router {
      * @returns {{address: string, family: string, port: number}|null}
      */
     address() {
+        if (this._nodeServer) {
+            return /** @type {any} */ (this._nodeServer.address());
+        }
         if (!this.listening || !this.port) {
             return null;
         }
@@ -850,6 +909,18 @@ class Application extends Router {
             if (!this._draining) {
                 process.nextTick(() => this.emit("close"));
             }
+            return this;
+        }
+        if (this._nodeServer) {
+            const server = this._nodeServer;
+            this._nodeServer = undefined;
+            this._draining = true;
+            server.close(() => {
+                this._draining = false;
+                this.emit("close");
+            });
+            // node drops the idle keep-alive connections on close() since v19, the others may not
+            server.closeIdleConnections?.();
             return this;
         }
         if (this._listenSocket) {

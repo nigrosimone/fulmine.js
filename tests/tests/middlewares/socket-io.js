@@ -1,5 +1,6 @@
 // must support socket.io
 // INSPECT
+// NODE: needs µWS, which Bun and Deno do not load
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

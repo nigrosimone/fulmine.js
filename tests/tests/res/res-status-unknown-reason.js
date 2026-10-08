@@ -1,5 +1,6 @@
 // a status code without a registered message goes out with the reason phrase "unknown", as node writes it
 // INSPECT
+// NODE: Bun's node:http answers this differently from node's, and Express on Bun with it
 
 const express = require("express");
 const net = require("net");

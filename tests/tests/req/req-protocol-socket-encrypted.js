@@ -1,5 +1,6 @@
 // must read the socket's own encrypted flag when trust proxy has no X-Forwarded-Proto
 // INSPECT
+// NODE: Bun's and Deno's node:http answer this differently from node's
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

@@ -21,6 +21,10 @@ limitations under the License.
 /** @type {any} */
 let uWS;
 
+// µWS is a native Node addon, Bun and Deno do not load it: there listen() serves through their
+// node:http, as http.createServer(app) would
+const otherRuntime = process.versions.bun ? "Bun" : process.versions.deno ? "Deno" : undefined;
+
 /**
  * A project on pnpm owns the uWebSockets.js dependency itself, see `npx fulmine.js pnpm`, so the
  * one installed can drift from the one this package pins and was tested against. Said once, when
@@ -53,6 +57,12 @@ function warnOnDrift() {
  */
 function loadUWS() {
     if (uWS === undefined) {
+        if (otherRuntime) {
+            throw new Error(
+                `fulmine.js: µWebSockets.js does not load on ${otherRuntime}, so WebSockets, TLS through ` +
+                    `express({ uwsOptions }) and app.uwsApp need Node. Plain HTTP works, through ${otherRuntime}'s node:http.`
+            );
+        }
         warnOnDrift();
         uWS = /** @type {any} */ (require("uWebSockets.js"));
         try {
@@ -65,4 +75,4 @@ function loadUWS() {
     return uWS;
 }
 
-module.exports = { loadUWS };
+module.exports = { loadUWS, otherRuntime };

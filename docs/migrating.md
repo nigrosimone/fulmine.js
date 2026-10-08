@@ -133,4 +133,6 @@ Express, including ones you have never looked at, so run your own tests afterwar
 than what an application does. And a package that reaches into `express/lib/...` rather than its
 public surface will not find what it expects, since the files there are ours.
 
-Bun is not an option: µWebSockets.js is a native Node addon, and Bun does not load it.
+Bun and Deno work, but without µWS: µWebSockets.js is a native Node addon they do not load, so
+`app.listen()` serves through their `node:http`. Plain HTTP answers as on Node; WebSockets, TLS through
+`uwsOptions` and `app.uwsApp` need Node, and the speed is [about Express's](./compare.md#express-on-bun).

@@ -1,6 +1,7 @@
 // must treat writeHead as the head gone out, as node does: headersSent reads true from then on,
 // setHeader, removeHeader and a second writeHead throw ERR_HTTP_HEADERS_SENT, and a status set
 // later never reaches the wire. The bytes themselves still leave with the body
+// NODE: Bun's node:http answers this differently from node's, and Express on Bun with it
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

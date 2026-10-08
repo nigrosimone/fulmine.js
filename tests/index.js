@@ -122,8 +122,19 @@ async function waitForFreePorts(ports) {
     return stillBusy;
 }
 
+// --runtime bun or deno runs both arms there, found on the PATH. The runner stays on node: the
+// other two offer node:test only through their own test command. A file marked NODE needs µWS and
+// is skipped there
+const runtimeFlag = process.argv.indexOf("--runtime");
+const RUNTIME = runtimeFlag === -1 ? "node" : process.argv[runtimeFlag + 1];
+const ARM_COMMAND = { node: [process.execPath], bun: ["bun"], deno: ["deno", "run", "-A"] }[RUNTIME];
+if (!ARM_COMMAND) {
+    throw new Error(`--runtime takes bun or deno, not ${RUNTIME}`);
+}
+
 // see tests/win-exit-delay.cjs: without it every test crashes on exit under Node 24+ on Windows
-const NODE_ARGS = process.platform === "win32" ? ["--require", path.join(__dirname, "win-exit-delay.cjs")] : [];
+const NODE_ARGS =
+    process.platform === "win32" && RUNTIME === "node" ? ["--require", path.join(__dirname, "win-exit-delay.cjs")] : [];
 // what a file asking for it gets, see tests/inspect-preload.cjs
 const INSPECT_ARG = ["--require", path.join(__dirname, "inspect-preload.cjs")];
 // the reference arm of a --self run, see tests/generic-preload.cjs
@@ -241,7 +252,7 @@ for (const category of testCategories) {
             if (trimmed !== "" && !trimmed.startsWith("//")) {
                 break;
             }
-            const markerMatch = trimmed.match(/^\/\/\s*(OFF|INSPECT|SERIAL)(?::\s*(.*))?$/);
+            const markerMatch = trimmed.match(/^\/\/\s*(OFF|INSPECT|SERIAL|NODE)(?::\s*(.*))?$/);
             if (markerMatch) {
                 markers.add(markerMatch[1]);
             }
@@ -300,7 +311,9 @@ async function execArm(job, module) {
                 `so ${module} runs against whatever holds them: ${job.path}`
         );
     }
+    const [command, ...prefix] = ARM_COMMAND;
     const args = [
+        ...prefix,
         ...NODE_ARGS,
         ...(job.markers.has("INSPECT") ? INSPECT_ARG : []),
         ...(module === "generic" ? GENERIC_ARG : []),
@@ -314,7 +327,7 @@ async function execArm(job, module) {
     for (let attempt = 1; ; attempt++) {
         try {
             // the same node that runs this, rather than whichever one a PATH lookup would find
-            return (await execFile(process.execPath, args, options)).stdout;
+            return (await execFile(command, args, options)).stdout;
         } catch (error) {
             // maxBuffer also kills the child, and retrying an output that big would only mislabel
             // it as a hang
@@ -413,8 +426,13 @@ function settle(job) {
 // The work runs ahead of the reporting: JOBS files at a time, in order, each test below waiting
 // for its own. A SERIAL file measures time or takes the whole machine, so those go first and one
 // at a time, with nothing else running
+/** @param {Job} job @returns {boolean} whether this run leaves the file out */
+function skipped(job) {
+    return job.markers.has("OFF") || (RUNTIME !== "node" && job.markers.has("NODE"));
+}
+
 async function runAll() {
-    const queue = jobs.filter((job) => !job.markers.has("OFF"));
+    const queue = jobs.filter((job) => !skipped(job));
     for (const job of queue.filter((job) => job.markers.has("SERIAL"))) {
         await settle(job);
     }
@@ -438,7 +456,7 @@ for (const testCategory of testCategories) {
             await new Promise((resolve) => {
                 test(`${job.description} (${++planned}/${plannedTotal})`, async (t) => {
                     try {
-                        if (job.markers.has("OFF")) {
+                        if (skipped(job)) {
                             t.skip();
                             return;
                         }

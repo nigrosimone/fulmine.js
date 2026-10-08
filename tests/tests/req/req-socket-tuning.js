@@ -5,6 +5,7 @@
 // socket timeout to set under µWS, so what matters here is only that they are callable and hand the
 // socket back the way node's do. n8n's chat trigger calls setTimeout on every webhook it serves,
 // and a missing method there came back as a 500 with the cause swallowed.
+// NODE: Bun's node:http answers this differently from node's, and Express on Bun with it
 
 const express = require("express");
 const { fetchTest } = require("../../helpers.js");

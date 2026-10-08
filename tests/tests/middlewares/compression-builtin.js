@@ -6,6 +6,7 @@
 // the two are supposed to agree on is here: the content type filter, no-transform, the threshold,
 // a body that is already encoded, HEAD, the negotiation including q values, and both ways a body
 // reaches the wire, whole from send() and in pieces from a pipe.
+// NODE: Bun's node:http answers this differently from node's, and Express on Bun with it
 
 const express = require("express");
 const compression = express.compression || require("compression");

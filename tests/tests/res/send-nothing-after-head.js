@@ -1,5 +1,6 @@
 // send() with nothing after the head is out answers, unless the status strips headers: express
 // strips them through removeHeader, and node refuses that once the head has gone out
+// NODE: Deno's node:http answers this differently from node's, and Express on Deno with it
 
 // Fuzzer seed 2482457356: writeHead(202), status(204), send(req.body) with no body parser, so
 // send(undefined). Express throws ERR_HTTP_HEADERS_SENT out of removeHeader and its final handler

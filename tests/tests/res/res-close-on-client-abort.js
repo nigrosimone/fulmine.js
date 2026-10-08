@@ -10,6 +10,7 @@
 // writes nothing and has only this event to go on.
 //
 // A raw request, because the socket has to be destroyed mid-response and fetch cannot do that.
+// NODE: Deno's node:http answers this differently from node's, and Express on Deno with it
 
 const express = require("express");
 const http = require("http");

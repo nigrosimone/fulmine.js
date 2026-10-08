@@ -1,5 +1,6 @@
 // res.end() of a chunk that is not a string, a Buffer or a Uint8Array: node throws
 // ERR_INVALID_ARG_TYPE with the value named in the message, and a falsy chunk is sent as nothing
+// NODE: Bun's node:http answers this differently from node's, and Express on Bun with it
 
 const express = require("express");
 const { fetchTest, sequential } = require("../../helpers.js");

@@ -90,6 +90,59 @@ jobs:
             - name: Type check the source
               run: npm run typecheck
 
+    # The comparison suite with both arms on the latest Bun and Deno, where µWS does not load and
+    # listen() serves through their node:http. A file marked NODE needs µWS and is skipped there.
+    # Unit, fuzz, coverage and the benchmark stay on node.
+    test-runtimes:
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                runtime: [bun, deno]
+        steps:
+            - name: Checkout Source Tree
+              uses: actions/checkout@v7
+
+            - name: Cache Node.js dependencies
+              uses: actions/cache@v6
+              with:
+                  path: ~/.npm
+                  key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+                  restore-keys: |
+                      ${{ runner.os }}-node-
+
+            # the runner itself stays on node, only the two arms run on the other runtime
+            - name: Setup Node.js environment
+              uses: actions/setup-node@v7
+              with:
+                  node-version: "24"
+
+            - name: Setup Bun
+              if: matrix.runtime == 'bun'
+              uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: latest
+
+            - name: Setup Deno
+              if: matrix.runtime == 'deno'
+              uses: denoland/setup-deno@v2
+              with:
+                  deno-version: v2.x
+
+            - name: Install dependencies
+              run: npm install --include=dev
+
+            - name: Run tests
+              run: npm run test -- --runtime ${{ matrix.runtime }}
+
+            - name: Keep what the arms wrote when they disagreed
+              if: failure()
+              uses: actions/upload-artifact@v7
+              with:
+                  name: test-failures-${{ matrix.runtime }}
+                  path: test-failures/
+                  if-no-files-found: ignore
+
     # Coverage over all three suites, with floors set just under where the number stands so a
     # change that walks away from tested ground is red. The lcov goes to Coveralls, which is
     # where the README badge reads from.
