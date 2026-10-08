@@ -1,5 +1,21 @@
 # Changelog
 
+## [5.22.0](https://github.com/nigrosimone/fulmine.js/compare/v5.21.6...v5.22.0) (2026-10-08)
+
+### Features
+
+* express.isFulmine, true here and undefined on Express, for code that runs on either ([9bdcbc2](https://github.com/nigrosimone/fulmine.js/commit/9bdcbc2550c7bcafb4e7cff58703d15e9b26995b))
+* serve through node:http on Bun and Deno, and run the comparison suite on both in CI ([0019b4d](https://github.com/nigrosimone/fulmine.js/commit/0019b4df9e8829090e0312ecf4098701e559f22d))
+
+### Bug Fixes
+
+* "connection headers" off through node:http, where node still wrote its own Connection and Keep-Alive ([6e7ee4e](https://github.com/nigrosimone/fulmine.js/commit/6e7ee4eaf74f02bd167d8e6deb8ee55252685a67))
+
+### Performance Improvements
+
+* **shim:** collect a request body in one piece, as uWS does, instead of copying every chunk twice ([ab990e7](https://github.com/nigrosimone/fulmine.js/commit/ab990e782fe221d40a7e0920cf2fb1d7f89f9ecd))
+* **shim:** walk the routes without a promise and listen for drain and abort only when needed, as the uWS handler does ([d41a35f](https://github.com/nigrosimone/fulmine.js/commit/d41a35f061229126be9e9535f110073080e395cf))
+
 ## [5.21.6](https://github.com/nigrosimone/fulmine.js/compare/v5.21.5...v5.21.6) (2026-10-07)
 
 ### Bug Fixes
