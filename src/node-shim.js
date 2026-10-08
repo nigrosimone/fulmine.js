@@ -388,6 +388,10 @@ class NodeHttpResponse {
         }
         this._onDataListening = true;
         this._nodeReq.on("data", (chunk) => {
+            // collectBody took the body over
+            if (this._onData === null) {
+                return;
+            }
             if (this._onDataPending !== null) {
                 this._onData?.(this._onDataPending, false);
             }
@@ -398,6 +402,53 @@ class NodeHttpResponse {
             this._onData?.(this._onDataPending ?? new ArrayBuffer(0), true);
             this._onDataPending = null;
         });
+        return this;
+    }
+
+    /**
+     * The whole body in one callback, as uWS's collectBody: null once it passes maxSize. A body in
+     * one chunk goes over as node delivered it and a longer one is joined once, where onData copied
+     * every chunk out to an ArrayBuffer and the parser copied it again.
+     *
+     * @param {number} maxSize
+     * @param {(body: Buffer|null) => void} handler
+     */
+    collectBody(maxSize, handler) {
+        const req = this._nodeReq;
+        // a chunk onData held back, not knowing yet whether it was the last
+        const held = this._onDataPending;
+        // the body is this handler's alone, as on uWS: the Request's own subscription stops here
+        this._onData = null;
+        this._onDataPending = null;
+        /** @type {Buffer[]} */
+        const chunks = [];
+        let size = 0;
+        let refused = false;
+        const onChunk = (/** @type {Buffer} */ chunk) => {
+            size += chunk.length;
+            if (size > maxSize) {
+                refused = true;
+                req.removeListener("data", onChunk);
+                req.removeListener("end", onEnd);
+                chunks.length = 0;
+                // the rest is read and dropped, as uWS does past the limit
+                req.resume();
+                handler(null);
+                return;
+            }
+            chunks.push(chunk);
+        };
+        const onEnd = () => {
+            handler(chunks.length === 1 ? chunks[0] : Buffer.concat(chunks, size));
+        };
+        if (held !== null) {
+            onChunk(Buffer.from(held));
+            if (refused) {
+                return this;
+            }
+        }
+        req.on("data", onChunk);
+        req.on("end", onEnd);
         return this;
     }
 

@@ -96,6 +96,60 @@ test("a JSON body arrives whole through the shim's data plumbing", async () => {
     await close();
 });
 
+test("a body split in two, with the parser reached between the halves, arrives whole", async () => {
+    // the shim holds a chunk back until it knows whether it was the last, so the first half is
+    // still in its hands when express.json() collects the body
+    const app = express();
+    app.use(async (req, res, next) => {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        next();
+    });
+    app.use(express.json());
+    app.post("/echo", (req, res) => {
+        res.json(req.body);
+    });
+
+    const { url, close } = await serve(app);
+    try {
+        await postInTwoHalves(url);
+    } finally {
+        await close();
+    }
+});
+
+/**
+ * POSTs a JSON body in two writes 300ms apart and checks it comes back whole.
+ *
+ * @param {string} url
+ */
+async function postInTwoHalves(url) {
+    const body = JSON.stringify({ text: "x".repeat(1000) });
+    const { port } = new URL(url);
+    /** @type {{status: number|undefined, data: string}} */
+    const answer = await new Promise((resolve, reject) => {
+        const req = http.request(
+            {
+                host: "127.0.0.1",
+                port,
+                path: "/echo",
+                method: "POST",
+                headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) }
+            },
+            (res) => {
+                let data = "";
+                res.setEncoding("utf8");
+                res.on("data", (chunk) => (data += chunk));
+                res.on("end", () => resolve({ status: res.statusCode, data }));
+            }
+        );
+        req.on("error", reject);
+        req.write(body.slice(0, 500));
+        setTimeout(() => req.end(body.slice(500)), 300);
+    });
+    assert.equal(answer.status, 200);
+    assert.equal(JSON.parse(answer.data).text.length, 1000);
+}
+
 test("a HEAD answers the GET's headers and no body", async () => {
     const app = express();
     app.get("/sized", (req, res) => {

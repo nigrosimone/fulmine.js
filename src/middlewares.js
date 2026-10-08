@@ -1014,7 +1014,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 // the Readable never runs, and a later parser asks it
                 req.complete = true;
                 req.readable = false;
-                req._res.collectBody(limit, (/** @type {ArrayBuffer|null} */ body) => {
+                req._res.collectBody(limit, (/** @type {ArrayBuffer|Buffer|null} */ body) => {
                     if (body === null) {
                         // over maxSize: uWS refused it natively
                         return next(
@@ -1033,7 +1033,8 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                             })
                         );
                     }
-                    let buf = Buffer.from(body);
+                    // a Buffer is node:http's, through the shim, and Buffer.from() would copy it
+                    let buf = Buffer.isBuffer(body) ? body : Buffer.from(body);
                     if (copyBody) {
                         buf = Buffer.from(buf);
                     }
