@@ -29,7 +29,15 @@ Numbers between frameworks are only worth reading from a rig that runs all of th
 
 ## Express on Bun
 
-Bun uses µWebSockets for its HTTP module, so Express on Bun is faster than Express on Node without any µWS-specific optimization: routes are still scanned layer by layer in JavaScript. µWebSockets.js is a native Node addon and Bun does not load it, so on Bun `app.listen()` serves through Bun's `node:http`, as Express does, and WebSockets, TLS through `uwsOptions` and `app.uwsApp` need Node. On a hello world (wrk, one core, no pipelining) that was about 1.15x Express on Bun, while Fulmine on Node through µWS was about 2.8x Express on Bun. Deno is the same story.
+Bun uses µWebSockets for its HTTP module, so Express on Bun is faster than Express on Node without any µWS-specific optimization: routes are still scanned layer by layer in JavaScript. µWebSockets.js is a native Node addon that Bun and Deno do not load, so there `app.listen()` serves through their `node:http`, as Express does, and WebSockets, TLS through `uwsOptions` and `app.uwsApp` need Node.
+
+| Runtime    | Express | Fulmine through `node:http` | Fulmine through µWS |
+| ---------- | ------: | --------------------------: | ------------------: |
+| Node 26.7  |    8.5k |               12.6k (1.48x) |        39.0k (4.6x) |
+| Bun 1.4.2  |   18.1k |               23.4k (1.29x) |                 n/a |
+| Deno 2.9.7 |   11.5k |               17.1k (1.49x) |                 n/a |
+
+Requests per second on the hello world of fastify/benchmarks (`{ hello: "world" }` as JSON), wrk with 100 connections and no pipelining, the server on one core of an Ampere A1 (arm64), median of five rounds, 2026-10-08. Fulmine on Node through µWS is about 2.2x Express on Bun.
 
 ## Raw uWebSockets.js
 

@@ -135,4 +135,4 @@ public surface will not find what it expects, since the files there are ours.
 
 Bun and Deno work, but without µWS: µWebSockets.js is a native Node addon they do not load, so
 `app.listen()` serves through their `node:http`. Plain HTTP answers as on Node; WebSockets, TLS through
-`uwsOptions` and `app.uwsApp` need Node, and the speed is [about Express's](./compare.md#express-on-bun).
+`uwsOptions` and `app.uwsApp` need Node, and the speed is [1.3x to 1.5x Express's](./compare.md#express-on-bun).
