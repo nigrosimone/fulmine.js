@@ -43,6 +43,7 @@ try {
  *   application: object,
  *   static: Function,
  *   testing: object,
+ *   isFulmine: true,
  *   compression: Function,
  *   serverTiming: Function,
  *   json: Function,
@@ -70,6 +71,8 @@ module.exports.application = Application.Application.prototype;
 module.exports.static = middlewares.static;
 // what listen() decided about each route, as something a test can assert on. See src/testing.js
 module.exports.testing = require("./testing.js");
+// undefined on express: how code that may run on either tells which one it has
+module.exports.isFulmine = true;
 // express has none: this is the compression module's options and behaviour, without the install
 module.exports.compression = require("./compression.js");
 // Server-Timing with the routing verdict in it. See src/server-timing.js

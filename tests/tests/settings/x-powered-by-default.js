@@ -11,7 +11,7 @@ app.get("/", (req, res) => res.send("ok"));
 // The default differs from Express on purpose, so the two servers cannot be compared directly
 // here. The file asks which one it is running on and asserts that server's own default, which
 // makes both print the same line and keeps the comparison meaningful.
-const isFulmine = !!app.uwsApp;
+const isFulmine = express.isFulmine === true;
 
 app.listen(13333, async () => {
     const response = await fetchTest("http://localhost:13333/");

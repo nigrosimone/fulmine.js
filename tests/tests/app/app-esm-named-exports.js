@@ -18,7 +18,7 @@ const { pathToFileURL } = require("url");
 // which was removed for looking dead.
 
 // the harness rewrites the require above, so which module this is has to be decided at run time
-const isFulmine = !!express().uwsApp;
+const isFulmine = express.isFulmine === true;
 const specifier = isFulmine ? pathToFileURL(path.join(__dirname, "../../../src/index.js")).href : "express";
 
 // what both packages offer, and what the README says they offer
@@ -42,6 +42,8 @@ const EXPECTED = [
     for (const name of EXPECTED) {
         console.log(`  ${name}: ${typeof namespace[name]}`);
     }
+    // ours alone, and as reachable from import as the rest
+    console.log("isFulmine:", namespace.isFulmine === (isFulmine || undefined));
 
     // not merely present: usable, since the lexer could name something that is undefined at run time
     const router = namespace.Router();

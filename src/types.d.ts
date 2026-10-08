@@ -130,6 +130,9 @@ declare module "fulmine.js" {
             function expectLazy(req: e.Request, res: e.Response, options?: { allow?: WorkField[] }): void;
         }
 
+        /** Always true here and undefined on Express: how code that may run on either tells which one it has. */
+        export const isFulmine: true;
+
         // Server-Timing, carrying how the request was routed. Express has no such middleware, so
         // like compression() there is nothing to re-export
         interface ServerTimingOptions {

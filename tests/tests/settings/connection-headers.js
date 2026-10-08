@@ -7,7 +7,7 @@ const app = express();
 // "connection headers" is this project's own, so Express ignores it and keeps sending both. What
 // is compared is this file's own answers, which both servers must print alike, so the requests
 // here are plain fetches: fetchTest would print the very headers the setting removes.
-const isFulmine = !!app.uwsApp;
+const isFulmine = express.isFulmine === true;
 app.set("connection headers", false);
 
 app.get("/compiled", (req, res) => res.send("ok"));

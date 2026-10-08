@@ -230,6 +230,9 @@ NamedRouter().ws("/lobby", {
     }
 });
 
+// express.isFulmine, undefined on express itself
+expectType<true>(express.isFulmine);
+
 // express.serverTiming(), and the two marks it hangs on the response. They are optional, because
 // they are only there on a route the middleware ran in front of
 expectAssignable<RequestHandler>(express.serverTiming());
