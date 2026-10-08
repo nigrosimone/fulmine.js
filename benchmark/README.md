@@ -39,6 +39,22 @@ Measured on a route simple enough to be compiled, it is worth around a fifth mor
 the load generator is no longer the bottleneck. Without pipelining, autocannon saturates first and
 both sides read the same. It is paid for with chunked framing and no `Content-Length`.
 
+## The shim against node:http
+
+Bun and Deno serve this framework through their `node:http`, and so does `http.createServer(app)` on
+Node. `--shim 1` measures that path against `node:http` with a handler written by hand, which is the
+floor: the closer the ratio is to 1.00x, the less the shim costs.
+
+```bash
+npm run benchmark:compare -- --shim 1 --duration 20
+npm run benchmark:ab -- --against main --shim     # a change to the shim, against main
+```
+
+Only the scenarios with a `nodeHttp(req, res)` handler take part, since `node:http` has no router.
+The handler does the same work by hand and has to answer the same status and body, which the
+harness checks as for the other rows. The ratios go to `benchmark_history_shim.json`, apart from the
+main ones.
+
 ## Comparing two revisions of this project
 
 `run.js` answers "how does this compare to Express". `ab.js` answers a different question: "did
@@ -152,6 +168,11 @@ module.exports = {
     },
     setup(app, express, context) {
         app.post("/abc", (req, res) => res.send("ok"));
+    },
+    // optional: the same answer on node:http by hand, for --shim
+    nodeHttp(req, res) {
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.end("ok");
     }
 };
 ```

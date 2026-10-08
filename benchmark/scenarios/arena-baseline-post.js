@@ -12,6 +12,8 @@ function sumQuery(query) {
     return sum;
 }
 
+const querystring = require("querystring");
+
 module.exports = {
     name: "routing/arena-baseline-post",
     path: "/baseline11?a=13&b=42",
@@ -27,6 +29,21 @@ module.exports = {
             const n = parseInt(typeof req.body === "string" ? req.body.trim() : "", 10);
             if (n === n) total += n;
             res.type("text/plain").send(String(total));
+        });
+    },
+    // node:http by hand, what --shim measures the shim against
+    nodeHttp(req, res) {
+        let body = "";
+        req.setEncoding("utf8");
+        req.on("data", (chunk) => {
+            body += chunk;
+        });
+        req.on("end", () => {
+            let total = sumQuery(querystring.parse(req.url.slice(req.url.indexOf("?") + 1)));
+            const n = parseInt(body.trim(), 10);
+            if (n === n) total += n;
+            res.setHeader("Content-Type", "text/plain; charset=utf-8");
+            res.end(String(total));
         });
     }
 };

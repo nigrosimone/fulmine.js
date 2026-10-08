@@ -11,6 +11,8 @@ function sumQuery(query) {
     return sum;
 }
 
+const querystring = require("querystring");
+
 module.exports = {
     name: "routing/arena-baseline-get",
     path: "/baseline11?a=13&b=42",
@@ -19,5 +21,11 @@ module.exports = {
         app.get("/baseline11", (req, res) => {
             res.type("text/plain").send(String(sumQuery(req.query)));
         });
+    },
+    // node:http by hand, what --shim measures the shim against
+    nodeHttp(req, res) {
+        const query = querystring.parse(req.url.slice(req.url.indexOf("?") + 1));
+        res.setHeader("Content-Type", "text/plain; charset=utf-8");
+        res.end(String(sumQuery(query)));
     }
 };

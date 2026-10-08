@@ -2,6 +2,7 @@
 
 const crypto = require("crypto");
 const fs = require("fs");
+const http = require("http");
 const path = require("path");
 const { Readable } = require("stream");
 
@@ -30,13 +31,31 @@ function resolveFramework(frameworkName) {
         return require("express");
     }
 
-    if (frameworkName === "fulmine") {
+    // fulmine-shim is the same app served through http.createServer(app), see --shim in run.js
+    if (frameworkName === "fulmine" || frameworkName === "fulmine-shim") {
         // ab.js points this at a git worktree so two revisions can be measured against each other.
         // The worktree lives inside the repo, so requires from it still resolve node_modules here.
         return require(process.env.FULMINE_SRC || "../src/index");
     }
 
     throw new Error(`Unknown framework: ${frameworkName}`);
+}
+
+/**
+ * --shim's floor: node:http with the scenario's own handler and nothing else, what the shim's
+ * overhead is measured from.
+ */
+function nodeHttpServer(scenario, scenarioName) {
+    if (typeof scenario.nodeHttp !== "function") {
+        throw new Error(`${scenarioName} has no nodeHttp handler, so --shim cannot measure it`);
+    }
+    return http.createServer((req, res) => {
+        if (req.url === "/__ready") {
+            res.end("ok");
+            return;
+        }
+        scenario.nodeHttp(req, res);
+    });
 }
 
 function createContext() {
@@ -110,37 +129,45 @@ async function main() {
         throw new Error("Missing required args: --framework and --scenario");
     }
 
-    const express = resolveFramework(frameworkName);
-    const app = express();
-    const context = createContext();
     const scenarioPath = path.join(__dirname, "scenarios", `${scenarioName}.js`);
     const scenario = require(scenarioPath);
-
-    if (typeof app.set === "function") {
-        app.set("etag", false);
-        app.set("x-powered-by", false);
-        app.set("env", "production");
-        if (frameworkName === "fulmine") {
-            // Off, so the comparison is between two frameworks doing the work rather than between
-            // one of them and a response uWS wrote at startup. Set FULMINE_DECLARATIVE=1 to measure
-            // what that shortcut is worth: on a route simple enough to be compiled it is around a
-            // fifth more throughput, paid for with chunked framing and no Content-Length.
-            app.set("declarative responses", process.env.FULMINE_DECLARATIVE === "1");
-        }
-    }
-
-    app.get("/__ready", (req, res) => {
-        res.send("ok");
-    });
-
-    await scenario.setup(app, express, context);
 
     // profile.js sets PROFILE_OUT and stops us with a message rather than a signal. A signal would
     // be no use: --cpu-prof and the profiler both write on a clean exit, and a killed process on
     // Windows leaves nothing behind at all.
     const profiler = process.env.PROFILE_OUT ? new (require("inspector").Session)() : null;
 
-    const server = app.listen(port, () => {
+    let server;
+    if (frameworkName === "node-http") {
+        server = nodeHttpServer(scenario, scenarioName).listen(port, onListen);
+    } else {
+        const express = resolveFramework(frameworkName);
+        const app = express();
+        app.set("etag", false);
+        app.set("x-powered-by", false);
+        app.set("env", "production");
+        if (frameworkName !== "express") {
+            // Off, so the comparison is between two frameworks doing the work rather than between
+            // one of them and a response uWS wrote at startup. Set FULMINE_DECLARATIVE=1 to measure
+            // what that shortcut is worth: on a route simple enough to be compiled it is around a
+            // fifth more throughput, paid for with chunked framing and no Content-Length.
+            app.set("declarative responses", process.env.FULMINE_DECLARATIVE === "1");
+        }
+
+        app.get("/__ready", (req, res) => {
+            res.send("ok");
+        });
+
+        await scenario.setup(app, express, createContext());
+
+        // --shim: node's own server in front of the app, which is how Bun and Deno serve it
+        server =
+            frameworkName === "fulmine-shim"
+                ? http.createServer(app).listen(port, onListen)
+                : app.listen(port, onListen);
+    }
+
+    function onListen() {
         if (!profiler) {
             process.stdout.write(`ready:${frameworkName}:${scenarioName}:${port}\n`);
             return;
@@ -156,7 +183,7 @@ async function main() {
                 });
             });
         });
-    });
+    }
 
     // profile.js asks for a cut at the end of every round and keeps this process alive between
     // them, so that each round is measured on a server that is already warm rather than on one that

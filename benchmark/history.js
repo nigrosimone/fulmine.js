@@ -343,9 +343,10 @@ function compareRuns(previous, current, windowRuns) {
  *
  * @param {{run: any, exact: boolean, key: string}|null} baseline
  * @param {any} current
+ * @param {string[]} [labels] the two arms, baseline first: --shim measures other ones
  * @returns {string|null}
  */
-function historyMarkdown(baseline, current) {
+function historyMarkdown(baseline, current, labels = ["Express", "Fulmine"]) {
     if (!baseline) {
         return null;
     }
@@ -369,7 +370,7 @@ function historyMarkdown(baseline, current) {
         `### Against the last run on ${baseline.exact ? "this machine" : "a machine of the same shape"}${label ? ` (${label})` : ""}`
     );
     lines.push("");
-    lines.push("| Test | Speedup then | Speedup now | Change | Express then to now | Fulmine then to now |");
+    lines.push(`| Test | Speedup then | Speedup now | Change | ${labels[0]} then to now | ${labels[1]} then to now |`);
     lines.push("| --- | ---: | ---: | ---: | ---: | ---: |");
 
     for (const row of rows) {

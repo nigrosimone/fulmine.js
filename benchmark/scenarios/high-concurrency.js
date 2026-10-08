@@ -16,5 +16,10 @@ module.exports = {
     },
     setup(app) {
         app.get("/ping", (req, res) => res.send("pong"));
+    },
+    // the same answer written on node:http by hand, what --shim measures the shim against
+    nodeHttp(req, res) {
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.end("pong");
     }
 };

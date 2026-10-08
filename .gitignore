@@ -7,9 +7,11 @@ processed.txt
 /coverage
 .DS_Store
 benchmark_summary.md
+benchmark_shim.md
 # the ratios a benchmark run leaves for the next one. Per machine, so it is never the same file
 # twice and never worth committing: in CI it travels as an artifact instead
 benchmark_history.json
+benchmark_history_shim.json
 .vscode
 .ab-worktree/
 

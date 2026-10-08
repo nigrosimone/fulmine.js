@@ -81,6 +81,17 @@ jobs:
                   npm run benchmark:compare -- --duration 20 --output benchmark_summary.md \
                       ${{ inputs.transport == 'unix-socket' && '--socket 1' || '' }}
 
+            # what Bun, Deno and http.createServer(app) run, against node:http with a handler written
+            # by hand: the closer to 1.00x, the less the shim costs. It goes under the main table, in
+            # the same comment
+            - name: Run the shim against node:http
+              env:
+                  NODE_ENV: production
+              run: |
+                  npm run benchmark:compare -- --shim 1 --duration 20 --output benchmark_shim.md \
+                      ${{ inputs.transport == 'unix-socket' && '--socket 1' || '' }}
+                  cat benchmark_shim.md >> benchmark_summary.md
+
             - name: Upload benchmark markdown artifact
               uses: actions/upload-artifact@v7
               with:
@@ -93,7 +104,9 @@ jobs:
               uses: actions/upload-artifact@v7
               with:
                   name: benchmark-history
-                  path: benchmark_history.json
+                  path: |
+                      benchmark_history.json
+                      benchmark_history_shim.json
                   if-no-files-found: warn
 
             - name: Comment on commit

@@ -13,6 +13,7 @@
 //   node benchmark/ab.js --null                 # same code both sides, to see the noise floor
 //   node benchmark/ab.js --against main --pipelining 1   # one request per connection at a time
 //   node benchmark/ab.js --null --node-options "--max-semi-space-size=32"   # a node flag, one arm only
+//   node benchmark/ab.js --against main --shim   # both served through http.createServer(app)
 //
 // --node-options goes to the candidate server and to nothing else, so a run measures a node or V8
 // flag the way --against measures a revision: same code both sides, one arm started differently.
@@ -200,6 +201,10 @@ async function main() {
         throw new Error('give the flags to --node-options, as --node-options "--max-semi-space-size=32"');
     }
     const nodeOptions = args["node-options"] || null;
+    // the path Bun and Deno take, for work on what the shim costs
+    if (args.shim) {
+        BASELINE.id = CANDIDATE.id = "fulmine-shim";
+    }
 
     if (!against && !args.null) {
         throw new Error("give a revision with --against <ref>, or --null to measure the noise floor");

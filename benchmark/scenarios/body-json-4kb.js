@@ -24,5 +24,17 @@ module.exports = {
         app.post("/abc", (req, res) => {
             res.send(`${req.body.pad.length}`);
         });
+    },
+    // node:http by hand, what --shim measures the shim against
+    nodeHttp(req, res) {
+        const chunks = [];
+        req.on("data", (chunk) => {
+            chunks.push(chunk);
+        });
+        req.on("end", () => {
+            const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+            res.setHeader("Content-Type", "text/html; charset=utf-8");
+            res.end(`${body.pad.length}`);
+        });
     }
 };

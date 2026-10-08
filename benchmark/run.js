@@ -30,6 +30,25 @@ const FRAMEWORKS = [
 ];
 
 /**
+ * `--shim 1` measures what Bun, Deno and http.createServer(app) run: this framework behind node's
+ * own server, against node:http with a handler written by hand. The ratio is the shim's overhead,
+ * and only scenarios that carry such a handler (`nodeHttp`) take part.
+ *
+ * @param {boolean} wanted
+ */
+function useShim(wanted) {
+    if (!wanted) {
+        return;
+    }
+    FRAMEWORKS.splice(
+        0,
+        FRAMEWORKS.length,
+        { id: "node-http", label: "node:http", port: 3001 },
+        { id: "fulmine-shim", label: "Fulmine via node:http", port: 3000 }
+    );
+}
+
+/**
  * Puts both arms on a unix socket instead of a TCP port, when `--socket` asked for it.
  *
  * The question this exists to answer is whether the loopback stack is part of what makes a row
@@ -174,24 +193,24 @@ async function validateScenarioResponses(scenarioName, scenario) {
         }
     }
 
-    const expressResult = results.express;
-    const fulmineResult = results["fulmine"];
-    const sameStatus = expressResult.statusCode === fulmineResult.statusCode;
-    const sameBodyHash = expressResult.bodyHash === fulmineResult.bodyHash;
+    const [baselineResult, candidateResult] = FRAMEWORKS.map((framework) => results[framework.id]);
+    const sameStatus = baselineResult.statusCode === candidateResult.statusCode;
+    const sameBodyHash = baselineResult.bodyHash === candidateResult.bodyHash;
 
     if (sameStatus && sameBodyHash) {
         return {
             ok: true,
-            message: `status ${expressResult.statusCode}, body sha256 ${expressResult.bodyHash.slice(0, 12)}`
+            message: `status ${baselineResult.statusCode}, body sha256 ${baselineResult.bodyHash.slice(0, 12)}`
         };
     }
 
     return {
         ok: false,
-        message: [
-            `express: status=${expressResult.statusCode}, hash=${expressResult.bodyHash}, size=${expressResult.bodySize}`,
-            `fulmine: status=${fulmineResult.statusCode}, hash=${fulmineResult.bodyHash}, size=${fulmineResult.bodySize}`
-        ].join(" | ")
+        message: FRAMEWORKS.map(
+            (framework) =>
+                `${framework.id}: status=${results[framework.id].statusCode}, hash=${results[framework.id].bodyHash}, ` +
+                `size=${results[framework.id].bodySize}`
+        ).join(" | ")
     };
 }
 
@@ -374,18 +393,30 @@ async function runScenarioPair(scenarioName, scenario, durationSeconds) {
     };
 }
 
-function buildMarkdown(results, historySection) {
+function buildMarkdown(results, historySection, shim) {
+    const [base, cand] = FRAMEWORKS.map((framework) => framework.label);
     const lines = [];
-    lines.push("<!-- benchmark-comment -->");
-    lines.push("## Benchmark Comparison");
+    // the shim table goes under the main one in the same comment, which the marker finds once
+    if (!shim) {
+        lines.push("<!-- benchmark-comment -->");
+    }
+    lines.push(shim ? "## Overhead through node:http" : "## Benchmark Comparison");
     lines.push("");
     // the runner pool holds several cpu models and the ratios are machine dependent, in both
     // directions: two consecutive comments are usually two different machines, and without this
     // line the reader has no way to see that
     lines.push(`Runner: \`${machineKey()}\``);
     lines.push("");
+    if (shim) {
+        lines.push(
+            "What Bun, Deno and `http.createServer(app)` run, against node:http with a handler written by hand. " +
+                "The closer to 1.00x, the less the shim costs."
+        );
+        lines.push("");
+    }
     lines.push(
-        "| Test | Express req/sec | Fulmine req/sec | Express p99 | Fulmine p99 | Express throughput | Fulmine throughput | Fulmine speedup |"
+        `| Test | ${base} req/sec | ${cand} req/sec | ${base} p99 | ${cand} p99 | ${base} throughput | ${cand} throughput | ` +
+            `${shim ? `${cand} / ${base}` : `${cand} speedup`} |`
     );
     lines.push("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
 
@@ -410,14 +441,14 @@ function buildMarkdown(results, historySection) {
         if (!row.express.ok) {
             failures.push({
                 scenario: row.name,
-                framework: "express",
+                framework: FRAMEWORKS[0].id,
                 message: row.express.error
             });
         }
         if (!row.ultimate.ok) {
             failures.push({
                 scenario: row.name,
-                framework: "fulmine",
+                framework: FRAMEWORKS[1].id,
                 message: row.ultimate.error
             });
         }
@@ -435,8 +466,8 @@ function buildMarkdown(results, historySection) {
         }
 
         for (const [framework, result] of [
-            ["express", row.express],
-            ["fulmine", row.ultimate]
+            [FRAMEWORKS[0].id, row.express],
+            [FRAMEWORKS[1].id, row.ultimate]
         ]) {
             if (result.ok && result.socketErrorLine) {
                 socketErrors.push({ scenario: row.name, framework, message: result.socketErrorLine });
@@ -476,7 +507,7 @@ function buildMarkdown(results, historySection) {
         const neverRan = unvalidated.length - disagreed;
         const reasons = [];
         if (disagreed > 0) {
-            reasons.push(`${disagreed} where Express and Fulmine did not return the same status and body`);
+            reasons.push(`${disagreed} where ${base} and ${cand} did not return the same status and body`);
         }
         if (neverRan > 0) {
             reasons.push(`${neverRan} where the check could not run at all, so nothing was compared`);
@@ -530,11 +561,24 @@ async function main() {
     const outputPath = path.resolve(process.cwd(), args.output || "benchmark_summary.md");
     // where the previous run on this machine was left, and where this one goes. `--history none`
     // turns it off; there is no `--no-history` because the argument parser always eats the next token
+    const shim = args.shim !== undefined && args.shim !== "false";
+    // a file of its own under --shim: its ratios are another question, and the main run reads its
+    // baseline as the last record in the file
     const historyFile =
-        args.history === "none" ? null : path.resolve(process.cwd(), args.history || "benchmark_history.json");
+        args.history === "none"
+            ? null
+            : path.resolve(
+                  process.cwd(),
+                  args.history || (shim ? "benchmark_history_shim.json" : "benchmark_history.json")
+              );
+    useShim(shim);
     useSockets(args.socket !== undefined && args.socket !== "false");
     const requestedScenario = args.scenario;
-    const scenarioList = requestedScenario ? [requestedScenario] : SCENARIO_FILES;
+    const scenarioList = requestedScenario
+        ? [requestedScenario]
+        : SCENARIO_FILES.filter(
+              (name) => !shim || typeof require(path.join(__dirname, "scenarios", `${name}.js`)).nodeHttp === "function"
+          );
 
     const results = [];
     for (const scenarioName of scenarioList) {
@@ -567,10 +611,10 @@ async function main() {
             pair = { express: failure, ultimate: failure, speedup: null, roundRatios: [] };
         }
         if (!pair.express.ok) {
-            process.stderr.write(`[benchmark] FAILED express/${scenarioName}\n${pair.express.error}\n`);
+            process.stderr.write(`[benchmark] FAILED ${FRAMEWORKS[0].id}/${scenarioName}\n${pair.express.error}\n`);
         }
         if (!pair.ultimate.ok) {
-            process.stderr.write(`[benchmark] FAILED fulmine/${scenarioName}\n${pair.ultimate.error}\n`);
+            process.stderr.write(`[benchmark] FAILED ${FRAMEWORKS[1].id}/${scenarioName}\n${pair.ultimate.error}\n`);
         }
         if (pair.roundRatios.length > 1) {
             // the spread of these is what says whether the row's number can be trusted at all
@@ -609,7 +653,11 @@ async function main() {
             const history = readHistory(historyFile);
             const baseline = baselineFor(history, key, looseKey());
             const record = runRecordOf(results);
-            historySection = historyMarkdown(baseline, record);
+            historySection = historyMarkdown(
+                baseline,
+                record,
+                FRAMEWORKS.map((framework) => framework.label)
+            );
             appendRun(historyFile, history, key, record);
             process.stdout.write(
                 `[history] ${Object.keys(record.scenarios).length} scenario(s) under ${key}` +
@@ -624,7 +672,7 @@ async function main() {
         }
     }
 
-    const markdown = buildMarkdown(results, historySection);
+    const markdown = buildMarkdown(results, historySection, shim);
     fs.writeFileSync(outputPath, markdown, "utf8");
     process.stdout.write(markdown);
 }

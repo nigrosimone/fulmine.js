@@ -8,15 +8,28 @@
 //
 // Three parameters and three reads, which is the shape that made the difference visible: the cost
 // of req.query is paid per read, not per request.
+const querystring = require("querystring");
+
+function search(query) {
+    const term = String(query.q ?? "");
+    const page = Number(query.page) || 1;
+    const limit = Math.min(Number(query.limit) || 10, 50);
+    return { term, page, limit, offset: (page - 1) * limit };
+}
+
 module.exports = {
     name: "routing/query-string",
     path: "/search?q=fulmine&page=2&limit=20",
     setup(app) {
         app.get("/search", (req, res) => {
-            const term = String(req.query.q ?? "");
-            const page = Number(req.query.page) || 1;
-            const limit = Math.min(Number(req.query.limit) || 10, 50);
-            res.json({ term, page, limit, offset: (page - 1) * limit });
+            res.json(search(req.query));
         });
+    },
+    // node:http by hand, what --shim measures the shim against: querystring is Express's
+    // "simple" parser, the default
+    nodeHttp(req, res) {
+        const query = querystring.parse(req.url.slice(req.url.indexOf("?") + 1));
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify(search(query)));
     }
 };
