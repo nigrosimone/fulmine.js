@@ -225,6 +225,9 @@ class NodeHttpResponse {
     /** @type {boolean} */
     _aborted = false;
 
+    /** Whether the drain listener is on, added by the first onWritable. @type {boolean} */
+    _drainListening = false;
+
     /** A second onData replaces the handler, as uWS does. @type {((chunk: ArrayBuffer, isLast: boolean) => void)|null} */
     _onData = null;
 
@@ -241,14 +244,6 @@ class NodeHttpResponse {
     constructor(req, res) {
         this._nodeReq = req;
         this._nodeRes = res;
-
-        res.on("drain", () => {
-            const handler = this._onWritable;
-            if (handler) {
-                this._onWritable = null;
-                handler(this._offset);
-            }
-        });
     }
 
     /**
@@ -358,6 +353,17 @@ class NodeHttpResponse {
      */
     onWritable(handler) {
         this._onWritable = handler;
+        // on first use rather than per response: only a write that met backpressure asks
+        if (!this._drainListening) {
+            this._drainListening = true;
+            this._nodeRes.on("drain", () => {
+                const writable = this._onWritable;
+                if (writable) {
+                    this._onWritable = null;
+                    writable(this._offset);
+                }
+            });
+        }
         return this;
     }
 
@@ -521,8 +527,18 @@ function serveNodeRequest(router, nodeReq, nodeRes, next) {
     );
     const request = router.handleRequest(shimRes, shimReq);
     const response = request.res;
-    router._armAbort(shimRes, response);
 
+    // http.createServer(app), with nobody to hand an unmatched request to: the walk the uWS
+    // handler takes, no promise pair, the same epilogue on a microtask, and as there an abort
+    // listener only for a response the synchronous part left open
+    if (next === undefined) {
+        router._routeRequestDirect(request, response);
+        if (!response.finished) {
+            router._armAbort(shimRes, response);
+        }
+        return;
+    }
+    router._armAbort(shimRes, response);
     return router._routeRequest(request, response).then((matched) => {
         // the same rule as nativeDone in router-utils.js
         if (matched || response.aborted || (response.headersSent && !request._error)) {

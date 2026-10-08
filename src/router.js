@@ -249,6 +249,10 @@ module.exports = class Router extends EventEmitter {
              * @param {(err?: unknown) => void} [next]
              */
             function (req, res, next) {
+                // http.createServer(app): straight to the shim, without handle()'s own promise
+                if (isNodeRequest(req)) {
+                    return serveNodeRequest(fn, req, res, next);
+                }
                 return fn.handle(req, res, next);
             }
         );
