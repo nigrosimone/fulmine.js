@@ -5,6 +5,7 @@
 //   node benchmark/profile.js --scenario api-endpoint
 //   node benchmark/profile.js --scenario api-endpoint --against HEAD
 //   node benchmark/profile.js --scenario routes-1000 --against main --rounds 5
+//   node benchmark/profile.js --scenario hello-world --shim     # served through http.createServer(app)
 //
 // This exists because ab.js cannot see a small change. A laptop's null control spreads by about ten
 // percent, so anything worth a few percent is inside it and comes back as noise however many rounds
@@ -354,6 +355,10 @@ async function main() {
     const connections = Number(args.connections || 50);
     const rounds = Number(args.rounds || 3);
     const against = args.against;
+    // the path Bun and Deno take, as in ab.js
+    if (args.shim) {
+        BASELINE.id = CANDIDATE.id = "fulmine-shim";
+    }
 
     const scenario = require(path.join(__dirname, "scenarios", `${scenarioName}.js`));
     // A scenario that cannot be pipelined says so, and is measured one request per connection
