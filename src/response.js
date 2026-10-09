@@ -970,7 +970,8 @@ module.exports = class Response extends LazyWritable {
             body = Buffer.from(body.buffer, body.byteOffset, body.byteLength);
         }
         const isBuffer = Buffer.isBuffer(body);
-        // null becomes "" without the content-type a string gets, as Express's switch has it
+        // null becomes "" without the content-type a string gets, and without the charset on one
+        // the application set: express 5.3 writes the charset in the string case of its switch only
         let skipContentType = false;
         if (body === null) {
             body = "";
@@ -997,7 +998,7 @@ module.exports = class Response extends LazyWritable {
                 if (!skipContentType) {
                     this.headers["content-type"] = "text/html; charset=utf-8";
                 }
-            } else if (typeof contentType === "string" && contentType !== JSON_UTF8) {
+            } else if (!skipContentType && typeof contentType === "string" && contentType !== JSON_UTF8) {
                 // the charset is replaced, the body goes out as utf-8. json()'s literal is already it
                 this.headers["content-type"] = withUtf8Charset(contentType);
             }
