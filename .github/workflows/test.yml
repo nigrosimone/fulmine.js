@@ -42,7 +42,9 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                node-version: [22, 24, 26]
+                # 26.10 until node fixes the pipe that skips a replaced write() (nodejs/node#66596): on 26.11
+                # the compression of a piped file sends plain and gzip bytes mixed. Back to 26 after the fix
+                node-version: [22, 24, "26.10"]
         steps:
             - name: Checkout Source Tree
               uses: actions/checkout@v7
