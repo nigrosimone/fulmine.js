@@ -59,6 +59,9 @@ class Socket extends EventEmitter {
         this.emit("close");
     }
 
+    /** The peer's port, read from µWS once. @type {number|undefined} */
+    #remotePort = undefined;
+
     /**
      * Enough of a node socket for the middleware that reaches for one. uWS has no socket object to
      * hand over, so this stands in and forwards what it can to the response.
@@ -85,9 +88,41 @@ class Socket extends EventEmitter {
         return this.response.req.parsedIp;
     }
 
-    /** A native µWS call almost no caller makes, so it stays behind its getter. */
+    /** node's family of the peer address, read off its text as node's own is. */
+    get remoteFamily() {
+        const address = this.remoteAddress;
+        return address === undefined ? undefined : address.includes(":") ? "IPv6" : "IPv4";
+    }
+
+    /**
+     * A native µWS call (80 to 100ns) almost no caller makes, so it stays behind its getter, and
+     * is read once: once the response is over µWS has it no more, see _keepPeer. Undefined then.
+     */
     get remotePort() {
-        return this.response.req._res.getRemotePort();
+        if (this.#remotePort === undefined) {
+            this.#remotePort = this.#readRemotePort();
+        }
+        return this.#remotePort;
+    }
+
+    /**
+     * Reads the peer's port while µWS still has it, called as the response ends: a logger or a
+     * tracer asks for it from its "finish" or "close" listener, when node still answers.
+     */
+    _keepPeer() {
+        if (this.#remotePort === undefined) {
+            this.#remotePort = this.#readRemotePort();
+        }
+    }
+
+    /** @returns {number|undefined} */
+    #readRemotePort() {
+        try {
+            return this.response.req._res.getRemotePort();
+        } catch {
+            // the µWS response is gone, answered or aborted
+            return undefined;
+        }
     }
 
     /**

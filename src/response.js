@@ -865,6 +865,10 @@ module.exports = class Response extends LazyWritable {
      * @param {(() => void)|undefined} cb
      */
     _finish(data, cb) {
+        // a socket someone reached for keeps the peer's port, µWS has it no more once this ends
+        if (this.#socket !== null) {
+            this.#socket._keepPeer();
+        }
         // read before the head is written below: whether a flushHeaders() or a res.write() had
         // already committed the framing
         const headWasAlreadyOut = this.#headOut;
