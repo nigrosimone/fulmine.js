@@ -1,0 +1,146 @@
+GET /plain 200
+  start logger function
+  start <anonymous> function
+  start getPlain route=/plain function
+  end getPlain route=/plain function
+  end <anonymous> route=/plain function
+  end logger route=/plain function
+GET /users/7 200
+  start logger function
+  start <anonymous> function
+  start loadUser route=/users/:id function
+  start sendUser route=/users/:id function
+  end sendUser route=/users/:id function
+  end loadUser route=/users/:id function
+  end <anonymous> route=/users/:id function
+  end logger route=/users/:id function
+GET /async 200
+  start logger function
+  start <anonymous> function
+  start asyncHandler route=/async function
+  end asyncHandler route=/async function
+  end <anonymous> route=/async function
+  end logger route=/async function
+  asyncStart asyncHandler route=/async function
+  asyncEnd asyncHandler route=/async function
+GET /next-error 500
+  start logger function
+  start <anonymous> function
+  start failing route=/next-error function
+  error failing error=boom route=/next-error function
+  start finalErrorHandler errorHandler error=boom route=/next-error function
+  end finalErrorHandler errorHandler error=boom route=/next-error function
+  end failing error=boom route=/next-error function
+  end <anonymous> route=/next-error function
+  end logger route=/next-error function
+GET /throw 500
+  start logger function
+  start <anonymous> function
+  start throwing route=/throw function
+  error throwing error=sync boom route=/throw function
+  start finalErrorHandler errorHandler error=sync boom route=/throw function
+  end finalErrorHandler errorHandler error=sync boom route=/throw function
+  end throwing error=sync boom route=/throw function
+  end <anonymous> route=/throw function
+  end logger route=/throw function
+GET /reject 500
+  start logger function
+  start <anonymous> function
+  start rejecting route=/reject function
+  end rejecting route=/reject function
+  end <anonymous> route=/reject function
+  end logger route=/reject function
+  error rejecting error=async boom route=/reject function
+  start finalErrorHandler errorHandler error=async boom route=/reject function
+  end finalErrorHandler errorHandler error=async boom route=/reject function
+  asyncStart rejecting error=async boom route=/reject function
+  asyncEnd rejecting error=async boom route=/reject function
+GET /recovered 200
+  start logger function
+  start <anonymous> function
+  start failingAgain route=/recovered function
+  error failingAgain error=recover me route=/recovered function
+  start recoverInRoute errorHandler error=recover me route=/recovered function
+  end recoverInRoute errorHandler error=recover me route=/recovered function
+  end failingAgain error=recover me route=/recovered function
+  end <anonymous> route=/recovered function
+  end logger route=/recovered function
+GET /skip 200
+  start logger function
+  start <anonymous> function
+  start skipper route=/skip function
+  start afterSkip route=/skip function
+  end afterSkip route=/skip function
+  end skipper route=/skip function
+  end <anonymous> route=/skip function
+  end logger route=/skip function
+POST /json 200
+  start logger function
+  start <anonymous> function
+  start jsonParser route=/json function
+  end jsonParser route=/json function
+  end <anonymous> route=/json function
+  end logger route=/json function
+  start echo route=/json function
+  end echo route=/json function
+GET /json 404
+  start logger function
+  start <anonymous> function
+  end <anonymous> function
+  end logger function
+GET /parsed 200
+  start logger function
+  start <anonymous> function
+  start jsonParser function
+  start parsed route=/parsed function
+  end parsed route=/parsed function
+  end jsonParser route=/parsed function
+  end <anonymous> route=/parsed function
+  end logger route=/parsed function
+GET /mounted/inner 500
+  start logger function
+  start <anonymous> function
+  start router function
+  start routerMiddleware function
+  start innerHandler route=/inner function
+  error innerHandler error=inner boom route=/inner function
+  end innerHandler error=inner boom route=/inner function
+  end routerMiddleware route=/inner function
+  end router route=/inner function
+  end <anonymous> route=/inner function
+  end logger route=/inner function
+  start finalErrorHandler errorHandler error=inner boom route=/inner function
+  end finalErrorHandler errorHandler error=inner boom route=/inner function
+GET /mounted/param/%E0%A4%A 500
+  start logger function
+  start <anonymous> function
+  start router function
+  start routerMiddleware function
+  error router error=Failed to decode param '%E0%A4%A' function
+  start finalErrorHandler errorHandler error=Failed to decode param '%E0%A4%A' function
+  end finalErrorHandler errorHandler error=Failed to decode param '%E0%A4%A' function
+  end routerMiddleware function
+  end router error=Failed to decode param '%E0%A4%A' function
+  end <anonymous> function
+  end logger function
+GET /files/tracing-router-request.expected.txt 200
+  start logger function
+  start <anonymous> function
+  start serveStatic function
+  end serveStatic function
+  end <anonymous> function
+  end logger function
+GET /sub/hello 200
+  start logger function
+  start <anonymous> function
+  start mounted_app function
+  start subHandler route=/hello function
+  end subHandler route=/hello function
+  end mounted_app route=/hello function
+  end <anonymous> route=/hello function
+  end logger route=/hello function
+GET /missing 404
+  start logger function
+  start <anonymous> function
+  end <anonymous> function
+  end logger function

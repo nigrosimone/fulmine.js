@@ -21,6 +21,7 @@ const { getPatternMeta, pathsCanOverlap, regexpGroupKeys, EMPTY_REGEX } = requir
 const Response = require("./response.js");
 const Request = require("./request.js");
 const { METHODS } = require("http");
+const { tracing } = require("./tracing.js");
 
 /** @typedef {import("./walk.js")} Walk */
 /** @typedef {import("./router.js")} Router */
@@ -656,6 +657,10 @@ function stepsOver(route, req) {
         route.bodyMethods = req.app.get("body methods") ?? null;
     }
     if (route.bodyMethods !== null && route.bodyMethods.includes(req.method)) {
+        return false;
+    }
+    // a tracer sees every layer express runs, and express runs the parser to find no body
+    if (tracing()) {
         return false;
     }
     // the one mark the parser would have left, `"body" in req`, see middlewares.js
