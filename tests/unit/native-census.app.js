@@ -2,7 +2,11 @@
 // called for one request, route by route. node native-census.app.js prints them as JSON.
 // µWS's App is wrapped before fulmine loads it, so every handler fulmine registers counts the calls
 // made on the response it was given, for as long as it lives, and on the request while it runs.
+// The requests are written by hand on a socket, so the headers are exactly the ones listed.
 
+const fs = require("node:fs");
+const net = require("node:net");
+const os = require("node:os");
 const path = require("node:path");
 const uWS = require("uWebSockets.js");
 
@@ -68,63 +72,199 @@ uWS.App = function (...args) {
 };
 
 const express = require(path.join(__dirname, "..", "..", "src", "index.js"));
+
+const files = fs.mkdtempSync(path.join(os.tmpdir(), "fulmine-census-"));
+fs.writeFileSync(path.join(files, "small.txt"), "small file");
+process.on("exit", () => fs.rmSync(files, { recursive: true, force: true }));
+
 const app = express();
 
+// the plain answers
 app.get("/hello", (req, res) => res.send("hello"));
 app.get("/json", (req, res) => res.json({ a: 1 }));
+app.get("/created", (req, res) => res.status(201).json({ a: 1 }));
+app.get("/headers", (req, res) => {
+    res.set("X-One", "1").set("X-Two", "2").set("X-Three", "3");
+    res.cookie("session", "abc", { httpOnly: true });
+    res.send("headers");
+});
+app.get("/chunks", (req, res) => {
+    res.write("a");
+    res.write("b");
+    res.end("c");
+});
+app.get("/redirect", (req, res) => res.redirect("/hello"));
+app.get("/status", (req, res) => res.sendStatus(204));
+// what the route reads from the request
 app.get("/users/:id", (req, res) => res.json({ id: req.params.id, q: req.query.q }));
 app.get("/ip", (req, res) => res.send(req.ip));
 app.get("/ua", (req, res) => res.send(req.get("user-agent")));
+app.get("/socket", (req, res) => {
+    res.send(typeof req.socket.encrypted);
+});
+// bodies
 app.post("/echo", express.json(), (req, res) => res.json(req.body));
+app.post("/form", express.urlencoded(), (req, res) => res.json(req.body));
+app.post("/text", express.text(), (req, res) => res.send(req.body));
+app.post("/small", express.json({ limit: 10 }), (req, res) => res.json(req.body));
 app.use("/parsed", express.json());
 app.get("/parsed", (req, res) => res.send(String(req.body)));
+// files
+app.get("/file", (req, res) => res.sendFile(path.join(files, "small.txt")));
+app.use("/static", express.static(files));
+// later, chained, mounted, failing
 app.get("/async", async (req, res) => {
     await new Promise((resolve) => setTimeout(resolve, 5));
     res.send("async");
 });
 app.use("/mw", (req, res, next) => next());
 app.get("/mw/x", (req, res) => res.send("mw"));
-app.get("/socket", (req, res) => {
-    res.send(typeof req.socket.encrypted);
-});
+const router = express.Router();
+router.get("/x", (req, res) => res.send("routed"));
+app.use("/r", router);
 
-/** what is asked, with a body for the POST */
+// an error handler anywhere turns the header skip off for the whole app, a throw would hand the
+// request to code the analysis never saw: so the failing routes have an app of their own
+const failing = express();
+failing.get("/hello", (req, res) => res.send("hello"));
+failing.get("/throw", () => {
+    throw new Error("sync");
+});
+failing.get("/reject", async () => {
+    throw new Error("async");
+});
+failing.use((err, req, res, next) => res.status(500).send(err.message));
+
+// a second app behind a proxy, where req.ip comes from X-Forwarded-For
+const proxied = express();
+proxied.set("trust proxy", true);
+proxied.get("/ip", (req, res) => res.send(req.ip));
+
+/** [label, which app, the raw request line and headers, a body after an empty line] */
 const ASKED = [
-    ["GET", "/hello"],
-    ["GET", "/json"],
-    ["GET", "/users/42?q=x"],
-    ["GET", "/ip"],
-    ["GET", "/ua"],
-    ["POST", "/echo"],
-    ["GET", "/parsed"],
-    ["GET", "/async"],
-    ["GET", "/mw/x"],
-    ["GET", "/socket"],
-    ["GET", "/missing"]
+    ["GET /hello", "app", "GET /hello HTTP/1.1"],
+    ["HEAD /hello", "app", "HEAD /hello HTTP/1.1"],
+    ["OPTIONS /hello", "app", "OPTIONS /hello HTTP/1.1"],
+    ["GET /hello, conditional", "app", 'GET /hello HTTP/1.1\r\nIf-None-Match: W/"5-qvTGHdzF6KLavt4PO0gs2a6pQ00"'],
+    ["GET /hello, connection close", "app", "GET /hello HTTP/1.1\r\nConnection: close"],
+    ["GET /json", "app", "GET /json HTTP/1.1"],
+    ["GET /created", "app", "GET /created HTTP/1.1"],
+    ["GET /headers", "app", "GET /headers HTTP/1.1"],
+    ["GET /chunks", "app", "GET /chunks HTTP/1.1"],
+    ["GET /redirect", "app", "GET /redirect HTTP/1.1"],
+    ["GET /status", "app", "GET /status HTTP/1.1"],
+    ["GET /users/42?q=x", "app", "GET /users/42?q=x HTTP/1.1"],
+    ["GET /users/%41", "app", "GET /users/%41 HTTP/1.1"],
+    ["GET /ip", "app", "GET /ip HTTP/1.1"],
+    ["GET /ip, trust proxy", "proxied", "GET /ip HTTP/1.1\r\nX-Forwarded-For: 10.0.0.1"],
+    ["GET /ua", "app", "GET /ua HTTP/1.1\r\nUser-Agent: census"],
+    ["GET /socket", "app", "GET /socket HTTP/1.1"],
+    ["POST /echo", "app", 'POST /echo HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: 7\r\n\r\n{"a":1}'],
+    [
+        "POST /form",
+        "app",
+        "POST /form HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 3\r\n\r\na=1"
+    ],
+    ["POST /text", "app", "POST /text HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length: 4\r\n\r\ntext"],
+    [
+        "POST /small, over the limit",
+        "app",
+        'POST /small HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: 20\r\n\r\n{"a":"0123456789ab"}'
+    ],
+    ["GET /parsed", "app", "GET /parsed HTTP/1.1"],
+    [
+        "GET /parsed, declaring a body",
+        "app",
+        "GET /parsed HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}"
+    ],
+    ["GET /file", "app", "GET /file HTTP/1.1"],
+    ["GET /static/small.txt", "app", "GET /static/small.txt HTTP/1.1"],
+    ["GET /async", "app", "GET /async HTTP/1.1"],
+    ["GET /mw/x", "app", "GET /mw/x HTTP/1.1"],
+    ["GET /r/x", "app", "GET /r/x HTTP/1.1"],
+    ["GET /hello, with an error handler", "failing", "GET /hello HTTP/1.1"],
+    ["GET /throw", "failing", "GET /throw HTTP/1.1"],
+    ["GET /reject", "failing", "GET /reject HTTP/1.1"],
+    ["GET /missing", "app", "GET /missing HTTP/1.1"]
 ];
 
-const server = app.listen(0, async () => {
-    const port = server.address().port;
+/**
+ * Writes one request on its own connection and waits for the whole answer before closing it: µWS
+ * takes a half-closed socket for a client gone, and aborts a response still on its way.
+ *
+ * @param {number} port
+ * @param {string} head the request line and headers, a body after an empty line
+ * @returns {Promise<void>}
+ */
+function ask(port, head) {
+    const [lines, body] = head.split("\r\n\r\n");
+    const raw = `${lines}\r\nHost: localhost\r\n\r\n${body ?? ""}`;
+    const isHead = lines.startsWith("HEAD ");
+    return new Promise((resolve) => {
+        let received = Buffer.alloc(0);
+        const socket = net.connect(port, "127.0.0.1", () => socket.write(raw));
+        const done = () => {
+            socket.destroy();
+            resolve();
+        };
+        socket.on("data", (chunk) => {
+            received = Buffer.concat([received, chunk]);
+            const text = received.toString("latin1");
+            const end = text.indexOf("\r\n\r\n");
+            if (end === -1) {
+                return;
+            }
+            const headers = text.slice(0, end).toLowerCase();
+            const status = Number(headers.slice(9, 12));
+            if (isHead || status === 204 || status === 304) {
+                return done();
+            }
+            const length = /\r\ncontent-length: *(\d+)/.exec(headers);
+            if (length) {
+                if (received.length - end - 4 >= Number(length[1])) {
+                    done();
+                }
+            } else if (/\r\ntransfer-encoding: *chunked/.test(headers) && text.endsWith("0\r\n\r\n")) {
+                done();
+            }
+        });
+        socket.on("close", () => resolve());
+        socket.on("error", () => resolve());
+    });
+}
+
+/** @type {Record<string, number>} */
+const ports = {};
+for (const [name, server] of /** @type {const} */ ([
+    ["app", app],
+    ["failing", failing],
+    ["proxied", proxied]
+])) {
+    const listening = server.listen(0, () => {
+        ports[name] = listening.address().port;
+        if (Object.keys(ports).length === 3) {
+            run();
+        }
+    });
+}
+
+async function run() {
     // past the first hundred requests, which read the ip up front to see whether the app asks for
     // it too late (see the Request constructor): what is counted is the steady state
     for (let i = 0; i < 110; i++) {
-        await fetch(`http://127.0.0.1:${port}/hello`).then((res) => res.text());
+        await ask(ports.app, "GET /hello HTTP/1.1");
+        await ask(ports.failing, "GET /hello HTTP/1.1");
+        await ask(ports.proxied, "GET /ip HTTP/1.1");
     }
-    /** @type {Record<string, Record<string, number>>} */
+    /** @type {Record<string, Record<string, number>|string>} */
     const report = {};
-    for (const [method, url] of ASKED) {
+    for (const [label, server, head] of ASKED) {
         const before = requests.length;
-        const res = await fetch(`http://127.0.0.1:${port}${url}`, {
-            method,
-            headers: method === "POST" ? { "content-type": "application/json" } : {},
-            body: method === "POST" ? '{"a":1}' : undefined
-        });
-        await res.text();
+        await ask(ports[server], head);
         // what an async route does after the response, and the epilogues on a microtask
         await new Promise((resolve) => setTimeout(resolve, 20));
-        report[`${method} ${url}`] =
-            requests.length === before + 1 ? requests[before] : { requests: requests.length - before };
+        report[label] = requests.length === before + 1 ? requests[before] : `${requests.length - before} requests`;
     }
     process.stdout.write(JSON.stringify(report, null, 2));
     process.exit(0);
-});
+}
