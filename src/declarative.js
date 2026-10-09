@@ -179,6 +179,28 @@ function literalValue(node) {
 }
 
 /**
+ * res.set on the list: the first entry of the name takes the value, appended ones go.
+ *
+ * @param {[string, string][]} headers
+ * @param {string} header
+ * @param {string} value
+ */
+function setIn(headers, header, value) {
+    const name = String(header).toLowerCase();
+    const index = headers.findIndex((entry) => String(entry[0]).toLowerCase() === name);
+    if (index === -1) {
+        headers.push([header, value]);
+        return;
+    }
+    headers[index][1] = value;
+    for (let i = headers.length - 1; i > index; i--) {
+        if (String(headers[i][0]).toLowerCase() === name) {
+            headers.splice(i, 1);
+        }
+    }
+}
+
+/**
  * The status and the headers the calls set, in first-written order; null when one is not a
  * literal this can read.
  *
@@ -255,18 +277,7 @@ function readStatusAndHeaders(callExprs, headers) {
                 if (!headerIsWritable(String(header), value)) {
                     return null;
                 }
-                const index = headers.findIndex((entry) => String(entry[0]).toLowerCase() === name);
-                if (index === -1) {
-                    headers.push([header, value]);
-                } else {
-                    headers[index][1] = value;
-                    // set replaces the header, appended values go too
-                    for (let i = headers.length - 1; i > index; i--) {
-                        if (String(headers[i][0]).toLowerCase() === name) {
-                            headers.splice(i, 1);
-                        }
-                    }
-                }
+                setIn(headers, header, value);
             }
         } else if (call.obj.propertyName === "append") {
             if (call.arguments[0].type !== "Literal" || call.arguments[1].type !== "Literal") {
@@ -285,6 +296,10 @@ function readStatusAndHeaders(callExprs, headers) {
             }
             statusCode = call.arguments[0].value;
             sendStatusUsed = true;
+            // sendStatus is type("txt") then send, over a type set before it (a fuzz divergence)
+            if (headers.some((entry) => String(entry[0]).toLowerCase() === "content-type")) {
+                setIn(headers, "content-type", "text/plain; charset=utf-8");
+            }
         }
     }
     return { statusCode, sendStatusUsed };
