@@ -139,7 +139,6 @@ const GAPS = {
         "readableLength",
         "readableObjectMode",
         "reduce",
-        "remoteFamily",
         "resetAndDestroy",
         "server",
         "setDefaultEncoding",
