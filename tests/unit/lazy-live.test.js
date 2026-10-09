@@ -399,14 +399,11 @@ const LAZY_CASES = [
         allow: ["headers"]
     },
     {
-        // a margin seen and not taken: one header by name folds them all, as node's rules for a
-        // repeated header would have to be redone for that name alone
         name: "req.get",
         setup: (app) => app.get("/ua", (req, res) => res.send(String(req.get("x-census")))),
         path: "/ua",
         init: { headers: { "x-census": "yes" } },
-        expect: "yes",
-        allow: ["headers"]
+        expect: "yes"
     },
     {
         name: "several headers set at once",

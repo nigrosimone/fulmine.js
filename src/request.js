@@ -1132,14 +1132,15 @@ module.exports = class Request extends LazyReadable {
             throw new TypeError("name must be a string to req.get");
         }
         field = field.toLowerCase();
-        if (field === "referrer" || field === "referer") {
-            const res = this.headers["referrer"];
-            if (!res) {
-                return this.headers["referer"];
-            }
-            return res;
+        // set-cookie folds to an array, and a name like "constructor" reads Object.prototype as express does
+        if (field === "set-cookie" || field in Object.prototype) {
+            return this.headers[field];
         }
-        return this.headers[field];
+        // one name folded off the raw entries, the headers object is not built
+        if (field === "referrer" || field === "referer") {
+            return this._foldedHeader("referrer") || this._foldedHeader("referer");
+        }
+        return this._foldedHeader(field);
     }
 
     /**
