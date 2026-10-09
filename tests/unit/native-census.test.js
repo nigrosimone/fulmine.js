@@ -8,9 +8,9 @@ const { spawnSync } = require("node:child_process");
 
 const { otherRuntime } = require("../../src/uws.js");
 
-// counts per request, a method not listed is never called. Margin not taken yet: a 204 writes its
-// head in two calls. getQuery beside a full header copy costs 15 to 45ns against the copy's 760,
-// not worth a rule
+// counts per request, a method not listed is never called. Two head lines go in two calls: joined
+// they measured +8% CPU on pair + content-type, -3% (noise) on a 204. getQuery beside a full header
+// copy costs 15 to 45ns against the copy's 760, not worth a rule
 const BUDGET = {
     "GET /hello": { end: 1, getHeader: 5, writeHeader: 1 },
     "HEAD /hello": { endWithoutBody: 1, getHeader: 5, writeHeader: 1 },
