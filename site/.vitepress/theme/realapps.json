@@ -1,0 +1,194 @@
+{
+    "date": "2026-10-09",
+    "prices": {
+        "cloud": "AWS Fargate ARM, us-east-1",
+        "taskHour": 0.0395,
+        "taskGb": 2,
+        "utilization": 0.5,
+        "egressGb": 0.09
+    },
+    "projects": [
+        {
+            "name": "actual",
+            "title": "Actual Budget, sync server",
+            "express": "5.2.1",
+            "fulmine": "5.22.0",
+            "day": {
+                "express": {
+                    "cpuMs": 102.98474425033133,
+                    "mbOut": 0.8013007547784853
+                },
+                "fulmine": {
+                    "cpuMs": 91.92594527148485,
+                    "mbOut": 0.8000756482541888
+                },
+                "fulmine + patch": {
+                    "cpuMs": 90.45101377178695,
+                    "mbOut": 0.6294303329510385
+                }
+            },
+            "endpoints": [
+                {
+                    "name": "health",
+                    "what": "GET /health, the container health check",
+                    "plain": 1.9753311816399843,
+                    "patch": 2.0075563345297933
+                },
+                {
+                    "name": "validate",
+                    "what": "GET /account/validate, the session check on every client start",
+                    "plain": 1.2425136655948554,
+                    "patch": 1.265712712129314
+                },
+                {
+                    "name": "list-files",
+                    "what": "GET /sync/list-user-files, the budget picker",
+                    "plain": 1.2180053093730856,
+                    "patch": 1.24993648105018
+                },
+                {
+                    "name": "sync-idle",
+                    "what": "POST /sync/sync with nothing new, what an open budget sends over and over",
+                    "plain": 1.0929793243028891,
+                    "patch": 1.0921738324492611
+                },
+                {
+                    "name": "sync-day",
+                    "what": "POST /sync/sync from a day back, a client catching up",
+                    "plain": 1.0199266271925422,
+                    "patch": 1.0338133479994087
+                },
+                {
+                    "name": "index",
+                    "what": "GET /, the web app's index.html",
+                    "plain": 5.090210870284579,
+                    "patch": 5.4155590997696255
+                },
+                {
+                    "name": "bundle-304",
+                    "what": "GET of the main bundle with If-None-Match, a returning browser",
+                    "plain": 1.6114575073067947,
+                    "patch": 1.5582496180169558
+                },
+                {
+                    "name": "bundle",
+                    "what": "GET of the main bundle, 1.2 MB: a first visit, a new release, a browser without cache",
+                    "plain": 1.4364765669113495,
+                    "patch": 25.437355768882973
+                }
+            ],
+            "noise": 0.012152988016558952,
+            "year": {
+                "express": {
+                    "tasks": 2.3839061169058176,
+                    "compute": 824.8791945717511,
+                    "egress": 25705.79081491527,
+                    "total": 26530.67000948702
+                },
+                "fulmine": {
+                    "tasks": 2.12791539980289,
+                    "compute": 736.3012866397961,
+                    "egress": 25666.489301904396,
+                    "total": 26402.79058854419
+                },
+                "fulmine + patch": {
+                    "tasks": 2.093773466939513,
+                    "compute": 724.4874950304102,
+                    "egress": 20192.174255314076,
+                    "total": 20916.661750344487
+                }
+            }
+        },
+        {
+            "name": "librechat",
+            "title": "LibreChat, API server",
+            "express": "5.2.1",
+            "fulmine": "5.22.0",
+            "day": {
+                "express": {
+                    "cpuMs": 92.40018215316346,
+                    "mbOut": 0.21790437962769313
+                },
+                "fulmine": {
+                    "cpuMs": 84.20583918788988,
+                    "mbOut": 0.21818002029594832
+                },
+                "fulmine + patch": {
+                    "cpuMs": 66.91630930666483,
+                    "mbOut": 0.18504875426999773
+                }
+            },
+            "endpoints": [
+                {
+                    "name": "health",
+                    "what": "GET /health, the container health check",
+                    "plain": 4.229397195894369,
+                    "patch": 4.18534881444056
+                },
+                {
+                    "name": "index",
+                    "what": "GET /, the page, with a CSP nonce of its own each time",
+                    "plain": 1.2510071655690616,
+                    "patch": 2.548808332691962
+                },
+                {
+                    "name": "config",
+                    "what": "GET /api/config, the first call of every page load",
+                    "plain": 1.0512311253051994,
+                    "patch": 1.317557251908397
+                },
+                {
+                    "name": "user",
+                    "what": "GET /api/user, the signed in user",
+                    "plain": 1.092076099198332,
+                    "patch": 1.3782439155573485
+                },
+                {
+                    "name": "endpoints",
+                    "what": "GET /api/endpoints, the model menu",
+                    "plain": 1.0989066638307783,
+                    "patch": 1.1575903537060388
+                },
+                {
+                    "name": "convos",
+                    "what": "GET /api/convos, the sidebar: 25 conversations of 200",
+                    "plain": 1.0728694936187733,
+                    "patch": 1.2128078456926228
+                },
+                {
+                    "name": "messages",
+                    "what": "GET /api/messages/:id, opening a conversation of 20 messages",
+                    "plain": 1.085862966175195,
+                    "patch": 1.243596251042394
+                },
+                {
+                    "name": "bundle",
+                    "what": "GET of the main bundle, 0.9 MB served from its .gz twin: a first visit, a new release",
+                    "plain": 1.1169881767268202,
+                    "patch": 10.093722107803265
+                }
+            ],
+            "noise": 0.02175650120855588,
+            "year": {
+                "express": {
+                    "tasks": 2.1388931053973024,
+                    "compute": 740.0997923295746,
+                    "egress": 6990.389522236053,
+                    "total": 7730.489314565628
+                },
+                "fulmine": {
+                    "tasks": 1.9492092404604138,
+                    "compute": 674.4653813841124,
+                    "egress": 6999.232096408107,
+                    "total": 7673.69747779222
+                },
+                "fulmine + patch": {
+                    "tasks": 1.548988641357982,
+                    "compute": 535.981049682689,
+                    "egress": 5936.378493915455,
+                    "total": 6472.359543598144
+                }
+            }
+        }
+    ]
+}

@@ -10,6 +10,7 @@ description: Fulmine.js is a drop-in Express 5 replacement for Node.js, powered 
 import CopyCommand from '../site/.vitepress/theme/CopyCommand.vue'
 import ArenaChart from '../site/.vitepress/theme/ArenaChart.vue'
 import arena from '../site/.vitepress/theme/arena.json'
+import RealAppsChart from '../site/.vitepress/theme/RealAppsChart.vue'
 </script>
 
 <main class="fulmine-home">
@@ -98,9 +99,20 @@ app.listen(3000);
 <ArenaChart />
 </section>
 
+<section class="fm-section fm-wrap fm-arena-section" aria-labelledby="realapps-title">
+<div class="fm-section-copy">
+<p class="fm-eyebrow"><span class="fm-section-number">04</span> REAL APPLICATIONS</p>
+<h2 id="realapps-title">Their own tests pass.<br>Less CPU per user.</h2>
+<p>LibreChat, n8n and Actual Budget on Fulmine, with no change to their code: their test suites pass as they do on Express. LibreChat and Actual spend 9% to 11% less CPU per user, up to 28% with a five line patch.</p>
+<a class="fm-text-link" href="/real-apps">See how it was measured <span aria-hidden="true">→</span></a>
+<a class="fm-subtle-link" href="https://github.com/nigrosimone/fulmine-compat">The scripts and the raw results</a>
+</div>
+<RealAppsChart />
+</section>
+
 <section class="fm-section fm-wrap fm-ecosystem" aria-labelledby="ecosystem-title">
 <div class="fm-section-copy">
-<p class="fm-eyebrow"><span class="fm-section-number">04</span> BRING YOUR STACK</p>
+<p class="fm-eyebrow"><span class="fm-section-number">05</span> BRING YOUR STACK</p>
 <h2 id="ecosystem-title">All your favourites.<br>Already on board.</h2>
 <p>From a single endpoint to a full-stack framework. Integrations run against both Express and Fulmine in CI, with their outputs compared.</p>
 <a class="fm-text-link" href="/compatibility">Explore compatibility <span aria-hidden="true">→</span></a>
