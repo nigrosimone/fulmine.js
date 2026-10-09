@@ -22,7 +22,8 @@ const REPO = "https://github.com/expressjs/express.git";
 // what is being tested. Bump this together with the express devDependency; the failure message
 // prints the value to put here. EXPRESS_SUITE_SHA overrides it, which is how the red path is tested.
 const PINNED = {
-    "v5.2.1": "dbac741a49a5a64336b70c06e85c2e2706e36336"
+    "v5.2.1": "dbac741a49a5a64336b70c06e85c2e2706e36336",
+    "v5.3.0": "cf6722bf89a86905281d9160b6482e08166b5ef0"
 };
 const DEFAULT_DIR = path.join(ROOT, "node_modules", "express-suite-clone");
 const SHIM_MARKER = "written by tools/express-suite.js";
@@ -132,7 +133,7 @@ function wantedTag(explicit) {
     const installed = readVersion(path.join(ROOT, "node_modules", "express"));
     if (!installed) {
         throw new Error(
-            "express is not installed here, so there is no version to match. Run npm install, or pass --tag v5.2.1"
+            "express is not installed here, so there is no version to match. Run npm install, or pass --tag v5.3.0"
         );
     }
     return `v${installed}`;
