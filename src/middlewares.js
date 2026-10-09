@@ -513,7 +513,8 @@ function serveStatic(root, options) {
     options.etag = options.etag !== false;
     options._ownEtag = true;
 
-    return (req, res, next) => {
+    // serve-static's name, which express's layer.name and a tracer's span carry
+    return function serveStatic(req, res, next) {
         // everything down to sendFile is synchronous, so only its completion needs bindContext
         if (req.method !== "GET" && req.method !== "HEAD") {
             if (options.fallthrough) {
@@ -877,319 +878,325 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
         /** @type {string[]|null|undefined} the "body methods" setting, read on the first request */
         let additionalMethods;
 
-        /**
-         * @param {Request & {body?: unknown}} req
-         * @param {Response} res
-         * @param {(err?: unknown) => void} next
-         */
-        const parserMiddleware = (req, res, next) => {
-            // the prologue is synchronous, bindContext waits for the read (1.4us of nothing here)
+        // body-parser's name, which express's layer.name and a tracer's span carry. Given through
+        // the key it is created under: defineProperty on the name put the function in dictionary mode
+        const name = PARSER_NAMES[defaultType];
+        /** @type {((req: Request & {body?: unknown}, res: Response, next: (err?: unknown) => void) => void) & {[kGetSafe]?: true}} */
+        const parserMiddleware = {
+            /**
+             * @param {Request & {body?: unknown}} req
+             * @param {Response} res
+             * @param {(err?: unknown) => void} next
+             */
+            [name]: (req, res, next) => {
+                // the prologue is synchronous, bindContext waits for the read (1.4us of nothing here)
 
-            // already read, or what body-parser asks on-finished: all arrived and no longer
-            // readable. Not readableEnded, which would build the stream
-            if (req.bodyRead || (req.complete === true && req.readable === false)) {
-                return next();
-            }
-
-            // present and undefined, as body-parser's read() leaves it: Apollo answers 500 without
-            // the property, tRPC reads the body itself when it is set
-            if (!("body" in req)) {
-                req.body = undefined;
-            }
-
-            const type = req._rawHeader("content-type");
-
-            // a type function sees a request with no content-type, as body-parser lets it
-            if (!type && typeof options.type !== "function") {
-                return next();
-            }
-
-            const length = req._rawHeader("content-length");
-            const lengthNumber = length === undefined ? NaN : +length;
-
-            // no framing at all is no body, which type-is checks and the simpleType shortcut would skip
-            if (req._rawHeader("transfer-encoding") === undefined && Number.isNaN(lengthNumber)) {
-                return next();
-            }
-
-            if (options.simpleType) {
-                // only a type function lets a request without a content-type past the check above,
-                // and simpleType is never set beside one
-                const header = /** @type {string} */ (type);
-                const semicolonIndex = header.indexOf(";");
-                const clearType = semicolonIndex !== -1 ? header.substring(0, semicolonIndex) : header;
-                // the trim and lowercase only when the exact compare fails
-                if (clearType !== options.simpleType && clearType.trim().toLowerCase() !== options.simpleType) {
+                // already read, or what body-parser asks on-finished: all arrived and no longer
+                // readable. Not readableEnded, which would build the stream
+                if (req.bodyRead || (req.complete === true && req.readable === false)) {
                     return next();
                 }
-            } else {
-                if (typeof options.type === "function") {
-                    if (!options.type(req)) {
+
+                // present and undefined, as body-parser's read() leaves it: Apollo answers 500 without
+                // the property, tRPC reads the body itself when it is set
+                if (!("body" in req)) {
+                    req.body = undefined;
+                }
+
+                const type = req._rawHeader("content-type");
+
+                // a type function sees a request with no content-type, as body-parser lets it
+                if (!type && typeof options.type !== "function") {
+                    return next();
+                }
+
+                const length = req._rawHeader("content-length");
+                const lengthNumber = length === undefined ? NaN : +length;
+
+                // no framing at all is no body, which type-is checks and the simpleType shortcut would skip
+                if (req._rawHeader("transfer-encoding") === undefined && Number.isNaN(lengthNumber)) {
+                    return next();
+                }
+
+                if (options.simpleType) {
+                    // only a type function lets a request without a content-type past the check above,
+                    // and simpleType is never set beside one
+                    const header = /** @type {string} */ (type);
+                    const semicolonIndex = header.indexOf(";");
+                    const clearType = semicolonIndex !== -1 ? header.substring(0, semicolonIndex) : header;
+                    // the trim and lowercase only when the exact compare fails
+                    if (clearType !== options.simpleType && clearType.trim().toLowerCase() !== options.simpleType) {
                         return next();
                     }
                 } else {
-                    if (!claimsType(/** @type {string} */ (type))) {
-                        return next();
+                    if (typeof options.type === "function") {
+                        if (!options.type(req)) {
+                            return next();
+                        }
+                    } else {
+                        if (!claimsType(/** @type {string} */ (type))) {
+                            return next();
+                        }
                     }
                 }
-            }
 
-            // the charset before anything is read, in body-parser's order: what this parser
-            // accepts, then the Content-Encoding, then whether iconv knows it
-            /** @type {string|undefined} */
-            let encoding;
-            if (charsetPolicy) {
-                encoding = charsetOf(type) ?? defaultCharset;
-                if (
-                    (charsetPolicy === "utf" && encoding.slice(0, 4) !== "utf-") ||
-                    (charsetPolicy === "urlencoded" && encoding !== "utf-8" && encoding !== "iso-8859-1")
-                ) {
+                // the charset before anything is read, in body-parser's order: what this parser
+                // accepts, then the Content-Encoding, then whether iconv knows it
+                /** @type {string|undefined} */
+                let encoding;
+                if (charsetPolicy) {
+                    encoding = charsetOf(type) ?? defaultCharset;
+                    if (
+                        (charsetPolicy === "utf" && encoding.slice(0, 4) !== "utf-") ||
+                        (charsetPolicy === "urlencoded" && encoding !== "utf-8" && encoding !== "iso-8859-1")
+                    ) {
+                        return next(charsetError(encoding));
+                    }
+                }
+
+                const encoded = encodingFor(req._rawHeader("content-encoding"), options);
+                if (encoded.error) {
+                    return next(encoded.error);
+                }
+                const inflate = encoded.inflate;
+
+                if (encoding !== undefined && !BUFFER_CHARSETS.has(encoding) && !loadIconv().encodingExists(encoding)) {
                     return next(charsetError(encoding));
                 }
-            }
 
-            const encoded = encodingFor(req._rawHeader("content-encoding"), options);
-            if (encoded.error) {
-                return next(encoded.error);
-            }
-            const inflate = encoded.inflate;
-
-            if (encoding !== undefined && !BUFFER_CHARSETS.has(encoding) && !loadIconv().encodingExists(encoding)) {
-                return next(charsetError(encoding));
-            }
-
-            // an empty body still produces the parser's empty value, verify hook first
-            if (lengthNumber === 0) {
-                req.bodyRead = true;
-                /** @type {Buffer<ArrayBufferLike>} zlib's tail is wider */
-                let empty = Buffer.alloc(0);
-                if (inflate) {
-                    // nothing to inflate is a stream cut short, a 400 to body-parser
-                    try {
-                        empty = inflate.process(EMPTY_BUFFER, inflate._finishFlag);
-                    } catch (e) {
-                        return next(inflateError(inflate, /** @type {HttpError} */ (e)));
+                // an empty body still produces the parser's empty value, verify hook first
+                if (lengthNumber === 0) {
+                    req.bodyRead = true;
+                    /** @type {Buffer<ArrayBufferLike>} zlib's tail is wider */
+                    let empty = Buffer.alloc(0);
+                    if (inflate) {
+                        // nothing to inflate is a stream cut short, a 400 to body-parser
+                        try {
+                            empty = inflate.process(EMPTY_BUFFER, inflate._finishFlag);
+                        } catch (e) {
+                            return next(inflateError(inflate, /** @type {HttpError} */ (e)));
+                        }
                     }
+                    if (!runVerify(req, res, next, options, empty, encoding)) {
+                        return;
+                    }
+                    return beforeReturn(req, res, next, options, empty, encoding);
                 }
-                if (!runVerify(req, res, next, options, empty, encoding)) {
+
+                // not while inflating: content-length counts the compressed bytes, keepChunk counts the rest
+                if (!inflate && lengthNumber > limit) {
+                    return next(
+                        bodyError("request entity too large", 413, "entity.too.large", {
+                            expected: lengthNumber,
+                            length: lengthNumber,
+                            limit: limit
+                        })
+                    );
+                }
+
+                // no body read for the verbs that carry none, +10k req/s
+                if (additionalMethods === undefined) additionalMethods = req.app.get("body methods") ?? null;
+                if (
+                    req.method !== "POST" &&
+                    req.method !== "PUT" &&
+                    req.method !== "PATCH" &&
+                    req.method !== "QUERY" &&
+                    (!additionalMethods || !additionalMethods.includes(req.method))
+                ) {
+                    return next();
+                }
+
+                let totalSize = 0;
+
+                // uWS delivers the body on native callbacks with no async context
+                next = bindContext(next);
+
+                // with nothing to decompress uWS collects the whole body natively: one callback, the
+                // limit enforced before any byte reaches JS, no copy
+                const declared = lengthNumber;
+                const declaresLength = !Number.isNaN(declared) && declared > 0;
+                if (!req.receivedData && !inflate && req._res.collectBody && (declaresLength || isNaN(declared))) {
+                    req.bodyRead = true;
+                    // the Readable never runs, and a later parser asks it
+                    req.complete = true;
+                    req.readable = false;
+                    req._res.collectBody(limit, (/** @type {ArrayBuffer|Buffer|null} */ body) => {
+                        if (body === null) {
+                            // over maxSize: uWS refused it natively
+                            return next(
+                                bodyError("request entity too large", 413, "entity.too.large", {
+                                    limit: limit,
+                                    received: limit
+                                })
+                            );
+                        }
+                        if (declaresLength && body.byteLength !== declared) {
+                            return next(
+                                bodyError("request size did not match content length", 400, "request.size.invalid", {
+                                    expected: declared,
+                                    length: declared,
+                                    received: body.byteLength
+                                })
+                            );
+                        }
+                        // a Buffer is node:http's, through the shim, and Buffer.from() would copy it
+                        let buf = Buffer.isBuffer(body) ? body : Buffer.from(body);
+                        if (copyBody) {
+                            buf = Buffer.from(buf);
+                        }
+                        if (!runVerify(req, res, next, options, buf, encoding)) {
+                            return;
+                        }
+                        beforeReturn(req, res, next, options, buf, encoding);
+                    });
                     return;
                 }
-                return beforeReturn(req, res, next, options, empty, encoding);
-            }
 
-            // not while inflating: content-length counts the compressed bytes, keepChunk counts the rest
-            if (!inflate && lengthNumber > limit) {
-                return next(
-                    bodyError("request entity too large", 413, "entity.too.large", {
-                        expected: lengthNumber,
-                        length: lengthNumber,
-                        limit: limit
-                    })
-                );
-            }
+                // every chunk is copied out of uWS's neutered ArrayBuffer; with a content-length the
+                // chunks go straight into one buffer instead of a concat
+                /** @type {Buffer[]} */
+                const abs = [];
+                const declaredLength = inflate ? -1 : Number(length);
+                let target =
+                    declaredLength > 0 && declaredLength <= MAX_PREALLOCATED_BODY
+                        ? Buffer.allocUnsafe(declaredLength)
+                        : null;
+                let targetOffset = 0;
 
-            // no body read for the verbs that carry none, +10k req/s
-            if (additionalMethods === undefined) additionalMethods = req.app.get("body methods") ?? null;
-            if (
-                req.method !== "POST" &&
-                req.method !== "PUT" &&
-                req.method !== "PATCH" &&
-                req.method !== "QUERY" &&
-                (!additionalMethods || !additionalMethods.includes(req.method))
-            ) {
-                return next();
-            }
-
-            let totalSize = 0;
-
-            // uWS delivers the body on native callbacks with no async context
-            next = bindContext(next);
-
-            // with nothing to decompress uWS collects the whole body natively: one callback, the
-            // limit enforced before any byte reaches JS, no copy
-            const declared = lengthNumber;
-            const declaresLength = !Number.isNaN(declared) && declared > 0;
-            if (!req.receivedData && !inflate && req._res.collectBody && (declaresLength || isNaN(declared))) {
                 req.bodyRead = true;
-                // the Readable never runs, and a later parser asks it
-                req.complete = true;
-                req.readable = false;
-                req._res.collectBody(limit, (/** @type {ArrayBuffer|Buffer|null} */ body) => {
-                    if (body === null) {
-                        // over maxSize: uWS refused it natively
-                        return next(
+
+                // uWS keeps delivering chunks after an oversized body was refused
+                let finished = false;
+
+                /**
+                 * A zlib throw as body-parser's 400, what was kept of the body dropped.
+                 *
+                 * @param {HttpError} err what inflate.process threw
+                 */
+                function failInflate(err) {
+                    finished = true;
+                    abs.length = 0;
+                    target = null;
+                    next(inflateError(/** @type {Inflater} */ (inflate), err));
+                }
+
+                /**
+                 * Counts a chunk against the limit and keeps it; false once the limit answered the request.
+                 *
+                 * @param {Buffer} buf
+                 * @returns {boolean}
+                 */
+                function keepChunk(buf) {
+                    totalSize += buf.length;
+                    if (totalSize > limit) {
+                        finished = true;
+                        abs.length = 0;
+                        target = null;
+                        next(
                             bodyError("request entity too large", 413, "entity.too.large", {
                                 limit: limit,
-                                received: limit
+                                received: totalSize
                             })
                         );
+                        return false;
                     }
-                    if (declaresLength && body.byteLength !== declared) {
-                        return next(
-                            bodyError("request size did not match content length", 400, "request.size.invalid", {
-                                expected: declared,
-                                length: declared,
-                                received: body.byteLength
-                            })
-                        );
+
+                    if (target) {
+                        if (targetOffset + buf.length <= target.length) {
+                            buf.copy(target, targetOffset);
+                            targetOffset += buf.length;
+                            return true;
+                        }
+                        // more body than content-length promised
+                        abs.push(Buffer.from(target.subarray(0, targetOffset)));
+                        target = null;
                     }
-                    // a Buffer is node:http's, through the shim, and Buffer.from() would copy it
-                    let buf = Buffer.isBuffer(body) ? body : Buffer.from(body);
-                    if (copyBody) {
+
+                    abs.push(Buffer.from(buf));
+                    return true;
+                }
+
+                /**
+                 * One chunk from uWS: decompressed, counted, kept.
+                 *
+                 * @param {Buffer|ArrayBuffer} buf a Buffer, or an ArrayBuffer straight from uWS
+                 */
+                function onData(buf) {
+                    if (finished) {
+                        return;
+                    }
+                    if (!Buffer.isBuffer(buf)) {
                         buf = Buffer.from(buf);
                     }
+                    if (inflate) {
+                        try {
+                            buf = inflate.process(buf);
+                        } catch (e) {
+                            return failInflate(/** @type {HttpError} */ (e));
+                        }
+                    }
+
+                    keepChunk(buf);
+                }
+
+                /** The body is complete: assemble it, hand it to the parser and continue routing. */
+                function onEnd() {
+                    if (finished) {
+                        return;
+                    }
+                    finished = true;
+                    if (inflate) {
+                        // the finish pass tells a truncated stream, a 400 to body-parser
+                        let tail;
+                        try {
+                            tail = inflate.process(EMPTY_BUFFER, inflate._finishFlag);
+                        } catch (e) {
+                            return failInflate(/** @type {HttpError} */ (e));
+                        }
+                        if (tail.length && !keepChunk(tail)) {
+                            return;
+                        }
+                    }
+                    // fewer bytes than content-length promised; not when inflating, it counts the compressed ones
+                    if (!inflate && !Number.isNaN(lengthNumber) && totalSize !== lengthNumber) {
+                        return next(
+                            bodyError("request size did not match content length", 400, "request.size.invalid", {
+                                expected: lengthNumber,
+                                length: lengthNumber,
+                                received: totalSize
+                            })
+                        );
+                    }
+                    const buf = target
+                        ? targetOffset === target.length
+                            ? target
+                            : target.subarray(0, targetOffset)
+                        : abs.length === 1
+                          ? abs[0]
+                          : Buffer.concat(abs);
                     if (!runVerify(req, res, next, options, buf, encoding)) {
                         return;
                     }
                     beforeReturn(req, res, next, options, buf, encoding);
-                });
-                return;
+                }
+
+                // straight from uWS unless the stream already started
+                if (!req.receivedData) {
+                    req._res.onData((/** @type {ArrayBuffer} */ ab, /** @type {boolean} */ isLast) => {
+                        onData(ab);
+                        if (isLast) {
+                            // this replaced the Readable's own subscription, so it never ends by itself
+                            req.complete = true;
+                            req.readable = false;
+                            onEnd();
+                        }
+                    });
+                } else {
+                    req.on("data", onData);
+                    req.on("end", onEnd);
+                }
             }
-
-            // every chunk is copied out of uWS's neutered ArrayBuffer; with a content-length the
-            // chunks go straight into one buffer instead of a concat
-            /** @type {Buffer[]} */
-            const abs = [];
-            const declaredLength = inflate ? -1 : Number(length);
-            let target =
-                declaredLength > 0 && declaredLength <= MAX_PREALLOCATED_BODY
-                    ? Buffer.allocUnsafe(declaredLength)
-                    : null;
-            let targetOffset = 0;
-
-            req.bodyRead = true;
-
-            // uWS keeps delivering chunks after an oversized body was refused
-            let finished = false;
-
-            /**
-             * A zlib throw as body-parser's 400, what was kept of the body dropped.
-             *
-             * @param {HttpError} err what inflate.process threw
-             */
-            function failInflate(err) {
-                finished = true;
-                abs.length = 0;
-                target = null;
-                next(inflateError(/** @type {Inflater} */ (inflate), err));
-            }
-
-            /**
-             * Counts a chunk against the limit and keeps it; false once the limit answered the request.
-             *
-             * @param {Buffer} buf
-             * @returns {boolean}
-             */
-            function keepChunk(buf) {
-                totalSize += buf.length;
-                if (totalSize > limit) {
-                    finished = true;
-                    abs.length = 0;
-                    target = null;
-                    next(
-                        bodyError("request entity too large", 413, "entity.too.large", {
-                            limit: limit,
-                            received: totalSize
-                        })
-                    );
-                    return false;
-                }
-
-                if (target) {
-                    if (targetOffset + buf.length <= target.length) {
-                        buf.copy(target, targetOffset);
-                        targetOffset += buf.length;
-                        return true;
-                    }
-                    // more body than content-length promised
-                    abs.push(Buffer.from(target.subarray(0, targetOffset)));
-                    target = null;
-                }
-
-                abs.push(Buffer.from(buf));
-                return true;
-            }
-
-            /**
-             * One chunk from uWS: decompressed, counted, kept.
-             *
-             * @param {Buffer|ArrayBuffer} buf a Buffer, or an ArrayBuffer straight from uWS
-             */
-            function onData(buf) {
-                if (finished) {
-                    return;
-                }
-                if (!Buffer.isBuffer(buf)) {
-                    buf = Buffer.from(buf);
-                }
-                if (inflate) {
-                    try {
-                        buf = inflate.process(buf);
-                    } catch (e) {
-                        return failInflate(/** @type {HttpError} */ (e));
-                    }
-                }
-
-                keepChunk(buf);
-            }
-
-            /** The body is complete: assemble it, hand it to the parser and continue routing. */
-            function onEnd() {
-                if (finished) {
-                    return;
-                }
-                finished = true;
-                if (inflate) {
-                    // the finish pass tells a truncated stream, a 400 to body-parser
-                    let tail;
-                    try {
-                        tail = inflate.process(EMPTY_BUFFER, inflate._finishFlag);
-                    } catch (e) {
-                        return failInflate(/** @type {HttpError} */ (e));
-                    }
-                    if (tail.length && !keepChunk(tail)) {
-                        return;
-                    }
-                }
-                // fewer bytes than content-length promised; not when inflating, it counts the compressed ones
-                if (!inflate && !Number.isNaN(lengthNumber) && totalSize !== lengthNumber) {
-                    return next(
-                        bodyError("request size did not match content length", 400, "request.size.invalid", {
-                            expected: lengthNumber,
-                            length: lengthNumber,
-                            received: totalSize
-                        })
-                    );
-                }
-                const buf = target
-                    ? targetOffset === target.length
-                        ? target
-                        : target.subarray(0, targetOffset)
-                    : abs.length === 1
-                      ? abs[0]
-                      : Buffer.concat(abs);
-                if (!runVerify(req, res, next, options, buf, encoding)) {
-                    return;
-                }
-                beforeReturn(req, res, next, options, buf, encoding);
-            }
-
-            // straight from uWS unless the stream already started
-            if (!req.receivedData) {
-                req._res.onData((/** @type {ArrayBuffer} */ ab, /** @type {boolean} */ isLast) => {
-                    onData(ab);
-                    if (isLast) {
-                        // this replaced the Readable's own subscription, so it never ends by itself
-                        req.complete = true;
-                        req.readable = false;
-                        onEnd();
-                    }
-                });
-            } else {
-                req.on("data", onData);
-                req.on("end", onEnd);
-            }
-        };
+        }[name];
         // a request declaring no body leaves through the synchronous exit before any header is
         // read, so the header-skip analysis may trust it; a type function sees the request
         if (typeof options.type !== "function") {
@@ -1198,6 +1205,14 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
         return parserMiddleware;
     };
 }
+
+/** @type {Record<string, string>} */
+const PARSER_NAMES = {
+    "application/json": "jsonParser",
+    "application/octet-stream": "rawParser",
+    "text/plain": "textParser",
+    "application/x-www-form-urlencoded": "urlencodedParser"
+};
 
 const json = createBodyParser(
     "application/json",
