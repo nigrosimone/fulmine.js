@@ -775,9 +775,7 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * What proxy-addr reads off a request: the headers, and the peer at req.socket.remoteAddress.
-     * Handed the request itself it builds the socket stand-in, which then reads the peer's port as
-     * the response ends, 80 to 100ns for nothing.
+     * Headers and peer for proxy-addr: the request itself would build the socket, which reads the port.
      *
      * @returns {import("http").IncomingMessage}
      */

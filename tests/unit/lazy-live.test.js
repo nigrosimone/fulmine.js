@@ -387,8 +387,7 @@ const LAZY_CASES = [
         allow: []
     },
     {
-        // forwarded reads req.headers; the socket stand-in it used to build read the port as the
-        // response ended
+        // forwarded reads req.headers
         name: "req.ip behind a trusted proxy",
         setup: (app) => {
             app.set("trust proxy", true);

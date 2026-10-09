@@ -1,9 +1,5 @@
-// What listen() decides for the routes of the benchmark scenarios, built as benchmark/server.js
-// builds them: whether µWS answers each route itself, and whether it skips the headers and the
-// query. A route that goes generic, or loses a skip, keeps answering the same and is 30 to 50%
-// slower; nothing else notices. The scenarios that need the files server.js writes are left out.
-//
-// A number that rises is good news, and the table is brought up to it in the same commit.
+// What listen() decides for the benchmark routes, built as benchmark/server.js does: native or not,
+// headers and query skipped or not. A lost decision answers the same, 30 to 50% slower.
 
 const test = require("node:test");
 const assert = require("node:assert");

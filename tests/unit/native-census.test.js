@@ -1,12 +1,5 @@
-// What fulmine asks µWS for, request by request, against a budget: a native call that starts
-// happening where it was not needed fails here, even though the answer stays the same and only the
-// speed goes. The ip (about 350ns a read) only where req.ip is read, the port only where something
-// reached for the socket, onData and collectBody only for a body, onAborted and cork only for a
-// response answered after its handler returned, the headers and the query only for a route that
-// reads them, and the head written in as few calls as it takes. Every method of µWS's request and
-// response is counted, see native-census.app.js for the routes.
-//
-// A count that falls is good news, and the table is brought down to it in the same commit.
+// What fulmine asks µWS for per request, against a budget: a call not needed fails here, even if
+// the answer is the same. Routes in native-census.app.js. A count that falls: lower the table.
 
 const test = require("node:test");
 const assert = require("node:assert");

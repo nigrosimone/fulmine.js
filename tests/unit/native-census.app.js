@@ -1,8 +1,5 @@
-// The app of native-census.test.js: how many times each method of µWS's request and response is
-// called for one request, route by route. node native-census.app.js prints them as JSON.
-// µWS's App is wrapped before fulmine loads it, so every handler fulmine registers counts the calls
-// made on the response it was given, for as long as it lives, and on the request while it runs.
-// The requests are written by hand on a socket, so the headers are exactly the ones listed.
+// For native-census.test.js: prints as JSON the calls on µWS's request and response, per request.
+// Requests are written by hand on a socket, so the headers are exactly the ones listed.
 
 const fs = require("node:fs");
 const net = require("node:net");
@@ -249,8 +246,7 @@ for (const [name, server] of /** @type {const} */ ([
 }
 
 async function run() {
-    // past the first hundred requests, which read the ip up front to see whether the app asks for
-    // it too late (see the Request constructor): what is counted is the steady state
+    // past the first hundred requests, which read the ip up front (see the Request constructor)
     for (let i = 0; i < 110; i++) {
         await ask(ports.app, "GET /hello HTTP/1.1");
         await ask(ports.failing, "GET /hello HTTP/1.1");
