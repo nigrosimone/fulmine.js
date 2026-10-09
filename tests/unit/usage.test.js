@@ -96,6 +96,19 @@ test("what a single callback is allowed to do", () => {
         QUERY
     );
 
+    // the response methods that read nothing off the request
+    assert.equal(
+        callbackUsage((req, res) => {
+            res.cookie("a", "1", { httpOnly: true }).clearCookie("b").attachment("x.pdf").location("/y");
+            if (!res.hasHeader("x-a") && res.getHeader("x-b") === undefined) {
+                res.removeHeader("x-c");
+            }
+            res.write("a");
+            res.end();
+        }),
+        0
+    );
+
     // writing a value member is not a rewrite
     assert.equal(
         callbackUsage((req, res) => {

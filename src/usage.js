@@ -59,7 +59,16 @@ const RES_OK = new Set([
     "writeHead",
     "headersSent",
     "finished",
-    "cork"
+    "cork",
+    "write",
+    "getHeader",
+    "hasHeader",
+    "removeHeader",
+    "location",
+    "attachment",
+    // reads req.secret, which cookie-parser sets, and no header
+    "cookie",
+    "clearCookie"
 ]);
 
 // what the analysis can say about one callback, as independent facts
