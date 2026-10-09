@@ -1,5 +1,14 @@
 # Changelog
 
+## [5.23.0](https://github.com/nigrosimone/fulmine.js/compare/v5.22.0...v5.23.0) (2026-10-09)
+
+Aligned with Express 5.3.0, with its minimums for qs (^6.16.0) and proxy-addr (^2.0.8).
+
+### Features
+
+* **express-5.3:** content-disposition 2, the redirect markup, fresh for QUERY, render(null) and the error logged whole ([6a2a894](https://github.com/nigrosimone/fulmine.js/commit/6a2a894024f7aef0d544d679ecb01bf1b6a02095))
+* **express-5.3:** send() rewrites the charset with content-type 2, the type and parameters normalised as express does ([69b9e64](https://github.com/nigrosimone/fulmine.js/commit/69b9e644ef764f23359dc80eeac99ccd2dc1683d))
+
 ## [5.22.0](https://github.com/nigrosimone/fulmine.js/compare/v5.21.6...v5.22.0) (2026-10-08)
 
 ### Features
