@@ -8,9 +8,9 @@ const { spawnSync } = require("node:child_process");
 
 const { otherRuntime } = require("../../src/uws.js");
 
-// counts per request, a method not listed is never called. Margins not taken yet: /chunks corks
-// twice, a 204 writes its head in two calls. getQuery beside a full header copy costs 15 to 45ns
-// against the copy's 760, not worth a rule
+// counts per request, a method not listed is never called. Margin not taken yet: a 204 writes its
+// head in two calls. getQuery beside a full header copy costs 15 to 45ns against the copy's 760,
+// not worth a rule
 const BUDGET = {
     "GET /hello": { end: 1, getHeader: 5, writeHeader: 1 },
     "HEAD /hello": { endWithoutBody: 1, getHeader: 5, writeHeader: 1 },
@@ -29,7 +29,7 @@ const BUDGET = {
     "GET /json": { end: 1, getHeader: 5, writeHeader: 1 },
     "GET /created": { end: 1, getHeader: 5, writeHeader: 1, writeStatus: 1 },
     "GET /headers": { end: 1, getHeader: 5, writeHeader: 1 },
-    "GET /chunks": { cork: 2, endWithoutBody: 1, getHeader: 5, write: 2, writeHeader: 1 },
+    "GET /chunks": { endWithoutBody: 1, getHeader: 5, write: 2, writeHeader: 1 },
     "GET /redirect": { end: 1, forEach: 1, getQuery: 1, writeHeader: 1, writeStatus: 1 },
     "GET /status": { endWithoutBody: 1, getHeader: 5, writeHeader: 2, writeStatus: 1 },
     "GET /users/42?q=x": {
@@ -108,6 +108,7 @@ const BUDGET = {
         writeHeader: 1
     },
     "GET /async": { cork: 1, end: 1, getHeader: 5, onAborted: 1, writeHeader: 1 },
+    "GET /chunks-later": { cork: 3, endWithoutBody: 1, getHeader: 5, onAborted: 1, write: 2, writeHeader: 1 },
     "GET /mw/x": { end: 1, getHeader: 5, writeHeader: 1 },
     "GET /r/x": { end: 1, getHeader: 5, writeHeader: 1 },
     "GET /hello, with an error handler": { end: 1, getHeader: 5, writeHeader: 1 },
@@ -133,6 +134,8 @@ function census() {
         timeout: 120000
     });
     assert.strictEqual(run.status, 0, run.stderr);
+    // uWS warns when a write after the handler returned was not corked
+    assert.doesNotMatch(run.stderr, /corked callback/);
     return JSON.parse(run.stdout);
 }
 

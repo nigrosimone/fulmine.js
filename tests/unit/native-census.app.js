@@ -110,6 +110,13 @@ app.get("/parsed", (req, res) => res.send(String(req.body)));
 app.get("/file", (req, res) => res.sendFile(path.join(files, "small.txt")));
 app.use("/static", express.static(files));
 // later, chained, mounted, failing
+app.get("/chunks-later", (req, res) => {
+    setTimeout(() => {
+        res.write("a");
+        res.write("b");
+        res.end("c");
+    }, 5);
+});
 app.get("/async", async (req, res) => {
     await new Promise((resolve) => setTimeout(resolve, 5));
     res.send("async");
@@ -176,6 +183,7 @@ const ASKED = [
     ["GET /file", "app", "GET /file HTTP/1.1"],
     ["GET /static/small.txt", "app", "GET /static/small.txt HTTP/1.1"],
     ["GET /async", "app", "GET /async HTTP/1.1"],
+    ["GET /chunks-later", "app", "GET /chunks-later HTTP/1.1"],
     ["GET /mw/x", "app", "GET /mw/x HTTP/1.1"],
     ["GET /r/x", "app", "GET /r/x HTTP/1.1"],
     ["GET /hello, with an error handler", "failing", "GET /hello HTTP/1.1"],

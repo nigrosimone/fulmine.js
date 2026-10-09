@@ -501,74 +501,87 @@ module.exports = class Response extends LazyWritable {
         }
 
         this.writingChunk = true;
-        this._res.cork(() => {
-            if (!this.#headOut) {
-                if (!this.headersSent) {
-                    this.writeHead(this.statusCode);
-                }
-                // a plain 200 is uWS's own head, so it is not written at all
-                if (this.#status !== 200 || this.#statusText !== undefined) {
-                    this._res.writeStatus(statusLine(this.#status, this.#statusText));
-                }
-                this.writeHeaders(typeof chunk === "string");
-            }
+        // uWS corks itself for the synchronous window of its route handler, see _corkNeeded
+        if (this._corkNeeded) {
+            this._res.cork(() => this.#writeChunk(chunk, callback));
+        } else {
+            this.#writeChunk(chunk, callback);
+        }
+    }
 
-            if (!Buffer.isBuffer(chunk) && !(chunk instanceof ArrayBuffer)) {
-                chunk = Buffer.from(chunk);
+    /**
+     * The corked tail of _write: the head if not out yet, then the chunk.
+     *
+     * @param {any} chunk
+     * @param {(err?: Error|null) => void} callback
+     */
+    #writeChunk(chunk, callback) {
+        if (!this.#headOut) {
+            if (!this.headersSent) {
+                this.writeHead(this.statusCode);
             }
+            // a plain 200 is uWS's own head, so it is not written at all
+            if (this.#status !== 200 || this.#statusText !== undefined) {
+                this._res.writeStatus(statusLine(this.#status, this.#statusText));
+            }
+            this.writeHeaders(typeof chunk === "string");
+        }
 
-            if (this.chunkedTransfer) {
-                // gathered and handed over at the end of this turn, or once big enough: an SSE feed
-                // writing once per turn still leaves on its own turn
-                (this.#queued ??= []).push(/** @type {Buffer} */ (chunk));
-                this.#queuedBytes += /** @type {Buffer} */ (chunk).byteLength;
-                if (this.#queuedBytes >= COALESCE_LIMIT || /** @type {Buffer} */ (chunk).byteLength >= COALESCE_BELOW) {
-                    this.#flushQueued(callback);
-                } else {
-                    if (!this.#flushBooked) {
-                        this.#flushBooked = true;
-                        process.nextTick(Response.#flushOnTick, this);
-                    }
-                    this.writingChunk = false;
-                    callback(null);
-                }
+        if (!Buffer.isBuffer(chunk) && !(chunk instanceof ArrayBuffer)) {
+            chunk = Buffer.from(chunk);
+        }
+
+        if (this.chunkedTransfer) {
+            // gathered and handed over at the end of this turn, or once big enough: an SSE feed
+            // writing once per turn still leaves on its own turn
+            (this.#queued ??= []).push(/** @type {Buffer} */ (chunk));
+            this.#queuedBytes += /** @type {Buffer} */ (chunk).byteLength;
+            if (this.#queuedBytes >= COALESCE_LIMIT || /** @type {Buffer} */ (chunk).byteLength >= COALESCE_BELOW) {
+                this.#flushQueued(callback);
             } else {
-                const lastOffset = this._res.getWriteOffset();
-                const [ok, done] = this._res.tryEnd(chunk, this.totalSize);
-                if (done) {
-                    super.end();
-                    this.finished = true;
-                    this.writingChunk = false;
-                    this.#socket?.emit("close");
-                    callback(null);
-                } else if (!ok) {
-                    this._res.ab = chunk;
-                    this._res.abOffset = lastOffset;
-                    let handlerUsed = false;
-                    this._res.onWritable((offset) => {
-                        if (this.finished || handlerUsed) return true;
-                        const [ok, done] = this._res.tryEnd(
-                            this._res.ab.slice(offset - this._res.abOffset),
-                            this.totalSize
-                        );
-                        if (done) {
-                            this.finished = true;
-                            this.#socket?.emit("close");
-                        }
-                        if (ok) {
-                            this.writingChunk = false;
-                            handlerUsed = true;
-                            callback(null);
-                            this.#afterPending();
-                        }
-                        return ok;
-                    });
-                } else {
-                    this.writingChunk = false;
-                    callback(null);
+                if (!this.#flushBooked) {
+                    this.#flushBooked = true;
+                    process.nextTick(Response.#flushOnTick, this);
                 }
+                this.writingChunk = false;
+                callback(null);
             }
-        });
+        } else {
+            const lastOffset = this._res.getWriteOffset();
+            const [ok, done] = this._res.tryEnd(chunk, this.totalSize);
+            if (done) {
+                super.end();
+                this.finished = true;
+                this.writingChunk = false;
+                this.#socket?.emit("close");
+                callback(null);
+            } else if (!ok) {
+                this._res.ab = chunk;
+                this._res.abOffset = lastOffset;
+                let handlerUsed = false;
+                this._res.onWritable((offset) => {
+                    if (this.finished || handlerUsed) return true;
+                    const [ok, done] = this._res.tryEnd(
+                        this._res.ab.slice(offset - this._res.abOffset),
+                        this.totalSize
+                    );
+                    if (done) {
+                        this.finished = true;
+                        this.#socket?.emit("close");
+                    }
+                    if (ok) {
+                        this.writingChunk = false;
+                        handlerUsed = true;
+                        callback(null);
+                        this.#afterPending();
+                    }
+                    return ok;
+                });
+            } else {
+                this.writingChunk = false;
+                callback(null);
+            }
+        }
     }
 
     /**
