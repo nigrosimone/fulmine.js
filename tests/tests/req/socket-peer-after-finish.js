@@ -4,6 +4,9 @@
 const express = require("express");
 const { fetchTest, sequential } = require("../../helpers.js");
 
+/** @type {string} what the finish listener read, printed by the client in a fixed order */
+let peer = "not read";
+
 const app = express();
 app.set("etag", false);
 app.get("/peer", (req, res) => {
@@ -11,13 +14,13 @@ app.get("/peer", (req, res) => {
     const socket = req.socket;
     res.on("finish", () => {
         setImmediate(() => {
-            console.log(
+            peer = [
                 "after finish",
                 typeof socket.remotePort,
                 socket.remotePort > 0,
                 socket.remoteFamily,
                 typeof socket.remoteAddress
-            );
+            ].join(" ");
         });
     });
     res.send("ok");
@@ -29,6 +32,7 @@ app.listen(13333, async () => {
             const res = await fetchTest("http://localhost:13333/peer");
             console.log(await res.text());
             await new Promise((resolve) => setTimeout(resolve, 50));
+            console.log(peer);
         }
     ]);
     process.exit(0);
