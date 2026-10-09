@@ -38,7 +38,9 @@ app.get("/array", (req, res) => {
 });
 
 app.get("/mixed", (req, res) => {
-    const start = Date.now() - Date.now(); // 0, computed
+    // 0, computed; one reading, two could straddle a millisecond and give -1
+    const now = Date.now();
+    const start = now - now;
     res.append("X-Timing", start);
     res.append("X-Timing", "later");
     res.send("ok");
