@@ -771,7 +771,18 @@ module.exports = class Request extends LazyReadable {
         if (!trust) {
             return this.parsedIp;
         }
-        return proxyaddr(asMessage(this), trust);
+        return proxyaddr(this.#forwardedView(), trust);
+    }
+
+    /**
+     * What proxy-addr reads off a request: the headers, and the peer at req.socket.remoteAddress.
+     * Handed the request itself it builds the socket stand-in, which then reads the peer's port as
+     * the response ends, 80 to 100ns for nothing.
+     *
+     * @returns {import("http").IncomingMessage}
+     */
+    #forwardedView() {
+        return /** @type {any} */ ({ headers: this.headers, socket: { remoteAddress: this.parsedIp } });
     }
 
     /**
@@ -784,7 +795,7 @@ module.exports = class Request extends LazyReadable {
         if (!trust) {
             return [];
         }
-        const addrs = proxyaddr.all(asMessage(this), trust);
+        const addrs = proxyaddr.all(this.#forwardedView(), trust);
         addrs.reverse().pop();
         return addrs;
     }
