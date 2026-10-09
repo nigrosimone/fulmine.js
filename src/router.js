@@ -174,8 +174,8 @@ module.exports = class Router extends EventEmitter {
      */
     _skipPresets = null;
 
-    /** Whether the table holds error middleware, undefined until the optimizer asks. @type {boolean|undefined} */
-    _hasErrMwCache;
+    /** What the error middleware does, a usage.js mask, undefined until the optimizer asks. @type {number|undefined} */
+    _errorUsage;
 
     /** An array when mounted on several paths at once. @type {string|string[]} */
     mountpath = "/";
@@ -724,7 +724,7 @@ module.exports = class Router extends EventEmitter {
 
         // a route registered after listen could catch a throw or read a header the analysis
         // proved nothing did, so every skip is taken back
-        this._hasErrMwCache = undefined;
+        this._errorUsage = undefined;
         if (this._skipPresets?.size) {
             for (const preset of this._skipPresets) {
                 preset.skipHeaders = false;

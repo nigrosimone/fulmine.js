@@ -120,8 +120,7 @@ const router = express.Router();
 router.get("/x", (req, res) => res.send("routed"));
 app.use("/r", router);
 
-// an error handler anywhere turns the header skip off for the whole app, a throw would hand the
-// request to code the analysis never saw: so the failing routes have an app of their own
+// the error handler is judged for the whole app, so the failing routes have an app of their own
 const failing = express();
 failing.get("/hello", (req, res) => res.send("hello"));
 failing.get("/throw", () => {

@@ -44,7 +44,7 @@ const {
     nativeDone,
     nativeFail,
     nativePreset,
-    hasErrorMiddleware,
+    errorHandlersUsage,
     couldAnswer,
     shadowsLeaf,
     headEntersGuard,
@@ -490,24 +490,22 @@ function registerUwsRoute(router, route, optimizedPath) {
     // the route's own router decides: a { strict: true } router on a non-strict app does not answer /things/
     const strictHere = (route.owner ?? router)._strictRouting();
 
-    // Whether this registration may skip the header copy: GET and HEAD only, no error middleware
-    // (a throw reaches code the analysis never saw), every callback passing usage.js. The etag
-    // setting is not a condition: the skip branch reads the conditional pair by name anyway
+    // Whether this registration may skip the header copy: GET and HEAD only, every callback and
+    // every error handler passing usage.js. The etag setting is not a condition: the skip branch
+    // reads the conditional pair by name anyway
     const NO_SKIPS = { skipHeaders: false, skipQuery: false };
     let getSkips = NO_SKIPS;
     let headSkips = NO_SKIPS;
     if (route.method === "GET") {
-        let hasErr = router._hasErrMwCache;
-        if (hasErr === undefined) {
-            hasErr = router._hasErrMwCache = hasErrorMiddleware(router);
+        let onError = router._errorUsage;
+        if (onError === undefined) {
+            onError = router._errorUsage = errorHandlersUsage(router);
         }
-        if (!hasErr) {
-            // a terminal next() may only fall into the framework's own 404
-            const owner = route.owner ?? router;
-            const noLaterMatch = !owner._isFollowedByAnOverlap.call(owner, route, owner._routes);
-            getSkips = chainUsage(getChain, noLaterMatch);
-            headSkips = headChain === getChain ? getSkips : chainUsage(headChain, noLaterMatch);
-        }
+        // a terminal next() may only fall into the framework's own 404
+        const owner = route.owner ?? router;
+        const noLaterMatch = !owner._isFollowedByAnOverlap.call(owner, route, owner._routes);
+        getSkips = chainUsage(getChain, noLaterMatch, onError);
+        headSkips = headChain === getChain ? getSkips : chainUsage(headChain, noLaterMatch, onError);
     }
     /**
      * @param {string} path

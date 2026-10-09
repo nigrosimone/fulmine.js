@@ -145,6 +145,57 @@ test("what a single callback is allowed to do", () => {
     assert.ok(callbackUsage(express.json({ type: (req) => true })) & UNKNOWN);
 });
 
+test("an error handler is read with err in front", () => {
+    assert.equal(
+        callbackUsage((err, req, res, next) => res.status(500).send(err.message)),
+        0
+    );
+    assert.equal(
+        callbackUsage((err, req, res, next) => res.status(500).send(req.url)),
+        QUERY
+    );
+    // next(err) passes the error on, err.status = 500 is not a rebinding
+    assert.equal(
+        callbackUsage((err, req, res, next) => {
+            if (res.headersSent) {
+                return next(err);
+            }
+            err.status = 500;
+            res.sendStatus(500);
+        }),
+        NEXT_ERROR
+    );
+    assert.equal(
+        callbackUsage((err, req, res, next) => next()),
+        NEXT_PLAIN
+    );
+
+    const distrusted = [
+        (err, req, res, next) => res.send(req.get("accept")), // reads a header
+        (err, req, res, next) => res.render("error"), // not a known method
+        // err could be anything once rebound, "route" included
+        (err, req, res, next) => {
+            err = "route";
+            next(err);
+        },
+        (err, req, res, next) => {
+            const e = err;
+            next(e);
+        },
+        (err, req, res, next) => [1].forEach((err) => next(err)),
+        (err, req, res, next) => {
+            try {
+                res.end();
+            } catch (err) {
+                next(err);
+            }
+        }
+    ];
+    for (const fn of distrusted) {
+        assert.ok(callbackUsage(fn) & UNKNOWN, fn.toString());
+    }
+});
+
 test("the analyzer survives any source a function can carry, and never throws at registration", () => {
     // a lying toString that throws: reading it is the first thing the analyzer does
     const throwing = (req, res) => res.send("hi");
@@ -219,6 +270,12 @@ test("a chain is judged whole, and the terminal next needs a clear path behind i
     const withParam = { callbacks: [(req, res) => res.send("x")], paramCallbacks: new Map([["id", []]]) };
     assert.deepEqual(chainUsage([withParam], false), { skipHeaders: false, skipQuery: false });
 
+    // the error handlers a throw reaches: their query read counts, an unknown or a bare next() forbids
+    assert.deepEqual(chainUsage([safe], false, NEXT_ERROR), { skipHeaders: true, skipQuery: true });
+    assert.deepEqual(chainUsage([safe], false, QUERY), { skipHeaders: true, skipQuery: false });
+    assert.deepEqual(chainUsage([safe], true, NEXT_PLAIN), { skipHeaders: false, skipQuery: false });
+    assert.deepEqual(chainUsage([safe], true, UNKNOWN), { skipHeaders: false, skipQuery: false });
+
     // malformed entries answer no rather than throwing: no callback list, or a non-function in it
     assert.deepEqual(chainUsage([{ callbacks: null }], true), { skipHeaders: false, skipQuery: false });
     assert.deepEqual(chainUsage([{ callbacks: [42], paramCallbacks: new Map() }], true), {
@@ -281,14 +338,23 @@ test("the app grants skips whatever the etag setting, and takes them back on lat
     }
     q.close();
 
-    // an error middleware anywhere forbids every skip up front
+    // an error middleware is judged as the routes are, a sub-app's too
     const withErr = await granted((app) => {
         app.set("etag", false);
         app.get("/a", (req, res) => res.send("a" + req.path));
         app.use((err, req, res, next) => res.status(500).end());
     });
-    assert.equal(withErr.granted, 0);
+    assert.equal(withErr.granted, 4);
     withErr.close();
+    const readsHeader = await granted((app) => {
+        app.set("etag", false);
+        app.get("/a", (req, res) => res.send("a" + req.path));
+        const sub = express();
+        sub.use((err, req, res, next) => res.status(500).send(req.get("accept")));
+        app.use(sub);
+    });
+    assert.equal(readsHeader.granted, 0);
+    readsHeader.close();
 
     // turning etags on after listen leaves them alone: freshness is answered from headers the
     // skip branch reads by name, so nothing the skip dropped is needed for it

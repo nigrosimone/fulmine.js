@@ -132,9 +132,13 @@ function analyze(fn) {
             return UNKNOWN;
         }
     }
-    const reqName = params[0] ? params[0].name : null;
-    const resName = params[1] ? params[1].name : null;
-    const nextName = params[2] ? params[2].name : null;
+    // an error handler, four parameters as the router counts them, has err in front
+    const shift = fn.length >= 4 ? 1 : 0;
+    const reqName = params[shift] ? params[shift].name : null;
+    const resName = params[shift + 1] ? params[shift + 1].name : null;
+    const nextName = params[shift + 2] ? params[shift + 2].name : null;
+    // next(err) passes the error on, while err is still the one the router gave, never "route"
+    const errName = shift && !rebinds(root, params[0].name) ? params[0].name : null;
 
     // Every appearance of the three names is judged, nested functions included. An inner binding
     // that shadows one only makes this stricter, so no scope tracking is needed.
@@ -221,7 +225,8 @@ function analyze(fn) {
                 args.length > 1 ||
                 (arg.type !== "NewExpression" &&
                     arg.type !== "ObjectExpression" &&
-                    !(arg.type === "Literal" && typeof arg.value !== "string"))
+                    !(arg.type === "Literal" && typeof arg.value !== "string") &&
+                    !(arg.type === "Identifier" && arg.name === errName))
             ) {
                 mask |= UNKNOWN;
                 return;
@@ -239,6 +244,50 @@ function analyze(fn) {
         }
     });
     return mask;
+}
+
+/**
+ * Whether name is declared or assigned anywhere in the function, nested ones included. Strict:
+ * any mention inside a binding target counts, err.status = 500 does not.
+ *
+ * @param {any} fn
+ * @param {string} name
+ * @returns {boolean}
+ */
+function rebinds(fn, name) {
+    let found = false;
+    /** @param {any} target */
+    const mentions = (target) => {
+        if (target && target.type !== "MemberExpression") {
+            walk(target, null, (node) => {
+                found ||= node.type === "Identifier" && node.name === name;
+            });
+        }
+    };
+    walk(fn.body, null, (node) => {
+        switch (node.type) {
+            case "VariableDeclarator":
+                return mentions(node.id);
+            case "AssignmentExpression":
+            case "ForInStatement":
+            case "ForOfStatement":
+                return mentions(node.left);
+            case "UpdateExpression":
+                return mentions(node.argument);
+            case "CatchClause":
+                return mentions(node.param);
+            case "FunctionDeclaration":
+            case "FunctionExpression":
+            case "ArrowFunctionExpression":
+            case "ClassDeclaration":
+            case "ClassExpression":
+                mentions(node.id);
+                return node.params?.forEach(mentions);
+            case "WithStatement":
+                found = true;
+        }
+    });
+    return found;
 }
 
 /**
@@ -296,11 +345,16 @@ function walk(node, parent, visit) {
  *
  * @param {RouteEntry[]} chain the routes the native handler runs, this route last
  * @param {boolean} allowTerminalNext whether a fall-through past the chain lands only in the 404
+ * @param {number} [onError] the error handlers' usage, which a throw anywhere reaches
  * @returns {{skipHeaders: boolean, skipQuery: boolean}}
  */
-function chainUsage(chain, allowTerminalNext) {
+function chainUsage(chain, allowTerminalNext, onError = 0) {
     const none = { skipHeaders: false, skipQuery: false };
-    let query = false;
+    // a bare next() out of an error handler goes back to routes nobody analyzed
+    if (onError & (UNKNOWN | NEXT_PLAIN)) {
+        return none;
+    }
+    let query = (onError & QUERY) !== 0;
     for (let i = 0; i < chain.length; i++) {
         const entry = chain[i];
         const callbacks = entry.callbacks;

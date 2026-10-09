@@ -22,6 +22,7 @@ const Response = require("./response.js");
 const Request = require("./request.js");
 const { METHODS } = require("http");
 const { tracing } = require("./tracing.js");
+const { callbackUsage } = require("./usage.js");
 
 /** @typedef {import("./walk.js")} Walk */
 /** @typedef {import("./router.js")} Router */
@@ -572,26 +573,25 @@ function nativePreset(path, method) {
 }
 
 /**
- * Whether any error middleware exists under this router, sub-apps included: a throw would hand
- * the request to code the header-skip analysis never saw.
+ * What the error middleware under this router does, sub-apps included, as one usage.js mask: a
+ * throw anywhere hands the request to it. 0 with none.
  *
  * @param {Router} router
- * @returns {boolean}
+ * @returns {number}
  */
-function hasErrorMiddleware(router) {
+function errorHandlersUsage(router) {
+    let mask = 0;
     for (const route of router._routes) {
         for (const callback of route.callbacks) {
             // a callable sub-app is also a function, so the routes are looked for first
             if (callback && callback._routes) {
-                if (hasErrorMiddleware(callback)) {
-                    return true;
-                }
+                mask |= errorHandlersUsage(callback);
             } else if (typeof callback === "function" && callback.length >= 4) {
-                return true;
+                mask |= callbackUsage(callback);
             }
         }
     }
-    return false;
+    return mask;
 }
 
 /**
@@ -901,7 +901,7 @@ module.exports = {
     logError,
     onNativeAborted,
     nativePreset,
-    hasErrorMiddleware,
+    errorHandlersUsage,
     checkHandlers,
     CALLBACK_PLAIN,
     CALLBACK_ERROR,

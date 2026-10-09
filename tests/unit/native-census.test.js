@@ -8,11 +8,9 @@ const { spawnSync } = require("node:child_process");
 
 const { otherRuntime } = require("../../src/uws.js");
 
-// counts per request, a method not listed is never called. The margins seen and not taken, as
-// facts and not as targets: an error handler anywhere turns the header skip off for the whole app,
-// res.cookie and res.write are not known to the analysis so their routes copy the headers, the two
-// writes of /chunks cork twice, and a 204 writes its head in two calls. getQuery beside a full
-// header copy costs 15 to 45ns against the copy's 760, measured, not worth an analysis rule
+// counts per request, a method not listed is never called. Margins not taken yet: res.cookie and
+// res.write copy the headers, /chunks corks twice, a 204 writes its head in two calls. getQuery
+// beside a full header copy costs 15 to 45ns against the copy's 760, not worth a rule
 const BUDGET = {
     "GET /hello": { end: 1, getHeader: 5, writeHeader: 1 },
     "HEAD /hello": { endWithoutBody: 1, getHeader: 5, writeHeader: 1 },
@@ -112,9 +110,9 @@ const BUDGET = {
     "GET /async": { cork: 1, end: 1, getHeader: 5, onAborted: 1, writeHeader: 1 },
     "GET /mw/x": { end: 1, getHeader: 5, writeHeader: 1 },
     "GET /r/x": { end: 1, getHeader: 5, writeHeader: 1 },
-    "GET /hello, with an error handler": { end: 1, forEach: 1, getQuery: 1, writeHeader: 1 },
-    "GET /throw": { end: 1, forEach: 1, getQuery: 1, writeHeader: 1, writeStatus: 1 },
-    "GET /reject": { cork: 1, end: 1, forEach: 1, getQuery: 1, onAborted: 1, writeHeader: 1, writeStatus: 1 },
+    "GET /hello, with an error handler": { end: 1, getHeader: 5, writeHeader: 1 },
+    "GET /throw": { end: 1, getHeader: 5, writeHeader: 1, writeStatus: 1 },
+    "GET /reject": { cork: 1, end: 1, getHeader: 5, onAborted: 1, writeHeader: 1, writeStatus: 1 },
     "GET /missing": {
         cork: 1,
         end: 1,
