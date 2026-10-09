@@ -39,6 +39,7 @@ const { Worker } = require("worker_threads");
 const cluster = require("cluster");
 const { registerWebSocketRoutes } = require("./websocket.js");
 const { addServerMembers } = require("./server-shape.js");
+const { serverObserved, serveObserved } = require("./tracing.js");
 const { workerCount, forkWorkers, isSupervising, becomeSupervisor } = require("./cluster.js");
 
 /** @typedef {import("uWebSockets.js").HttpRequest} UwsRequest */
@@ -550,7 +551,12 @@ class Application extends Router {
             return this._refuseRequest(response);
         }
         try {
-            this._routeRequestDirect(request, response);
+            if (serverObserved()) {
+                // node:http's channels have subscribers, see src/tracing.js
+                serveObserved(this, request, response);
+            } else {
+                this._routeRequestDirect(request, response);
+            }
         } finally {
             // the synchronous stretch ran under uWS's own cork
             response._corkNeeded = true;
