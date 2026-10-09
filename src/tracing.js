@@ -228,4 +228,69 @@ function traceMount(walk, callback) {
     });
 }
 
-module.exports = { tracing, report, traceHandler, traceErrorHandler, traceMount };
+// node:http's own channels. Through http.createServer(app) node publishes them; on µWS fulmine does,
+// at the same points, and the request goes through server.emit("request") as node sends it, where a
+// tracer that wraps the server's emit (Sentry) opens its scope. The server is the app, which
+// listen() returns as the server handle.
+const requestStart = dc.channel("http.server.request.start");
+const responseCreated = dc.channel("http.server.response.created");
+const responseFinish = dc.channel("http.server.response.finish");
+
+/** @type {WeakSet<object>} the apps whose "request" event already runs the walk */
+const dispatching = new WeakSet();
+
+/**
+ * Whether node:http's server channels have subscribers.
+ *
+ * @returns {boolean}
+ */
+function serverObserved() {
+    return requestStart.hasSubscribers || responseCreated.hasSubscribers || responseFinish.hasSubscribers;
+}
+
+/**
+ * Whether anything listens that needs every request to run its javascript: no compiled chain, no
+ * response µWS writes on its own.
+ *
+ * @returns {boolean}
+ */
+function observed() {
+    return tracing() || serverObserved();
+}
+
+/**
+ * Serves a µWS request as node:http does while its channels have subscribers: response.created
+ * and request.start, then server.emit("request"), and response.finish when the response is out.
+ *
+ * @param {any} app the application, which is the server listen() returned
+ * @param {any} request
+ * @param {any} response
+ */
+function serveObserved(app, request, response) {
+    const socket = request.socket;
+    if (responseCreated.hasSubscribers) {
+        responseCreated.publish({ request, response });
+    }
+    if (requestStart.hasSubscribers) {
+        requestStart.publish({ request, response, socket, server: app });
+    }
+    if (responseFinish.hasSubscribers) {
+        response.once("finish", () => responseFinish.publish({ request, response, socket, server: app }));
+    }
+    if (!dispatching.has(app)) {
+        dispatching.add(app);
+        app.on("request", (/** @type {any} */ req, /** @type {any} */ res) => app._routeRequestDirect(req, res));
+    }
+    app.emit("request", request, response);
+}
+
+module.exports = {
+    tracing,
+    observed,
+    serverObserved,
+    serveObserved,
+    report,
+    traceHandler,
+    traceErrorHandler,
+    traceMount
+};
