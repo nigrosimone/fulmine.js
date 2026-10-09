@@ -8,6 +8,8 @@ description: Fulmine.js is a drop-in Express 5 replacement for Node.js, powered 
 
 <script setup>
 import CopyCommand from '../site/.vitepress/theme/CopyCommand.vue'
+import ArenaChart from '../site/.vitepress/theme/ArenaChart.vue'
+import arena from '../site/.vitepress/theme/arena.json'
 </script>
 
 <main class="fulmine-home">
@@ -85,9 +87,20 @@ app.listen(3000);
 </div>
 </section>
 
+<section class="fm-section fm-wrap fm-arena-section" aria-labelledby="arena-title">
+<div class="fm-section-copy">
+<p class="fm-eyebrow"><span class="fm-section-number">03</span> MEASURED BY OTHERS</p>
+<h2 id="arena-title">#{{ arena.rank }} of {{ arena.total }}.<br>#{{ arena.jsRank }} in JavaScript.</h2>
+<p>HttpArena is an open benchmark: every framework runs the same tests on the same machine. This is Fulmine next to the frameworks you know, in JavaScript and in the other languages.</p>
+<a class="fm-text-link" href="https://www.http-arena.com/">See the full board</a>
+<a class="fm-subtle-link" href="https://www.http-arena.com/frameworks/fulmine.js/">Fulmine.js on HttpArena</a>
+</div>
+<ArenaChart />
+</section>
+
 <section class="fm-section fm-wrap fm-ecosystem" aria-labelledby="ecosystem-title">
 <div class="fm-section-copy">
-<p class="fm-eyebrow"><span class="fm-section-number">03</span> BRING YOUR STACK</p>
+<p class="fm-eyebrow"><span class="fm-section-number">04</span> BRING YOUR STACK</p>
 <h2 id="ecosystem-title">All your favourites.<br>Already on board.</h2>
 <p>From a single endpoint to a full-stack framework. Integrations run against both Express and Fulmine in CI, with their outputs compared.</p>
 <a class="fm-text-link" href="/compatibility">Explore compatibility <span aria-hidden="true">→</span></a>

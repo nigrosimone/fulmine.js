@@ -128,7 +128,7 @@ export default [
         }
     },
     {
-        files: ["eslint.config.mjs", "eslint-rules/*.mjs"],
+        files: ["eslint.config.mjs", "eslint-rules/*.mjs", "site/*.mjs"],
         languageOptions: {
             sourceType: "module"
         }

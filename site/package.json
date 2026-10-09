@@ -5,7 +5,8 @@
     "scripts": {
         "dev": "vitepress dev",
         "build": "vitepress build",
-        "preview": "vitepress preview"
+        "preview": "vitepress preview",
+        "arena": "node arena.mjs"
     },
     "devDependencies": {
         "vitepress": "^1.6.4",

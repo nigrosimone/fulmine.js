@@ -629,6 +629,114 @@
     text-underline-offset: 3px;
 }
 
+/* HttpArena: one bar per framework, ours in the accent and the others in a neutral gray */
+.fm-arena {
+    --fm-arena-bar: #8b9186;
+    margin: 0;
+}
+
+.dark .fm-arena {
+    --fm-arena-bar: #6f7a6b;
+}
+
+.fm-arena-views {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+}
+
+.fm-arena-views button {
+    padding: 5px 12px;
+    border: 1px solid var(--fm-line);
+    border-radius: 999px;
+    color: var(--fm-muted);
+    font-family: var(--vp-font-family-mono);
+    font-size: 11px;
+    line-height: 1.6;
+}
+
+.fm-arena-views button:hover {
+    color: var(--fm-ink);
+}
+
+.fm-arena-views button[aria-pressed="true"] {
+    border-color: var(--fm-ink);
+    background: var(--fm-ink);
+    color: var(--fm-bg);
+}
+
+.fm-arena-rows {
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid var(--fm-line);
+    list-style: none;
+}
+
+.fm-arena-rows li {
+    display: grid;
+    grid-template-columns: 2.6em minmax(0, 9.5em) minmax(0, 1fr) 3.4em;
+    align-items: center;
+    gap: 12px;
+    padding: 7px 4px;
+    border-bottom: 1px solid var(--fm-line);
+    color: var(--fm-muted);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.fm-arena-rows li:hover {
+    background: var(--fm-surface);
+}
+
+.fm-arena-rank,
+.fm-arena-score {
+    font-family: var(--vp-font-family-mono);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+
+.fm-arena-score {
+    text-align: right;
+}
+
+.fm-arena-name {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 7px;
+    color: var(--fm-ink);
+}
+
+.fm-arena-name small {
+    color: var(--fm-muted);
+    font-family: var(--vp-font-family-mono);
+    font-size: 10px;
+}
+
+.fm-arena-track span {
+    display: block;
+    height: 10px;
+    border-radius: 0 4px 4px 0;
+    background: var(--fm-arena-bar);
+}
+
+.fm-arena-us .fm-arena-name,
+.fm-arena-us .fm-arena-score {
+    color: var(--fm-ink);
+    font-weight: 600;
+}
+
+.fm-arena-us .fm-arena-track span {
+    background: var(--fm-accent);
+}
+
+.fm-arena figcaption {
+    margin-top: 16px;
+    color: var(--fm-muted);
+    font-size: 11px;
+    line-height: 1.9;
+}
+
 .fm-stack {
     border-top: 1px solid var(--fm-line);
 }
@@ -1005,6 +1113,12 @@
 
     .fm-meter {
         margin-top: 18px;
+    }
+
+    .fm-arena-rows li {
+        grid-template-columns: 2.4em minmax(0, 6.5em) minmax(0, 1fr) 3.2em;
+        gap: 8px;
+        padding-inline: 0;
     }
 
     .fm-stack-row {
