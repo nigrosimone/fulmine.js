@@ -34,6 +34,7 @@ const {
 } = require("./utils.js");
 const Walk = require("./walk.js");
 const compileDeclarative = require("./declarative.js");
+const { tracing } = require("./tracing.js");
 const { chainUsage } = require("./usage.js");
 const {
     HAS_LETTER,
@@ -442,6 +443,10 @@ function registerUwsRoute(router, route, optimizedPath) {
         const optimizedParams = route.optimizedParams;
         // no promise pair, nativeDone and nativeFail defer their epilogues to a microtask
         return (res, req) => {
+            // a tracer sees the mounts as express runs them, and the chain has them flattened
+            if (tracing()) {
+                return /** @type {Application} */ (router)._serveGeneric(res, req);
+            }
             // an earlier literal in another case is that route's, which this chain lacks
             if (caseGuards !== null && anyGuardHits(caseGuards, req.getUrl())) {
                 return /** @type {Application} */ (router)._serveGeneric(res, req);
@@ -541,7 +546,9 @@ function registerUwsRoute(router, route, optimizedPath) {
         // no javascript runs, so no case guard could
         caseGuards === null &&
         !resDecMethods.some((method) => resCodes[method] !== responseProto[method].toString()) && // no patched methods
-        router.get("declarative responses")
+        router.get("declarative responses") &&
+        // a response uWS writes runs no handler, so a tracer listening at listen() would miss it
+        !tracing()
     ) {
         const decRes = compileDeclarative(route.callbacks[0], router);
         if (decRes) {

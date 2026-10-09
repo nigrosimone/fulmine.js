@@ -27,6 +27,7 @@ const {
     CALLBACK_ERROR,
     CALLBACK_ROUTER
 } = require("./router-utils.js");
+const { tracing, report, traceHandler, traceErrorHandler, traceMount } = require("./tracing.js");
 
 /** @typedef {import("./request.js")} Request */
 /** @typedef {import("./response.js")} Response */
@@ -84,6 +85,9 @@ class Walk {
      */
     leaveRoute = null;
 
+    /** Whether the express.router.request channel has subscribers, read once per walk. @type {boolean} */
+    trace = false;
+
     /**
      * @param {Router} router
      * @param {Request} req
@@ -104,6 +108,7 @@ class Walk {
         this.resolve = resolve;
         this.reject = reject;
         this.next = this.step.bind(this);
+        this.trace = tracing();
     }
 
     /**
@@ -348,6 +353,9 @@ class Walk {
             ? req._errorKey !== undefined && route.routeKey >= req._errorKey
             : route.routeKey === req._errorKey || (route.group !== undefined && route.group === req._errorGroup);
         if (req._error && kind === CALLBACK_ERROR && reachable) {
+            if (this.trace) {
+                return traceErrorHandler(this, callback);
+            }
             const out = this.router._handleError(req._error, callback, req, this.res);
             if (out instanceof Promise) {
                 // a rejection moves on to the next error handler, a bare one with express's error
@@ -415,6 +423,73 @@ class Walk {
     }
 
     /**
+     * Runs a mounted router or app, and the walk goes on when it hands back.
+     *
+     * @param {any} callback the router or app
+     * @param {import("./tracing.js").TraceContext|null} traceCtx its layer's context when traced
+     * @returns {void}
+     */
+    enterMount(callback, traceCtx) {
+        const req = this.req;
+        const res = this.res;
+        const route = /** @type {RouteEntry} */ (this.route);
+        const router = this.router;
+        if (callback._isApplication) {
+            rememberApp(this, route, req);
+            useApp(req, callback);
+        }
+        const pushedParams = callback._settings.mergeParams;
+        if (pushedParams) {
+            (req._paramStack ??= []).push(req.params);
+        }
+        // express restores req.params when a router hands back
+        const parentParams = req.params;
+        // each router answers OPTIONS with its own verbs, the list is per router
+        const parentMethods = req._matchedMethods;
+        if (parentMethods !== null) {
+            req._matchedMethods = new Set();
+        }
+        callback
+            ._routeRequest(req, res, 0)
+            .then((/** @type {RouteEntry|false} */ routed) => {
+                if (pushedParams) {
+                    /** @type {Record<string, any>[]} */ (req._paramStack).pop();
+                }
+                req.params = parentParams;
+                if (req._error) {
+                    req._errorKey = route.routeKey;
+                    req._errorGroup = route.group;
+                    // what the mount hands back: express's router layer reports it, unless a layer inside did
+                    if (traceCtx !== null) {
+                        report(traceCtx, req._error);
+                    }
+                }
+                if (routed) {
+                    if (parentMethods !== null) {
+                        req._matchedMethods = parentMethods;
+                    }
+                    return this.resolve(true);
+                }
+                const childMethods = req._matchedMethods;
+                if (parentMethods !== null) {
+                    req._matchedMethods = parentMethods;
+                }
+                if (req._isOptions && childMethods !== null && childMethods.size && !req._error) {
+                    // answered as the router hands back; a throw walks on to the error handlers
+                    try {
+                        router._sendOptionsReply(req, res, childMethods);
+                        return this.resolve(true);
+                    } catch (err) {
+                        return this.step(err);
+                    }
+                }
+                // an error out of the mount walks on to the error handlers after it
+                this.step(undefined);
+            })
+            .catch((/** @type {unknown} */ err) => this.reject(err));
+    }
+
+    /**
      * One hop, what next() does: nothing runs the next callback, "route" leaves the route,
      * anything else is the error.
      *
@@ -425,7 +500,6 @@ class Walk {
         const req = this.req;
         const res = this.res;
         const route = this.route;
-        const router = this.router;
         if (thingamabob) {
             if (thingamabob === "route" || thingamabob === "router") {
                 return this.leaveHop(thingamabob === "router");
@@ -447,55 +521,10 @@ class Walk {
         // a mount is stepped over while an error is in flight, as express's Layer#handleError
         // hands it past a three-argument handle
         if (kind === CALLBACK_ROUTER && !req._error) {
-            if (callback._isApplication) {
-                rememberApp(this, route, req);
-                useApp(req, callback);
+            if (this.trace) {
+                return traceMount(this, callback);
             }
-            const pushedParams = callback._settings.mergeParams;
-            if (pushedParams) {
-                (req._paramStack ??= []).push(req.params);
-            }
-            // express restores req.params when a router hands back
-            const parentParams = req.params;
-            // each router answers OPTIONS with its own verbs, the list is per router
-            const parentMethods = req._matchedMethods;
-            if (parentMethods !== null) {
-                req._matchedMethods = new Set();
-            }
-            callback
-                ._routeRequest(req, res, 0)
-                .then((/** @type {RouteEntry|false} */ routed) => {
-                    if (pushedParams) {
-                        /** @type {Record<string, any>[]} */ (req._paramStack).pop();
-                    }
-                    req.params = parentParams;
-                    if (req._error) {
-                        req._errorKey = route.routeKey;
-                        req._errorGroup = route.group;
-                    }
-                    if (routed) {
-                        if (parentMethods !== null) {
-                            req._matchedMethods = parentMethods;
-                        }
-                        return this.resolve(true);
-                    }
-                    const childMethods = req._matchedMethods;
-                    if (parentMethods !== null) {
-                        req._matchedMethods = parentMethods;
-                    }
-                    if (req._isOptions && childMethods !== null && childMethods.size && !req._error) {
-                        // answered as the router hands back; a throw walks on to the error handlers
-                        try {
-                            router._sendOptionsReply(req, res, childMethods);
-                            return this.resolve(true);
-                        } catch (err) {
-                            return this.step(err);
-                        }
-                    }
-                    // an error out of the mount walks on to the error handlers after it
-                    this.step(undefined);
-                })
-                .catch((/** @type {unknown} */ err) => this.reject(err));
+            return this.enterMount(callback, null);
         } else {
             // out of line, its size pushed step past the inlining threshold
             if (req._error || kind === CALLBACK_ERROR) {
@@ -516,6 +545,9 @@ class Walk {
                     return this.step(undefined);
                 }
 
+                if (this.trace) {
+                    return traceHandler(this, callback);
+                }
                 const out = callback(req, res, this.next);
                 if (out instanceof Promise) {
                     // Express 5 forwards a rejected handler promise itself, a bare one with this error
