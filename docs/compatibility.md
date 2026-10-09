@@ -195,6 +195,7 @@ Fulmine adds nine of its own:
 - ✅ options.strict
 - ✅ options.mergeParams
 - ✅ the `express.router.request` TracingChannel of `node:diagnostics_channel`, as Express's router publishes it: `start`, `end`, `asyncStart`, `asyncEnd` and `error` for every middleware, route handler and error handler, with `{ req, res, layer, error, errorHandler }`, on µWS and through `http.createServer(app)`. Subscribe before `listen()`, as APMs ask anyway: a route µWS can answer on its own is compiled at `listen()`, and while something listens at that moment none is, so every handler runs. One difference: an error a mounted router raises while matching, such as a parameter that does not decode, comes out after the router's `end` instead of inside it.
+- ✅ node:http's `http.server.request.start`, `http.server.response.created` and `http.server.response.finish` channels on µWS too, as node publishes them through `http.createServer(app)`: the server is the app `listen()` returns, and the request goes through its `emit("request")`, where a tracer that wraps it (Sentry) opens its scope.
 
 ## Tested middlewares
 
