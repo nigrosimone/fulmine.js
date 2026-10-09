@@ -965,11 +965,6 @@ module.exports = class Router extends EventEmitter {
      * @returns {Promise<true|"route">|true|"route"} a promise only when a param callback is involved
      */
     _preprocessRequest(req, res, route) {
-        // only a route writes it, as express does in Route#dispatch: a metric naming itself after
-        // req.route read the mount here
-        if (route.use !== true) {
-            req.route = route.exposed;
-        }
         // both: the route flag says it was registered natively, the values that this request came that way
         if (route.optimizedParams && req.optimizedParams) {
             req.params = Object.create(null);
@@ -1000,6 +995,12 @@ module.exports = class Router extends EventEmitter {
             if (req._paramStack !== null && req._paramStack.length > 0 && mergesParams(route, this)) {
                 req.params = mergeParams(req.params, req._paramStack);
             }
+        }
+        // only a route writes it, as express does in Route#dispatch: a metric naming itself after
+        // req.route read the mount here. After the decoding, a parameter that does not decode
+        // leaves req.route as it was, as express never dispatches that route
+        if (route.use !== true) {
+            req.route = route.exposed;
         }
 
         // the route's own router's callbacks: an optimized chain is walked by the app even when it
