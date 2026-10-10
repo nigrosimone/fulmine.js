@@ -25,7 +25,7 @@ These are not Express replacements, they are different frameworks with their own
 
 That can be the right call for a new project. For an existing Express application the arithmetic is different: the rewrite costs weeks and Fulmine costs one line, and where the framework is the bottleneck the line buys the same order of gain. Where the bottleneck is elsewhere, a database, `JSON.parse`, zlib, no framework moves it, and [the performance page](./performance.md) says which rows those are.
 
-Numbers between frameworks are only worth reading from a rig that runs all of them the same way: [HttpArena](https://www.http-arena.com/#sort=rps:-1&q=Js) and [web-frameworks](https://web-frameworks-benchmark.netlify.app/result?l=javascript) both do, and both list Fulmine beside Fastify, Hono and Elysia. No figure is copied here, the boards are the current ones.
+Numbers between frameworks are only worth reading from a rig that runs all of them the same way: [HttpArena](https://www.http-arena.com/#sort=rps:-1&q=Js) and [web-frameworks](https://web-frameworks-benchmark.netlify.app/result?l=javascript) both do, and both list Fulmine beside Fastify, Hono and Elysia. [Sharkbench](https://sharkbench.dev/web/javascript) lists it beside Express and Fastify on Node.js and Bun. No figure is copied here, the boards are the current ones.
 
 ## Express on Bun
 

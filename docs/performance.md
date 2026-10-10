@@ -26,6 +26,7 @@ Numbers produced by a project about itself deserve suspicion, so Fulmine also st
 
 - **[HttpArena](https://www.http-arena.com/#sort=rps:-1&q=Js)**: thirty profiles on 64-core dedicated hardware, same conditions for every entry, rerun whenever one of them changes. The link lands filtered on the JavaScript entries. No figures are copied here on purpose: the board is the current one and this page would not be.
 - **[web-frameworks](https://web-frameworks-benchmark.netlify.app/result?l=javascript)**: in the published round, ranked with the other sixty-odd JavaScript entries on their own hardware. Same rule as above, no figures copied here.
+- **[Sharkbench](https://sharkbench.dev/web/javascript)**: ranked with the JavaScript entries on Node.js and Bun. At the time of writing Fulmine is first on requests per second; memory and latency stability are on the board too, read them there.
 
 More to come as their maintainers take the entries in.
 
