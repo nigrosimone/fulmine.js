@@ -163,6 +163,7 @@ with the reason for each: [Differences from Express](./docs/differences.md).
 - [Compatibility](./docs/compatibility.md): the API checklist, tested middlewares, frameworks and view engines
 - [Compared with the others](./docs/compare.md): ultimate-express, hyper-express, Fastify, Bun, raw µWS
 - [Examples](./examples/README.md): one runnable file per feature
+- [Agent skill](./skills/fulmine/SKILL.md): migration and install traps for a coding agent, `npx skills add nigrosimone/fulmine.js`
 - [Attribution](./docs/attribution.md), [Contributing](./CONTRIBUTING.md), [Security](./SECURITY.md), [Changelog](./CHANGELOG.md)
 
 ## Versioning
