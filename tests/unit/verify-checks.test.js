@@ -131,6 +131,18 @@ test("every FROM in every Dockerfile is judged", () => {
     assert.match(results[2].what, /Dockerfile\.worker: node:18-bookworm-slim/, "FROM is matched whatever its case");
 });
 
+test("a bookworm image is refused, named or by default, and node:26 is trixie", () => {
+    const images = ["node:24", "node:22-slim", "node:24.21-bookworm-slim", "node:26", "node:26-slim", "node:lts"];
+    const dir = fixture({ Dockerfile: images.map((image) => `FROM ${image}\n`).join("") });
+    const results = checkDockerfiles(dir);
+    assert.deepStrictEqual(
+        results.map((entry) => entry.level),
+        ["no", "no", "no", "ok", "ok", "ok"]
+    );
+    assert.match(results[0].detail, /Debian bookworm.*node:24-trixie-slim/);
+    assert.match(results[1].detail, /node:22-trixie-slim/);
+});
+
 test("a directory with no Dockerfile has nothing to say", () => {
     assert.deepStrictEqual(checkDockerfiles(fixture({})), []);
     assert.deepStrictEqual(checkDockerfiles(path.join(os.tmpdir(), "fulmine-does-not-exist")), []);

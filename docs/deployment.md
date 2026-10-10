@@ -10,7 +10,7 @@ Docker, pnpm, a private npm registry, and a proxy in front. Requirements first: 
 
 Three things about µWebSockets.js make a Dockerfile that works for Express fail here, and all three have easy answers:
 
-- **No Alpine, and no Debian bookworm either.** µWebSockets.js ships prebuilt binaries linked against glibc 2.38 or newer. Alpine images use musl, so the binary does not load at all; `node:26` and `node:26-slim` are Debian bookworm, whose glibc 2.36 fails at startup with `GLIBC_2.38' not found`. Use the trixie variants: `node:26-trixie-slim` and up.
+- **No Alpine, and no Debian bookworm either.** µWebSockets.js ships prebuilt binaries linked against glibc 2.38 or newer. Alpine images use musl, so the binary does not load at all; Debian bookworm has glibc 2.36 and fails at startup with `GLIBC_2.38' not found`. `node:26` and `node:26-slim` are trixie and work, but `node:22` and `node:24`, with or without `-slim`, are still bookworm: name the suite, `node:24-trixie-slim`. `npx fulmine.js verify` flags a bookworm `FROM`.
 - **`git` must be there when `npm install` runs.** µWebSockets.js is not on npm; it is installed straight from GitHub (`github:uNetworking/uWebSockets.js`), and npm uses git to fetch it. Full images like `node:26-trixie` have git; `-slim` ones do not.
 - **git must be allowed to speak https.** Where the build environment rewrites GitHub URLs to ssh, which some CI images and company-wide git configs do, the fetch asks for a key the image does not have and the install dies on a permission denied that never names µWebSockets.js. One line before `npm ci` puts it back:
 

@@ -34,6 +34,11 @@ const MIN_NODE = require("../package.json").engines.node.replace(/[^0-9.]/g, "")
 const MIN_NODE_MAJOR = MIN_NODE.split(".")[0];
 const SWAP_IMAGE = `node:${MIN_NODE_MAJOR}-trixie-slim`;
 
+// Debian suites with a glibc older than MIN_GLIBC. node:22 and node:24 with no suite named are still
+// bookworm (docker-library, October 2026), node:26 is the first one that defaults to trixie.
+const OLD_DEBIAN = /-(bookworm|bullseye|buster|stretch)(-|$)/;
+const FIRST_TRIXIE_DEFAULT = 26;
+
 // What a project may carry that needs a different API here. Everything that just works is
 // `npx fulmine migrate`'s business.
 /** @type {Record<string, string>} */
@@ -119,7 +124,7 @@ function checkLibc(platform, glibc) {
             "no",
             "musl libc, which the µWebSockets.js binaries are not built for",
             "this is Alpine, or another musl distribution. Use a glibc image: node:22-trixie-slim, " +
-                "node:24-bookworm-slim\n    or the plain node:22. There is no musl build to install."
+                "node:24-trixie-slim\n    or node:26-slim. There is no musl build to install."
         );
     }
     if (!atLeast(glibc, MIN_GLIBC)) {
@@ -230,6 +235,14 @@ function checkDockerfiles(dir) {
             const node = /^node:(\d+)/.exec(image);
             if (node && Number(node[1]) < Number(MIN_NODE_MAJOR)) {
                 results.push(result("no", where, `this package needs node ${MIN_NODE_MAJOR} or newer: ${SWAP_IMAGE}.`));
+                continue;
+            }
+            const suite = OLD_DEBIAN.exec(image);
+            const bare = node && Number(node[1]) < FIRST_TRIXIE_DEFAULT && /^node:[\d.]+(-slim)?$/.test(image);
+            if (suite || bare) {
+                const swap = node ? `node:${node[1]}-trixie-slim` : SWAP_IMAGE;
+                const which = suite ? suite[1] : "bookworm";
+                results.push(result("no", where, `Debian ${which}, its glibc is too old for the binaries: ${swap}.`));
                 continue;
             }
             results.push(result("ok", where));

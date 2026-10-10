@@ -33,8 +33,9 @@ files are not Express here.
 µWS is a native binary installed from GitHub, not from npm. Most failures come from this.
 
 - **Node 22, 24 or 26 only.** Node 23 and 25 have no binary and fail at `require`.
-- **glibc 2.38 or newer.** No Alpine (musl), no Debian bookworm. Use `node:26-trixie` /
-  `node:26-trixie-slim`.
+- **glibc 2.38 or newer.** No Alpine (musl), no Debian bookworm. `node:26` and `node:26-slim` are
+  trixie and work. `node:22` and `node:24` are still bookworm: use `node:22-trixie-slim` /
+  `node:24-trixie-slim`.
 - **git must be in the image when `npm install` runs**: `-slim` images need
   `apt-get install -y git ca-certificates`, or use a multi-stage build (install on `node:26-trixie`,
   run on `node:26-trixie-slim`).
