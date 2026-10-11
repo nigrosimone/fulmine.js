@@ -100,12 +100,32 @@ export default defineConfig({
                 ]
             },
             {
+                text: "Examples",
+                collapsed: true,
+                items: [
+                    { text: "All examples", link: "/examples/" },
+                    { text: "Fast path in tests", link: "/examples/fast-routes" },
+                    { text: "Cluster on one port", link: "/examples/cluster" },
+                    { text: "WebSockets", link: "/examples/websocket" },
+                    { text: "socket.io", link: "/examples/socket-io" },
+                    { text: "MCP server", link: "/examples/mcp" },
+                    { text: "Pre-compressed static", link: "/examples/static-precompressed" },
+                    { text: "Compression", link: "/examples/compression" },
+                    { text: "Server-Timing", link: "/examples/server-timing" },
+                    { text: "HTTPS", link: "/examples/https" },
+                    { text: "PROXY protocol", link: "/examples/proxy-protocol" },
+                    { text: "Graceful shutdown", link: "/examples/graceful-shutdown" },
+                    { text: "Tracing channels", link: "/examples/monitoring" },
+                    { text: "node:http, Bun, Deno", link: "/examples/node-http" },
+                    { text: "DELETE with a body", link: "/examples/body-methods" }
+                ]
+            },
+            {
                 text: "Reference",
                 items: [
                     { text: "Differences from Express", link: "/differences" },
                     { text: "Compatibility", link: "/compatibility" },
                     { text: "Attribution", link: "/attribution" },
-                    { text: "Examples", link: `${repo}/tree/main/examples` },
                     { text: "Changelog", link: `${repo}/blob/main/CHANGELOG.md` }
                 ]
             }
