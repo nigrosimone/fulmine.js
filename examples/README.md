@@ -25,7 +25,10 @@ node websocket.js
 | [https.js](./https.js)                               | TLS through `express({ uwsOptions })` rather than `https.createServer()`                                        |
 | [proxy-protocol.js](./proxy-protocol.js)             | `trust proxy protocol`, the PROXY preamble, and why it is off by default                                        |
 | [graceful-shutdown.js](./graceful-shutdown.js)       | the app answering as an `http.Server`, and what is behind that surface                                          |
+| [monitoring.js](./monitoring.js)                     | the `express.router.request` and `http.server.*` channels a tracer reads, also on uWS                           |
+| [node-http.js](./node-http.js)                       | `http.createServer(app)`, the way supertest, Bun and Deno serve it                                              |
+| [body-methods.js](./body-methods.js)                 | `body methods`, for a DELETE that carries a JSON body                                                           |
 
-The readme's [Performance tips](../docs/performance.md#performance-tips) is the prose these go with, and
+Each one is also a page of the site, under [Examples](https://fulmine.sndesign.it/examples/). The readme's [Performance tips](../docs/performance.md#performance-tips) is the prose these go with, and
 [Differences from Express](../docs/differences.md) is what to read before assuming
 something here behaves as it does there.
