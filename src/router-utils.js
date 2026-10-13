@@ -66,6 +66,7 @@ const { callbackUsage } = require("./usage.js");
  * @property {undefined} path
  * @property {never[]} keys
  * @property {RouteEntry|undefined} route
+ * @property {(path: string) => boolean} match
  */
 /**
  * A websocket registration, kept until listen() hands it to µWS.
@@ -157,7 +158,8 @@ function layerFor(route, callback) {
         params: undefined,
         path: undefined,
         keys: /** @type {never[]} */ ([]),
-        route: undefined
+        route: undefined,
+        match: matcherFor(route)
     };
     route._layers.set(callback, layer);
     return layer;
@@ -195,7 +197,26 @@ function routeLayer(route) {
         };
         step();
     };
-    return { handle, name: "handle", params: undefined, path: undefined, keys: [], route: route.exposed };
+    return {
+        handle,
+        name: "handle",
+        params: undefined,
+        path: undefined,
+        keys: [],
+        route: route.exposed,
+        match: matcherFor(route)
+    };
+}
+
+/**
+ * express's layer.match(path), whether the layer answers that path. Colyseus asks it for "/".
+ * Only the answer: express also fills layer.params and layer.path, which stay undefined here.
+ *
+ * @param {RouteEntry} route
+ * @returns {(path: string) => boolean}
+ */
+function matcherFor(route) {
+    return (path) => route.owner._pathMatches(route, /** @type {any} */ ({ _opPath: String(path) }));
 }
 
 /**

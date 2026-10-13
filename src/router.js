@@ -213,7 +213,7 @@ module.exports = class Router extends EventEmitter {
     /** @type {Record<string, any>|undefined} */
     _pendingGroupMethods;
 
-    /** @type {(Omit<Layer, "route"> & {method: string|undefined})[]|undefined} */
+    /** @type {(Omit<Layer, "route" | "match"> & {method: string|undefined})[]|undefined} */
     _pendingGroupStack;
 
     /**
@@ -1278,7 +1278,7 @@ module.exports = class Router extends EventEmitter {
         const fns = new NullObject();
         // one map and one stack for the chain, express builds one Route for it
         const groupMethods = new NullObject();
-        /** @type {(Omit<Layer, "route"> & {method: string|undefined})[]} express's Route#stack, see createRoute */
+        /** @type {(Omit<Layer, "route" | "match"> & {method: string|undefined})[]} express's Route#stack, see createRoute */
         const groupStack = [];
         fns.path = path;
         fns.methods = groupMethods;
