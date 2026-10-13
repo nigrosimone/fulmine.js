@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.24.1](https://github.com/nigrosimone/fulmine.js/compare/v5.24.0...v5.24.1) (2026-10-13)
+
+### Bug Fixes
+
+* **router:** layers, routers and app.route() carry what express exposes on them, for route listers and Colyseus ([e24eddf](https://github.com/nigrosimone/fulmine.js/commit/e24eddfeff7d5caaca37a30fc3318f6cb654d898))
+* **body:** parser errors take http-errors' shape, message enumerable and status on the class, body on urlencoded ones ([e3ef33e](https://github.com/nigrosimone/fulmine.js/commit/e3ef33e14846e062a2e6fed9e4d20b1ee592a6be))
+
 ## [5.24.0](https://github.com/nigrosimone/fulmine.js/compare/v5.23.0...v5.24.0) (2026-10-13)
 
 ### Features
