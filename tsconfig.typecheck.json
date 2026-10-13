@@ -33,7 +33,6 @@
             "fulmine.js": ["./src/types.d.ts"]
         }
     },
-    // types/ holds the shims of optional peers, which are not installed here
-    "include": ["src/**/*", "types/**/*"],
+    "include": ["src/**/*"],
     "exclude": ["node_modules", "coverage"]
 }

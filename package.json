@@ -13,10 +13,6 @@
             "types": "./src/nest.d.ts",
             "default": "./src/nest.js"
         },
-        "./colyseus": {
-            "types": "./src/colyseus.d.ts",
-            "default": "./src/colyseus.js"
-        },
         "./package.json": "./package.json",
         "./*": "./*"
     },
@@ -93,8 +89,7 @@
         "angular ssr",
         "nextjs",
         "cluster",
-        "typescript",
-        "colyseus"
+        "typescript"
     ],
     "types": "src/types.d.ts",
     "author": "Nigro Simone",
@@ -130,14 +125,10 @@
         "vary": "^1.1.2"
     },
     "peerDependencies": {
-        "@nestjs/platform-express": ">=10",
-        "@colyseus/uwebsockets-transport": ">=0.18.4"
+        "@nestjs/platform-express": ">=10"
     },
     "peerDependenciesMeta": {
         "@nestjs/platform-express": {
-            "optional": true
-        },
-        "@colyseus/uwebsockets-transport": {
             "optional": true
         }
     },
