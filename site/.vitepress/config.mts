@@ -96,7 +96,8 @@ export default defineConfig({
                     { text: "Performance", link: "/performance" },
                     { text: "Monitoring", link: "/monitoring" },
                     { text: "WebSockets", link: "/websockets" },
-                    { text: "NestJS", link: "/nest" }
+                    { text: "NestJS", link: "/nest" },
+                    { text: "Colyseus", link: "/colyseus" }
                 ]
             },
             {

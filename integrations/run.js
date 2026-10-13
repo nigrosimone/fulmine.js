@@ -89,7 +89,9 @@ function runArm(file, arm) {
             {
                 cwd: __dirname,
                 timeout: CASE_TIMEOUT_MS,
-                env: { ...process.env, INTEGRATION_ARM: arm },
+                // fulmine.js is linked from the directory above, so an optional peer it requires
+                // (fulmine.js/colyseus) is looked for there first and here only as a fallback
+                env: { ...process.env, INTEGRATION_ARM: arm, NODE_PATH: path.join(__dirname, "node_modules") },
                 maxBuffer: 32 * 1024 * 1024
             },
             (error, stdout, stderr) => {
