@@ -62,6 +62,8 @@ module.exports.Router = function (options) {
 
 // express exports it, and code that builds a route by hand rather than through a router uses it
 module.exports.Route = Route;
+// router 2 hangs the class on Router, express.Router.Route
+/** @type {any} */ (module.exports.Router).Route = Route;
 
 module.exports.request = Request.prototype;
 module.exports.response = Response.prototype;

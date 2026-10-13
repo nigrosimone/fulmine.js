@@ -182,3 +182,89 @@ test("nothing Express carries goes missing here without being written down", asy
     assert.deepStrictEqual(unlisted, { request: [], response: [], socket: [] });
     assert.deepStrictEqual(closed, { request: [], response: [], socket: [] });
 });
+
+/**
+ * The objects code reaches through the router instead of the request: the module, the app, a
+ * Router, the Route app.route() hands back, the layers of the three stacks and req.route. Colyseus
+ * asks app.router.stack[i].match("/"), route listers call layer.matchers[0].
+ *
+ * @param {any} framework
+ * @returns {Promise<Record<string, Set<string>>>}
+ */
+async function routerSurfaceOf(framework) {
+    const app = framework();
+    const router = framework.Router();
+    router.get("/x", function inner(req, res) {
+        res.end();
+    });
+    app.use(function pathless(req, res, next) {
+        next();
+    });
+    app.use("/mounted", router);
+    /** @type {any} */
+    let seenRoute;
+    app.get("/route/:id", function seen(req, res) {
+        seenRoute = req.route;
+        res.end("ok");
+    });
+    const route = app.route("/chained").get(function chained(req, res) {
+        res.end();
+    });
+    const stack = app.router.stack;
+    const server = await new Promise((done) => {
+        const started = app.listen(0, () => done(started));
+    });
+    const port = (server.address ? server.address() : app.address()).port;
+    await fetch(`http://127.0.0.1:${port}/route/1`);
+    await new Promise((done) => server.close(() => done()));
+    // req.route is the Route in express and the route's record here: its fields are compared, not
+    // the verb methods express's Route carries for registering, which nobody calls on req.route
+    const fields = new Set([...members(seenRoute)].filter((name) => typeof seenRoute[name] !== "function"));
+    return {
+        exports: members(framework),
+        app: members(app),
+        router: members(router),
+        Router: members(framework.Router),
+        route: members(route),
+        useLayer: members(stack.find((/** @type {any} */ l) => l.name === "pathless")),
+        mountLayer: members(stack.find((/** @type {any} */ l) => l.name === "router")),
+        routeLayer: members(stack.find((/** @type {any} */ l) => l.route)),
+        routeStackLayer: members(route.stack[0]),
+        reqRoute: fields
+    };
+}
+
+// What Express has there and this project does not, each with the reason
+/** @type {Record<string, Set<string>>} */
+const ROUTER_GAPS = {
+    exports: new Set(),
+    // they reset an app to its defaults: express calls them once from createApplication, an
+    // application never does
+    app: new Set(["defaultConfiguration", "init"]),
+    router: new Set(),
+    Router: new Set(),
+    route: new Set(),
+    useLayer: new Set(),
+    mountLayer: new Set(),
+    routeLayer: new Set(),
+    routeStackLayer: new Set(),
+    reqRoute: new Set()
+};
+
+test("nothing Express carries on the router and its layers goes missing without being written down", async () => {
+    const reference = await routerSurfaceOf(express);
+    const ours = await routerSurfaceOf(fulmine);
+
+    /** @type {Record<string, string[]>} */
+    const unlisted = {};
+    /** @type {Record<string, string[]>} */
+    const closed = {};
+    for (const kind of Object.keys(ROUTER_GAPS)) {
+        const missing = [...reference[kind]].filter((name) => !ours[kind].has(name));
+        unlisted[kind] = missing.filter((name) => !ROUTER_GAPS[kind].has(name)).sort();
+        closed[kind] = [...ROUTER_GAPS[kind]].filter((name) => !missing.includes(name)).sort();
+    }
+    const none = Object.fromEntries(Object.keys(ROUTER_GAPS).map((kind) => [kind, []]));
+    assert.deepStrictEqual(unlisted, none);
+    assert.deepStrictEqual(closed, none);
+});

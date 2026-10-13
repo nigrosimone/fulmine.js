@@ -908,6 +908,7 @@ const defaultSettings = {
     "query parser fn": () => parseQuery,
     "subdomain offset": 2,
     "trust proxy": false,
+    "trust proxy fn": () => compileTrust(false),
     views: () => path.join(process.cwd(), "views"),
     "view cache": () => process.env.NODE_ENV === "production",
     // off, unlike Express: every hardening guide says to remove it

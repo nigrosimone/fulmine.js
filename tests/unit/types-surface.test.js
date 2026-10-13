@@ -110,6 +110,11 @@ const INTERNAL = new Set([
     "readSmallFile",
     "ssl",
     "workers",
+    // router 2's options, express's on app.router: here app.router is the application itself
+    "caseSensitive",
+    "mergeParams",
+    "params",
+    "strict",
     // tseep's emitter, which the application extends rather than node's
     "addListenerBound",
     "removeListenerBound",

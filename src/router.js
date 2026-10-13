@@ -32,6 +32,7 @@ const {
 } = require("./utils.js");
 const Response = require("./response.js");
 const Request = require("./request.js");
+const Route = require("./route.js");
 const { EventEmitter } = require("tseep");
 const statuses = require("statuses");
 const { METHODS } = require("http");
@@ -44,6 +45,7 @@ const { useRouterClass, optimizeRoute, compileOptimizedRoutes, registerUwsRoute 
 const {
     layerFor,
     routeLayer,
+    routeStackLayer,
     nativeDone,
     nativeFail,
     ownParamNames,
@@ -213,7 +215,7 @@ module.exports = class Router extends EventEmitter {
     /** @type {Record<string, any>|undefined} */
     _pendingGroupMethods;
 
-    /** @type {(Omit<Layer, "route" | "match"> & {method: string|undefined})[]|undefined} */
+    /** @type {(Layer & {method: string|undefined})[]|undefined} */
     _pendingGroupStack;
 
     /**
@@ -344,7 +346,8 @@ module.exports = class Router extends EventEmitter {
         const etagMethods = this.get("etag methods");
         hot.etagMethods = etagMethods == null ? null : new Set(etagMethods);
         hot.queryParserFn = this.get("query parser fn");
-        hot.trustProxyFn = this.get("trust proxy fn");
+        // only when trusted: an absent function is req.ip's way past proxy-addr, and false or 0 trusts nobody
+        hot.trustProxyFn = this.get("trust proxy") ? this.get("trust proxy fn") : undefined;
         hot.trustProxyProtocol = !!this.get("trust proxy protocol");
         hot.jsonEscape = this.get("json escape");
         hot.jsonReplacer = this.get("json replacer");
@@ -555,6 +558,66 @@ module.exports = class Router extends EventEmitter {
     }
 
     /**
+     * router 2's options read back as properties: express.Router({ caseSensitive }) answers what it
+     * was given, app.router the routing setting as it is now (express keeps the one its router was
+     * made with, routing here follows the current one). Written, the setting changes.
+     *
+     * @returns {boolean|undefined}
+     */
+    get caseSensitive() {
+        return this._routerOption("case sensitive routing");
+    }
+
+    set caseSensitive(value) {
+        this.settings["case sensitive routing"] = value;
+    }
+
+    /** @returns {boolean|undefined} */
+    get strict() {
+        return this._routerOption("strict routing");
+    }
+
+    set strict(value) {
+        this.settings["strict routing"] = value;
+    }
+
+    /** @returns {boolean|undefined} */
+    get mergeParams() {
+        return this._settings.mergeParams;
+    }
+
+    set mergeParams(value) {
+        this.settings.mergeParams = value;
+    }
+
+    /**
+     * router 2's param() callbacks by name, as a plain object over the same arrays.
+     *
+     * @returns {Record<string, Function[]>}
+     */
+    get params() {
+        return Object.fromEntries(this._paramCallbacks);
+    }
+
+    set params(value) {
+        // the map itself stays: every route of this router holds it
+        this._paramCallbacks.clear();
+        for (const name in value) {
+            this._paramCallbacks.set(name, value[name]);
+        }
+    }
+
+    /**
+     * An option of router 2: the app's router answers a boolean, as express builds it from enabled().
+     *
+     * @param {string} key
+     * @returns {boolean|undefined}
+     */
+    _routerOption(key) {
+        return this._isApplication ? Boolean(this.get(key)) : this._settings[key];
+    }
+
+    /**
      * The layers in Express's own shape, one per middleware and per route with the handlers under
      * `route.stack`: endpoint listers walk it, LibreChat pulls a middleware out of it by name. A
      * view rebuilt on every read, so pushing or splicing moves nothing; the layer objects are kept,
@@ -621,14 +684,7 @@ module.exports = class Router extends EventEmitter {
             }
             for (const verb of verbs) {
                 for (const handle of callbacks) {
-                    stack.push({
-                        handle,
-                        name: handle.name || "<anonymous>",
-                        params: undefined,
-                        path: undefined,
-                        keys: [],
-                        method: verb
-                    });
+                    stack.push(routeStackLayer(handle, verb));
                 }
             }
         }
@@ -1275,10 +1331,12 @@ module.exports = class Router extends EventEmitter {
     route(path) {
         // one route as far as an error is concerned, see errorHop
         const group = ++routeGroups;
-        const fns = new NullObject();
+        // a Route as express hands it back: _methods(), _handlesMethod() and dispatch() read the
+        // methods and the stack below
+        const fns = /** @type {any} */ (Object.create(Route.prototype));
         // one map and one stack for the chain, express builds one Route for it
         const groupMethods = new NullObject();
-        /** @type {(Omit<Layer, "route" | "match"> & {method: string|undefined})[]} express's Route#stack, see createRoute */
+        /** @type {(Layer & {method: string|undefined})[]} express's Route#stack, see createRoute */
         const groupStack = [];
         fns.path = path;
         fns.methods = groupMethods;
@@ -1397,3 +1455,8 @@ for (const method of methods) {
         return this.createRoute(method, path, this, ...callbacks);
     };
 }
+
+// node's EventEmitter has rawListeners; tseep's types declare it, its code does not have it
+/** @type {any} */ (module.exports.prototype).rawListeners = function rawListeners(/** @type {any} */ event) {
+    return this.listeners(event);
+};

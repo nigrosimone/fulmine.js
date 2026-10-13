@@ -58,15 +58,8 @@ const { callbackUsage } = require("./usage.js");
  * @typedef {{path: string, use: boolean, method: string, all: boolean, params: boolean}} MountGuard
  */
 /**
- * A layer as express shapes it, for app.stack and router.stack.
- * @typedef {object} Layer
- * @property {Function} handle
- * @property {string} name
- * @property {undefined} params
- * @property {undefined} path
- * @property {never[]} keys
- * @property {RouteEntry|undefined} route
- * @property {(path: string) => boolean} match
+ * What a layer's matcher answers, path-to-regexp's match() as router 2 calls it.
+ * @typedef {{path: string, params: Record<string, unknown>}|false} LayerMatch
  */
 /**
  * A websocket registration, kept until listen() hands it to µWS.
@@ -138,6 +131,119 @@ for (const method of resDecMethods) {
     resCodes[method] = Response.prototype[method].toString();
 }
 
+// a route's own layer in route.stack answers "/" alone, the trailing slash allowed, as router 2's does
+const ROUTE_STACK_PATH = /^\/\/?$/;
+
+/**
+ * A layer as router 2 makes it, for app.router.stack, router.stack and route.stack: its fields
+ * and methods, for the route listers that read matchers and the code that runs a layer by hand.
+ */
+class Layer {
+    /**
+     * @param {Function} handle
+     * @param {string} name
+     * @param {boolean} slash a use with no path, which matches every path
+     * @param {(path: string) => LayerMatch} matcher
+     */
+    constructor(handle, name, slash, matcher) {
+        this.handle = handle;
+        /** @type {string[]} */
+        this.keys = [];
+        this.name = name;
+        /** @type {Record<string, unknown>|undefined} */
+        this.params = undefined;
+        /** @type {string|undefined} */
+        this.path = undefined;
+        this.slash = slash;
+        this.matchers = [matcher];
+    }
+
+    /**
+     * Whether the layer answers the path, filling params, path and keys as express does.
+     *
+     * @param {string|null|undefined} path
+     * @returns {boolean}
+     */
+    match(path) {
+        /** @type {LayerMatch} */
+        let match = false;
+        if (path != null) {
+            if (this.slash) {
+                this.params = {};
+                this.path = "";
+                return true;
+            }
+            match = this.matchers[0](path);
+        }
+        if (!match) {
+            this.params = undefined;
+            this.path = undefined;
+            return false;
+        }
+        this.params = match.params;
+        this.path = match.path;
+        this.keys = Object.keys(match.params);
+        return true;
+    }
+
+    /**
+     * Runs an error handler, as router 2 does: a rejected promise goes to next().
+     *
+     * @param {unknown} error
+     * @param {any} req
+     * @param {any} res
+     * @param {(err?: unknown) => void} next
+     */
+    handleError(error, req, res, next) {
+        const fn = this.handle;
+        if (fn.length !== 4) {
+            return next(error);
+        }
+        try {
+            settle(fn(error, req, res, next), next);
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    /**
+     * Runs a request handler, as router 2 does.
+     *
+     * @param {any} req
+     * @param {any} res
+     * @param {(err?: unknown) => void} next
+     */
+    handleRequest(req, res, next) {
+        const fn = this.handle;
+        if (fn.length > 3) {
+            return next();
+        }
+        try {
+            settle(fn(req, res, next), next);
+        } catch (err) {
+            next(err);
+        }
+    }
+}
+
+/**
+ * A handler's promise that rejects goes to next(), as router 2 sends it.
+ *
+ * @param {unknown} ret what the handler returned
+ * @param {(err?: unknown) => void} next
+ */
+function settle(ret, next) {
+    if (
+        ret !== null &&
+        (typeof ret === "object" || typeof ret === "function") &&
+        typeof (/** @type {any} */ (ret).then) === "function"
+    ) {
+        /** @type {any} */ (ret).then(null, (/** @type {unknown} */ error) =>
+            next(error || new Error("Rejected promise"))
+        );
+    }
+}
+
 /**
  * The layer Express makes for one mounted handler, with the name a caller matches on.
  *
@@ -147,20 +253,16 @@ for (const method of resDecMethods) {
  * @returns {Layer}
  */
 function layerFor(route, callback) {
-    const layer = {
-        handle: callback,
-        // express names its own handles "app" and "router"
-        name: Array.isArray(callback._routes)
-            ? callback._isApplication
-                ? "app"
-                : "router"
-            : callback.name || "<anonymous>",
-        params: undefined,
-        path: undefined,
-        keys: /** @type {never[]} */ ([]),
-        route: undefined,
-        match: matcherFor(route)
-    };
+    // express names its own handles "app" and "router"
+    const name = Array.isArray(callback._routes)
+        ? callback._isApplication
+            ? "app"
+            : "router"
+        : callback.name || "<anonymous>";
+    const layer = /** @type {Layer & {route: undefined}} */ (
+        new Layer(callback, name, route.pattern === EMPTY_REGEX, matcherFor(route))
+    );
+    layer.route = undefined;
     route._layers.set(callback, layer);
     return layer;
 }
@@ -197,26 +299,52 @@ function routeLayer(route) {
         };
         step();
     };
-    return {
-        handle,
-        name: "handle",
-        params: undefined,
-        path: undefined,
-        keys: [],
-        route: route.exposed,
-        match: matcherFor(route)
-    };
+    const layer = /** @type {Layer & {route: unknown}} */ (new Layer(handle, "handle", false, matcherFor(route)));
+    layer.route = route.exposed;
+    return layer;
 }
 
 /**
- * express's layer.match(path), whether the layer answers that path. Colyseus asks it for "/".
- * Only the answer: express also fills layer.params and layer.path, which stay undefined here.
+ * A layer of route.stack, one per handler per verb.
+ *
+ * @param {Function} handle
+ * @param {string|undefined} method
+ * @returns {Layer & {method: string|undefined}}
+ */
+function routeStackLayer(handle, method) {
+    const layer = /** @type {Layer & {method: string|undefined}} */ (
+        new Layer(handle, handle.name || "<anonymous>", false, (path) =>
+            ROUTE_STACK_PATH.test(String(path)) ? { path: String(path), params: {} } : false
+        )
+    );
+    layer.method = method;
+    return layer;
+}
+
+/**
+ * The matcher of a route's layer: what this router would match, with the params and, for a mount,
+ * the part of the path it consumes. Colyseus asks match("/"), route listers call matchers[0].
  *
  * @param {RouteEntry} route
- * @returns {(path: string) => boolean}
+ * @returns {(path: string) => LayerMatch}
  */
 function matcherFor(route) {
-    return (path) => route.owner._pathMatches(route, /** @type {any} */ ({ _opPath: String(path) }));
+    // a pathless use: router 2's matcher takes "/" alone, match() answers every path through slash
+    if (route.pattern === EMPTY_REGEX) {
+        return (path) => (String(path) === "/" ? { path: "/", params: {} } : false);
+    }
+    // an application's own RegExp is matched by router 2 itself, which answers params first
+    const ownRegExp = typeof route.pattern !== "string" && getPatternMeta(route.pattern) === undefined;
+    return (path) => {
+        const req = /** @type {any} */ ({ _opPath: String(path) });
+        const owner = route.owner;
+        if (!owner._pathMatches(route, req)) {
+            return false;
+        }
+        const params = typeof route.pattern === "string" ? {} : { ...owner._extractParams(route.pattern, req._opPath) };
+        const matched = route.use ? req._opPath.slice(0, mountPrefixLength(route, req)) : req._opPath;
+        return ownRegExp ? { params, path: matched } : { path: matched, params };
+    };
 }
 
 /**
@@ -906,8 +1034,10 @@ module.exports = {
     anyGuardHits,
     resCodes,
     resDecMethods,
+    Layer,
     layerFor,
     routeLayer,
+    routeStackLayer,
     nativeDone,
     nativeFail,
     mountPrefixLength,

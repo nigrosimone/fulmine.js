@@ -61,6 +61,16 @@ class Route {
     }
 
     /**
+     * express's name for handlesMethod, which route listers call.
+     *
+     * @param {string} method
+     * @returns {boolean}
+     */
+    _handlesMethod(method) {
+        return this.handlesMethod(method);
+    }
+
+    /**
      * The verbs this route answers, in upper case, HEAD included when GET is there.
      *
      * @returns {string[]}
