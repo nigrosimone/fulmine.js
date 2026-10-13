@@ -34,7 +34,7 @@ const express = require("fulmine.js"); // instead of require("express")
 - **Your framework works too.** NestJS, Next.js, Astro, SvelteKit, React Router, Angular SSR, Apollo
   Server, tRPC, tsoa, MCP servers: each one is served twice in CI, on Express and on Fulmine, and compared.
 - **Ranked in public.** See [HttpArena](https://www.http-arena.com/#sort=rps:-1&q=Js) and
-  [web-frameworks](https://web-frameworks-benchmark.netlify.app/result?l=javascript), run on their
+  [web-frameworks](https://web-frameworks-benchmark.vercel.app/frameworks/javascript/), run on their
   hardware with their rules. No figure is copied here, the boards are the current ones.
 - **More than Express, when you want it.** Multi-core cluster on one port, native WebSockets, built-in
   compression and pre-compressed static files, Server-Timing, PROXY protocol, TLS. All optional.
