@@ -1,5 +1,30 @@
 # Changelog
 
+## [5.24.0](https://github.com/nigrosimone/fulmine.js/compare/v5.23.0...v5.24.0) (2026-10-13)
+
+### Features
+
+* **tracing:** express's express.router.request TracingChannel for every middleware and handler ([f1f94b0](https://github.com/nigrosimone/fulmine.js/commit/f1f94b04d558c8258e2c0d5c00100e015f9dd321))
+* **tracing:** node's http.server channels on µWS, the request through server.emit as node sends it ([d8986cc](https://github.com/nigrosimone/fulmine.js/commit/d8986cc7a6d8461c4ab48aa5ac88c1cd391c4c7e))
+
+### Bug Fixes
+
+* **router:** layers in app.router.stack answer match(path), as express's, which Colyseus asks for / ([b718bc2](https://github.com/nigrosimone/fulmine.js/commit/b718bc2dac225a75e93878746b10dad2faab6db1))
+* **declarative:** sendStatus types its body text/plain over a type set before it, as express ([7eda83f](https://github.com/nigrosimone/fulmine.js/commit/7eda83f113ad1e76130cd2f5afd6aaed5dd22311))
+* **res:** send(null) keeps the content-type it was given, express 5.3 adds no charset there ([e58f1fa](https://github.com/nigrosimone/fulmine.js/commit/e58f1fa1edbde433331be6ad0f50dccfb5f3ff63))
+* **socket:** the peer's port survives the response for a finish listener, and remoteFamily as node's ([43c04ed](https://github.com/nigrosimone/fulmine.js/commit/43c04ed5fc45cde220c33617dfd2e1e81754babd))
+* **middlewares:** the parsers and express.static() carry body-parser's and serve-static's names ([7687d96](https://github.com/nigrosimone/fulmine.js/commit/7687d96f434c209d9362d5839a63aabb24d20293))
+* **router:** a parameter that does not decode leaves req.route as it was, as express never dispatches the route ([36d53de](https://github.com/nigrosimone/fulmine.js/commit/36d53dee027a6ec21405b6dd6234a4cdc517ee45))
+* **verify:** node:22 and node:24 are still bookworm, flag them and stop suggesting them ([049e5bf](https://github.com/nigrosimone/fulmine.js/commit/049e5bfec019544f91cef1c73b002eb539e46ed0))
+
+### Performance Improvements
+
+* **usage:** an error handler is read like a route, one that reads no header keeps the header skip ([92372ed](https://github.com/nigrosimone/fulmine.js/commit/92372edf9a0f8919a26674fc6f79ab499c3793f9))
+* **req:** req.get folds one header off the raw entries instead of building req.headers ([d22f4ab](https://github.com/nigrosimone/fulmine.js/commit/d22f4aba35f7a85d0cfaa43639fc675182374353))
+* **usage:** res.cookie, write, location, attachment and the header getters keep the header skip ([b9c684c](https://github.com/nigrosimone/fulmine.js/commit/b9c684c07ab5d5883902b53b2f52892a593b22eb))
+* **res:** res.write corks only outside the handler's window, as end() does ([ebd9249](https://github.com/nigrosimone/fulmine.js/commit/ebd92490bbcacdb278f76af4d687b1fabbc0b539))
+* **req:** trust proxy reads the peer without building the socket stand-in, which read the port too ([8a56767](https://github.com/nigrosimone/fulmine.js/commit/8a567671f10638a33b8eecebebbfcff7f32b5343))
+
 ## [5.23.0](https://github.com/nigrosimone/fulmine.js/compare/v5.22.0...v5.23.0) (2026-10-09)
 
 Aligned with Express 5.3.0, with its minimums for qs (^6.16.0) and proxy-addr (^2.0.8).
