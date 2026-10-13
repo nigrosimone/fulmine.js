@@ -306,21 +306,53 @@ function strictSyntaxMessage(text, char) {
     return "strict violation";
 }
 
+// http-errors' shape, one class per status: status, statusCode and expose on its prototype, so a
+// logger's JSON.stringify(err) or {...err} reads the same fields as with body-parser
+/** @type {Map<number, new (message: string) => HttpError>} */
+const httpErrorClasses = new Map();
+
 /**
- * The error a body parser hands to next(), as body-parser shapes it: a status and a `type`.
+ * @param {number} status
+ * @returns {new (message: string) => HttpError}
+ */
+function httpErrorClass(status) {
+    let HttpErrorClass = httpErrorClasses.get(status);
+    if (HttpErrorClass === undefined) {
+        const name = httpErrorName(status);
+        // named through a computed key, "PayloadTooLargeError", as http-errors names its classes
+        HttpErrorClass = /** @type {any} */ ({ [name]: class extends Error {} })[name];
+        const proto = /** @type {HttpError} */ (/** @type {any} */ (HttpErrorClass).prototype);
+        proto.status = status;
+        proto.statusCode = status;
+        proto.expose = status < 500;
+        httpErrorClasses.set(status, /** @type {any} */ (HttpErrorClass));
+    }
+    return /** @type {new (message: string) => HttpError} */ (HttpErrorClass);
+}
+
+/**
+ * The error a body parser hands to next(), as body-parser shapes it through http-errors: the
+ * message an own enumerable field, the name an own hidden one, then the extra fields and the type.
  *
  * @param {string} message
  * @param {number} status
  * @param {string} type body-parser's own name for the kind of failure
  * @param {object} [extra] anything else body-parser puts on that particular error
- * @returns {Error}
+ * @returns {HttpError}
  */
 function bodyError(message, status, type, extra) {
-    /** @type {HttpError} */
-    const err = new Error(message);
-    // http-errors' name, "PayloadTooLargeError"
-    err.name = httpErrorName(status);
-    return asBodyError(err, status, type, extra);
+    const HttpErrorClass = httpErrorClass(status);
+    const err = new HttpErrorClass(message);
+    Object.defineProperty(err, "message", { configurable: true, enumerable: true, value: message, writable: true });
+    Object.defineProperty(err, "name", {
+        configurable: true,
+        enumerable: false,
+        value: HttpErrorClass.name,
+        writable: true
+    });
+    Object.assign(err, extra);
+    err.type = type;
+    return err;
 }
 
 /**
@@ -1311,8 +1343,10 @@ function parameterCount(body, limit) {
 const urlencoded = createBodyParser(
     "application/x-www-form-urlencoded",
     function (req, res, next, options, buf, encoding) {
+        // outside the try: body-parser puts the body on the errors below
+        let body = "";
         try {
-            const body = decodeBody(buf, /** @type {string} */ (encoding));
+            body = decodeBody(buf, /** @type {string} */ (encoding));
             // Express 5 defaults extended to false
             const extended = typeof options.extended !== "undefined" ? options.extended : false;
             // qs alone knows a charset other than utf-8 and the sentinel options
@@ -1321,13 +1355,13 @@ const urlencoded = createBodyParser(
                 // the vendored parser, the limit enforced inside its scan
                 const parsed = parseQuery(body, undefined, options.parameterLimit);
                 if (parseQuery.overflow === true) {
-                    return next(bodyError("too many parameters", 413, "parameters.too.many"));
+                    return next(Object.assign(bodyError("too many parameters", 413, "parameters.too.many"), { body }));
                 }
                 req.body = parsed;
             } else {
                 const count = parameterCount(body, /** @type {number} */ (options.parameterLimit));
                 if (count === undefined) {
-                    return next(bodyError("too many parameters", 413, "parameters.too.many"));
+                    return next(Object.assign(bodyError("too many parameters", 413, "parameters.too.many"), { body }));
                 }
                 if (extended) {
                     // body-parser's ceiling for qs: the array limit rises to the parameter count
@@ -1363,7 +1397,11 @@ const urlencoded = createBodyParser(
         } catch (e) {
             // qs's depth overflow is a RangeError, a 400 to body-parser
             if (e instanceof RangeError) {
-                return next(bodyError("The input exceeded the depth", 400, "querystring.parse.rangeError"));
+                return next(
+                    Object.assign(bodyError("The input exceeded the depth", 400, "querystring.parse.rangeError"), {
+                        body
+                    })
+                );
             }
             return next(e);
         }
