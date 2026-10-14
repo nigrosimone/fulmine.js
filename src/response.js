@@ -1163,8 +1163,8 @@ module.exports = class Response extends LazyWritable {
             fullpath = path;
         }
 
-        // dotfile checks
-        if (containsDotFile(parts)) {
+        // dotfile checks, which express.static did itself
+        if (!options._ownDotfiles && containsDotFile(parts)) {
             switch (options.dotfiles) {
                 case "allow":
                     break;

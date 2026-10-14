@@ -544,6 +544,8 @@ function serveStatic(root, options) {
     // serve-static never asks the app: a static file keeps its ETag under app.set("etag", false)
     options.etag = options.etag !== false;
     options._ownEtag = true;
+    // checked below on the path asked for, as send does: an index name or extension added later is not
+    options._ownDotfiles = true;
 
     // serve-static's name, which express's layer.name and a tracer's span carry
     return function serveStatic(req, res, next) {

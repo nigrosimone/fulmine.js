@@ -58,6 +58,8 @@ export interface SendFileOptions {
     _fullpath?: string | undefined;
     /** Internal: the caller computed the ETag itself. */
     _ownEtag?: boolean;
+    /** Internal: the caller checked the dotfiles itself, on the path that was asked for. */
+    _ownDotfiles?: boolean;
 }
 
 /** What express.static reads on top of everything res.sendFile takes. */
