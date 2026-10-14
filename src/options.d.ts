@@ -54,6 +54,8 @@ export interface SendFileOptions {
     _locals?: Record<string, any>;
     /** Internal: the stat the caller already took, so it is not taken twice. */
     _stat?: any;
+    /** Internal: the absolute file that stat is of, when express.static added nothing to the path. */
+    _fullpath?: string | undefined;
     /** Internal: the caller computed the ETag itself. */
     _ownEtag?: boolean;
 }

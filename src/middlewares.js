@@ -756,6 +756,8 @@ function serveStatic(root, options) {
         }
 
         options._stat = stat;
+        // nothing added to the path asked for: sendFile takes this file instead of joining it again
+        options._fullpath = _path === url ? filePath : undefined;
 
         return res.sendFile(
             _path,

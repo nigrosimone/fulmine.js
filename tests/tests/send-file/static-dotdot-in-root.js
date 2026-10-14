@@ -37,7 +37,9 @@ app.listen(13333, async () => {
         "/static/sub/../parts/small-file.json", // in-root, must serve
         "/strict/sub/../parts/small-file.json", // in-root, must serve
         "/static/../package.json", // escapes the root, must not serve
-        "/strict/../package.json" // escapes the root, refused
+        "/strict/../package.json", // escapes the root, refused
+        "/static/../tests/parts/small-file.json", // out of the root and back in, must not serve
+        "/strict/../tests/parts/small-file.json" // out of the root and back in, refused
     ];
     for (const reqPath of paths) {
         const response = await sendRequest(reqPath);

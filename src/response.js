@@ -1146,9 +1146,14 @@ module.exports = class Response extends LazyWritable {
                 return done(httpError(403));
             }
             parts = path.split(Path.sep);
-            fullpath = Path.resolve(Path.join(options.root, path));
-            if (!fullpath.startsWith(Path.resolve(options.root))) {
-                return done(httpError(403));
+            if (options._fullpath !== undefined) {
+                // express.static's file, joined to the root there: with no ".." left it is this same path
+                fullpath = options._fullpath;
+            } else {
+                fullpath = Path.resolve(Path.join(options.root, path));
+                if (!fullpath.startsWith(Path.resolve(options.root))) {
+                    return done(httpError(403));
+                }
             }
         } else {
             if (UP_PATH_REGEXP.test(path)) {
