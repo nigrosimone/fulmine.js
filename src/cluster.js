@@ -109,6 +109,43 @@ function workerCount(setting, cores) {
     throw new TypeError(`cluster must be "auto", a boolean or a positive number, not ${JSON.stringify(setting)}`);
 }
 
+// what the primary hands each worker it forks, "index/workers", so the index survives a respawn
+const WORKER_ENV = "FULMINE_CLUSTER";
+
+/**
+ * Where this process stands in a cluster fulmine forked, undefined outside one.
+ *
+ * @returns {{index: number, workers: number}|undefined}
+ */
+function workerPlace() {
+    const value = process.env[WORKER_ENV];
+    if (!cluster.isWorker || value === undefined) {
+        return undefined;
+    }
+    const [index, workers] = value.split("/").map(Number);
+    return { index, workers };
+}
+
+/**
+ * One process's share of a total split across the workers, a database pool for one: the
+ * remainder goes to the first workers, so the shares add up to the total. The primary serves
+ * nothing and gets 0.
+ *
+ * @param {number} total
+ * @param {number} workers
+ * @param {number|undefined} index undefined in the primary
+ * @returns {number}
+ */
+function shareOf(total, workers, index) {
+    if (!Number.isInteger(total) || total < 0) {
+        throw new TypeError(`share() takes a whole number of 0 or more, not ${JSON.stringify(total)}`);
+    }
+    if (index === undefined) {
+        return 0;
+    }
+    return Math.floor(total / workers) + (index < total % workers ? 1 : 0);
+}
+
 // Whether this process forked workers and serves nothing itself. About the process, not the app:
 // an entry with a second app on a TLS port would bind that one here and every worker would fail.
 let supervising = false;
@@ -146,16 +183,24 @@ function becomeSupervisor() {
 function forkWorkers(count) {
     let stopping = false;
     supervising = true;
+    // the index of each live worker by its id, so a replacement takes the place of the one that died
+    /** @type {Map<number, number>} */
+    const indexes = new Map();
+    const forkAt = (/** @type {number} */ index) => {
+        indexes.set(cluster.fork({ [WORKER_ENV]: `${index}/${count}` }).id, index);
+    };
     /** @param {import("cluster").Worker} worker @param {number} code @param {string} signal */
     const onExit = (worker, code, signal) => {
+        const index = /** @type {number} */ (indexes.get(worker.id));
+        indexes.delete(worker.id);
         if (!stopping) {
             console.error(`worker ${worker.process.pid} exited (${signal || code}), starting another`);
-            cluster.fork();
+            forkAt(index);
         }
     };
     cluster.on("exit", onExit);
     for (let i = 0; i < count; i++) {
-        cluster.fork();
+        forkAt(i);
     }
     const stop = () => {
         stopping = true;
@@ -182,4 +227,13 @@ function forkWorkers(count) {
     return { stop };
 }
 
-module.exports = { availableCores, cgroupCores, workerCount, forkWorkers, isSupervising, becomeSupervisor };
+module.exports = {
+    availableCores,
+    cgroupCores,
+    workerCount,
+    workerPlace,
+    shareOf,
+    forkWorkers,
+    isSupervising,
+    becomeSupervisor
+};

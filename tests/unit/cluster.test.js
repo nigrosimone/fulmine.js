@@ -168,3 +168,105 @@ test("two workers share one port, and neither of them is the process that forked
     assert.strictEqual(code, 0);
     await assert.rejects(() => get("/who"), "and the port is free again");
 });
+
+test("share() splits a total so the workers add up to it, the first ones taking the remainder", () => {
+    const { shareOf } = require("../../src/cluster.js");
+    for (const [total, workers] of [
+        [40, 6],
+        [40, 8],
+        [7, 3],
+        [3, 8],
+        [0, 4]
+    ]) {
+        const shares = Array.from({ length: workers }, (_, index) => shareOf(total, workers, index));
+        assert.strictEqual(
+            shares.reduce((a, b) => a + b, 0),
+            total,
+            `${total} over ${workers}`
+        );
+        assert.ok(Math.max(...shares) - Math.min(...shares) <= 1, "and evenly");
+    }
+    assert.deepStrictEqual(
+        [0, 1, 2, 3, 4, 5].map((i) => shareOf(40, 6, i)),
+        [7, 7, 7, 7, 6, 6]
+    );
+    assert.strictEqual(shareOf(40, 6, undefined), 0, "the primary serves nothing");
+    assert.throws(() => shareOf(-1, 2, 0), /whole number/);
+    assert.throws(() => shareOf(2.5, 2, 0), /whole number/);
+});
+
+// Each worker knows its place, and one that dies is replaced in the same place.
+
+const PLACE_PORT = 13421;
+const placeScript = path.join(os.tmpdir(), `fulmine-cluster-place-${process.pid}.js`);
+const marker = path.join(os.tmpdir(), `fulmine-cluster-place-${process.pid}.died`);
+
+fs.writeFileSync(
+    placeScript,
+    `const cluster = require("cluster");
+const fs = require("fs");
+const express = require(${JSON.stringify(entry)});
+const app = express({ cluster: 3 });
+if (cluster.isPrimary) {
+    cluster.on("message", (worker, message) => process.send(message));
+    process.send({ primary: { workers: app.cluster.workers, index: app.cluster.index ?? null, share: app.cluster.share(10) } });
+    process.on("message", (message) => {
+        if (message === "stop") app.close(() => process.exit(0));
+    });
+}
+app.listen(${PLACE_PORT}, () => {
+    const { workers, index } = app.cluster;
+    process.send({ worker: { workers, index, share: app.cluster.share(10), pid: process.pid } });
+    // worker 1 dies once, to be replaced
+    if (index === 1 && !fs.existsSync(${JSON.stringify(marker)})) {
+        fs.writeFileSync(${JSON.stringify(marker)}, "");
+        setTimeout(() => process.exit(1), 50);
+    }
+});
+`
+);
+
+test(
+    "each worker knows how many there are and its own index, kept by its replacement",
+    { timeout: 60000 },
+    async (t) => {
+        const child = fork(placeScript, [], { stdio: ["ignore", "pipe", "pipe", "ipc"] });
+        t.after(() => {
+            child.kill();
+            fs.rmSync(placeScript, { force: true });
+            fs.rmSync(marker, { force: true });
+        });
+        /** @type {any} */
+        let primary;
+        /** @type {any[]} */
+        const reports = [];
+        await new Promise((resolve, reject) => {
+            child.on("message", (/** @type {any} */ message) => {
+                if (message.primary) primary = message.primary;
+                if (message.worker) reports.push(message.worker);
+                // three workers, then the replacement of the one that died
+                if (reports.length === 4) resolve(undefined);
+            });
+            child.on("exit", (code) => reject(new Error("the app exited with " + code)));
+            setTimeout(() => reject(new Error(`only ${reports.length} workers reported`)), 30000).unref();
+        });
+
+        // null for undefined, which the IPC channel drops
+        assert.deepStrictEqual(primary, { workers: 3, index: null, share: 0 });
+        const first = reports.slice(0, 3).sort((a, b) => a.index - b.index);
+        assert.deepStrictEqual(
+            first.map(({ workers, index, share }) => ({ workers, index, share })),
+            [
+                { workers: 3, index: 0, share: 4 },
+                { workers: 3, index: 1, share: 3 },
+                { workers: 3, index: 2, share: 3 }
+            ]
+        );
+        const replacement = reports[3];
+        assert.strictEqual(replacement.index, 1, "the replacement takes the place of the worker that died");
+        assert.notStrictEqual(replacement.pid, first[1].pid, "and it is a new process");
+
+        child.send("stop");
+        assert.strictEqual(await new Promise((resolve) => child.on("exit", resolve)), 0);
+    }
+);

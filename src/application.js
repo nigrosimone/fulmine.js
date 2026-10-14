@@ -40,7 +40,7 @@ const cluster = require("cluster");
 const { registerWebSocketRoutes } = require("./websocket.js");
 const { addServerMembers } = require("./server-shape.js");
 const { serverObserved, serveObserved } = require("./tracing.js");
-const { workerCount, forkWorkers, isSupervising, becomeSupervisor } = require("./cluster.js");
+const { workerCount, workerPlace, shareOf, forkWorkers, isSupervising, becomeSupervisor } = require("./cluster.js");
 
 /** @typedef {import("uWebSockets.js").HttpRequest} UwsRequest */
 /** @typedef {import("uWebSockets.js").HttpResponse} UwsResponse */
@@ -170,6 +170,9 @@ class Application extends Router {
 
     /** The fork supervisor, in the primary of a clustered app only. @type {{stop: () => void}|undefined} */
     _clusterHandle;
+
+    /** What app.cluster answers, made on the first read. @type {{workers: number, index: number|undefined, share: (total: number) => number}|undefined} */
+    _clusterInfo;
 
     /** readSmallFile's cache, by absolute path. @type {Map<string, {mtimeMs: number, size: number, data: Buffer}>} */
     _fileCache = new Map();
@@ -528,6 +531,28 @@ class Application extends Router {
             this._uwsApp = this.ssl ? uWS.SSLApp(this._uwsOptions) : uWS.App(this._uwsOptions);
         }
         return this._uwsApp;
+    }
+
+    /**
+     * Where this process stands in the cluster: how many workers serve, this one's index (undefined
+     * in the primary, which serves nothing) and share(total), its part of a budget such as the
+     * connections of a database pool. Without a cluster: one worker, index 0, the whole total.
+     *
+     * @returns {{workers: number, index: number|undefined, share: (total: number) => number}}
+     */
+    get cluster() {
+        if (this._clusterInfo === undefined) {
+            // a fulmine worker reads its place from the primary, also for a second app with no cluster setting
+            const place = workerPlace();
+            const workers = place?.workers ?? Math.max(1, this._clusterWorkers);
+            const index = place ? place.index : this._clusterWorkers > 0 ? undefined : 0;
+            this._clusterInfo = Object.freeze({
+                workers,
+                index,
+                share: (/** @type {number} */ total) => shareOf(total, workers, index)
+            });
+        }
+        return this._clusterInfo;
     }
 
     /** The catch-all uWS handler, for every request no native route took. */

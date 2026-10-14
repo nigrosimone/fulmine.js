@@ -248,6 +248,22 @@ declare module "fulmine.js" {
         readonly uwsApp: uWS.TemplatedApp;
 
         /**
+         * Where this process stands in the cluster `express({ cluster })` forked: how many workers
+         * serve, this one's index, undefined in the primary, which serves nothing, and `share(total)`,
+         * this process's part of a budget split across the workers, such as a database pool.
+         *
+         * ```ts
+         * const app = express({ cluster: "auto" });
+         * const pool = new Pool({ max: app.cluster.share(40) });
+         * ```
+         */
+        readonly cluster: {
+            readonly workers: number;
+            readonly index: number | undefined;
+            share(total: number): number;
+        };
+
+        /**
          * The layers the application routes through, in express's shape: one per middleware, one
          * per route with the route's own handlers under it. Express keeps this on the router it
          * builds and hands out as `app.router`, which is here too and is the application itself,
