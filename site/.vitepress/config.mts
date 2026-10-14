@@ -1,6 +1,7 @@
 import { defineConfig, type HeadConfig } from "vitepress";
 import llmstxt from "vitepress-plugin-llms";
 import { fileURLToPath } from "node:url";
+import speedups from "./theme/speedups.json";
 
 const repo = "https://github.com/nigrosimone/fulmine.js";
 const origin = "https://fulmine.sndesign.it";
@@ -11,7 +12,8 @@ const origin = "https://fulmine.sndesign.it";
 export default defineConfig({
     srcDir: "../docs",
     title: "Fulmine.js",
-    description: "Drop-in Express 5 replacement on uWebSockets.js, up to 22x faster. Your middleware keeps working.",
+    // the median of the last CI runs on a large route table, see speedups.mjs
+    description: `Drop-in Express 5 replacement on uWebSockets.js, ${speedups.headline}x faster on large route tables. Your middleware keeps working.`,
     lang: "en",
     cleanUrls: true,
     // Load documentation when requested instead of downloading every visible homepage link.

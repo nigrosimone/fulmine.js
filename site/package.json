@@ -7,7 +7,8 @@
         "build": "vitepress build",
         "preview": "vitepress preview",
         "arena": "node arena.mjs",
-        "realapps": "node realapps.mjs"
+        "realapps": "node realapps.mjs",
+        "speedups": "node speedups.mjs"
     },
     "devDependencies": {
         "vitepress": "^1.6.4",

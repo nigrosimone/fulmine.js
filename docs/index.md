@@ -30,7 +30,7 @@ import RealAppsChart from '../site/.vitepress/theme/RealAppsChart.vue'
 <div class="fm-speed-field">
 <div class="fm-field-top"><span>NATIVE ENGINE</span><span>01 / µWS</span></div>
 <img class="fm-speed-art" src="/speed-field.svg" alt="" width="600" height="500" fetchpriority="high" decoding="async">
-<div class="fm-speed-readout"><span class="fm-up-to">UP TO</span><strong>22<span>×</span></strong><span class="fm-speed-label">faster than Express<span>on large route tables</span></span></div>
+<div class="fm-speed-readout"><span class="fm-up-to">CI MEDIAN</span><strong><!--speedup:tables:median-->10<!--/speedup--><span>×</span></strong><span class="fm-speed-label">faster than Express<span>on large route tables</span></span></div>
 <a class="fm-field-footnote" href="/performance">Measured in CI. Explore the conditions <span aria-hidden="true">↗</span></a>
 </div>
 </section>
@@ -80,11 +80,11 @@ app.listen(3000);
 <div><p>Native routing. Less work per request. More room for your application.</p><a class="fm-text-link" href="/performance">Go under the hood <span aria-hidden="true">↗</span></a></div>
 </div>
 <div class="fm-metrics">
-<div class="fm-metric"><p class="fm-metric-value">1.3–4.9<span>×</span></p><h3>Plain routing</h3><p>The everyday requests.<br>Less framework overhead.</p><div class="fm-meter" aria-hidden="true"><span style="--meter: 25%"></span></div></div>
-<div class="fm-metric"><p class="fm-metric-value">7.5–16.4<span>×</span></p><h3>1,000 routes</h3><p>Your route table grows.<br>The native router keeps up.</p><div class="fm-meter" aria-hidden="true"><span style="--meter: 82%"></span></div></div>
-<div class="fm-metric"><p class="fm-metric-value">7.7–19.9<span>×</span></p><h3>1,000 parameterized routes</h3><p>More paths. More parameters.<br>This is where native shines.</p><div class="fm-meter" aria-hidden="true"><span style="--meter: 100%"></span></div></div>
+<div class="fm-metric"><p class="fm-metric-value"><!--speedup:plain:dash-->1.1-3.4<!--/speedup--><span>×</span></p><h3>Plain routing</h3><p>The everyday requests.<br>Less framework overhead.</p><div class="fm-meter" aria-hidden="true"><span style="--meter: 25%"></span></div></div>
+<div class="fm-metric"><p class="fm-metric-value"><!--speedup:routing/routes-1000:dash-->6.5-11.8<!--/speedup--><span>×</span></p><h3>1,000 routes</h3><p>Your route table grows.<br>The native router keeps up.</p><div class="fm-meter" aria-hidden="true"><span style="--meter: 82%"></span></div></div>
+<div class="fm-metric"><p class="fm-metric-value"><!--speedup:routing/routes-1000-params:dash-->7.7-14.4<!--/speedup--><span>×</span></p><h3>1,000 parameterized routes</h3><p>More paths. More parameters.<br>This is where native shines.</p><div class="fm-meter" aria-hidden="true"><span style="--meter: 100%"></span></div></div>
 </div>
-<p class="fm-benchmark-note">Throughput relative to Express. Ranges from 12 CI runs on Node 26 across four runner configurations. Results depend on workload and hardware; shared work such as JSON parsing or compression sees smaller gains. <a href="/performance">Methodology &amp; limitations ↗</a></p>
+<p class="fm-benchmark-note">Throughput relative to Express. Ranges from <!--speedup:period:text-->the last 20 CI runs, 9 October 2026 to 13 October 2026<!--/speedup-->, on Node 26 and on whatever runner GitHub gives each run. Results depend on workload and hardware; shared work such as JSON parsing or compression sees smaller gains. <a href="/performance">Methodology &amp; limitations ↗</a></p>
 </div>
 </section>
 
