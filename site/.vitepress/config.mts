@@ -108,6 +108,7 @@ export default defineConfig({
                     { text: "All examples", link: "/examples/" },
                     { text: "Fast path in tests", link: "/examples/fast-routes" },
                     { text: "Cluster on one port", link: "/examples/cluster" },
+                    { text: "Pool per worker", link: "/examples/cluster-pool" },
                     { text: "WebSockets", link: "/examples/websocket" },
                     { text: "socket.io", link: "/examples/socket-io" },
                     { text: "MCP server", link: "/examples/mcp" },

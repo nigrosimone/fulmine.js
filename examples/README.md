@@ -16,6 +16,7 @@ node websocket.js
 | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | [fast-routes.js](./fast-routes.js)                   | which routes uWS matches itself, which are answered without running JavaScript, and how a test holds them there |
 | [cluster.js](./cluster.js)                           | `express({ cluster: "auto" })`: one worker per core, all on the same port                                       |
+| [cluster-pool.js](./cluster-pool.js)                 | `app.cluster.share()`: a database pool split across the workers, never over the total                           |
 | [websocket.js](./websocket.js)                       | `app.ws()`, with the upgrade deciding whether the socket opens                                                  |
 | [socket-io.js](./socket-io.js)                       | socket.io through `io.attachApp(app.uwsApp)`, since the upgrade never reaches node                              |
 | [mcp.js](./mcp.js)                                   | an MCP server on the official SDK, a session per client, and what a held-open stream needs here                 |

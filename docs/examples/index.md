@@ -12,6 +12,7 @@ is documented by Express itself.
 | ---------------------------------------------------------------------- | ---------------------------------------------- |
 | [Keep a route on the fast path](./fast-routes)                         | `express.testing.expectNative()`               |
 | [One process per core on one port](./cluster)                          | `express({ cluster: "auto" })`                 |
+| [A database pool per cluster worker](./cluster-pool)                   | `app.cluster.share(40)`                        |
 | [WebSockets next to your Express routes](./websocket)                  | `app.ws("/room/:id", { open, message })`       |
 | [socket.io on uWebSockets.js](./socket-io)                             | `io.attachApp(app.uwsApp)`                     |
 | [An MCP server on Express](./mcp)                                      | the official SDK, Streamable HTTP              |
