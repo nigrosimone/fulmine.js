@@ -2130,3 +2130,31 @@ module.exports = class Response extends LazyWritable {
 // express's other name for res.type, on the prototype so no own property is written per response
 /** @type {{contentType?: typeof module.exports.prototype.type}} */ (module.exports.prototype).contentType =
     module.exports.prototype.type;
+
+// Node 26.11 hands a piped chunk straight to _write when the source has no other 'data' listener,
+// past a write() that compression replaced on the response: gzip and plain bytes mixed
+// (nodejs/node#66596). Where write() is replaced, a no-op listener on the source turns that off.
+const [nodeMajor, nodeMinor] = process.versions.node.split(".").map(Number);
+if (nodeMajor === 26 && nodeMinor >= 11) {
+    const noop = () => {};
+    const keepPipeOnWrite = (/** @type {import("stream").Readable} */ source) => {
+        source.on("data", noop);
+    };
+    const inheritedWrite = module.exports.prototype.write;
+    Object.defineProperty(module.exports.prototype, "write", {
+        configurable: true,
+        get() {
+            return inheritedWrite;
+        },
+        /** @this {any} @param {Function} replaced */
+        set(replaced) {
+            Object.defineProperty(this, "write", {
+                configurable: true,
+                enumerable: true,
+                writable: true,
+                value: replaced
+            });
+            this.once("pipe", keepPipeOnWrite);
+        }
+    });
+}
