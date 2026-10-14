@@ -249,17 +249,20 @@ declare module "fulmine.js" {
 
         /**
          * Where this process stands in the cluster `express({ cluster })` forked: how many workers
-         * serve, this one's index, undefined in the primary, which serves nothing, and `share(total)`,
-         * this process's part of a budget split across the workers, such as a database pool.
+         * serve, this one's index, undefined in the primary, `serves`, false only in the primary,
+         * which forks and serves nothing, and `share(total)`, this process's part of a budget split
+         * across the workers, such as a database pool.
          *
          * ```ts
          * const app = express({ cluster: "auto" });
-         * const pool = new Pool({ max: app.cluster.share(40) });
+         * // no pool in the primary: pg reads max 0 as its default of 10
+         * const pool = app.cluster.serves ? new Pool({ max: app.cluster.share(40) }) : null;
          * ```
          */
         readonly cluster: {
             readonly workers: number;
             readonly index: number | undefined;
+            readonly serves: boolean;
             share(total: number): number;
         };
 

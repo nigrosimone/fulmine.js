@@ -171,7 +171,7 @@ class Application extends Router {
     /** The fork supervisor, in the primary of a clustered app only. @type {{stop: () => void}|undefined} */
     _clusterHandle;
 
-    /** What app.cluster answers, made on the first read. @type {{workers: number, index: number|undefined, share: (total: number) => number}|undefined} */
+    /** What app.cluster answers, made on the first read. @type {{workers: number, index: number|undefined, serves: boolean, share: (total: number) => number}|undefined} */
     _clusterInfo;
 
     /** readSmallFile's cache, by absolute path. @type {Map<string, {mtimeMs: number, size: number, data: Buffer}>} */
@@ -535,10 +535,11 @@ class Application extends Router {
 
     /**
      * Where this process stands in the cluster: how many workers serve, this one's index (undefined
-     * in the primary, which serves nothing) and share(total), its part of a budget such as the
-     * connections of a database pool. Without a cluster: one worker, index 0, the whole total.
+     * in the primary, which serves nothing), whether it serves requests, and share(total), its part
+     * of a budget such as the connections of a database pool. Without a cluster: one worker, index 0,
+     * serving, the whole total.
      *
-     * @returns {{workers: number, index: number|undefined, share: (total: number) => number}}
+     * @returns {{workers: number, index: number|undefined, serves: boolean, share: (total: number) => number}}
      */
     get cluster() {
         if (this._clusterInfo === undefined) {
@@ -549,6 +550,7 @@ class Application extends Router {
             this._clusterInfo = Object.freeze({
                 workers,
                 index,
+                serves: index !== undefined,
                 share: (/** @type {number} */ total) => shareOf(total, workers, index)
             });
         }

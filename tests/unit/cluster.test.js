@@ -209,14 +209,14 @@ const express = require(${JSON.stringify(entry)});
 const app = express({ cluster: 3 });
 if (cluster.isPrimary) {
     cluster.on("message", (worker, message) => process.send(message));
-    process.send({ primary: { workers: app.cluster.workers, index: app.cluster.index ?? null, share: app.cluster.share(10) } });
+    process.send({ primary: { workers: app.cluster.workers, index: app.cluster.index ?? null, serves: app.cluster.serves, share: app.cluster.share(10) } });
     process.on("message", (message) => {
         if (message === "stop") app.close(() => process.exit(0));
     });
 }
 app.listen(${PLACE_PORT}, () => {
-    const { workers, index } = app.cluster;
-    process.send({ worker: { workers, index, share: app.cluster.share(10), pid: process.pid } });
+    const { workers, index, serves } = app.cluster;
+    process.send({ worker: { workers, index, serves, share: app.cluster.share(10), pid: process.pid } });
     // worker 1 dies once, to be replaced
     if (index === 1 && !fs.existsSync(${JSON.stringify(marker)})) {
         fs.writeFileSync(${JSON.stringify(marker)}, "");
@@ -252,14 +252,14 @@ test(
         });
 
         // null for undefined, which the IPC channel drops
-        assert.deepStrictEqual(primary, { workers: 3, index: null, share: 0 });
+        assert.deepStrictEqual(primary, { workers: 3, index: null, serves: false, share: 0 });
         const first = reports.slice(0, 3).sort((a, b) => a.index - b.index);
         assert.deepStrictEqual(
-            first.map(({ workers, index, share }) => ({ workers, index, share })),
+            first.map(({ workers, index, serves, share }) => ({ workers, index, serves, share })),
             [
-                { workers: 3, index: 0, share: 4 },
-                { workers: 3, index: 1, share: 3 },
-                { workers: 3, index: 2, share: 3 }
+                { workers: 3, index: 0, serves: true, share: 4 },
+                { workers: 3, index: 1, serves: true, share: 3 },
+                { workers: 3, index: 2, serves: true, share: 3 }
             ]
         );
         const replacement = reports[3];
@@ -270,3 +270,12 @@ test(
         assert.strictEqual(await new Promise((resolve) => child.on("exit", resolve)), 0);
     }
 );
+
+test("without a cluster the one process serves, as worker 0 of 1 with the whole total", () => {
+    const express = require("../../src/index.js");
+    const { workers, index, serves } = express().cluster;
+    assert.deepStrictEqual(
+        { workers, index, serves, share: express().cluster.share(40) },
+        { workers: 1, index: 0, serves: true, share: 40 }
+    );
+});

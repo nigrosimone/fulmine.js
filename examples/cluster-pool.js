@@ -13,11 +13,11 @@ const CONNECTIONS = 40;
 
 const app = express({ cluster: "auto" });
 
-// The file runs in every process. The primary only forks and serves nothing: there index is
-// undefined and share() is 0, so no pool is opened in it
-const { workers, index } = app.cluster;
+// The file runs in every process. The primary only forks and serves nothing, so no pool is opened
+// there: serves is false and share() is 0 (and pg would read max 0 as its default of 10)
+const { workers, index, serves } = app.cluster;
 const max = app.cluster.share(CONNECTIONS);
-const pool = index === undefined ? null : new Pool({ connectionString: process.env.DATABASE_URL, max });
+const pool = serves ? new Pool({ connectionString: process.env.DATABASE_URL, max }) : null;
 
 app.get("/who", (req, res) => {
     // 40 over 6 workers: the first four take 7, the last two take 6
