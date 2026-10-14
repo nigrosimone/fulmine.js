@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.24.2](https://github.com/nigrosimone/fulmine.js/compare/v5.24.1...v5.24.2) (2026-10-14)
+
+### Bug Fixes
+
+* **res:** on node 26.11 a pipe goes through a write() replaced on the response, so a compressed file is gzip again ([83f6d6f](https://github.com/nigrosimone/fulmine.js/commit/83f6d6f08b177e490b435c02f25b4d4728c7c221))
+
 ## [5.24.1](https://github.com/nigrosimone/fulmine.js/compare/v5.24.0...v5.24.1) (2026-10-13)
 
 ### Bug Fixes
