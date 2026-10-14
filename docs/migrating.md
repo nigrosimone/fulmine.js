@@ -1,5 +1,5 @@
 ---
-description: Migrate an Express app to Fulmine.js, verify your environment and update imports, with guidance for NestJS, Angular SSR and framework integrations.
+description: Migrate an Express app to Fulmine.js, verify your environment and update imports, with guidance for NestJS, Angular SSR, hyper-express and framework integrations.
 ---
 
 # Migrating to Fulmine.js
@@ -83,6 +83,43 @@ await app.listen(3000);
 
 TLS, WebSocket gateways, what changes and the numbers against the Express and Fastify adapters are
 on their own page: [NestJS](./nest.md).
+
+## From hyper-express
+
+hyper-express runs on µWebSockets.js too, but its API is its own, so the move is renaming calls, not
+rewriting the application. In return the Express middlewares work as they are.
+
+| hyper-express                                        | Fulmine.js                                                                  |
+| ---------------------------------------------------- | --------------------------------------------------------------------------- |
+| `new HyperExpress.Server()`, `new Router()`          | `express()`, `express.Router()`                                             |
+| `server.listen(port).then(fn)`                       | `app.listen(port, fn)`, it does not return a promise                        |
+| `server.any(path, fn)`                               | `app.all(path, fn)`                                                         |
+| `set_error_handler((req, res, err) => {})`           | `app.use((err, req, res, next) => {})` after the routes                     |
+| `set_not_found_handler(fn)`                          | `app.use(fn)` after the routes                                              |
+| `req.path_parameters`, `req.query_parameters`        | `req.params`, `req.query`                                                   |
+| `await req.json()`, `req.text()`, `req.urlencoded()` | `express.json()`, `express.text()`, `express.urlencoded()`, then `req.body` |
+| `req.multipart(fn)`                                  | a multipart middleware, such as multer                                      |
+| `req.locals`                                         | `res.locals`                                                                |
+| `res.setHeaders({ ... })`                            | `res.set({ ... })`                                                          |
+| `res.html(body)`                                     | `res.type("html").send(body)`                                               |
+| `res.file(path)`                                     | `res.sendFile(path)`                                                        |
+| `res.stream(readable)`                               | `readable.pipe(res)`                                                        |
+| `res.atomic(fn)`                                     | nothing, the writes of one response are corked already                      |
+| `res.throw(err)`                                     | `next(err)`                                                                 |
+| `server.ws(path, options, fn)`                       | `app.ws(path, behavior)`, see [WebSockets](./websockets.md)                 |
+| `server.publish()`, `num_of_subscribers()`           | `app.publish()`, `app.numSubscribers()`                                     |
+| `server.uws_instance`                                | `app.uwsApp`                                                                |
+
+Four differences do not throw, so look for them before the tests do:
+
+- **An async middleware that resolves without calling `next()`** goes on in hyper-express. In Express,
+  and here, the request waits forever. Call `next()` at the end.
+- **`res.cookie(name, value, 3600000)`**: the third argument is the expiry in hyper-express and the
+  options in Express, so the expiry is lost. Write `{ maxAge: 3600000 }`.
+- **`res.cookie()` without options** is `Secure` and `SameSite=None` in hyper-express, and neither in
+  Express. Pass them if you relied on them.
+- **`res.header(name, value)` twice** sends both values in hyper-express, the second replaces the first
+  in Express. Use `res.append()` to keep both.
 
 ## When Express is somebody else's dependency
 
