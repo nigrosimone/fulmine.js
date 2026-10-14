@@ -8,7 +8,8 @@
 const express = require("fulmine.js"); // instead of require("express")
 
 // "auto" is one worker per usable core: the cgroup quota is read first, so a 2-core container on
-// a 64-core host forks 2 and not 64. A number instead of "auto" says how many
+// a 64-core host forks 2 and not 64. On one core it forks nothing and this process serves. A
+// number instead of "auto" says how many, cluster: 1 included
 const app = express({ cluster: "auto" });
 
 let served = 0;

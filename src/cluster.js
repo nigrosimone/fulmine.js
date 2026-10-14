@@ -101,7 +101,10 @@ function workerCount(setting, cores) {
         return 0;
     }
     if (setting === true || setting === "auto") {
-        return Math.max(1, cores ?? availableCores());
+        // one core is one process: a primary to supervise a single worker costs memory, and where
+        // there is one core a container restarts the process anyway. cluster: 1 still forks
+        const count = cores ?? availableCores();
+        return count > 1 ? count : 0;
     }
     if (typeof setting === "number" && Number.isFinite(setting) && setting > 0) {
         return Math.floor(setting);

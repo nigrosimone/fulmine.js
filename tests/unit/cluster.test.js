@@ -69,7 +69,7 @@ test("and this machine answers something it could actually fork", () => {
     // the one call with nothing injected: whatever it reads here, a worker count has to come out
     const here = availableCores();
     assert.ok(Number.isInteger(here) && here >= 1, `not a number of processes: ${here}`);
-    assert.strictEqual(workerCount("auto"), here);
+    assert.strictEqual(workerCount("auto"), here > 1 ? here : 0);
 });
 
 test("what each setting asks for", () => {
@@ -78,8 +78,12 @@ test("what each setting asks for", () => {
     assert.strictEqual(workerCount(0), 0);
     assert.strictEqual(workerCount("auto", 8), 8);
     assert.strictEqual(workerCount(true, 8), 8);
+    // one core serves from the one process, a number asks for its forks anyway
+    assert.strictEqual(workerCount("auto", 1), 0);
+    assert.strictEqual(workerCount(true, 1), 0);
+    assert.strictEqual(workerCount(1, 1), 1);
     assert.strictEqual(workerCount(3, 8), 3, "a number is taken as written, cores or no cores");
-    assert.strictEqual(workerCount("auto", 0), 1, "a machine that reports nothing still runs one");
+    assert.strictEqual(workerCount("auto", 0), 0, "a machine that reports nothing serves from the one process");
 });
 
 test("a setting nobody can read is a throw and not a quiet single core", () => {
