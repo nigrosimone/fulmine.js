@@ -79,6 +79,7 @@ const {
     httpErrorName,
     memoizeByString,
     containsDotFile,
+    UP_PATH_REGEXP,
     negotiateEncoding,
     cachedStat,
     ENCODING_BR,
@@ -583,6 +584,13 @@ function serveStatic(root, options) {
                 return next(httpError(400));
             } else return next();
         }
+        // a ".." that climbs out is a 403 before the disk is asked, as in send, with "\" counted on posix too
+        if (url.includes("..") && UP_PATH_REGEXP.test(path.normalize("." + path.sep + url))) {
+            if (!options.fallthrough) {
+                res.status(403);
+                return next(httpError(403));
+            } else return next();
+        }
         let _path = url;
         // Joined against the root, not normalised alone: a ".." must climb relative to the root so
         // the check below sees it leave ("/mount/../package.json"), normalising the url alone clamps
@@ -607,8 +615,9 @@ function serveStatic(root, options) {
         }
 
         // before the stat, as send judges the path before the disk: a hidden segment in a missing
-        // path answers the dotfiles rule, not ENOENT. Normalised first, ".." is not a dotfile
-        if (containsDotFile(fullpath.slice(resolvedRoot.length).split(/[\\/]/))) {
+        // path answers the dotfiles rule, not ENOENT. Normalised first, ".." is not a dotfile. Split on
+        // the platform separator as send does: on posix "a\.b" is one name
+        if (containsDotFile(fullpath.slice(resolvedRoot.length).split(path.sep))) {
             const refusal = options.dotfiles === "deny" ? 403 : options.dotfiles === "allow" ? 0 : 404;
             if (refusal !== 0 && !(options.dotfiles === "ignore_files" && !path.basename(url).startsWith("."))) {
                 if (!options.fallthrough) {
