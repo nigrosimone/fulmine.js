@@ -12,6 +12,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert");
+const fs = require("node:fs");
 const { Stats } = require("node:fs");
 
 const {
@@ -38,6 +39,7 @@ const {
     NullObject,
     entityTag,
     statTag,
+    mtimeOf,
     contentTypeFor,
     memoizeByString,
     pathsCanOverlap,
@@ -390,6 +392,28 @@ test("statTag answers exactly what the etag package answers for a file", () => {
     // an empty file is a size of zero, and not the empty-body hash
     stat.size = 0;
     assert.strictEqual(statTag(stat, true), reference(stat, { weak: true }));
+});
+
+test("a file's Last-Modified and ETag come without building the Date of stat.mtime", () => {
+    const reference = require("etag");
+    const expected = fs.statSync(__filename);
+    mtimeOf(fs.statSync(__filename));
+
+    const stat = fs.statSync(__filename);
+    assert.strictEqual(mtimeOf(stat).http, expected.mtime.toUTCString());
+    assert.strictEqual(statTag(stat, true), reference(expected));
+    assert.strictEqual(Object.hasOwn(stat, "mtime"), false);
+});
+
+test("an mtime the application set answers, and is not remembered for the next stat", () => {
+    const real = fs.statSync(__filename);
+    mtimeOf(real);
+    const stat = fs.statSync(__filename);
+    stat.mtime = new Date(0);
+
+    assert.strictEqual(mtimeOf(stat).http, "Thu, 01 Jan 1970 00:00:00 GMT");
+    assert.strictEqual(statTag(stat, true), `W/"${stat.size.toString(16)}-0"`);
+    assert.strictEqual(mtimeOf(fs.statSync(__filename)).http, real.mtime.toUTCString());
 });
 
 test("memoizeByString answers from the cache and clears it at the limit", () => {

@@ -42,6 +42,7 @@ const {
     contentTypeFor,
     contentTypeSet,
     statTag,
+    mtimeOf,
     cachedStat,
     NullObject
 } = require("./utils.js");
@@ -1205,7 +1206,7 @@ module.exports = class Response extends LazyWritable {
                 `public, max-age=${Math.floor(options.maxAge / 1000)}` + (options.immutable ? ", immutable" : "");
         }
         if (options.lastModified) {
-            this.headers["last-modified"] = stat.mtime.toUTCString();
+            this.headers["last-modified"] = mtimeOf(stat).http;
         }
         if (options.headers) {
             for (const header in options.headers) {
