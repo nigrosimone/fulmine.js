@@ -1,5 +1,26 @@
 # Changelog
 
+## [5.25.0](https://github.com/nigrosimone/fulmine.js/compare/v5.24.2...v5.25.0) (2026-10-15)
+
+### Features
+
+* **cluster:** "auto" on one core forks nothing and the one process serves, cluster: 1 still forks a worker ([e185de6](https://github.com/nigrosimone/fulmine.js/commit/e185de67b56abc507d3eae57cef808725e84efb4))
+* **cluster:** app.cluster.serves, false only in the primary, so a pool is opened where requests are served ([66d5d71](https://github.com/nigrosimone/fulmine.js/commit/66d5d71ba8879415a4ef828b324896f802503559))
+* **cluster:** app.cluster says how many workers serve and which one this is, share(total) splits a budget like a pool ([44b90ce](https://github.com/nigrosimone/fulmine.js/commit/44b90ce4f366299ef0f266260a60dc034c40f98c))
+
+### Bug Fixes
+
+* **req:** req.ip read late in a mounted app is read up front from then on, the root learns it too ([f31d41f](https://github.com/nigrosimone/fulmine.js/commit/f31d41faa6f33febee2a55d0773a4c3a1c314e8e))
+* **server:** a request answered in a mounted app leaves the in-flight list, so close() completes ([5e570d4](https://github.com/nigrosimone/fulmine.js/commit/5e570d4cc74057b69434b73532675339530b1ef6))
+* **static:** "\" splits a path only on windows, and a ".." out of the root is a 403 before the stat, as in send ([c43a22c](https://github.com/nigrosimone/fulmine.js/commit/c43a22c9171487e17b0d18a127232197b5536a04))
+* **static:** an index whose name starts with a dot is served, send checks dotfiles only on the path asked for ([4749861](https://github.com/nigrosimone/fulmine.js/commit/47498615a69460760beddef5d17da3dda1d61248))
+
+### Performance Improvements
+
+* **socket:** the peer's port is kept at the end only if the app asks for it late, as req.ip ([1308951](https://github.com/nigrosimone/fulmine.js/commit/1308951b76c526357353d334418b93a267c2cf0b))
+* **static:** sendFile takes the file express.static joined to its root, no path.resolve ([d28ebdf](https://github.com/nigrosimone/fulmine.js/commit/d28ebdf1ffeacc4038df426f6b4901d5a41db1a8))
+* **res:** a file's Last-Modified and ETag kept by mtimeMs, no Date built per request ([312425c](https://github.com/nigrosimone/fulmine.js/commit/312425c0887b5d8b794cda5bfc3ac763f98cb3a2))
+
 ## [5.24.2](https://github.com/nigrosimone/fulmine.js/compare/v5.24.1...v5.24.2) (2026-10-14)
 
 ### Bug Fixes
