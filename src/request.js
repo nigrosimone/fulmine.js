@@ -996,7 +996,10 @@ module.exports = class Request extends LazyReadable {
         }
         const finished = this.res.finished;
         if (finished) {
-            this.app.needsIpAfterResponse = true;
+            // up to the root: in a sub-app req.app is the sub-app, and the constructor asks the root
+            for (let app = /** @type {import("./router.js")|undefined} */ (this.app); app; app = app.parent) {
+                app.needsIpAfterResponse = true;
+            }
         }
         if (!this.rawIp) {
             if (finished) {

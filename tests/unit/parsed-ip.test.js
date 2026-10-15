@@ -140,6 +140,40 @@ test("the window that reads the address up front closes and stays closed", async
     }
 });
 
+test("an ip asked for after the response in a mounted app is read up front from then on", async () => {
+    const express = require("../../src/index.js");
+    const { loopbackPeer } = require("./loopback.js");
+    const expected = await loopbackPeer();
+    const root = express();
+    const sub = express();
+    let late = false;
+    /** @type {string|undefined} */
+    let seen;
+    sub.get("/x", (req, res) => {
+        if (late) res.on("finish", () => (seen = req.ip));
+        res.send("ok");
+    });
+    root.use("/sub", sub);
+    const port = await new Promise((resolve) => root.listen(0, () => resolve(root.address().port)));
+    const ask = async () => {
+        await (await fetch(`http://127.0.0.1:${port}/sub/x`)).text();
+        await new Promise((resolve) => setImmediate(resolve));
+        return seen;
+    };
+    try {
+        for (let i = 0; i < 110; i++) {
+            await ask();
+        }
+        late = true;
+        await ask();
+        // the request arrives at the root, which is the app its constructor asks
+        assert.equal(root.needsIpAfterResponse, true);
+        assert.equal(await ask(), expected);
+    } finally {
+        root.close();
+    }
+});
+
 test("four bytes are an IPv4 peer, and anything else is no address at all", () => {
     const four = new Uint8Array([203, 0, 113, 7]);
     // plain, and nothing is guessed on top: four bytes are what a peer of an IPv4 socket arrives
