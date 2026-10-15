@@ -279,7 +279,6 @@ class Application extends Router {
                 this.workers[i] = new FSWorker();
             }
         }
-        /** @type {{_pendingIn?: {head: Response|null}}} */ (this.response)._pendingIn = this._pending;
         // at construction as express reads it; an empty NODE_ENV is development
         if (typeof this._settings.env === "undefined") {
             this._settings.env = process.env.NODE_ENV || "development";
@@ -508,7 +507,7 @@ class Application extends Router {
         // flips its flags, so close()'s drain sweeps by them too
         const response = request.res;
         const pending = this._pending;
-        response._pendingLinked = true;
+        response._pendingList = pending;
         response._pendingPrev = null;
         response._pendingNext = pending.head;
         if (pending.head !== null) {

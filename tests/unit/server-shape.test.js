@@ -91,6 +91,25 @@ test("getConnections counts the requests in flight", async () => {
     }
 });
 
+test("a request answered in a mounted app leaves nothing in flight, and close() completes", async () => {
+    const app = express();
+    const sub = express();
+    sub.get("/x", (req, res) => res.send("ok"));
+    app.use("/sub", sub);
+    const server = app.listen(0);
+    const port = app.address().port;
+
+    await fetch(`http://127.0.0.1:${port}/sub/x`).then((res) => res.text());
+    const count = await new Promise((resolve) => server.getConnections((err, n) => resolve(n)));
+    assert.strictEqual(count, 0);
+    // a drain that never ends is the failure: bounded, so it is red rather than a hung run
+    const closed = await Promise.race([
+        new Promise((resolve) => server.close(() => resolve(true))),
+        new Promise((resolve) => setTimeout(resolve, 2000, false).unref())
+    ]);
+    assert.strictEqual(closed, true);
+});
+
 test("a shutdown wrapper written against node drives it", async () => {
     // the shape @godaddy/terminus and stoppable have in common: recognise, wrap close, wait for
     // the connections to reach zero, call back

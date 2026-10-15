@@ -234,10 +234,11 @@ module.exports = class Response extends LazyWritable {
     /**
      * The app's pending list that close() drains, intrusive and doubly linked, see
      * Application#handleRequest. Declared here: linked after construction, the three were a
-     * shape change on every response.
-     * @type {boolean}
+     * shape change on every response. The list itself, not a flag: in a sub-app the prototype is
+     * the sub-app's, and a holder read from it left the root's list with a finished head.
+     * @type {{head: Response|null}|null}
      */
-    _pendingLinked = false;
+    _pendingList = null;
 
     /** @type {Response|null} */
     _pendingPrev = null;
@@ -338,21 +339,18 @@ module.exports = class Response extends LazyWritable {
         this._unlinkPending();
     }
 
-    /**
-     * Takes this response out of the app's pending list that close() drains. The list head is in a
-     * holder on the per-app prototype layer, see the Application constructor.
-     */
+    /** Takes this response out of the app's pending list that close() drains. */
     _unlinkPending() {
-        if (this._pendingLinked !== true) {
+        const pending = this._pendingList;
+        if (pending === null) {
             return;
         }
-        this._pendingLinked = false;
-        const pending = /** @type {{_pendingIn?: {head: Response|null}}} */ (this)._pendingIn;
+        this._pendingList = null;
         const prev = this._pendingPrev;
         const next = this._pendingNext;
         if (prev) {
             prev._pendingNext = next;
-        } else if (pending && pending.head === this) {
+        } else if (pending.head === this) {
             pending.head = next;
         }
         if (next) {
