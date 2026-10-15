@@ -105,6 +105,7 @@ const INTERNAL = new Set([
     "handleRequest",
     "listenCalled",
     "needsIpAfterResponse",
+    "needsPortAfterResponse",
     "parent",
     "readFileWithWorker",
     "readSmallFile",

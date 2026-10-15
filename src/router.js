@@ -142,6 +142,17 @@ module.exports = class Router extends EventEmitter {
     _ipProbes = 0;
 
     /**
+     * Whether something read socket.remotePort after the response, once µWS freed it. Set from
+     * Socket#remotePort, read by Socket#_keepPeer.
+     *
+     * @type {boolean}
+     */
+    needsPortAfterResponse = false;
+
+    /** How many sockets kept the peer's port at the end so one of them can find out, a hundred. @type {number} */
+    _portProbes = 0;
+
+    /**
      * The routing flags, frozen at the first read as express passes them to its router once.
      *
      * @type {boolean|undefined}

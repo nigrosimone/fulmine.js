@@ -253,9 +253,11 @@ for (const [name, server] of /** @type {const} */ ([
 }
 
 async function run() {
-    // past the first hundred requests, which read the ip up front (see the Request constructor)
+    // past the first hundred requests, which read the ip up front (see the Request constructor), and
+    // the first hundred sockets, which keep the port at the end (see Socket#_keepPeer)
     for (let i = 0; i < 110; i++) {
         await ask(ports.app, "GET /hello HTTP/1.1");
+        await ask(ports.app, "GET /socket HTTP/1.1");
         await ask(ports.failing, "GET /hello HTTP/1.1");
         await ask(ports.proxied, "GET /ip HTTP/1.1");
     }

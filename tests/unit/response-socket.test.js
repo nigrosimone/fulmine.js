@@ -57,6 +57,59 @@ test("the socket reports the address and the ports", async () => {
     });
 });
 
+/**
+ * An app whose route reaches for the socket and, when told, reads its port from "finish", as a
+ * logger does. Answers the port the last request read, or "none".
+ */
+async function lateReader() {
+    const app = express();
+    let late = false;
+    /** @type {any} */
+    let seen = "none";
+    app.get("/", (req, res) => {
+        const socket = req.socket;
+        if (late) res.on("finish", () => (seen = socket.remotePort));
+        res.send("ok");
+    });
+    const port = await new Promise((resolve) => app.listen(0, () => resolve(app.address().port)));
+    const ask = async () => {
+        await fetch(`http://127.0.0.1:${port}/`).then((r) => r.text());
+        await new Promise((resolve) => setImmediate(resolve));
+        return seen;
+    };
+    return { app, ask, readLate: () => (late = true) };
+}
+
+test("a port asked for after the response is there on every request", async () => {
+    const { app, ask, readLate } = await lateReader();
+    try {
+        readLate();
+        for (let i = 0; i < 120; i++) {
+            assert.strictEqual(typeof (await ask()), "number");
+        }
+        assert.strictEqual(app.needsPortAfterResponse, true);
+    } finally {
+        app.close();
+    }
+});
+
+test("past the first hundred sockets the port is read only if asked late, then from the next on", async () => {
+    const { app, ask, readLate } = await lateReader();
+    try {
+        for (let i = 0; i < 110; i++) {
+            await ask();
+        }
+        assert.strictEqual(app._portProbes, 100);
+        assert.strictEqual(app.needsPortAfterResponse, false);
+        readLate();
+        // the trade req.ip makes too: the first late ask finds µWS has let go of it
+        assert.strictEqual(await ask(), undefined);
+        assert.strictEqual(typeof (await ask()), "number");
+    } finally {
+        app.close();
+    }
+});
+
 test("closing the socket ends the answer without finishing it", async () => {
     const answer = await ask((app) => {
         app.get("/cut", (req, res) => {

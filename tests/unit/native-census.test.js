@@ -53,7 +53,7 @@ const BUDGET = {
     "GET /ip": { end: 1, forEach: 1, getQuery: 1, getRemoteAddress: 1, writeHeader: 1 },
     "GET /ip, trust proxy": { end: 1, forEach: 1, getQuery: 1, getRemoteAddress: 1, writeHeader: 1 },
     "GET /ua": { end: 1, forEach: 1, getQuery: 1, writeHeader: 1 },
-    "GET /socket": { end: 1, forEach: 1, getQuery: 1, getRemotePort: 1, writeHeader: 1 },
+    "GET /socket": { end: 1, forEach: 1, getQuery: 1, writeHeader: 1 },
     "POST /echo": {
         collectBody: 1,
         cork: 1,
@@ -158,8 +158,8 @@ test("µWS is asked for nothing a request does not need", { skip: otherRuntime }
     );
     assert.deepStrictEqual(
         callers(counts, "getRemotePort"),
-        ["GET /socket"],
-        "the port only where the socket is reached for, not for trust proxy's own read of the peer"
+        [],
+        "the port not even where the socket is reached for, once nothing asked for it late"
     );
     assert.deepStrictEqual(
         callers(counts, "onData"),
