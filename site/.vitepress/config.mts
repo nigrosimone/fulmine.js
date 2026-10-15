@@ -86,6 +86,7 @@ export default defineConfig({
                 text: "Start here",
                 items: [
                     { text: "Why Fulmine", link: "/why" },
+                    { text: "How it's built", link: "/how-its-built" },
                     { text: "Migrating from Express", link: "/migrating" },
                     { text: "Compared with the others", link: "/compare" },
                     { text: "Real applications", link: "/real-apps" }
