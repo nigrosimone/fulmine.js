@@ -2,6 +2,7 @@
 description: LibreChat, n8n and Actual Budget on Fulmine instead of Express. Their own test suites pass, and LibreChat and Actual spend 9% to 11% less CPU with no change, up to 28% with a five line patch.
 ---
 
+<!--
 <script setup>
 import RealAppsChart from '../site/.vitepress/theme/RealAppsChart.vue'
 import data from '../site/.vitepress/theme/realapps.json'
@@ -10,6 +11,7 @@ const usd = (v) => '$' + Math.round(v).toLocaleString('en-US')
 const ratio = (v) => v == null ? '' : v.toFixed(2) + 'x'
 const lessTotal = (p) => Math.round((1 - p.year['fulmine + patch'].total / p.year.express.total) * 100)
 </script>
+-->
 
 # Real applications
 

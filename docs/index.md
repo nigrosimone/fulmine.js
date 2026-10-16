@@ -6,12 +6,14 @@ titleTemplate: false
 description: Fulmine.js is a drop-in Express 5 replacement for Node.js, powered by uWebSockets.js. Keep your API and middleware with faster native routing.
 ---
 
+<!--
 <script setup>
 import CopyCommand from '../site/.vitepress/theme/CopyCommand.vue'
 import ArenaChart from '../site/.vitepress/theme/ArenaChart.vue'
 import arena from '../site/.vitepress/theme/arena.json'
 import RealAppsChart from '../site/.vitepress/theme/RealAppsChart.vue'
 </script>
+-->
 
 <main class="fulmine-home">
 <section class="fm-hero fm-wrap" aria-labelledby="hero-title">

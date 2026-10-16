@@ -71,6 +71,14 @@ export default defineConfig({
                 }
                 return render(tokens, i, options, env, self);
             };
+            // A page's <script setup> sits in an HTML comment so GitHub does not print it as text,
+            // here it comes out of the comment and Vue gets it as usual.
+            const block = md.renderer.rules.html_block!;
+            md.renderer.rules.html_block = (tokens, i, options, env, self) => {
+                const script = /^<!--\s*(<script\b[\s\S]*<\/script>)\s*-->\s*$/.exec(tokens[i].content);
+                if (script) tokens[i].content = script[1];
+                return block(tokens, i, options, env, self);
+            };
         }
     },
     themeConfig: {
