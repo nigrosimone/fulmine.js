@@ -1023,8 +1023,26 @@ function compileTrust(val) {
     }
 
     // proxy-addr answers false to undefined, though its typing does not admit one
-    return /** @type {TrustFn} */ (proxyaddr.compile(val || []));
+    const trust = /** @type {TrustFn} */ (proxyaddr.compile(val || []));
+    // a list answers the same for the same address, and proxy-addr parses it on every call: a rate
+    // limiter reading req.ip twice behind a proxy paid 8% of Actual's API requests for it
+    /** @type {Map<string|undefined, boolean>} */
+    const verdicts = new Map();
+    return function (addr, i) {
+        let verdict = verdicts.get(addr);
+        if (verdict === undefined) {
+            verdict = trust(addr, i);
+            if (verdicts.size >= TRUST_VERDICTS_LIMIT) {
+                verdicts.clear();
+            }
+            verdicts.set(addr, verdict);
+        }
+        return verdict;
+    };
 }
+
+// the proxies and the clients seen lately, cleared whole when full as mtimeStrings is
+const TRUST_VERDICTS_LIMIT = 1024;
 
 const shownWarnings = new Set();
 /**

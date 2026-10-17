@@ -134,6 +134,28 @@ test("compileTrust turns every accepted spelling into a predicate", () => {
     assert.strictEqual(compileTrust(false)("127.0.0.1", 0), false);
 });
 
+test("compileTrust parses an address once for a list, not on every req.ip", () => {
+    const proxyaddr = require("proxy-addr");
+    const compile = proxyaddr.compile;
+    let calls = 0;
+    proxyaddr.compile = (val) => {
+        const trust = compile(val);
+        return (/** @type {string} */ addr) => (calls++, trust(addr));
+    };
+    try {
+        const list = compileTrust(["127.0.0.1", "10.0.0.0/8"]);
+        for (let i = 0; i < 3; i++) {
+            assert.strictEqual(list("127.0.0.1", 0), true);
+            assert.strictEqual(list("8.8.8.8", 1), false);
+            assert.strictEqual(list("::ffff:10.1.2.3", 0), true);
+            assert.strictEqual(list(undefined, 0), false);
+        }
+        assert.strictEqual(calls, 4, "each address went to proxy-addr once");
+    } finally {
+        proxyaddr.compile = compile;
+    }
+});
+
 test("decode answers -1 on a malformed escape", () => {
     assert.strictEqual(decode("/a%20b"), "/a b");
     assert.strictEqual(decode("/a%ZZ"), -1);
