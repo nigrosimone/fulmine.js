@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.25.1](https://github.com/nigrosimone/fulmine.js/compare/v5.25.0...v5.25.1) (2026-10-17)
+
+### Performance Improvements
+
+* **static:** a small file is read whole and cached with no file thread too, which one core gets ([c468853](https://github.com/nigrosimone/fulmine.js/commit/c468853286ef79b42bc409b7710a3a324944ecbc))
+* **req:** a trust proxy list answers each address once, proxy-addr parsed it on every req.ip ([8a5b080](https://github.com/nigrosimone/fulmine.js/commit/8a5b0806d3196354c4de2514d20eefafb5a27abf))
+
 ## [5.25.0](https://github.com/nigrosimone/fulmine.js/compare/v5.24.2...v5.25.0) (2026-10-15)
 
 ### Features
