@@ -397,7 +397,8 @@ class Walk {
         // with one callback the same object, express's res.format test asserts the identity
         req._leaveRoute = route.callbacks.length > 1 ? (this.leaveRoute ??= this.stepOutOfRoute.bind(this)) : this.next;
         if (continueRoute === "route") {
-            this.step("route");
+            // a param callback's next("route") skips the whole route, a use() included
+            this.leaveHop(false);
         } else if (continueRoute) {
             this.step(undefined);
         } else {
@@ -588,9 +589,10 @@ class Walk {
         const res = this.res;
         const route = this.route;
         if (thingamabob) {
-            if (thingamabob === "route" || thingamabob === "router") {
+            // in a use() express's router turns next("route") into next(): each callback is a layer
+            if (thingamabob === "router" || (thingamabob === "route" && !route.use)) {
                 return this.leaveHop(thingamabob === "router");
-            } else {
+            } else if (thingamabob !== "route") {
                 req._error = thingamabob;
                 req._errorKey = route.routeKey;
                 req._errorGroup = route.group;
