@@ -1,5 +1,5 @@
 ---
-description: LibreChat, n8n and Actual Budget on Fulmine instead of Express. Their own test suites pass, and with no change to their code Actual spends 14% less CPU and LibreChat 3%.
+description: LibreChat, n8n and Actual Budget on Fulmine instead of Express. Their own test suites pass, and with no change to their code Actual spends 14% less CPU and LibreChat 3%, up to 25% with Fulmine's own compression and static files.
 ---
 
 <!--
@@ -9,7 +9,7 @@ import data from '../site/.vitepress/theme/realapps.json'
 
 const usd = (v) => '$' + Math.round(v).toLocaleString('en-US')
 const ratio = (v) => v == null ? '' : v.toFixed(2) + 'x'
-const lessCompute = (p) => Math.round((1 - p.year.fulmine.compute / p.year.express.compute) * 100)
+const lessTotal = (p) => Math.round((1 - p.year['fulmine + patch'].total / p.year.express.total) * 100)
 </script>
 -->
 
@@ -48,32 +48,41 @@ which is a smaller story.
 The same requests their web client sends, one by one, CPU per request against Express:
 
 <table>
-<thead><tr><th>endpoint</th><th>what it is</th><th>Fulmine</th></tr></thead>
+<thead><tr><th>endpoint</th><th>what it is</th><th>no change</th><th>best setup</th></tr></thead>
 <tbody v-for="p in data.projects" :key="p.name">
-<tr><th colspan="3">{{ p.title }}</th></tr>
-<tr v-for="e in p.endpoints" :key="e.name"><td><code>{{ e.name }}</code></td><td>{{ e.what }}</td><td>{{ ratio(e.plain) }}</td></tr>
+<tr><th colspan="4">{{ p.title }}</th></tr>
+<tr v-for="e in p.endpoints" :key="e.name"><td><code>{{ e.name }}</code></td><td>{{ e.what }}</td><td>{{ ratio(e.plain) }}</td><td>{{ ratio(e.patch) }}</td></tr>
 </tbody>
 </table>
 
 Where the framework is the work, the health check, the page, a static file, the gain is large. Where
 the database is the work it is smaller, and still there.
 
+The best setup moves the project to Fulmine's own compression and static files,
+`express.compression()` and `express.static(dir, { preCompressed: true })`, see
+[performance](/performance#performance-tips):
+[five lines in LibreChat](https://github.com/nigrosimone/fulmine-compat/blob/main/patches/librechat.diff),
+[one in Actual](https://github.com/nigrosimone/fulmine-compat/blob/main/patches/actual.diff) plus a
+build step that writes the brotli and gzip files.
+
 ## What it is worth
 
 These servers are light, so it depends on scale. With a million active users a day, on
 {{ data.prices.cloud }} with a task of 1 vCPU and {{ data.prices.taskGb }} GB per process at
-{{ Math.round(data.prices.utilization * 100) }}% CPU, the compute of a year:
+{{ Math.round(data.prices.utilization * 100) }}% CPU and ${{ data.prices.egressGb }} per GB out:
 
 <table>
-<thead><tr><th>compute, a year</th><th>Express</th><th>Fulmine</th></tr></thead>
+<thead><tr><th>a year</th><th>Express</th><th>Fulmine, no change</th><th>Fulmine, best setup</th></tr></thead>
 <tbody>
-<tr v-for="p in data.projects" :key="p.name"><td>{{ p.title }}</td><td>{{ usd(p.year.express.compute) }}</td><td>{{ usd(p.year.fulmine.compute) }}, -{{ lessCompute(p) }}%</td></tr>
+<tr v-for="p in data.projects" :key="p.name"><td>{{ p.title }}</td><td>{{ usd(p.year.express.total) }}</td><td>{{ usd(p.year.fulmine.total) }}</td><td>{{ usd(p.year['fulmine + patch'].total) }}, -{{ lessTotal(p) }}%</td></tr>
 </tbody>
 </table>
 
-Outbound traffic, at ${{ data.prices.egressGb }} per GB, is the large part of the bill and the same on
-both, so in the total the saving barely shows. A single small instance sees no difference on the
-invoice, it pays its minimum either way.
+Compute is a small part of that bill and outbound traffic the large one. Without a change Fulmine
+takes 14% of the compute on Actual and 3% on LibreChat, which barely shows in the total. With the
+best setup most of the saving is the web app going out compressed, which Express can also do through
+a plugin: what Fulmine adds is one option, and less CPU per file. A single small instance sees no
+difference on the invoice, it pays its minimum either way.
 
 ## How it was measured
 
