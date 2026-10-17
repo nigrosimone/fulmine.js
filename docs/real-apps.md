@@ -39,7 +39,7 @@ body, see [differences](/differences).
 
 ## Their endpoints
 
-LibreChat and Actual Budget, under the load of their own web client. n8n is left out here: it builds
+[LibreChat](https://github.com/danny-avila/LibreChat) and [Actual Budget](https://github.com/actualbudget/actual), under the load of their own web client. n8n is left out here: it builds
 its server with `http.createServer(app)`, so without a change Fulmine serves it through node:http,
 which is a smaller story.
 

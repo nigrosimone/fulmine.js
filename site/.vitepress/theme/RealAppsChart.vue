@@ -9,6 +9,12 @@ const arms = [
     { key: "fulmine + patch", label: "fulmine, best setup", us: true }
 ] as const;
 
+// the projects, for a reader who has not heard of them
+const home: Record<string, string> = {
+    actual: "https://github.com/actualbudget/actual",
+    librechat: "https://github.com/danny-avila/LibreChat"
+};
+
 const less = (project: (typeof data.projects)[number], arm: string) =>
     Math.round((1 - project.day[arm as keyof typeof project.day].cpuMs / project.day.express.cpuMs) * 100);
 </script>
@@ -16,7 +22,9 @@ const less = (project: (typeof data.projects)[number], arm: string) =>
 <template>
     <figure class="fm-arena fm-realapps">
         <div v-for="project in data.projects" :key="project.name" class="fm-realapps-project">
-            <p class="fm-realapps-title">{{ project.title }}</p>
+            <p class="fm-realapps-title">
+                <a :href="home[project.name]" target="_blank" rel="noopener">{{ project.title }}</a>
+            </p>
             <ul class="fm-arena-rows">
                 <li v-for="arm in arms" :key="arm.key" :class="{ 'fm-arena-us': arm.us }">
                     <span class="fm-arena-rank">{{ arm.key === "express" ? "" : `-${less(project, arm.key)}%` }}</span>

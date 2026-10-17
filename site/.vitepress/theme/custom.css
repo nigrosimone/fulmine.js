@@ -751,6 +751,12 @@
     text-transform: uppercase;
 }
 
+.fm-realapps-title a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
 .fm-realapps .fm-arena-rows li {
     grid-template-columns: 3.2em minmax(0, 10em) minmax(0, 1fr) 4em;
 }
