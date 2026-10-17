@@ -103,90 +103,90 @@
             "name": "librechat",
             "title": "LibreChat, API server",
             "express": "5.3.0",
-            "fulmine": "5.25.1",
+            "fulmine": "5.25.2",
             "day": {
                 "express": {
-                    "cpuMs": 87.33702843973674,
-                    "mbOut": 0.2183028404742563
+                    "cpuMs": 86.34578872272733,
+                    "mbOut": 0.21736939366620917
                 },
                 "fulmine": {
-                    "cpuMs": 84.9701134340937,
-                    "mbOut": 0.21803335417107345
+                    "cpuMs": 85.58114908622265,
+                    "mbOut": 0.21796982337787715
                 },
                 "fulmine + patch": {
-                    "cpuMs": 65.62551961006007,
-                    "mbOut": 0.18530032695802656
+                    "cpuMs": 65.78607217727422,
+                    "mbOut": 0.18516478887147017
                 }
             },
             "endpoints": [
                 {
                     "name": "health",
                     "what": "GET /health, the container health check",
-                    "plain": 3.557650499673441,
-                    "patch": 3.575509730555525
+                    "plain": 3.4325241431191333,
+                    "patch": 3.463266713491229
                 },
                 {
                     "name": "index",
                     "what": "GET /, the page, with a CSP nonce of its own each time",
-                    "plain": 1.0710303578223093,
-                    "patch": 1.716060866020989
+                    "plain": 1.0182892078737602,
+                    "patch": 2.309132482621936
                 },
                 {
                     "name": "bundle",
                     "what": "GET of the main bundle, 0.9 MB served from its .gz twin: a first visit, a new release",
-                    "plain": 1.0846592320086859,
-                    "patch": 10.510700440457148
+                    "plain": 1.0629637056346501,
+                    "patch": 10.877498166140212
                 },
                 {
                     "name": "config",
                     "what": "GET /api/config, the first call of every page load",
-                    "plain": 1.0445665809065876,
-                    "patch": 1.2666637623072232
+                    "plain": 1.0369245779563836,
+                    "patch": 1.2684286116730374
                 },
                 {
                     "name": "user",
                     "what": "GET /api/user, the signed in user",
-                    "plain": 1.1023133345871732,
-                    "patch": 1.2985452206280077
+                    "plain": 1.0700560896228548,
+                    "patch": 1.3276600756305224
                 },
                 {
                     "name": "endpoints",
                     "what": "GET /api/endpoints, the model menu",
-                    "plain": 1.1125567947129287,
-                    "patch": 1.271978964734997
+                    "plain": 1.0492725988700564,
+                    "patch": 1.265306757534737
                 },
                 {
                     "name": "convos",
                     "what": "GET /api/convos, the sidebar: 25 conversations of 200",
-                    "plain": 1.0280941533788914,
-                    "patch": 1.2251249325167364
+                    "plain": 1.019110970208315,
+                    "patch": 1.2423417957739329
                 },
                 {
                     "name": "messages",
                     "what": "GET /api/messages/:id, opening a conversation of 20 messages",
-                    "plain": 1.0369165001997602,
-                    "patch": 1.217237308146399
+                    "plain": 1.0150875883739199,
+                    "patch": 1.2467110036275695
                 }
             ],
             "noise": 0.01709958150567803,
             "year": {
                 "express": {
-                    "tasks": 2.021690473142054,
-                    "compute": 699.5453375166136,
-                    "egress": 7003.172177323554,
-                    "total": 7702.7175148401675
+                    "tasks": 1.9987451093223918,
+                    "compute": 691.6057827277341,
+                    "egress": 6973.22713079587,
+                    "total": 7664.832913523604
                 },
                 "fulmine": {
-                    "tasks": 1.9669007739373543,
-                    "compute": 680.5870057978034,
-                    "egress": 6994.52703566383,
-                    "total": 7675.114041461634
+                    "tasks": 1.9810451177366353,
+                    "compute": 685.4812316392306,
+                    "egress": 6992.48896285475,
+                    "total": 7677.970194493981
                 },
                 "fulmine + patch": {
-                    "tasks": 1.5191092502328722,
-                    "compute": 525.6421827655785,
-                    "egress": 5944.448965401535,
-                    "total": 6470.091148167114
+                    "tasks": 1.5228257448443108,
+                    "compute": 526.9281642310284,
+                    "egress": 5940.100892995893,
+                    "total": 6467.029057226922
                 }
             }
         }

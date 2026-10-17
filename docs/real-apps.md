@@ -1,5 +1,5 @@
 ---
-description: LibreChat, n8n and Actual Budget on Fulmine instead of Express. Their own test suites pass, and with no change to their code Actual spends 16% less CPU and LibreChat 3%, up to 25% with Fulmine's own compression and static files.
+description: LibreChat, n8n and Actual Budget on Fulmine instead of Express. Their own test suites pass, and with no change to their code Actual spends 16% less CPU, and LibreChat 24% with Fulmine's own compression and static files.
 ---
 
 <!--
@@ -79,7 +79,7 @@ These servers are light, so it depends on scale. With a million active users a d
 </table>
 
 Compute is a small part of that bill and outbound traffic the large one. Without a change Fulmine
-takes 16% of the compute on Actual and 3% on LibreChat, which barely shows in the total. With the
+takes 16% of the compute on Actual and on LibreChat less than the noise, which barely shows in the total. With the
 best setup most of the saving is the web app going out compressed, which Express can also do through
 a plugin: what Fulmine adds is one option, and less CPU per file. A single small instance sees no
 difference on the invoice, it pays its minimum either way.
@@ -92,5 +92,5 @@ them, each with its own database and the same seed. Five alternating rounds per 
 from `/proc`, and an A/A run of Express against Express to measure the noise. Both servers run
 without V8's memory reducer and get one full GC after seeding, so the pauses between rounds do not
 change their heap. Measured on
-{{ data.date }}, Express {{ data.projects[0].express }}, Fulmine {{ data.projects[0].fulmine }}. To run
+{{ data.date }}, Express {{ data.projects[0].express }}, Fulmine {{ [...new Set(data.projects.map((p) => p.fulmine))].join(' and ') }}. To run
 it again, see the [repository](https://github.com/nigrosimone/fulmine-compat).
