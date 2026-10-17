@@ -1,5 +1,5 @@
 ---
-description: LibreChat, n8n and Actual Budget on Fulmine instead of Express. Their own test suites pass, and with no change to their code Actual spends 14% less CPU and LibreChat 3%, up to 25% with Fulmine's own compression and static files.
+description: LibreChat, n8n and Actual Budget on Fulmine instead of Express. Their own test suites pass, and with no change to their code Actual spends 16% less CPU and LibreChat 3%, up to 25% with Fulmine's own compression and static files.
 ---
 
 <!--
@@ -79,7 +79,7 @@ These servers are light, so it depends on scale. With a million active users a d
 </table>
 
 Compute is a small part of that bill and outbound traffic the large one. Without a change Fulmine
-takes 14% of the compute on Actual and 3% on LibreChat, which barely shows in the total. With the
+takes 16% of the compute on Actual and 3% on LibreChat, which barely shows in the total. With the
 best setup most of the saving is the web app going out compressed, which Express can also do through
 a plugin: what Fulmine adds is one option, and less CPU per file. A single small instance sees no
 difference on the invoice, it pays its minimum either way.
