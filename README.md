@@ -1,6 +1,6 @@
 <img src="./assets/logo-mark.svg" alt="" width="88" align="right">
 
-# Fulmine.js: the drop-in Express 5 replacement, <!--speedup:tables:median-->11<!--/speedup-->x faster on large route tables
+# Fulmine.js: the drop-in Express 5 replacement, <!--speedup:tables:median-->10<!--/speedup-->x faster on large route tables
 
 **Fulmine** (lightning in Italian ⚡) is an Express 5 compatible web framework for Node.js, built on
 [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js) instead of `node:http`. Same API, same
@@ -25,8 +25,8 @@ const express = require("fulmine.js"); // instead of require("express")
 
 ## Why Fulmine
 
-- **Faster than Express, measured.** <!--speedup:plain:to-->1.2x to 3.5x<!--/speedup--> on plain routing, <!--speedup:body:to-->1.7x to 4.3x<!--/speedup--> on a request with a body,
-  <!--speedup:tables:to-->7.2x to 22.0x<!--/speedup--> on a large route table, in <!--speedup:period:text-->the last 20 CI runs, 13 October 2026 to 15 October 2026<!--/speedup-->. Routes are matched in C++ by µWS's own router,
+- **Faster than Express, measured.** <!--speedup:plain:to-->1.1x to 3.5x<!--/speedup--> on plain routing, <!--speedup:body:to-->1.6x to 4.3x<!--/speedup--> on a request with a body,
+  <!--speedup:tables:to-->7.1x to 22.0x<!--/speedup--> on a large route table, in <!--speedup:period:text-->the last 20 CI runs, 14 October 2026 to 17 October 2026<!--/speedup-->. Routes are matched in C++ by µWS's own router,
     and a simple enough handler is answered without running any JavaScript at all.
 - **Zero rewrite.** `helmet`, `cors`, `passport`, `morgan`, `multer`, `express-session` and the rest of
   the Express ecosystem keep working. Not "mostly": every test runs against real Express first and the
