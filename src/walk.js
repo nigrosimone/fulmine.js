@@ -35,6 +35,68 @@ const { tracing, report, traceHandler, traceErrorHandler, traceMount } = require
 /** @typedef {import("./router-utils.js").RouteEntry} RouteEntry */
 
 /**
+ * A mount entered after req.baseUrl was assigned: what it read before, what it reads inside, and
+ * whether the mount took a path.
+ * @typedef {{before: string|undefined, inside: string|undefined, path: boolean}} BaseUrlLevel
+ */
+
+/**
+ * Express sets req.baseUrl on entering a mount that takes a path: what the router around it read
+ * on entry, then the piece taken, so an assignment made in between is not seen inside it.
+ *
+ * @param {Request} req
+ * @param {number} taken how much of the path the mount took
+ */
+function enterBaseUrlLevel(req, taken) {
+    const path = taken !== 0;
+    const levels = /** @type {BaseUrlLevel[]} */ (req._baseUrlLevels);
+    const before = req._baseUrlOverride;
+    let inside = before;
+    if (path) {
+        const entry = levels.length > 0 ? levels[levels.length - 1].inside : undefined;
+        const piece = req._originalPath.slice(req._consumed, req._consumed + taken);
+        inside = entry === undefined ? undefined : entry + (piece.endsWith("/") ? piece.slice(0, -1) : piece);
+        req._baseUrlOverride = inside;
+    }
+    levels.push({ before, inside, path });
+}
+
+/**
+ * And on the way out a router puts back what it found (restore()), and the router around a mount
+ * that took a path resets it to what it read on entry (next()). A plain middleware changes nothing.
+ *
+ * @param {Request} req
+ * @param {boolean} router
+ */
+function leaveBaseUrlLevel(req, router) {
+    const levels = /** @type {BaseUrlLevel[]} */ (req._baseUrlLevels);
+    const level = levels.pop();
+    if (level === undefined) {
+        return;
+    }
+    if (router) {
+        req._baseUrlOverride = level.before;
+    }
+    if (level.path) {
+        req._baseUrlOverride = levels.length > 0 ? levels[levels.length - 1].inside : undefined;
+    }
+}
+
+/**
+ * Every mount left at once, when ordinary routing takes over from the top. They are routers: a
+ * chain only stays inside a mounted router (keepMount).
+ *
+ * @param {Request} req
+ */
+function leaveAllBaseUrlLevels(req) {
+    if (req._baseUrlLevels) {
+        while (req._baseUrlLevels.length > 0) {
+            leaveBaseUrlLevel(req, true);
+        }
+    }
+}
+
+/**
  * One walk of one router's routes for one request: next() is made once, not per hop (a closure
  * per hop captured eleven bindings). A nested router gets its own walk.
  */
@@ -201,6 +263,7 @@ class Walk {
             useApp(req, router);
             // a chain that went into a mount never left it (keepMount), so the path is still relative
             if (req._stack !== null && req._stack.length > 0) {
+                leaveAllBaseUrlLevels(req);
                 req._stack.length = 0;
                 req._consumed = 0;
                 setMountedPath(req);
@@ -254,6 +317,7 @@ class Walk {
         }
         this.skipUntil = startIndex > 0 ? this.routes[startIndex - 1] : undefined;
         if (req._stack !== null && req._stack.length > 0) {
+            leaveAllBaseUrlLevels(req);
             req._stack.length = 0;
             req._consumed = 0;
             setMountedPath(req);
@@ -279,6 +343,7 @@ class Walk {
         }
         this.skipUntil = startIndex > 0 ? this.routes[startIndex - 1] : undefined;
         if (req._stack !== null && req._stack.length > 0) {
+            leaveAllBaseUrlLevels(req);
             req._stack.length = 0;
             req._consumed = 0;
             setMountedPath(req);
@@ -315,6 +380,9 @@ class Walk {
             (req._stack ??= []).push(
                 taken !== 0 && req._consumed + taken === req._originalPath.length ? -taken : taken
             );
+            if (req._baseUrlLevels) {
+                enterBaseUrlLevel(req, taken);
+            }
             // a pathless use consumes nothing, and most middleware is pathless
             if (taken !== 0 || req.endsWithSlash) {
                 req._consumed += taken;
@@ -383,6 +451,9 @@ class Walk {
             // runRoute pushed for this mount, so the stack is there and not empty
             const pushed = /** @type {number} */ (/** @type {number[]} */ (req._stack).pop());
             const taken = pushed < 0 ? -pushed : pushed;
+            if (req._baseUrlLevels) {
+                leaveBaseUrlLevel(req, false);
+            }
             // a rewrite inside this middleware is taken now, the pop would revert it
             if (req.url !== req._lastUrl) {
                 req._absorbUrlRewrite(taken !== 0);
@@ -442,8 +513,18 @@ class Walk {
         if (pushedParams) {
             (req._paramStack ??= []).push(req.params);
         }
-        // express restores req.params when a router hands back
+        // express restores req.params when a router hands back, and req.baseUrl
         const parentParams = req.params;
+        const parentBaseUrl = req._baseUrlOverride;
+        // a level of its own, so leaving a path layer inside resets to what this router read
+        const pushedLevel = Boolean(req._baseUrlLevels);
+        if (pushedLevel) {
+            /** @type {BaseUrlLevel[]} */ (req._baseUrlLevels).push({
+                before: parentBaseUrl,
+                inside: parentBaseUrl,
+                path: false
+            });
+        }
         // each router answers OPTIONS with its own verbs, the list is per router
         const parentMethods = req._matchedMethods;
         if (parentMethods !== null) {
@@ -452,6 +533,12 @@ class Walk {
         callback
             ._routeRequest(req, res, 0)
             .then((/** @type {RouteEntry|false} */ routed) => {
+                if (req._baseUrlLevels) {
+                    if (pushedLevel) {
+                        req._baseUrlLevels.pop();
+                    }
+                    req._baseUrlOverride = parentBaseUrl;
+                }
                 if (pushedParams) {
                     /** @type {Record<string, any>[]} */ (req._paramStack).pop();
                 }
@@ -513,6 +600,16 @@ class Walk {
         const callback = route.callbacks[this.callbackIndex++];
         if (!callback) {
             return this.leaveHop(false);
+        }
+        // express makes each callback of use(path, ...) a layer of its own, and entering one sets
+        // req.baseUrl from the path again
+        if (
+            this.callbackIndex > 1 &&
+            route.use &&
+            req._baseUrlLevels &&
+            /** @type {number[]} */ (req._stack)[/** @type {number[]} */ (req._stack).length - 1] !== 0
+        ) {
+            req._baseUrlOverride = req._baseUrlLevels[req._baseUrlLevels.length - 1].inside;
         }
         // the routes a compiled chain already ran, a mount included
         if (!this.skipCheck && this.skipUntil && this.skipUntil.routeKey >= route.routeKey) {

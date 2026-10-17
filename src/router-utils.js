@@ -656,6 +656,7 @@ function adoptPlainRequest(req, router) {
     req.params = req.params ?? Object.create(null);
     // null as in the Request constructor, the push sites materialise them
     req._stack = null;
+    req._baseUrlLevels = null;
     req._consumed = 0;
     req._mountSlash = false;
     req._paramStack = null;

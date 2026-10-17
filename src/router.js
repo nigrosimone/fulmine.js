@@ -303,9 +303,25 @@ module.exports = class Router extends EventEmitter {
         }
         // express restores req.params when a router hands back
         const callerParams = req.params;
+        const callerBaseUrl = req._baseUrlOverride;
+        // a router called by hand puts back req.baseUrl as a mounted one does, see enterMount
+        const pushedLevel = Boolean(req._baseUrlLevels);
+        if (pushedLevel) {
+            /** @type {import("./walk.js").BaseUrlLevel[]} */ (req._baseUrlLevels).push({
+                before: callerBaseUrl,
+                inside: callerBaseUrl,
+                path: false
+            });
+        }
         const routed = await this._routeRequest(req, res, 0);
         if (!routed) {
             req.params = callerParams;
+            if (req._baseUrlLevels) {
+                if (pushedLevel) {
+                    req._baseUrlLevels.pop();
+                }
+                req._baseUrlOverride = callerBaseUrl;
+            }
             if (next) {
                 // an error nobody handled belongs to the caller
                 const err = req._error;

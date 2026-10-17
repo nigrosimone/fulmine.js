@@ -361,6 +361,13 @@ module.exports = class Request extends LazyReadable {
     _baseUrlOverride;
 
     /**
+     * One entry per mount the walk is inside, from the first assignment to req.baseUrl on: what
+     * express's routers put back on the way out, see enterBaseUrlLevel in walk.js. null before.
+     * @type {import("./walk.js").BaseUrlLevel[]|null}
+     */
+    _baseUrlLevels = null;
+
+    /**
      * Built for every request: the headers are copied out because uWS only lends them for this
      * call, everything else waits until asked.
      *
@@ -691,6 +698,13 @@ module.exports = class Request extends LazyReadable {
      * reads back changes, not what later routes match.
      */
     set baseUrl(x) {
+        // the mounts entered before the first assignment had nothing to restore
+        if (!this._baseUrlLevels) {
+            this._baseUrlLevels = [];
+            for (const taken of this._stack ?? []) {
+                this._baseUrlLevels.push({ before: undefined, inside: undefined, path: taken !== 0 });
+            }
+        }
         this._baseUrlOverride = x;
     }
 
