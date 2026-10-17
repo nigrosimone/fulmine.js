@@ -1,5 +1,14 @@
 # Changelog
 
+## [5.25.3](https://github.com/nigrosimone/fulmine.js/compare/v5.25.2...v5.25.3) (2026-10-18)
+
+### Bug Fixes
+
+* **router:** an app handed to a Router's use() is not mounted, it keeps its own settings as in express ([e2fc676](https://github.com/nigrosimone/fulmine.js/commit/e2fc676f747aba5fc903dfc9d8b1d3267561114f))
+* **router:** next('route') in a callback of use(path, f1, f2) goes on to f2, each callback is a layer to express ([a56c474](https://github.com/nigrosimone/fulmine.js/commit/a56c47475abcf51d7e1314bfd71c81cdd5a1949f))
+* **router:** req.baseUrl a middleware assigns lives in its router, express restores and resets it on the way out ([aafd9db](https://github.com/nigrosimone/fulmine.js/commit/aafd9dbdf0d81fd1cbc1df22c710c4514e7da420))
+* **res:** send() sets Content-Length before end() as express, and res.end() alone puts none in the headers ([5e04e5d](https://github.com/nigrosimone/fulmine.js/commit/5e04e5d49673a6d1171afd570e4bc51d7bdb2280))
+
 ## [5.25.2](https://github.com/nigrosimone/fulmine.js/compare/v5.25.1...v5.25.2) (2026-10-17)
 
 ### Performance Improvements
