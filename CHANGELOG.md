@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.25.2](https://github.com/nigrosimone/fulmine.js/compare/v5.25.1...v5.25.2) (2026-10-17)
+
+### Performance Improvements
+
+* **router:** a router's get('/') and get('/:id') are both native, a parameter never takes an empty segment ([8e01038](https://github.com/nigrosimone/fulmine.js/commit/8e010383882327fe52e758e4d0dab51384640c66))
+
 ## [5.25.1](https://github.com/nigrosimone/fulmine.js/compare/v5.25.0...v5.25.1) (2026-10-17)
 
 ### Performance Improvements
