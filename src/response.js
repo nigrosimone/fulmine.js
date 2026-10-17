@@ -222,12 +222,6 @@ module.exports = class Response extends LazyWritable {
     /** A slot for whatever a middleware puts on res.body, never read here. @type {unknown} */
     body = undefined;
 
-    /**
-     * What was handed to uWS, for a content-length asked after the fact, see get().
-     * @type {string|Buffer|Uint8Array|undefined}
-     */
-    _sentBody = undefined;
-
     /** False while the uWS route handler is in its synchronous window, where uWS corks itself. @type {boolean} */
     _corkNeeded = false;
 
@@ -910,7 +904,6 @@ module.exports = class Response extends LazyWritable {
             this.#flushQueued(null);
             if (data) {
                 this._res.write(data);
-                this._sentBody = data;
             }
             this._res.endWithoutBody();
         } else {
@@ -925,7 +918,6 @@ module.exports = class Response extends LazyWritable {
                     this._res.endWithoutBody(length, closeConnection);
                 }
             } else {
-                this._sentBody = data ?? "";
                 // null is the empty body: uWS never ends a response given end(null)
                 this._res.end(data ?? "", closeConnection);
             }
@@ -1019,6 +1011,14 @@ module.exports = class Response extends LazyWritable {
                 this.headers["content-type"] = "application/octet-stream";
             }
         }
+        const byteLength = isBuffer
+            ? /** @type {Buffer} */ (body).length
+            : Buffer.byteLength(/** @type {string} */ (body));
+        // set before end(), as express does: an end wrapper, an on-headers hook and a finish
+        // listener read it. res.end() alone puts none in the headers, as in node
+        if (this.headers["transfer-encoding"] === undefined) {
+            this.headers["content-length"] = String(byteLength);
+        }
         // the ETag is send()'s, not end()'s: res.end() and res.redirect() carry none, as in node.
         // Set before end() reads req.fresh. An empty body still gets one (send("") and send(null)
         // did not, testing truthiness), and every method, see issue #10
@@ -1030,7 +1030,12 @@ module.exports = class Response extends LazyWritable {
             !this.req.noEtag &&
             (hot.etagMethods === null || hot.etagMethods.has(this.req.method))
         ) {
-            const etag = etagFn(/** @type {string|Buffer} */ (body));
+            // an application's own function is called as express calls it, the built-in one is
+            // handed the length measured above
+            const etag =
+                etagFn.ofSent !== undefined
+                    ? etagFn.ofSent(/** @type {string|Buffer} */ (body), byteLength)
+                    : etagFn(/** @type {string|Buffer} */ (body));
             // an application's own etag function may decline
             if (etag) {
                 this.headers["etag"] = etag;
@@ -1724,16 +1729,7 @@ module.exports = class Response extends LazyWritable {
      * @returns {string|string[]|undefined}
      */
     get(field) {
-        const name = headerKey(field);
-        const value = this.headers[name];
-        // Content-Length is uWS's, measured from the body it was handed: worked out here only for
-        // whoever asks, morgan's common and combined formats do, and kept
-        if (value === undefined && name === "content-length" && this._sentBody !== undefined) {
-            const length = Buffer.byteLength(this._sentBody);
-            this.headers["content-length"] = String(length);
-            return String(length);
-        }
-        return value;
+        return this.headers[headerKey(field)];
     }
 
     /**

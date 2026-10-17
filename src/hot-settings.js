@@ -29,7 +29,7 @@ class HotSettings {
     /** @type {boolean} */
     xPoweredBy = false;
 
-    /** @type {((body: string|Buffer|import("fs").Stats, encoding?: BufferEncoding) => string)|undefined} */
+    /** @type {import("./utils.js").ETagFn|undefined} */
     etagFn = undefined;
 
     /** null means every method, which is express's behaviour and the default. @type {Set<string>|null} */

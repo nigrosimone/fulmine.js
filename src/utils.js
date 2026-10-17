@@ -1249,13 +1249,14 @@ const EMPTY_ENTITY_TAG = '"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"';
  *
  * @param {Buffer|string} entity
  * @param {boolean} weak
+ * @param {number} [byteLength] the entity's length in bytes, when the caller has it already
  * @returns {string}
  */
-function entityTag(entity, weak) {
+function entityTag(entity, weak, byteLength) {
     if (entity.length === 0) {
         return weak ? "W/" + EMPTY_ENTITY_TAG : EMPTY_ENTITY_TAG;
     }
-    const len = typeof entity === "string" ? Buffer.byteLength(entity, "utf8") : entity.length;
+    const len = byteLength ?? (typeof entity === "string" ? Buffer.byteLength(entity, "utf8") : entity.length);
     const tag = `"${len.toString(16)}-${crypto.hash("sha1", entity, "base64").substring(0, 27)}"`;
     return weak ? "W/" + tag : tag;
 }
@@ -1302,13 +1303,25 @@ function statTag(stat, weak) {
 }
 
 /**
+ * What the "etag" setting compiles to. The built-in one also answers ofSent, for the length send()
+ * has measured already.
+ *
+ * @typedef {((body: string|Buffer|import("fs").Stats, encoding?: BufferEncoding) => string) & {ofSent?: (body: string|Buffer, byteLength: number) => string}} ETagFn
+ */
+
+/**
  * The function the "etag" setting installs, taking a body or an fs.Stats.
  *
  * @param {{weak: boolean}} options
- * @returns {(body: string|Buffer|import("fs").Stats, encoding?: BufferEncoding) => string}
+ * @returns {ETagFn}
  */
 function createETagGenerator(options) {
-    return function generateETag(body, encoding) {
+    /**
+     * @param {string|Buffer|import("fs").Stats} body
+     * @param {BufferEncoding} [encoding]
+     * @returns {string}
+     */
+    function generateETag(body, encoding) {
         if (body instanceof Stats) {
             return statTag(body, options.weak);
         }
@@ -1318,7 +1331,11 @@ function createETagGenerator(options) {
         }
         const buf = !Buffer.isBuffer(body) ? Buffer.from(body, encoding) : body;
         return entityTag(buf, options.weak);
-    };
+    }
+    // send() has measured a utf8 string or a Buffer for Content-Length already: not a second time
+    generateETag.ofSent = (/** @type {string|Buffer} */ body, /** @type {number} */ byteLength) =>
+        entityTag(body, options.weak, byteLength);
+    return generateETag;
 }
 
 /**
