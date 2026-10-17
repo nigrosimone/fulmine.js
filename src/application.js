@@ -35,6 +35,7 @@ const Response = require("./response.js");
 const ViewClass = require("./view.js");
 const path = require("path");
 const os = require("os");
+const fs = require("fs");
 const { Worker } = require("worker_threads");
 const cluster = require("cluster");
 const { registerWebSocketRoutes } = require("./websocket.js");
@@ -334,9 +335,9 @@ class Application extends Router {
     }
 
     /**
-     * A small file through the worker pool: concurrent asks share one read, and an unchanged file
-     * (by the stat the caller paid for) comes from a bounded cache, on a macrotask as a worker's
-     * answer would. `app.set("file cache", false)` keeps only the shared read.
+     * A small file through the worker pool, or libuv's with `threads: 0`: concurrent asks share one
+     * read, and an unchanged file (by the stat the caller paid for) comes from a bounded cache, on a
+     * macrotask as a worker's answer would. `app.set("file cache", false)` keeps only the shared read.
      *
      * @param {string} fullpath
      * @param {import("fs").Stats} stat
@@ -354,7 +355,8 @@ class Application extends Router {
         if (pending) {
             return pending;
         }
-        pending = this.readFileWithWorker(fullpath).then((data) => {
+        const read = this.workers.length ? this.readFileWithWorker(fullpath) : fs.promises.readFile(fullpath);
+        pending = read.then((data) => {
             if (caching && stat.size <= FILE_CACHE_MAX_ENTRY) {
                 const existing = this._fileCache.get(fullpath);
                 if (existing) {

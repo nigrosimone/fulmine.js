@@ -1306,8 +1306,9 @@ module.exports = class Response extends LazyWritable {
             return;
         }
 
-        // small files through the worker threads
-        if (this.app.workers.length && stat.size < 768 * 1024 && !partial) {
+        // small files read whole and cached, also with no file thread: one core gets `threads: 0`, and
+        // piping them instead made Actual's index.html 4.5x slower
+        if (stat.size < 768 * 1024 && !partial) {
             this.app
                 .readSmallFile(fullpath, stat)
                 .then((data) => {
