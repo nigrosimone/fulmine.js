@@ -594,6 +594,16 @@ function pathsCanOverlap(a, b, aIsPrefix = false) {
         if (left[i] === right[i]) {
             continue;
         }
+        // an empty segment never meets a whole-segment parameter: express's :name needs a character,
+        // and so does µWS's. A router's get("/") and get("/:id") both went the ordinary way
+        if (
+            fixedLength &&
+            !aIsPrefix &&
+            ((left[i] === "" && WHOLE_SEGMENT_PARAM.test(right[i])) ||
+                (right[i] === "" && WHOLE_SEGMENT_PARAM.test(left[i])))
+        ) {
+            return false;
+        }
         if (NOT_A_LITERAL.test(left[i]) || NOT_A_LITERAL.test(right[i])) {
             continue;
         }

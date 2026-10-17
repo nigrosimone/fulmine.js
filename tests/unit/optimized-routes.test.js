@@ -181,6 +181,45 @@ test("a mounted router's parameter routes are native when nothing after them cou
     ]);
 });
 
+test("a router's list and its item, get('/') and get('/:id'), are both native", async () => {
+    // the shape of nearly every REST router: the parameter needs a character, so it never answers
+    // the router's root, and neither route can take the other's request
+    const paths = await nativePaths((app) => {
+        const messages = express.Router();
+        messages.use((req, res, next) => next());
+        messages.get("/", (req, res) => res.send("list"));
+        messages.get("/:id", (req, res) => res.send("item"));
+        app.use("/api/messages", messages);
+    });
+    assert.deepStrictEqual(paths.filter((path) => path.startsWith("/api")).sort(), [
+        "/api/messages/",
+        "/api/messages/:id"
+    ]);
+});
+
+test("expectNative holds for them, in the shape LibreChat's routers have", () => {
+    const { expectNative, routeReport } = express.testing;
+    const app = express();
+    const convos = express.Router();
+    convos.use((req, res, next) => next());
+    convos.get("/", (req, res) => res.json([]));
+    convos.get("/:conversationId", (req, res) => res.json({ id: req.params.conversationId }));
+    convos.delete("/", (req, res) => res.sendStatus(204));
+    convos.delete("/:conversationId", (req, res) => res.sendStatus(204));
+    app.use("/api/convos", convos);
+
+    expectNative(app, "/api/convos/*");
+    assert.deepStrictEqual(
+        routeReport(app).map((r) => `${r.method} ${r.path} ${r.native}`),
+        [
+            "GET /api/convos/ true",
+            "GET /api/convos/:conversationId true",
+            "DELETE /api/convos/ true",
+            "DELETE /api/convos/:conversationId true"
+        ]
+    );
+});
+
 test("and not when something after them could", async () => {
     const paths = await nativePaths((app) => {
         // Express answers /users/me with /users/:id, since it was registered first, and µWS would

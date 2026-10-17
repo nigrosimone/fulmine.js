@@ -31,6 +31,7 @@ const DECIDED = {
     "post-urlencoded": [1, 1, 0, 0],
     "query-string": [1, 1, 1, 0],
     "realistic-stack": [1, 1, 0, 0],
+    "router-list-and-item": [2, 2, 2, 2],
     "router-mounted-params": [1000, 1000, 1000, 1000],
     "routes-1000-params": [1000, 1000, 1000, 1000],
     "routes-1000": [1000, 1000, 1000, 1000]

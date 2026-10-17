@@ -480,4 +480,14 @@ test("pathsCanOverlap is about whether two routes could answer the same request"
     assert.strictEqual(pathsCanOverlap("/users/:id", "/users/:name"), true, "two parameters always can");
     assert.strictEqual(pathsCanOverlap("/a/:b/c", "/a/x/c"), true);
     assert.strictEqual(pathsCanOverlap("/a/:b/c", "/a/x/d"), false, "the last segment settles it");
+
+    // a parameter needs a character, so it never takes the empty segment of a trailing slash
+    assert.strictEqual(pathsCanOverlap("/", "/:id"), false, "a router's list and its item");
+    assert.strictEqual(pathsCanOverlap("/:id", "/"), false, "either way round");
+    assert.strictEqual(pathsCanOverlap("/users/", "/users/:id"), false);
+    // what can be empty still can
+    assert.strictEqual(pathsCanOverlap("/", "/{:id}"), true, "an optional group");
+    assert.strictEqual(pathsCanOverlap("/", "/*splat"), true, "a wildcard");
+    assert.strictEqual(pathsCanOverlap("/:one/{:two}", "/x/"), true);
+    assert.strictEqual(pathsCanOverlap("/", "/:id", true), true, "a mount at the root enters every path");
 });
