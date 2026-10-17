@@ -1,12 +1,11 @@
 <script setup lang="ts">
-// CPU that one active user costs a real application in a day, on Express, on fulmine with no change,
-// and on fulmine with the project's small patch, from the snapshot written by site/realapps.mjs.
+// CPU that one active user costs a real application in a day, on Express and on fulmine with no change
+// to the project, from the snapshot written by site/realapps.mjs.
 import data from "./realapps.json";
 
 const arms = [
     { key: "express", label: "Express", us: false },
-    { key: "fulmine", label: "fulmine, no change", us: true },
-    { key: "fulmine + patch", label: "fulmine, patched", us: true }
+    { key: "fulmine", label: "fulmine, no change", us: true }
 ] as const;
 
 const less = (project: (typeof data.projects)[number], arm: string) =>

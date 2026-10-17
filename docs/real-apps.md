@@ -1,5 +1,5 @@
 ---
-description: LibreChat, n8n and Actual Budget on Fulmine instead of Express. Their own test suites pass, and LibreChat and Actual spend 9% to 11% less CPU with no change, up to 28% with a five line patch.
+description: LibreChat, n8n and Actual Budget on Fulmine instead of Express. Their own test suites pass, and with no change to their code Actual spends 14% less CPU and LibreChat 3%.
 ---
 
 <!--
@@ -9,7 +9,7 @@ import data from '../site/.vitepress/theme/realapps.json'
 
 const usd = (v) => '$' + Math.round(v).toLocaleString('en-US')
 const ratio = (v) => v == null ? '' : v.toFixed(2) + 'x'
-const lessTotal = (p) => Math.round((1 - p.year['fulmine + patch'].total / p.year.express.total) * 100)
+const lessCompute = (p) => Math.round((1 - p.year.fulmine.compute / p.year.express.compute) * 100)
 </script>
 -->
 
@@ -48,46 +48,40 @@ which is a smaller story.
 The same requests their web client sends, one by one, CPU per request against Express:
 
 <table>
-<thead><tr><th>endpoint</th><th>what it is</th><th>no change</th><th>patched</th></tr></thead>
+<thead><tr><th>endpoint</th><th>what it is</th><th>Fulmine</th></tr></thead>
 <tbody v-for="p in data.projects" :key="p.name">
-<tr><th colspan="4">{{ p.title }}</th></tr>
-<tr v-for="e in p.endpoints" :key="e.name"><td><code>{{ e.name }}</code></td><td>{{ e.what }}</td><td>{{ ratio(e.plain) }}</td><td>{{ ratio(e.patch) }}</td></tr>
+<tr><th colspan="3">{{ p.title }}</th></tr>
+<tr v-for="e in p.endpoints" :key="e.name"><td><code>{{ e.name }}</code></td><td>{{ e.what }}</td><td>{{ ratio(e.plain) }}</td></tr>
 </tbody>
 </table>
 
 Where the framework is the work, the health check, the page, a static file, the gain is large. Where
 the database is the work it is smaller, and still there.
 
-The patch moves the project to Fulmine's own compression and static files, `express.compression()`
-and `express.static(dir, { preCompressed: true })`, see [performance](/performance#performance-tips):
-[five lines in LibreChat](https://github.com/nigrosimone/fulmine-compat/blob/main/patches/librechat.diff),
-[one in Actual](https://github.com/nigrosimone/fulmine-compat/blob/main/patches/actual.diff) plus a
-build step that writes the brotli and gzip files.
-
 ## What it is worth
 
 These servers are light, so it depends on scale. With a million active users a day, on
 {{ data.prices.cloud }} with a task of 1 vCPU and {{ data.prices.taskGb }} GB per process at
-{{ Math.round(data.prices.utilization * 100) }}% CPU and ${{ data.prices.egressGb }} per GB out:
+{{ Math.round(data.prices.utilization * 100) }}% CPU, the compute of a year:
 
 <table>
-<thead><tr><th>a year</th><th>Express</th><th>Fulmine, no change</th><th>Fulmine, patched</th></tr></thead>
+<thead><tr><th>compute, a year</th><th>Express</th><th>Fulmine</th></tr></thead>
 <tbody>
-<tr v-for="p in data.projects" :key="p.name"><td>{{ p.title }}</td><td>{{ usd(p.year.express.total) }}</td><td>{{ usd(p.year.fulmine.total) }}</td><td>{{ usd(p.year['fulmine + patch'].total) }}, -{{ lessTotal(p) }}%</td></tr>
+<tr v-for="p in data.projects" :key="p.name"><td>{{ p.title }}</td><td>{{ usd(p.year.express.compute) }}</td><td>{{ usd(p.year.fulmine.compute) }}, -{{ lessCompute(p) }}%</td></tr>
 </tbody>
 </table>
 
-Compute is a small part of that bill and outbound traffic the large one. Without a change Fulmine
-takes 9% to 11% of the compute, which barely shows in the total. With the patch most of the saving is
-the web app going out compressed, which Express can also do through a plugin: what Fulmine adds is
-one option, and less CPU per file. A single small instance sees no difference on the invoice, it pays
-its minimum either way.
+Outbound traffic, at ${{ data.prices.egressGb }} per GB, is the large part of the bill and the same on
+both, so in the total the saving barely shows. A single small instance sees no difference on the
+invoice, it pays its minimum either way.
 
 ## How it was measured
 
 One ARM core of Oracle Cloud (Neoverse N1, the core of AWS Graviton2) for the server, wrk on two
 others, the database on the fourth. Both servers start from one checkout as their Docker image starts
 them, each with its own database and the same seed. Five alternating rounds per endpoint, CPU read
-from `/proc`, and an A/A run of Express against Express to measure the noise. Measured on
+from `/proc`, and an A/A run of Express against Express to measure the noise. Both servers run
+without V8's memory reducer and get one full GC after seeding, so the pauses between rounds do not
+change their heap. Measured on
 {{ data.date }}, Express {{ data.projects[0].express }}, Fulmine {{ data.projects[0].fulmine }}. To run
 it again, see the [repository](https://github.com/nigrosimone/fulmine-compat).
