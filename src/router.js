@@ -1307,7 +1307,9 @@ module.exports = class Router extends EventEmitter {
         );
 
         for (const callback of callbacks) {
-            if (callback instanceof Router) {
+            // only app.use() mounts an app: handed to a Router it is a function to express, with its
+            // own settings, no parent and "/" as mountpath
+            if (callback instanceof Router && (!callback._isApplication || this._isApplication)) {
                 // a pathless or root mount reads "/", as express shows it
                 callback.mountpath = /** @type {string|string[]} */ (path === "" ? "/" : path);
                 callback.parent = this;
