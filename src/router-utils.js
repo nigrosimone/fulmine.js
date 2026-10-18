@@ -974,6 +974,8 @@ const regExParam = /:([$_\p{ID_Start}][$\u200c\u200d\p{ID_Continue}]*)/gu;
 // one intermediate prototype per class
 const callablePrototypes = new WeakMap();
 
+const CALLABLE_OWN = new Set(["apply", "call", "toString", "constructor"]);
+
 /**
  * The prototype for a callable router or app: the class prototype with apply and call put back,
  * since a function's prototype set to it drops Function.prototype. Not bind: BIND is an HTTP verb,
@@ -984,20 +986,57 @@ const callablePrototypes = new WeakMap();
  */
 function callablePrototypeFor(classPrototype) {
     let prototype = callablePrototypes.get(classPrototype);
-    if (prototype) {
-        return prototype;
+    if (!prototype) {
+        prototype = Object.create(classPrototype);
+        for (const name of /** @type {const} */ (["apply", "call", "toString"])) {
+            Object.defineProperty(prototype, name, {
+                value: Function.prototype[name],
+                writable: true,
+                configurable: true,
+                enumerable: false
+            });
+        }
+        callablePrototypes.set(classPrototype, prototype);
     }
-    prototype = Object.create(classPrototype);
-    for (const name of /** @type {const} */ (["apply", "call", "toString"])) {
-        Object.defineProperty(prototype, name, {
-            value: Function.prototype[name],
-            writable: true,
-            configurable: true,
-            enumerable: false
-        });
-    }
-    callablePrototypes.set(classPrototype, prototype);
+    liftClassMembers(prototype, classPrototype);
     return prototype;
+}
+
+// per callable prototype, what each member was in the class chain when it was last copied
+const liftedMembers = new WeakMap();
+
+/**
+ * Copies the methods of the whole class chain onto the callable's prototype. Express has them on
+ * the app or its direct prototype, and libraries that copy their own methods onto an app (Feathers)
+ * look only there: they took app.get and app.set for missing and wrote over them. Synced on every
+ * app or router created: a method replaced on express.application reaches new apps, one replaced
+ * on this prototype itself (the CLI's listen stub) stays.
+ *
+ * @param {object} prototype
+ * @param {object} classPrototype
+ */
+function liftClassMembers(prototype, classPrototype) {
+    /** @type {Map<string|symbol, PropertyDescriptor>} */
+    let last = liftedMembers.get(prototype);
+    if (!last) {
+        last = new Map();
+        liftedMembers.set(prototype, last);
+    }
+    const seen = new Set();
+    for (let source = classPrototype; source && source !== Object.prototype; source = Object.getPrototypeOf(source)) {
+        for (const key of Reflect.ownKeys(source)) {
+            if (seen.has(key) || (typeof key === "string" && CALLABLE_OWN.has(key))) {
+                continue;
+            }
+            seen.add(key);
+            const wanted = /** @type {PropertyDescriptor} */ (Object.getOwnPropertyDescriptor(source, key));
+            const before = last.get(key);
+            if (!before || before.value !== wanted.value || before.get !== wanted.get || before.set !== wanted.set) {
+                Object.defineProperty(prototype, key, wanted);
+                last.set(key, wanted);
+            }
+        }
+    }
 }
 
 /**
