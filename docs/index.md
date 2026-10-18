@@ -87,7 +87,7 @@ app.listen(3000);
 <div class="fm-metric"><p class="fm-metric-value"><!--speedup:routing/routes-1000:dash-->7.1-16.6<!--/speedup--><span>×</span></p><h3>1,000 routes</h3><p>Your route table grows.<br>The native router keeps up.</p><SpeedRace figure="routing/routes-1000" /></div>
 <div class="fm-metric"><p class="fm-metric-value"><!--speedup:routing/routes-1000-params:dash-->7.4-22.0<!--/speedup--><span>×</span></p><h3>1,000 parameterized routes</h3><p>More paths. More parameters.<br>This is where native shines.</p><SpeedRace figure="routing/routes-1000-params" /></div>
 </div>
-<p class="fm-benchmark-note">Throughput relative to Express. Ranges from <!--speedup:period:text-->the last 20 CI runs, 14 October 2026 to 17 October 2026<!--/speedup-->, on Node 26 and on whatever runner GitHub gives each run; the dots move at the median of each. Results depend on workload and hardware; shared work such as JSON parsing or compression sees smaller gains. <a href="/performance">Methodology &amp; limitations ↗</a></p>
+<p class="fm-benchmark-note">Throughput relative to Express. Ranges from <!--speedup:period:text-->the last 20 CI runs, 14 October 2026 to 17 October 2026<!--/speedup-->, on Node 26 and on whatever runner GitHub gives each run; the dots move at the upper end of each range. Results depend on workload and hardware; shared work such as JSON parsing or compression sees smaller gains. <a href="/performance">Methodology &amp; limitations ↗</a></p>
 </div>
 </section>
 
