@@ -2,6 +2,12 @@
 description: Explore Fulmine.js benchmarks against Express, how native routing reduces overhead, where gains are limited, and how to inspect and tune your routes.
 ---
 
+<!--
+<script setup>
+import SpeedupTable from '../site/.vitepress/theme/SpeedupTable.vue'
+</script>
+-->
+
 # Performance
 
 Fulmine is faster than Express where the framework itself is doing the work, and the same speed where it is not. Both halves of that sentence matter, so here is the honest version.
@@ -15,10 +21,14 @@ Two things worth knowing before comparing numbers with anyone:
 - **Node 24 moved the baseline.** Express got roughly 3x faster on the routing benchmarks between Node 22 and Node 24, while a µWS-based server barely moved, because the gain came from `node:http`. Any comparison published before mid-2026 overstates the current gap.
 - **Ratios are not portable across runs.** GitHub's runners vary enough that the same code measures 15k or 28k req/sec on the same row. Only compare figures produced in the same run.
 
-There is no table here on purpose. CI runs the whole benchmark on every push and every pull request
-and posts the result where it belongs: as a comment on the commit or the pull request, and as a
-`benchmark-summary` artifact on the run, see [`benchmark/README.md`](../benchmark/README.md)
-to run it yourself.
+Every scenario, so none of them is picked: not one run, which a runner can move by half, but the
+median of <!--speedup:period:text-->the last 20 CI runs, 14 October 2026 to 17 October 2026<!--/speedup--> and the lowest
+and highest of them, Fulmine against Express on the same runner each time. A scenario added lately
+has fewer runs behind it, the last column says how many. Each run is also posted as a comment on its
+commit or pull request, and [`benchmark/README.md`](../benchmark/README.md) says how to run it
+yourself.
+
+<SpeedupTable />
 
 ## Public benchmarks
 

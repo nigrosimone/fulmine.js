@@ -1251,3 +1251,10 @@
         animation: none !important;
     }
 }
+
+/* Performance: every scenario of the CI benchmark, the figures right aligned so they read down */
+.fm-speedups td:not(:first-child),
+.fm-speedups thead th:not(:first-child) {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
