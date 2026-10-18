@@ -611,7 +611,7 @@
 
 .fm-race-lane {
     display: grid;
-    grid-template-columns: 6.6em minmax(0, 1fr);
+    grid-template-columns: 4.6em minmax(0, 1fr);
     align-items: center;
     gap: 10px;
 }
