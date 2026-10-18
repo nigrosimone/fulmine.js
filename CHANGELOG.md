@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.25.4](https://github.com/nigrosimone/fulmine.js/compare/v5.25.3...v5.25.4) (2026-10-18)
+
+### Bug Fixes
+
+* **app:** the app methods sit on its direct prototype as in express, so a library copying its own onto the app (Feathers) no longer writes over app.get ([55e7eba](https://github.com/nigrosimone/fulmine.js/commit/55e7ebae245e874f8e6d5afe094748baa2d6d47f))
+* **res:** an empty write before end() no longer drops the body, the way express-session ends a response ([a17fb4f](https://github.com/nigrosimone/fulmine.js/commit/a17fb4f47bf9c31a6bee701be95548ab300ab30b))
+
 ## [5.25.3](https://github.com/nigrosimone/fulmine.js/compare/v5.25.2...v5.25.3) (2026-10-18)
 
 ### Bug Fixes
