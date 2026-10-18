@@ -13,6 +13,10 @@ import ArenaChart from '../site/.vitepress/theme/ArenaChart.vue'
 import arena from '../site/.vitepress/theme/arena.json'
 import RealAppsChart from '../site/.vitepress/theme/RealAppsChart.vue'
 import SpeedRace from '../site/.vitepress/theme/SpeedRace.vue'
+import realapps from '../site/.vitepress/theme/realapps.json'
+
+// the bigger of the two cuts, each against Express on the same machine
+const bestCut = Math.max(...realapps.projects.map((p) => Math.round((1 - p.day['fulmine + patch'].cpuMs / p.day.express.cpuMs) * 100)))
 </script>
 -->
 
@@ -28,21 +32,25 @@ import SpeedRace from '../site/.vitepress/theme/SpeedRace.vue'
 <a class="fm-text-link" href="/performance">See the benchmarks <span aria-hidden="true">→</span></a>
 </div>
 <CopyCommand command="npm install fulmine.js" />
+<ul class="fm-hero-proof">
+<li><a href="https://www.http-arena.com/#sort=rps:-1&q=Js"><strong>#{{ arena.jsRank }} in JavaScript</strong> on HttpArena</a></li>
+<li><strong>1,130 / 1,130</strong> Express 5 tests passing</li>
+</ul>
 <p class="fm-hero-note">Open source. Express 5 compatible. Built for Node.js.</p>
 </div>
 <div class="fm-speed-field">
 <div class="fm-field-top"><span>NATIVE ENGINE</span><span>01 / µWS</span></div>
 <img class="fm-speed-art" src="/speed-field.svg" alt="" width="600" height="500" fetchpriority="high" decoding="async">
-<div class="fm-speed-readout"><span class="fm-up-to">CI MEDIAN</span><strong><!--speedup:tables:median-->10<!--/speedup--><span>×</span></strong><span class="fm-speed-label">faster than Express<span>on large route tables</span></span></div>
-<a class="fm-field-footnote" href="/performance">Measured in CI. Explore the conditions <span aria-hidden="true">↗</span></a>
+<div class="fm-speed-readout"><span class="fm-up-to">UP TO</span><strong><!--speedup:routing/routes-1000-params:max-->19<!--/speedup--><span>×</span></strong><span class="fm-speed-label">faster than Express<span>on 1,000 parameterized routes</span></span></div>
+<a class="fm-field-footnote" href="/performance">Best of the last 20 CI runs, median <!--speedup:routing/routes-1000-params:median-->10<!--/speedup-->×. Explore the conditions <span aria-hidden="true">↗</span></a>
 </div>
 </section>
 
 <div class="fm-proof-strip">
 <div class="fm-wrap fm-proof-grid">
-<div><span class="fm-proof-symbol" aria-hidden="true">↗</span><p><strong>Native speed</strong><span>Routing in C++, powered by µWS</span></p></div>
-<div><span class="fm-proof-symbol" aria-hidden="true">=</span><p><strong>Same Express API</strong><span>Your middleware keeps working</span></p></div>
-<div><span class="fm-proof-symbol" aria-hidden="true">✓</span><p><strong>1,130 / 1,130</strong><span>Express 5's own tests passing</span></p></div>
+<div><span class="fm-proof-symbol" aria-hidden="true">↗</span><p><strong><!--speedup:tables:median-->10<!--/speedup-->× median</strong><span>on large route tables, measured on every push</span></p></div>
+<div><span class="fm-proof-symbol" aria-hidden="true">=</span><p><strong>1 line to migrate</strong><span>Your routes and middleware keep working</span></p></div>
+<div><span class="fm-proof-symbol" aria-hidden="true">✓</span><p><strong>6 frameworks</strong><span>NestJS, Next.js, Astro and more, tested in CI</span></p></div>
 </div>
 </div>
 
@@ -53,6 +61,9 @@ import SpeedRace from '../site/.vitepress/theme/SpeedRace.vue'
 <p>You already know how to use Fulmine. Keep your routes, your middleware and the way you build. Give them a faster foundation.</p>
 <a class="fm-text-link" href="/migrating">The migration guide <span aria-hidden="true">→</span></a>
 <a class="fm-subtle-link" href="/differences">Read the differences from Express</a>
+<p class="fm-try"><strong>See what it does with your app.</strong> The first command switches the import, the second lists which of your routes run native.</p>
+<CopyCommand command="npx fulmine.js migrate" />
+<CopyCommand command="npx fulmine.js profile" />
 </div>
 <div class="fm-code-window">
 <div class="fm-code-title"><span><i aria-hidden="true"></i> app.js</span><span>ONE LINE. ALL THE DIFFERENCE.</span></div>
@@ -83,11 +94,11 @@ app.listen(3000);
 <div><p>Native routing. Less work per request. More room for your application.</p><a class="fm-text-link" href="/performance">Go under the hood <span aria-hidden="true">↗</span></a></div>
 </div>
 <div class="fm-metrics">
-<div class="fm-metric"><p class="fm-metric-value"><!--speedup:plain:dash-->1.1-3.5<!--/speedup--><span>×</span></p><h3>Plain routing</h3><p>The everyday requests.<br>Less framework overhead.</p><SpeedRace figure="plain" /></div>
-<div class="fm-metric"><p class="fm-metric-value"><!--speedup:routing/routes-1000:dash-->7.1-16.6<!--/speedup--><span>×</span></p><h3>1,000 routes</h3><p>Your route table grows.<br>The native router keeps up.</p><SpeedRace figure="routing/routes-1000" /></div>
-<div class="fm-metric"><p class="fm-metric-value"><!--speedup:routing/routes-1000-params:dash-->7.4-22.0<!--/speedup--><span>×</span></p><h3>1,000 parameterized routes</h3><p>More paths. More parameters.<br>This is where native shines.</p><SpeedRace figure="routing/routes-1000-params" /></div>
+<div class="fm-metric"><p class="fm-metric-value"><!--speedup:plain:dash-->1.1-3.9<!--/speedup--><span>×</span></p><h3>Plain routing</h3><p>The everyday requests.<br>Less framework overhead.</p><SpeedRace figure="plain" /></div>
+<div class="fm-metric"><p class="fm-metric-value"><!--speedup:routing/routes-1000:dash-->7.0-15.4<!--/speedup--><span>×</span></p><h3>1,000 routes</h3><p>Your route table grows.<br>The native router keeps up.</p><SpeedRace figure="routing/routes-1000" /></div>
+<div class="fm-metric"><p class="fm-metric-value"><!--speedup:routing/routes-1000-params:dash-->7.4-18.9<!--/speedup--><span>×</span></p><h3>1,000 parameterized routes</h3><p>More paths. More parameters.<br>This is where native shines.</p><SpeedRace figure="routing/routes-1000-params" /></div>
 </div>
-<p class="fm-benchmark-note">Throughput relative to Express. Ranges from <!--speedup:period:text-->the last 20 CI runs, 14 October 2026 to 17 October 2026<!--/speedup-->, on Node 26 and on whatever runner GitHub gives each run; the dots move at the upper end of each range. Results depend on workload and hardware; shared work such as JSON parsing or compression sees smaller gains. <a href="/performance">Methodology &amp; limitations ↗</a></p>
+<p class="fm-benchmark-note">Throughput relative to Express. Ranges from <!--speedup:period:text-->the last 20 CI runs, 15 October 2026 to 18 October 2026<!--/speedup-->, on Node 26 and on whatever runner GitHub gives each run; the dots move at the upper end of each range. Results depend on workload and hardware; shared work such as JSON parsing or compression sees smaller gains. <a href="/performance">Methodology &amp; limitations ↗</a></p>
 </div>
 </section>
 
@@ -105,7 +116,7 @@ app.listen(3000);
 <section class="fm-section fm-wrap fm-arena-section" aria-labelledby="realapps-title">
 <div class="fm-section-copy">
 <p class="fm-eyebrow"><span class="fm-section-number">04</span> REAL APPLICATIONS</p>
-<h2 id="realapps-title">Their own tests pass.<br>Less CPU per user.</h2>
+<h2 id="realapps-title">Real apps.<br>Up to {{ bestCut }}% less CPU.</h2>
 <p><a href="https://github.com/danny-avila/LibreChat">LibreChat</a>, <a href="https://github.com/n8n-io/n8n">n8n</a> and <a href="https://github.com/actualbudget/actual">Actual Budget</a> on Fulmine, with no change to their code: their test suites pass as they do on Express. Actual spends 16% less CPU per user with no change, LibreChat 24% with Fulmine's own compression and static files.</p>
 <a class="fm-text-link" href="/real-apps">See how it was measured <span aria-hidden="true">→</span></a>
 <a class="fm-subtle-link" href="https://github.com/nigrosimone/fulmine-compat">The scripts and the raw results</a>

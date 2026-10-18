@@ -1315,3 +1315,55 @@
     text-align: right;
     font-variant-numeric: tabular-nums;
 }
+
+/* Home: the proof under the call to action */
+.fm-hero-proof {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    margin: 14px 0 0;
+    padding: 0;
+    list-style: none;
+    color: var(--fm-muted);
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.fm-hero-proof strong {
+    color: var(--fm-accent);
+    font-weight: 600;
+}
+
+.fm-hero-proof a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.fm-hero-proof a:hover strong {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+/* Home: try it on your own app, the two commands one under the other */
+.fulmine-home .fm-try {
+    margin-top: 26px;
+    font-size: 13px;
+}
+
+.fm-try + .fm-install,
+.fm-install + .fm-install {
+    margin-top: 10px;
+}
+
+/* the frameworks a reader compares with, named but not in Fulmine's colour */
+.fm-arena-known .fm-arena-name {
+    color: var(--fm-ink);
+    font-weight: 600;
+}
+
+.fm-arena-rows li.fm-arena-gap {
+    display: block;
+    height: 0;
+    padding: 0;
+    border-bottom: 1px dashed var(--fm-line);
+}

@@ -4,6 +4,7 @@
 // <!--speedup:KEY:STYLE--> markers of the pages below and into .vitepress/theme/speedups.json.
 // Needs the gh CLI, logged in. KEY is a group below or a scenario name, STYLE one of:
 //   to      "1.2x to 3.4x"     dash    "1.2-3.4"     median   "10", the rounded median
+//   max     "22", the rounded best run, for the home page, which says it is the best run
 import { execFileSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 
@@ -77,7 +78,8 @@ const one = (/** @type {number} */ n) => n.toFixed(1);
 const STYLES = {
     to: (f) => `${one(f.min)}x to ${one(f.max)}x`,
     dash: (f) => `${one(f.min)}-${one(f.max)}`,
-    median: (f) => String(Math.round(f.median))
+    median: (f) => String(Math.round(f.median)),
+    max: (f) => String(Math.round(f.max))
 };
 
 for (const page of PAGES) {
