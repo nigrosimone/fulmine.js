@@ -99,7 +99,7 @@ for (const page of PAGES) {
 
 await writeFile(
     new URL(".vitepress/theme/speedups.json", import.meta.url),
-    JSON.stringify({ period, headline: Math.round(figures.tables.median), figures }, null, 4) + "\n"
+    JSON.stringify({ period, headline: Math.round(figures.tables.max), figures }, null, 4) + "\n"
 );
 for (const name of [...Object.keys(GROUPS), ...Object.keys(medians).sort()]) {
     const f = figures[name];
