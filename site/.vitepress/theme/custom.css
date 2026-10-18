@@ -602,17 +602,74 @@
     line-height: 1.85;
 }
 
-.fm-meter {
-    height: 3px;
+/* Home: two requests going back and forth, Fulmine's at the median ratio of its scenario */
+.fm-race {
+    display: grid;
+    gap: 9px;
     margin-top: 26px;
-    background: #455041;
 }
 
-.fm-meter span {
+.fm-race-lane {
+    display: grid;
+    grid-template-columns: 6.6em minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+}
+
+.fm-race-name {
+    color: var(--fm-muted);
+    font-size: 11px;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.fm-race-us .fm-race-name {
+    color: var(--fm-accent);
+}
+
+.fm-race-track {
+    position: relative;
     display: block;
-    width: var(--meter);
-    height: 100%;
-    background: linear-gradient(90deg, #f15a24, #ffba7a);
+    height: 7px;
+}
+
+.fm-race-track::before {
+    content: "";
+    position: absolute;
+    inset: 3px 0 auto;
+    height: 1px;
+    background: var(--fm-line);
+}
+
+/* the rail is the track less one dot, so translateX(100%) brings the dot to the far end */
+.fm-race-rail {
+    position: absolute;
+    inset: 0 7px 0 0;
+    animation: fm-race ease-in-out infinite alternate;
+}
+
+.fm-race-dot {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--fm-muted);
+}
+
+.fm-race-us .fm-race-dot {
+    background: var(--fm-accent);
+}
+
+@keyframes fm-race {
+    from {
+        transform: translateX(0);
+    }
+
+    to {
+        transform: translateX(100%);
+    }
 }
 
 .fulmine-home .fm-benchmark-note {
@@ -1135,7 +1192,7 @@
         font-size: 48px;
     }
 
-    .fm-meter {
+    .fm-race {
         margin-top: 18px;
     }
 
