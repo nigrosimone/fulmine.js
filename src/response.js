@@ -539,6 +539,11 @@ module.exports = class Response extends LazyWritable {
                 this.writingChunk = false;
                 callback(null);
             }
+        } else if (/** @type {Buffer} */ (chunk).byteLength === 0 && this.totalSize > 0) {
+            // uWS reports an empty tryEnd as done, and the end() that follows (express-session's
+            // last byte) was dropped: nothing to send, so nothing to ask uWS
+            this.writingChunk = false;
+            callback(null);
         } else {
             const lastOffset = this._res.getWriteOffset();
             const [ok, done] = this._res.tryEnd(chunk, this.totalSize);
