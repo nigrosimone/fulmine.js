@@ -96,7 +96,16 @@ significant changes made to the original work:
   - express.static serves the .br and .gz twins of a file with preCompressed.
   - app.ws() serves websockets on the same port, with an upgrade hook and the
     request on the socket.
-  - express({ cluster: "auto" }) forks one worker per core on the same port.
+  - express({ cluster: "auto" }) forks one worker per core on the same port,
+    and app.cluster says how many workers serve and which one this is.
+  - On Bun and Deno listen() serves through node:http.
+  - Express's express.router.request TracingChannel and node's http.server
+    channels are published on uWebSockets.js too.
+  - express.compression() answers with zstd where the client prefers it, and an
+    encodings option names what it may answer with.
+  - Aligned with Express 5.3: content-type 2, content-disposition 2, the
+    redirect markup, fresh for QUERY and render(null).
+  - express.isFulmine, router.stack and app.router added.
   - express.Route and express.testing added, the second one asserting what
     listen() decided about a route.
   - X-Powered-By is not sent unless the application asks for it, and the header
@@ -105,7 +114,8 @@ significant changes made to the original work:
   - An adapter for NestJS ships as fulmine.js/nest.
   - A fulmine command added: it profiles and explains what listen() worked out
     about each route, verifies the machine, migrates a project, and prints the
-    differences from Express.
+    differences from Express, and creates a new project that installs with npm
+    or pnpm.
   - Random applications are generated and compared against Express round by
     round, with the request bytes, the methods that compute a header value and
     keep-alive sequences each having their own fuzzer, and applications built on
