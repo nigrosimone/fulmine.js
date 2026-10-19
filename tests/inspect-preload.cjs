@@ -24,7 +24,8 @@
 //                                       own lines by taking an index at call time, which nothing
 //                                       running server side can do
 
-const Module = require("module");
+// _load is node internal, so it is not in the types
+const Module = /** @type {any} */ (require("module"));
 const { inspectRequest } = require("./helpers.js");
 
 const load = Module._load;

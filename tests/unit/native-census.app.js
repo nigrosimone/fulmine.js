@@ -51,6 +51,7 @@ uWS.App = function (...args) {
                 handler = (res, req) => {
                     count(res, (self) => onResponse.get(self));
                     count(req, () => onRequest);
+                    /** @type {Record<string, number>} */
                     const counts = {};
                     requests.push(counts);
                     onResponse.set(res, counts);
@@ -205,6 +206,7 @@ function ask(port, head) {
     const raw = `${lines}\r\nHost: localhost\r\n\r\n${body ?? ""}`;
     const isHead = lines.startsWith("HEAD ");
     return new Promise((resolve) => {
+        /** @type {Buffer} */
         let received = Buffer.alloc(0);
         const socket = net.connect(port, "127.0.0.1", () => socket.write(raw));
         const done = () => {
@@ -212,7 +214,7 @@ function ask(port, head) {
             resolve();
         };
         socket.on("data", (chunk) => {
-            received = Buffer.concat([received, chunk]);
+            received = Buffer.concat([received, /** @type {Buffer} */ (chunk)]);
             const text = received.toString("latin1");
             const end = text.indexOf("\r\n\r\n");
             if (end === -1) {

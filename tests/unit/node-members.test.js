@@ -148,6 +148,7 @@ test("setTimeout registers the listener and changes nothing else", async () => {
 });
 
 test("req.signal is one object, and aborts when the client goes away", async () => {
+    /** @type {any} */
     let signalOfAGoneClient = null;
     // the answer nobody is waiting for any more, kept so this test can put it down rather than
     // leave it to fire under whatever runs next: it holds a response µWS has not finished, which

@@ -27,7 +27,7 @@ function arm(emitter, onError, onClose) {
 }
 
 test("a fresh stream has both listener slots free", () => {
-    const stream = new Writable();
+    const stream = /** @type {any} */ (new Writable());
     assert.strictEqual(stream._eventsCount, 0);
     // node shapes _events for a stream up front, close and error among the keys and every value
     // undefined. That is why filling two of them keeps the hidden class on() would have produced
@@ -40,10 +40,10 @@ test("the direct write is indistinguishable from on()", () => {
     const onError = () => {};
     const onClose = () => {};
 
-    const direct = new Writable();
+    const direct = /** @type {any} */ (new Writable());
     assert.strictEqual(arm(direct, onError, onClose), "direct");
 
-    const viaOn = new Writable();
+    const viaOn = /** @type {any} */ (new Writable());
     viaOn.on("error", onError);
     viaOn.on("close", onClose);
 
@@ -56,7 +56,7 @@ test("the direct write is indistinguishable from on()", () => {
 
 test("a listener added afterwards runs after the armed one, and removal leaves the other alone", () => {
     const seen = [];
-    const stream = new Writable();
+    const stream = /** @type {any} */ (new Writable());
     arm(
         stream,
         () => seen.push("armed error"),
@@ -79,7 +79,7 @@ test("a listener added afterwards runs after the armed one, and removal leaves t
 });
 
 test("an emitter that already has one of the two falls back to on()", () => {
-    const stream = new Writable();
+    const stream = /** @type {any} */ (new Writable());
     stream.on("error", () => {});
     assert.strictEqual(
         arm(

@@ -51,7 +51,7 @@ test(
         const listening = result.status === 0 && String(result.stdout).includes("listening:true");
         if (!listening) {
             const how =
-                result.error && result.error.code === "ETIMEDOUT"
+                result.error && /** @type {NodeJS.ErrnoException} */ (result.error).code === "ETIMEDOUT"
                     ? "hangs"
                     : result.status === null
                       ? "killed"

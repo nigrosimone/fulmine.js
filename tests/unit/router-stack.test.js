@@ -60,6 +60,7 @@ test("a throw becomes the error the next callback is given", () => {
         }
     );
 
+    /** @type {any} */
     let left;
     router.stack[0].handle({}, {}, (err) => (left = err));
     assert.deepStrictEqual(seen, ["handled: boom"]);

@@ -23,6 +23,7 @@ const test = require("node:test");
 const assert = require("node:assert");
 const http = require("node:http");
 const zlib = require("node:zlib");
+/** @type {any} the middleware's statics are read off the export */
 const express = require("../../src/index.js");
 
 const hasBrotliSupport = "createBrotliCompress" in zlib;
@@ -816,13 +817,13 @@ test("the middleware negotiates on a bare node request too", async () => {
 
     const server = http.createServer((req, res) => {
         // no router has touched this one: an IncomingMessage and nothing else
-        assert.strictEqual(typeof req._foldedHeader, "undefined");
+        assert.strictEqual(typeof (/** @type {any} */ (req)._foldedHeader), "undefined");
         compress(req, res, () => {
             res.setHeader("Content-Type", "text/plain");
             res.end("hello, world");
         });
     });
-    await new Promise((resolve) => server.listen(0, resolve));
+    await new Promise((resolve) => server.listen(0, () => resolve(undefined)));
     try {
         const url = `http://127.0.0.1:${/** @type {any} */ (server.address()).port}`;
         const res = await request(url, { headers: { "Accept-Encoding": "gzip" } });

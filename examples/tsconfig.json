@@ -1,4 +1,5 @@
 {
+    // the editor config for this folder: checked, but not strict like src
     "compilerOptions": {
         "module": "commonjs",
         "target": "ES2022",
@@ -6,11 +7,11 @@
         "checkJs": true,
         "noEmit": true,
         "strict": false,
+        "skipLibCheck": true,
         "types": ["node"],
         "paths": {
-            "fulmine.js": ["./src/types.d.ts"]
+            "fulmine.js": ["../src/types.d.ts"]
         }
     },
-    "include": ["src/**/*", "tests/**/*", "examples/**/*"],
-    "exclude": ["node_modules", "coverage"]
+    "exclude": ["node_modules"]
 }

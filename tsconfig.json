@@ -1,17 +1,4 @@
 {
-    "compilerOptions": {
-        "module": "commonjs",
-        "target": "ES2022",
-        "allowJs": true,
-        "checkJs": true,
-        "noEmit": true,
-        "strict": false,
-        "types": ["node"],
-        "paths": {
-            "fulmine.js": ["./src/types.d.ts"],
-            "*": ["./node_modules/*"]
-        }
-    },
-    "include": ["src/**/*", "tests/**/*", "examples/**/*"],
-    "exclude": ["node_modules", "coverage"]
+    // the editor sees src as the typecheck gate does; tests and examples have their own configs
+    "extends": "./tsconfig.typecheck.json"
 }

@@ -8,7 +8,12 @@ const diagnostics = require("node:diagnostics_channel");
 const express = require("fulmine.js"); // instead of require("express")
 
 // Express's router channel: a start and an end for every middleware, route handler and error handler
-diagnostics.tracingChannel("express.router.request").subscribe({
+// what the channel hands each hook
+/** @typedef {{ req: express.Request, layer: { name: string }, error?: Error }} RouterContext */
+const router = /** @type {diagnostics.TracingChannel<object, RouterContext>} */ (
+    diagnostics.tracingChannel("express.router.request")
+);
+router.subscribe({
     start({ req, layer }) {
         console.log("start ", req.method, req.url, layer.name || "<anonymous>");
     },
@@ -16,7 +21,7 @@ diagnostics.tracingChannel("express.router.request").subscribe({
         console.log("end   ", layer.name || "<anonymous>");
     },
     error({ error }) {
-        console.log("error ", error.message);
+        console.log("error ", String(error));
     }
 });
 

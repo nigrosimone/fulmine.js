@@ -8,7 +8,7 @@ const { Linter } = require("eslint");
 const linter = new Linter();
 
 async function lint(code) {
-    const rule = (await import("../../eslint-rules/no-early-allocation.mjs")).default;
+    const rule = /** @type {any} */ ((await import("../../eslint-rules/no-early-allocation.mjs")).default);
     return linter
         .verify(code, {
             languageOptions: { ecmaVersion: "latest", sourceType: "commonjs" },

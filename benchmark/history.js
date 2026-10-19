@@ -201,7 +201,7 @@ function lastRunFor(history, key) {
  * @param {Record<string, object[]>} history
  * @param {string} exact
  * @param {string} loose
- * @returns {{run: any, exact: boolean, key: string}|null}
+ * @returns {{run: any, runs: object[], exact: boolean, key: string}|null}
  */
 function baselineFor(history, exact, loose) {
     const here = lastRunFor(history, exact);
@@ -341,7 +341,7 @@ function compareRuns(previous, current, windowRuns) {
  * The section of the summary that compares this run against the last one on this machine, or null
  * when there is nothing to compare against.
  *
- * @param {{run: any, exact: boolean, key: string}|null} baseline
+ * @param {{run: any, runs?: object[], exact: boolean, key: string}|null} baseline
  * @param {any} current
  * @param {string[]} [labels] the two arms, baseline first: --shim measures other ones
  * @returns {string|null}

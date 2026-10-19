@@ -319,7 +319,11 @@ async function execArm(job, module) {
         ...(module === "generic" ? GENERIC_ARG : []),
         job.runPath
     ];
-    const options = { maxBuffer: 1024 * 1024 * 100, timeout: TEST_TIMEOUT, killSignal: "SIGKILL" };
+    const options = {
+        maxBuffer: 1024 * 1024 * 100,
+        timeout: TEST_TIMEOUT,
+        killSignal: /** @type {const} */ ("SIGKILL")
+    };
     // exec kills the child at the limit, so a hung arm rejects here instead of hanging the run.
     // One retry, because a shared CI runner can stall for a minute for reasons that are nobody's
     // code (res-send-file-large, node 24, 2026-08-04); the second timeout is a real hang and

@@ -140,7 +140,7 @@ test("compileTrust parses an address once for a list, not on every req.ip", () =
     let calls = 0;
     proxyaddr.compile = (val) => {
         const trust = compile(val);
-        return (/** @type {string} */ addr) => (calls++, trust(addr));
+        return (/** @type {string} */ addr) => (calls++, /** @type {any} */ (trust)(addr));
     };
     try {
         const list = compileTrust(["127.0.0.1", "10.0.0.0/8"]);
@@ -266,34 +266,36 @@ test("createETagGenerator takes a body or a stat, and weak differs from strong",
 });
 
 test("isRangeFresh reads If-Range as either an etag or a date", () => {
-    const res = (headers) => ({ get: (name) => headers[name.toLowerCase()] });
+    const res = (headers) => /** @type {any} */ ({ get: (name) => headers[name.toLowerCase()] });
+    const req = (headers) => /** @type {any} */ ({ headers });
 
     // no If-Range at all: nothing to be stale against
-    assert.strictEqual(isRangeFresh({ headers: {} }, res({})), true);
+    assert.strictEqual(isRangeFresh(req({}), res({})), true);
 
     // as an etag
-    assert.strictEqual(isRangeFresh({ headers: { "if-range": '"abc"' } }, res({ etag: '"abc"' })), true);
-    assert.strictEqual(isRangeFresh({ headers: { "if-range": '"abc"' } }, res({ etag: '"xyz"' })), false);
-    assert.strictEqual(isRangeFresh({ headers: { "if-range": '"abc"' } }, res({})), false);
+    assert.strictEqual(isRangeFresh(req({ "if-range": '"abc"' }), res({ etag: '"abc"' })), true);
+    assert.strictEqual(isRangeFresh(req({ "if-range": '"abc"' }), res({ etag: '"xyz"' })), false);
+    assert.strictEqual(isRangeFresh(req({ "if-range": '"abc"' }), res({})), false);
 
     // as a date, where only an exact match counts: the file must not have been touched since
     const when = "Wed, 21 Oct 2015 07:28:00 GMT";
-    assert.strictEqual(isRangeFresh({ headers: { "if-range": when } }, res({ "last-modified": when })), true);
+    assert.strictEqual(isRangeFresh(req({ "if-range": when }), res({ "last-modified": when })), true);
     assert.strictEqual(
-        isRangeFresh({ headers: { "if-range": when } }, res({ "last-modified": "Thu, 22 Oct 2015 07:28:00 GMT" })),
+        isRangeFresh(req({ "if-range": when }), res({ "last-modified": "Thu, 22 Oct 2015 07:28:00 GMT" })),
         false
     );
 });
 
 test("isPreconditionFailure is about If-Match: a 412, not a 304", () => {
-    const res = (headers) => ({ get: (name) => headers[name.toLowerCase()] });
+    const res = (headers) => /** @type {any} */ ({ get: (name) => headers[name.toLowerCase()] });
+    const req = (headers) => /** @type {any} */ ({ headers });
 
-    assert.strictEqual(isPreconditionFailure({ headers: {} }, res({})), false);
-    assert.strictEqual(isPreconditionFailure({ headers: { "if-match": '"abc"' } }, res({ etag: '"abc"' })), false);
-    assert.strictEqual(isPreconditionFailure({ headers: { "if-match": '"abc"' } }, res({ etag: '"xyz"' })), true);
+    assert.strictEqual(isPreconditionFailure(req({}), res({})), false);
+    assert.strictEqual(isPreconditionFailure(req({ "if-match": '"abc"' }), res({ etag: '"abc"' })), false);
+    assert.strictEqual(isPreconditionFailure(req({ "if-match": '"abc"' }), res({ etag: '"xyz"' })), true);
     // "*" asks only that the thing exists, and an etag is the proof that it does
-    assert.strictEqual(isPreconditionFailure({ headers: { "if-match": "*" } }, res({ etag: '"abc"' })), false);
-    assert.strictEqual(isPreconditionFailure({ headers: { "if-match": "*" } }, res({})), true);
+    assert.strictEqual(isPreconditionFailure(req({ "if-match": "*" }), res({ etag: '"abc"' })), false);
+    assert.strictEqual(isPreconditionFailure(req({ "if-match": "*" }), res({})), true);
 });
 
 test("withDefaultCharset adds the charset a media type implies, and only then", () => {

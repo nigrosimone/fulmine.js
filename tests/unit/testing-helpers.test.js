@@ -51,7 +51,7 @@ test("expectNative fails with the route and the reason", () => {
     const app = build();
     assert.throws(
         () => expectNative(app, "/api/late"),
-        (err) => {
+        (/** @type {Error} */ err) => {
             assert.match(err.message, /1 route\(s\) are no longer answered/);
             assert.match(err.message, /GET \/api\/late/);
             assert.match(err.message, /parameter route/, "the reason is in the message");
@@ -65,7 +65,7 @@ test("a prefix that covers a lost route fails too, and names only that one", () 
     const app = build();
     assert.throws(
         () => expectNative(app, "/api*"),
-        (err) => {
+        (/** @type {Error} */ err) => {
             assert.match(err.message, /1 route\(s\)/);
             // one route listed, and it is the one that fell back. /api/:anything appears in the
             // message too, but as the reason rather than as a listing of its own
@@ -80,7 +80,7 @@ test("a pattern that names no route is a failure, not a pass", () => {
     const app = build();
     assert.throws(
         () => expectNative(app, "/typo"),
-        (err) => {
+        (/** @type {Error} */ err) => {
             assert.match(err.message, /no route is registered as "\/typo"/);
             assert.match(err.message, /GET \/health/, "the paths it does have are listed");
             return true;
@@ -102,7 +102,7 @@ test("expectDeclarative is the step past native", () => {
     expectDeclarative(app, "/health");
     assert.throws(
         () => expectDeclarative(app, "/users/:id"),
-        (err) => {
+        (/** @type {Error} */ err) => {
             assert.match(err.message, /no longer compiled into a response/);
             assert.match(err.message, /the route captures/);
             return true;

@@ -14,7 +14,7 @@ app.get("/slow", (req, res) => setTimeout(() => res.send("done"), 2000));
 const server = app.listen(3000, () => console.log("http://localhost:3000/slow"));
 
 console.log("instanceof http.Server:", server instanceof http.Server); // true
-console.log("the same object as the app:", server === app); // true
+console.log("the same object as the app:", Object.is(server, app)); // true
 console.log("address:", app.address(), "listening:", app.listening);
 
 // There: close(), address(), listening, getConnections(), ref(), unref(), setTimeout() and the

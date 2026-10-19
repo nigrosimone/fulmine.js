@@ -34,7 +34,7 @@ function openSession() {
     const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (id) => sessions.set(id, transport),
-        onsessionclosed: (id) => sessions.delete(id)
+        onsessionclosed: (id) => void sessions.delete(id)
     });
     server.connect(transport);
     return transport;

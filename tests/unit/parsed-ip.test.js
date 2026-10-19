@@ -68,7 +68,7 @@ function ipOf(bytes) {
         // what Router#_hot answers when nothing is set, since this stub has no settings at all
         _hot: () => ({ trustProxyFn: undefined, trustProxyProtocol: false, queryParserFn: undefined })
     };
-    const request = new Request(req, res, app);
+    const request = new Request(/** @type {any} */ (req), /** @type {any} */ (res), /** @type {any} */ (app));
     request.res = { finished: false };
     return request.parsedIp;
 }

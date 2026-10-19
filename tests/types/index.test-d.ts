@@ -207,7 +207,8 @@ app.ws("/room/:id", {
     upgrade(req, res) {
         // a parameter is a string or, for a wildcard, the segments it matched
         expectAssignable<string | string[]>(req.params.id);
-        if (!req.query.token) res.sendStatus(401);
+        // declining by returning the answer, as a route handler may
+        if (!req.query.token) return res.sendStatus(401);
     },
     open(ws) {
         expectAssignable<FulmineRequest>(ws.req);

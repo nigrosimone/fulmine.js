@@ -148,6 +148,7 @@ test("history survives a missing file, and keeps a bounded number of runs per ma
     fs.writeFileSync(file, "not json at all", "utf8");
     assert.deepStrictEqual(readHistory(file), {});
 
+    /** @type {Record<string, any[]>} */
     let history = {};
     for (let index = 0; index < 25; index++) {
         appendRun(

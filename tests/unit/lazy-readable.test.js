@@ -13,6 +13,7 @@ const { Readable } = require("node:stream");
 const Request = require("../../src/request.js");
 
 // enough of a µWS request and response for the constructor, which reads a handful of headers
+/** @returns {any[]} */
 function fakeUws() {
     const req = {
         getUrl: () => "/",
@@ -42,6 +43,7 @@ function fakeUws() {
     return [req, res, app];
 }
 
+/** @returns {any} */
 function newRequest() {
     const [req, res, app] = fakeUws();
     return new Request(req, res, app);
@@ -51,12 +53,13 @@ test("a fresh request is a Readable and has none of one", () => {
     const request = newRequest();
     assert.ok(request instanceof Readable, "code that checks the type must still see a Readable");
     assert.strictEqual(typeof request.pipe, "function");
-    assert.strictEqual(request._readableState, undefined, "the whole point: no state until asked");
+    assert.strictEqual(/** @type {any} */ (request)._readableState, undefined, "the whole point: no state until asked");
     // and it reads as readable, which the plain flag answers
     assert.strictEqual(request.readable, true);
 });
 
 test("every door into Readable builds the state first", () => {
+    /** @type {[string, (r: any) => void][]} */
     const doors = [
         ["on", (r) => r.on("data", () => {})],
         ["once", (r) => r.once("end", () => {})],

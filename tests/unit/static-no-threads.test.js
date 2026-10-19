@@ -21,7 +21,6 @@ let streams = 0;
 let reads = 0;
 const realCreateReadStream = fs.createReadStream;
 const realReadFile = fs.promises.readFile;
-// @ts-expect-error the spy takes what the real one takes
 fs.createReadStream = (...args) => (streams++, realCreateReadStream(...args));
 // @ts-expect-error the spy takes what the real one takes
 fs.promises.readFile = (...args) => (reads++, realReadFile(...args));

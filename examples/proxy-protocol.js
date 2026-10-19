@@ -15,28 +15,31 @@ const net = require("net");
 
 if (process.argv.includes("--client")) {
     ask(true).then(() => ask(false));
-    return;
+} else {
+    serve();
 }
 
-const app = express();
+function serve() {
+    const app = express();
 
-app.set("trust proxy", "loopback");
+    app.set("trust proxy", "loopback");
 
-// WARNING: only turn this on when nothing but the proxy can reach the server. uWS reads the
-// preamble from whoever sends it, and there is no way to say which peers may use it, so on a port
-// open to the internet the first sixteen bytes of any connection are enough for a client to become
-// 203.0.113.7 for your rate limiter, your allow list and your audit log. Bind to the private
-// interface, or keep this off.
-app.set("trust proxy protocol", true);
+    // WARNING: only turn this on when nothing but the proxy can reach the server. uWS reads the
+    // preamble from whoever sends it, and there is no way to say which peers may use it, so on a port
+    // open to the internet the first sixteen bytes of any connection are enough for a client to become
+    // 203.0.113.7 for your rate limiter, your allow list and your audit log. Bind to the private
+    // interface, or keep this off.
+    app.set("trust proxy protocol", true);
 
-app.get("/", (req, res) => {
-    // the preamble decides what the connection's address is, and "trust proxy" then peels
-    // X-Forwarded-For off that, so a proxy that sends both is read the way it meant. A connection
-    // that sent no preamble falls back to the socket's own address
-    res.json({ ip: req.ip, ips: req.ips, protocol: req.protocol, socket: req.socket.remoteAddress });
-});
+    app.get("/", (req, res) => {
+        // the preamble decides what the connection's address is, and "trust proxy" then peels
+        // X-Forwarded-For off that, so a proxy that sends both is read the way it meant. A connection
+        // that sent no preamble falls back to the socket's own address
+        res.json({ ip: req.ip, ips: req.ips, protocol: req.protocol, socket: req.socket.remoteAddress });
+    });
 
-app.listen(3000, "127.0.0.1", () => console.log("http://127.0.0.1:3000"));
+    app.listen(3000, "127.0.0.1", () => console.log("http://127.0.0.1:3000"));
+}
 
 /**
  * What a load balancer writes before the request: PROXY protocol v2 over TCP/IPv4, declaring

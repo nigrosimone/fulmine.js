@@ -7,6 +7,10 @@ const express = require("fulmine.js"); // instead of require("express")
 
 const app = express();
 
+// what the upgrade hook hangs on the request, read back off the socket
+/** @typedef {express.Request & { topic: string }} RoomRequest */
+/** @typedef {express.FulmineSocket & { req: RoomRequest }} RoomSocket */
+
 app.ws("/room/:id", {
     // uWS's own settings, passed through untouched
     idleTimeout: 120,
@@ -16,19 +20,22 @@ app.ws("/room/:id", {
     // ordinary route gets, so a token, a session or a header decides whether the socket opens.
     // Answering the response declines the upgrade, and returning a promise holds the handshake
     // until it settles, which is what an authentication lookup needs
+    /** @param {RoomRequest} req */
     upgrade(req, res) {
-        if (!/^[a-z0-9-]{1,24}$/.test(req.params.id)) {
+        if (!/^[a-z0-9-]{1,24}$/.test(String(req.params.id))) {
             return res.sendStatus(400);
         }
         // anything left on the request is there for the socket's whole life, as ws.req
         req.topic = `room:${req.params.id}`;
     },
 
+    /** @param {RoomSocket} ws */
     open(ws) {
         ws.subscribe(ws.req.topic);
         ws.send(`you are in ${ws.req.params.id}, ${app.numSubscribers(ws.req.topic)} here`);
     },
 
+    /** @param {RoomSocket} ws */
     message(ws, message, isBinary) {
         app.publish(ws.req.topic, message, isBinary);
     },

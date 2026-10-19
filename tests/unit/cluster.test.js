@@ -87,7 +87,7 @@ test("what each setting asks for", () => {
 });
 
 test("a setting nobody can read is a throw and not a quiet single core", () => {
-    assert.throws(() => workerCount("atuo"), /cluster must be "auto"/);
+    assert.throws(() => workerCount(/** @type {any} */ ("atuo")), /cluster must be "auto"/);
     assert.throws(() => workerCount(-2), /positive number/);
     assert.throws(() => workerCount(Infinity), /positive number/);
 });

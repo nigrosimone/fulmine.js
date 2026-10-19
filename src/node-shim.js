@@ -320,7 +320,7 @@ class NodeHttpResponse {
     /**
      * Writes a chunk of a response whose length is known: uWS's [ok, done] pair.
      *
-     * @param {ArrayBuffer|Buffer} chunk
+     * @param {ArrayBuffer|Buffer|string} chunk
      * @param {number} totalSize
      * @returns {[boolean, boolean]}
      */

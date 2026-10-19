@@ -44,6 +44,7 @@ function optimizedFor(paths, extra) {
             extra(app);
         }
         app.listen(0, () => {
+            /** @type {Record<string, boolean>} */
             const answer = {};
             for (const route of app._routes) {
                 if (typeof route.path === "string" && paths.includes(route.path)) {

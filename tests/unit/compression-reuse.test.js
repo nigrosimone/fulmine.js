@@ -85,7 +85,6 @@ test("the kept stream is the one answering, not zlib.gzipSync per response", asy
     // notices: on a single server gzipSync is called by the startup probe and then never again.
     const real = zlib.gzipSync;
     let calls = 0;
-    // @ts-expect-error a counting wrapper around the real one
     zlib.gzipSync = (...args) => {
         calls++;
         return real(...args);

@@ -40,7 +40,7 @@ test("a fresh response is a Writable and has none of one", () => {
     const res = newResponse();
     assert.ok(res instanceof Writable, "code that checks the type must still see a Writable");
     assert.strictEqual(typeof res.write, "function");
-    assert.strictEqual(res._writableState, undefined, "the whole point: no state until asked");
+    assert.strictEqual(/** @type {any} */ (res)._writableState, undefined, "the whole point: no state until asked");
 });
 
 test("the event map is the one node's own constructor would have written", () => {
@@ -54,12 +54,13 @@ test("the event map is the one node's own constructor would have written", () =>
 
     // and it is the same shape a real Writable arrives with, which is what makes the direct write
     // above produce the hidden class every other stream in the process has
-    assert.deepStrictEqual(Object.keys(new Writable()._events), shape);
+    assert.deepStrictEqual(Object.keys(/** @type {any} */ (new Writable())._events), shape);
 });
 
 test("every door into Writable builds the state first", () => {
     // writableEnded and writableFinished are not doors: both are answered from the response's
     // own finished flag, which is the same answer without a stream behind it
+    /** @type {[string, (r: any) => void][]} */
     const doors = [
         ["write", (/** @type {any} */ r) => r.write("x")],
         ["cork", (/** @type {any} */ r) => r.cork()],

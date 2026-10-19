@@ -1,0 +1,18 @@
+{
+    // the editor config for this folder: checked, but not strict like src. The comparison suite in
+    // tests/tests is plain JS run against Express as well, so it is left out
+    "compilerOptions": {
+        "module": "commonjs",
+        "target": "ES2022",
+        "allowJs": true,
+        "checkJs": true,
+        "noEmit": true,
+        "strict": false,
+        "skipLibCheck": true,
+        "types": ["node"],
+        "paths": {
+            "fulmine.js": ["../src/types.d.ts"]
+        }
+    },
+    "exclude": ["node_modules", "tests"]
+}

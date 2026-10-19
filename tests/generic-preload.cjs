@@ -13,7 +13,8 @@
 // Same shape as inspect-preload.cjs, and the same reason for being a preload: the setting has to
 // reach every app a file makes, including the ones it builds inside a helper.
 
-const Module = require("module");
+// _load is node internal, so it is not in the types
+const Module = /** @type {any} */ (require("module"));
 
 const load = Module._load;
 

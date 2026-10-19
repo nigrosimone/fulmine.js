@@ -210,7 +210,8 @@ declare module "fulmine.js" {
         // Methods rather than function-typed properties, so a handler may narrow the request or
         // the socket to one carrying what the upgrade hook hung on it, which is how this project
         // says per-connection state is kept
-        upgrade?(req: e.Request, res: e.Response): void | Promise<void>;
+        // upgrade returns what an Express handler may, so `return res.sendStatus(400)` declines
+        upgrade?(req: e.Request, res: e.Response): unknown;
         open?(ws: FulmineWebSocket): void | Promise<void>;
         message?(ws: FulmineWebSocket, message: ArrayBuffer, isBinary: boolean): void | Promise<void>;
         dropped?(ws: FulmineWebSocket, message: ArrayBuffer, isBinary: boolean): void | Promise<void>;

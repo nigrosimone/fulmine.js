@@ -24,8 +24,8 @@ test("and nothing else has changed its mind about what a server is", () => {
     assert.ok(!(express.Router() instanceof http.Server), "a router is not a server");
     assert.ok(!(function () {} instanceof http.Server), "a plain function is not");
     assert.ok(!({} instanceof http.Server), "a plain object is not");
-    assert.ok(!(null instanceof http.Server), "null is not");
-    assert.ok(!("" instanceof http.Server), "a primitive is not");
+    assert.ok(!(/** @type {any} */ (null) instanceof http.Server), "null is not");
+    assert.ok(!(/** @type {any} */ ("") instanceof http.Server), "a primitive is not");
     real.close();
 });
 
@@ -67,7 +67,7 @@ test("getConnections counts the requests in flight", async () => {
 
     const server = app.listen(0);
     const port = app.address().port;
-    /** @param {any} target @returns {Promise<number>} */
+    /** @returns {Promise<number>} */
     const connections = () => new Promise((resolve) => server.getConnections((err, count) => resolve(count)));
 
     try {

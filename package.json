@@ -92,6 +92,11 @@
         "typescript"
     ],
     "types": "src/types.d.ts",
+    "tsd": {
+        "compilerOptions": {
+            "noImplicitReturns": false
+        }
+    },
     "author": "Nigro Simone",
     "license": "Apache-2.0",
     "bugs": {

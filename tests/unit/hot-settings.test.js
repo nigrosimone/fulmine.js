@@ -24,6 +24,7 @@ function serve(setup) {
 }
 
 test("a set() after a request was served reaches the next response", async () => {
+    /** @type {any} */
     let app;
     const { url, close } = await serve((a) => {
         app = a;
@@ -42,6 +43,7 @@ test("a set() after a request was served reaches the next response", async () =>
 });
 
 test("a query parser switched after a request was served parses the next one", async () => {
+    /** @type {any} */
     let app;
     const { url, close } = await serve((a) => {
         app = a;
@@ -60,6 +62,7 @@ test("a query parser switched after a request was served parses the next one", a
 });
 
 test("a setting written straight into app.settings reaches the next response", async () => {
+    /** @type {any} */
     let app;
     const { url, close } = await serve((a) => {
         app = a;
