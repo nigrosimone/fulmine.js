@@ -195,7 +195,7 @@ separate `wrk` lua script, and when one of the scripts was renamed the load run 
 
 `NODE_ENV=production` matters: without it template engines run in debug mode and recompile the view
 on every request, and `engines/art` ends up measuring the template compiler rather than either
-server.
+server. Every benchmark server gets it unless `NODE_ENV` is already set in the shell.
 
 Absolute req/sec are not comparable across runs. GitHub's runners vary enough that the same code
 measures 15k or 28k req/sec on the same row, so never read two runs' throughput against each other.

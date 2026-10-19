@@ -166,7 +166,7 @@ internals. `app.close()`, `res.aborted` and the rest of the `http.Server` surfac
 readme and in the runtime for months with nothing in the types, which is what that test is for.
 
 `npm run test:integrations` is the comparison suite again, with a framework on top. Nest, Next,
-Astro, SvelteKit, React Router, Apollo, tRPC, tsoa and MCP each serve one application, once on Express and once
+Astro, SvelteKit, React Router, Apollo, tRPC, tsoa, MCP and Sentry each serve one application, once on Express and once
 here, and the two outputs have to match. It lives in [`integrations/`](./integrations) rather than in
 `tests/` because those dependencies are frameworks rather than middlewares: heavy, installed on their
 own, five of them needing their own build to run first, and none of it something `npm test` should

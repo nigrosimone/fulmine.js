@@ -137,19 +137,10 @@ It refuses rather than overwrites where a substitution is already there and is n
 hand it is one of these:
 
 ```jsonc
-// npm and its lockfile, in package.json
+// npm and bun, in package.json
 {
     "overrides": {
         "express": "npm:fulmine.js@^5"
-    }
-}
-
-// pnpm 10, in package.json (pnpm 11 reads overrides only from pnpm-workspace.yaml)
-{
-    "pnpm": {
-        "overrides": {
-            "express": "npm:fulmine.js@^5"
-        }
     }
 }
 
@@ -160,6 +151,15 @@ hand it is one of these:
     }
 }
 ```
+
+```yaml
+# pnpm, in pnpm-workspace.yaml: pnpm 11 reads overrides only from here, pnpm 10 from here too
+overrides:
+    express: "npm:fulmine.js@^5"
+```
+
+On pnpm 10.26 and newer, run [`npx fulmine.js pnpm`](./deployment.md#pnpm) as well, or the install refuses the
+git dependency fulmine has.
 
 Then reinstall, so the lockfile is rewritten: `rm -rf node_modules` and `npm install`, or the
 equivalent for your manager. `npm ls express` should answer `express@npm:fulmine.js`.

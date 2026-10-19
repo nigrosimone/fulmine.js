@@ -40,12 +40,12 @@ Sentry.setupExpressErrorHandler(app);
 app.listen(3000);
 ```
 
-Tested with `@sentry/node` 11.6, on `app.listen()` and on `http.createServer(app)`, against the same app on Express:
+Tested with `@sentry/node` 11.8 in CI ([the case](../integrations/cases/sentry.js)), on `app.listen()` and on `http.createServer(app)`, against the same app on Express:
 
-- an error thrown in a route, synchronous or after an `await`, is reported with the request: method, URL and the route as the transaction name;
+- an error thrown in a route, synchronous or after an `await`, is reported with the request: method and URL;
 - each request has its own scope, so `Sentry.setTag()` in a middleware stays with its request, with requests running at the same time.
 
-What is not there yet: a span per middleware and route handler. Sentry draws those for Express by patching the `express` module, which Fulmine is not. Once Sentry reads `express.router.request`, the channel Express's router will publish, they come from Fulmine too, with nothing to change here.
+What is not there yet: a span per middleware and route handler, and the route as the transaction name. The transaction is named after the path, `GET /users/7`, where Express gets `GET /users/:id`. Sentry takes both from rewriting the `router` package as it loads, which Fulmine does not use. Once Sentry reads `express.router.request`, the channel Express's router will publish, they come from Fulmine too, with nothing to change here.
 
 ## Other tracers
 

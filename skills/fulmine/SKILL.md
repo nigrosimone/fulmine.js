@@ -20,7 +20,7 @@ npx fulmine.js differences         # what to check by hand
 - New project: `npx fulmine.js create my-app` (`--ts` for TypeScript, `--pnpm` for pnpm), with a
   Dockerfile that works.
 - A framework that requires Express in its own code: `npx fulmine.js override` writes the
-  npm/pnpm/yarn override (`"express": "npm:fulmine.js@^5"`), then reinstall from clean.
+  npm/pnpm/yarn/bun override (`"express": "npm:fulmine.js@^5"`, for pnpm in pnpm-workspace.yaml), then reinstall from clean.
 - NestJS: `new FulmineExpressAdapter()` from `fulmine.js/nest` in `NestFactory.create`.
 - Angular SSR: `server.ts` takes the one-line change, then `npx fulmine.js angular` marks
   `fulmine.js` and `uWebSockets.js` external in `angular.json`.

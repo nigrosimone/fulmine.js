@@ -37,16 +37,19 @@ const UWS_SPEC = /** @type {string} */ (require("../package.json").dependencies[
 const UWS_OVERRIDE = `${SELF}>${UWS}`;
 
 /**
- * Where each manager keeps its substitutions, and what to call it when telling someone.
- * @type {Record<string, {keys: string[], reinstall: string}>}
+ * Where each manager keeps its substitutions in package.json, and how to check it took. pnpm has
+ * no keys: pnpm 11 reads overrides only from pnpm-workspace.yaml, and pnpm 10 reads them there too.
+ * @type {Record<string, {keys: string[], reinstall: string, check: string}>}
  */
 const MANAGERS = {
-    npm: { keys: ["overrides"], reinstall: "npm install" },
-    pnpm: { keys: ["pnpm", "overrides"], reinstall: "pnpm install" },
-    yarn: { keys: ["resolutions"], reinstall: "yarn install" }
+    npm: { keys: ["overrides"], reinstall: "npm install", check: "npm ls express" },
+    pnpm: { keys: [], reinstall: "pnpm install", check: "pnpm why express" },
+    yarn: { keys: ["resolutions"], reinstall: "yarn install", check: "yarn why express" },
+    // bun aliases through npm's key; the alias hides the name express, so it is asked for by its own
+    bun: { keys: ["overrides"], reinstall: "bun install", check: `bun why ${SELF}` }
 };
 
-/** A lockfile, and the manager that wrote it. bun is here to be refused, see detectManager. */
+/** A lockfile, and the manager that wrote it. */
 const LOCKFILES = [
     ["pnpm-lock.yaml", "pnpm"],
     ["yarn.lock", "yarn"],
@@ -105,7 +108,7 @@ function readJson(file) {
  */
 function detectManager(dir, pkg) {
     const declared = typeof pkg.packageManager === "string" ? pkg.packageManager.split("@")[0] : undefined;
-    if (declared && (MANAGERS[declared] || declared === "bun")) {
+    if (declared && MANAGERS[declared]) {
         return { manager: declared, why: `the packageManager field says ${declared}` };
     }
     for (const [file, manager] of LOCKFILES) {
@@ -152,8 +155,9 @@ function writePath(object, keys, value) {
 /**
  * npx fulmine.js override [dir] [--dry-run]
  *
- * Puts the substitution in package.json where this project's package manager reads it, and says
- * what to run next. It does not run the install itself: that throws away node_modules.
+ * Puts the substitution where this project's package manager reads it, package.json or for pnpm
+ * pnpm-workspace.yaml, and says what to run next. It does not run the install itself: that throws
+ * away node_modules.
  *
  * @param {string[]} argv everything after the command name
  * @returns {number} exit code
@@ -171,22 +175,23 @@ function override(argv) {
     const { data: pkg, source } = read;
 
     const { manager, why } = detectManager(dir, pkg);
-    if (manager === "bun") {
-        console.error(
-            `this project uses bun (${why}), and bun cannot run this package at all: µWebSockets.js\n` +
-                "is a native node addon and bun does not load it. Nothing was changed."
-        );
-        return 1;
-    }
-
-    const { keys, reinstall } = MANAGERS[manager];
-    const where = keys.join(".");
+    const { keys, reinstall, check } = MANAGERS[manager];
     const wanted = `npm:${SELF}@^${MAJOR}`;
+    const workspaceFile = path.join(dir, "pnpm-workspace.yaml");
+    let workspace = "";
+    if (manager === "pnpm") {
+        try {
+            workspace = fs.readFileSync(workspaceFile, "utf8");
+        } catch {
+            // no workspace file yet, it is written below
+        }
+    }
+    const where = manager === "pnpm" ? "pnpm-workspace.yaml overrides" : keys.join(".");
 
-    const existing = readPath(pkg, [...keys, REPLACES]);
+    const existing = manager === "pnpm" ? pnpmOverride(workspace, REPLACES) : readPath(pkg, [...keys, REPLACES]);
     if (existing === wanted) {
         console.log(`${where}.${REPLACES} already says ${wanted}, so there is nothing to change.`);
-        console.log(`Check it took: ${manager === "npm" ? "npm ls express" : `${manager} why express`}`);
+        console.log(`Check it took: ${check}`);
         return 0;
     }
     if (existing !== undefined) {
@@ -197,28 +202,45 @@ function override(argv) {
         return 1;
     }
 
-    writePath(pkg, [...keys, REPLACES], wanted);
-    const rewritten = JSON.stringify(pkg, null, indentOf(source)) + "\n";
-
-    // the block on its own, so what was added can be read without diffing a whole package.json
-    const shown = {};
-    writePath(shown, keys, { [REPLACES]: wanted });
     console.log(`${manager}, because ${why}`);
-    console.log(`${dryRun ? "would add" : "added"} to package.json:\n`);
-    console.log(
-        JSON.stringify(shown, null, 2)
-            .split("\n")
-            .map((line) => `  ${line}`)
-            .join("\n") + "\n"
-    );
-    if (!dryRun) {
-        fs.writeFileSync(file, rewritten);
+    if (manager === "pnpm") {
+        console.log(`${dryRun ? "would add" : "added"} to pnpm-workspace.yaml:\n`);
+        console.log(`  overrides:\n    ${REPLACES}: "${wanted}"\n`);
+        if (!dryRun) {
+            fs.writeFileSync(workspaceFile, /** @type {string} */ (withPnpmOverride(workspace, REPLACES, wanted)));
+        }
+    } else {
+        writePath(pkg, [...keys, REPLACES], wanted);
+        const rewritten = JSON.stringify(pkg, null, indentOf(source)) + "\n";
+
+        // the block on its own, so what was added can be read without diffing a whole package.json
+        const shown = {};
+        writePath(shown, keys, { [REPLACES]: wanted });
+        console.log(`${dryRun ? "would add" : "added"} to package.json:\n`);
+        console.log(
+            JSON.stringify(shown, null, 2)
+                .split("\n")
+                .map((line) => `  ${line}`)
+                .join("\n") + "\n"
+        );
+        if (!dryRun) {
+            fs.writeFileSync(file, rewritten);
+        }
     }
 
     console.log("Then reinstall, so the lockfile is written again:\n");
     console.log(`  rm -rf node_modules && ${reinstall}\n`);
-    const check = manager === "npm" ? "npm ls express" : `${manager} why express`;
     console.log(`It took when \`${check}\` names ${SELF}.\n`);
+    if (manager === "pnpm") {
+        console.log(
+            `pnpm 10.26 and newer also refuse the git dependency this package has: run \`npx ${SELF} pnpm\` too.\n`
+        );
+    }
+    if (manager === "bun") {
+        console.log("On bun there is no µWebSockets.js, a native node addon bun does not load, so app.listen()");
+        console.log("serves through bun's node:http. Plain HTTP answers as on node; WebSockets, uwsOptions and");
+        console.log("app.uwsApp need node.\n");
+    }
     console.log("Two things to know before you trust it:\n");
     console.log(`  The substitution reaches every dependency that asks for ${REPLACES}, including ones you have`);
     console.log("  never looked at. Run your own tests afterwards, and read `npx fulmine.js differences`:");
@@ -315,28 +337,55 @@ function angular(argv) {
 }
 
 /**
- * The pnpm-workspace.yaml with the override in it. Written by hand rather than through a YAML
- * library: the file is small, the block is two lines, and what is already there is kept as is.
+ * @param {string} source a pnpm-workspace.yaml, or ""
+ * @returns {string[]} its lines, without the trailing empty ones
+ */
+function yamlLines(source) {
+    return source.length ? source.replace(/\r\n/g, "\n").replace(/\n*$/, "").split("\n") : [];
+}
+
+/**
+ * One entry of the overrides block of a pnpm-workspace.yaml, read by hand: the block is a flat
+ * map of quoted or bare keys, and nothing else in the file is looked at.
+ *
+ * @param {string} source the file as it is, or ""
+ * @param {string} name the key, `express` or `fulmine.js>uWebSockets.js`
+ * @returns {string|undefined} its value without quotes, or nothing when it is not there
+ */
+function pnpmOverride(source, name) {
+    const lines = yamlLines(source);
+    const at = lines.findIndex((one) => /^overrides:\s*$/.test(one));
+    if (at === -1) return undefined;
+    for (let i = at + 1; i < lines.length && /^(\s|$)/.test(lines[i]); i++) {
+        const entry = lines[i].match(/^\s+(?:"([^"]+)"|'([^']+)'|([^\s"'#][^:#]*?))\s*:\s+(.*?)\s*$/);
+        if (entry && (entry[1] ?? entry[2] ?? entry[3]) === name) {
+            return entry[4].replace(/^(["'])(.*)\1$/, "$2");
+        }
+    }
+    return undefined;
+}
+
+/**
+ * The pnpm-workspace.yaml with an override in it. Written by hand rather than through a YAML
+ * library: the file is small, the entry is one line, and what is already there is kept as is.
  *
  * @param {string} source the file as it is, or "" when there is none
+ * @param {string} [name] the key, by default the one dropping this package's own uWS
+ * @param {string} [value] what the key is overridden with
  * @returns {string|undefined} the new file, or nothing when the override is already there
  */
-function withPnpmOverride(source) {
-    const line = `  "${UWS_OVERRIDE}": "-"`;
-    if (
-        new RegExp(
-            `^\\s*["']?${SELF.replace(".", "\\.")}>${UWS.replace(".", "\\.")}["']?:\\s*["']?-["']?\\s*$`,
-            "m"
-        ).test(source)
-    ) {
+function withPnpmOverride(source, name = UWS_OVERRIDE, value = "-") {
+    if (pnpmOverride(source, name) === value) {
         return undefined;
     }
-    const lines = source.length ? source.replace(/\r\n/g, "\n").replace(/\n*$/, "").split("\n") : [];
+    const lines = yamlLines(source);
     const at = lines.findIndex((one) => /^overrides:\s*$/.test(one));
     if (at === -1) {
-        return [...lines, ...(lines.length ? [""] : []), "overrides:", line, ""].join("\n");
+        return [...lines, ...(lines.length ? [""] : []), "overrides:", `  "${name}": "${value}"`, ""].join("\n");
     }
-    lines.splice(at + 1, 0, line);
+    // the indentation the block already uses, since YAML reads another one as another level
+    const indent = lines[at + 1]?.match(/^(\s+)\S/)?.[1] ?? "  ";
+    lines.splice(at + 1, 0, `${indent}"${name}": "${value}"`);
     return lines.join("\n") + "\n";
 }
 
@@ -413,6 +462,7 @@ module.exports = {
     serverBuilds,
     indentOf,
     withPnpmOverride,
+    pnpmOverride,
     UWS_SPEC,
     UWS_OVERRIDE
 };

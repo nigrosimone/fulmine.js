@@ -60,7 +60,8 @@ function startScenarioServer(framework, scenarioName, env, stdio) {
         // profile.js asks for an "ipc" channel, which is how it tells the server to stop profiling
         // and write what it has. Everything else takes the three streams and nothing more.
         stdio: stdio || ["ignore", "pipe", "pipe"],
-        env: { ...process.env, ...env }
+        // production unless the shell says otherwise: in development the view engines recompile every view
+        env: { NODE_ENV: "production", ...process.env, ...env }
     });
 
     let stderr = "";

@@ -58,11 +58,24 @@ test("override writes npm's overrides when there is a package-lock", () => {
     assert.deepStrictEqual(readJson(dir, "package.json").overrides, { express: WANTED });
 });
 
-test("override writes pnpm.overrides for pnpm and resolutions for yarn", () => {
-    const pnpm = fixture({ "package.json": "{}\n", "pnpm-lock.yaml": "" });
-    assert.strictEqual(run(["override", pnpm]).code, 0);
-    assert.deepStrictEqual(readJson(pnpm, "package.json").pnpm.overrides, { express: WANTED });
+test("override writes pnpm-workspace.yaml for pnpm, which pnpm 11 reads and package.json it does not", () => {
+    const pnpm = fixture({
+        "package.json": "{}\n",
+        "pnpm-lock.yaml": "",
+        "pnpm-workspace.yaml": "packages:\n  - apps/*\n"
+    });
+    const { code, out } = run(["override", pnpm]);
+    assert.strictEqual(code, 0, out);
+    assert.strictEqual(
+        fs.readFileSync(path.join(pnpm, "pnpm-workspace.yaml"), "utf8"),
+        `packages:\n  - apps/*\n\noverrides:\n  "express": "${WANTED}"\n`
+    );
+    assert.strictEqual(fs.readFileSync(path.join(pnpm, "package.json"), "utf8"), "{}\n");
+    assert.match(out, /npx fulmine\.js pnpm/);
+    assert.match(run(["override", pnpm]).out, /already says npm:fulmine\.js/);
+});
 
+test("override writes resolutions for yarn", () => {
     const yarn = fixture({ "package.json": "{}\n", "yarn.lock": "" });
     assert.strictEqual(run(["override", yarn]).code, 0);
     assert.deepStrictEqual(readJson(yarn, "package.json").resolutions, { express: WANTED });
@@ -75,7 +88,7 @@ test("override believes the packageManager field over any lockfile lying around"
     });
     const { out } = run(["override", dir]);
     assert.match(out, /pnpm, because the packageManager field says pnpm/);
-    assert.deepStrictEqual(readJson(dir, "package.json").pnpm.overrides, { express: WANTED });
+    assert.match(fs.readFileSync(path.join(dir, "pnpm-workspace.yaml"), "utf8"), /"express": "npm:fulmine\.js/);
 });
 
 test("override keeps the indentation the file already used", () => {
@@ -108,11 +121,23 @@ test("override refuses to overwrite somebody else's substitution", () => {
     assert.deepStrictEqual(readJson(dir, "package.json").overrides, { express: "^5.1.0" });
 });
 
-test("override refuses bun, which cannot load the binary at all", () => {
+test("override writes npm's overrides for bun, which reads that key, and says what bun serves without", () => {
     const dir = fixture({ "package.json": "{}\n", "bun.lock": "" });
     const { code, out } = run(["override", dir]);
-    assert.strictEqual(code, 1);
-    assert.match(out, /bun does not load it/);
+    assert.strictEqual(code, 0, out);
+    assert.deepStrictEqual(readJson(dir, "package.json").overrides, { express: WANTED });
+    assert.match(out, /bun why fulmine\.js/);
+    assert.match(out, /through bun's node:http/);
+});
+
+test("pnpm overrides are read from the block alone, quoted or bare, in the indentation it already has", () => {
+    const { pnpmOverride, withPnpmOverride } = require("../../src/adopt.js");
+    assert.strictEqual(pnpmOverride("overrides:\n  express: 'npm:fulmine.js@^5'\n", "express"), "npm:fulmine.js@^5");
+    assert.strictEqual(pnpmOverride('catalog:\n  express: "^5"\n', "express"), undefined);
+    assert.strictEqual(
+        withPnpmOverride('overrides:\n    "left-pad": "1.3.0"\n', "express", "^5"),
+        'overrides:\n    "express": "^5"\n    "left-pad": "1.3.0"\n'
+    );
 });
 
 test("override says which file it could not read, and throws no parser error", () => {
