@@ -247,8 +247,8 @@ jobs:
     # The frameworks that build on Express, each serving the same application twice: once on
     # Express and once on this, with the two outputs compared byte for byte. Same rule as the
     # comparison suite, and a job of its own because these dependencies are frameworks rather than
-    # middlewares: nobody should have to install Nest and Next to run `npm test`, and four of the
-    # seven compile an application before there is anything to serve.
+    # middlewares: nobody should have to install Nest and Next to run `npm test`, and five of the
+    # nine compile an application before there is anything to serve.
     integrations:
         runs-on: ubuntu-latest
         timeout-minutes: 25

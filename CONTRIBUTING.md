@@ -68,7 +68,7 @@ These are expected green. Run them, do not assume:
 ```sh
 npm test              # the comparison suite
 npm run test:unit
-npm run test:express  # Express's own suite; 1130 passing, 0 failing
+npm run test:express  # Express's own suite; 1153 passing, 0 failing
 npm run typecheck
 npm run lint
 npm run format:check

@@ -12,7 +12,7 @@ const origin = "https://fulmine.sndesign.it";
 export default defineConfig({
     srcDir: "../docs",
     title: "Fulmine.js",
-    // the median of the last CI runs on a large route table, see speedups.mjs
+    // the 90th percentile of the last CI runs on a large route table, see speedups.mjs
     description: `Drop-in Express 5 replacement on uWebSockets.js, up to ${speedups.headline}x faster on large route tables. Your middleware keeps working.`,
     lang: "en",
     cleanUrls: true,

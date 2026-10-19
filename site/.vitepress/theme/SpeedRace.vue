@@ -10,7 +10,7 @@ const props = defineProps<{ figure: string }>();
 const EXPRESS_TRIP_SECONDS = 10;
 
 // the tile's own figure, so a wider range runs faster; the note under the tiles says which end
-const ratio = computed(() => (data.figures as Record<string, { max: number }>)[props.figure]?.max ?? 1);
+const ratio = computed(() => (data.figures as Record<string, { p90: number }>)[props.figure]?.p90 ?? 1);
 // alternate makes one run of the animation half a round trip
 const express = `${EXPRESS_TRIP_SECONDS / 2}s`;
 const fulmine = computed(() => `${EXPRESS_TRIP_SECONDS / 2 / ratio.value}s`);

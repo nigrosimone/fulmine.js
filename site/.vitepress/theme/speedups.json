@@ -1,191 +1,253 @@
 {
-    "period": "the last 20 CI runs, 15 October 2026 to 18 October 2026",
-    "headline": 19,
+    "period": "the last 20 CI runs, 17 October 2026 to 18 October 2026",
+    "headline": 14,
     "figures": {
         "routing/api-endpoint": {
-            "min": 1.59,
-            "median": 3.14,
+            "min": 1.6,
+            "median": 3.24,
+            "p10": 1.66,
+            "p90": 3.4,
             "max": 3.88,
             "runs": 20
         },
         "routing/api-mixed": {
-            "min": 1.34,
-            "median": 2.13,
+            "min": 1.36,
+            "median": 2.24,
+            "p10": 1.39,
+            "p90": 2.39,
             "max": 2.43,
             "runs": 20
         },
         "routing/arena-baseline-get": {
-            "min": 1.31,
-            "median": 1.83,
-            "max": 2.11,
+            "min": 1.32,
+            "median": 1.93,
+            "p10": 1.35,
+            "p90": 2.05,
+            "max": 2.12,
             "runs": 20
         },
         "routing/arena-baseline-post": {
-            "min": 1.6,
-            "median": 3.27,
-            "max": 3.71,
+            "min": 1.63,
+            "median": 3.45,
+            "p10": 1.67,
+            "p90": 3.65,
+            "max": 3.69,
             "runs": 20
         },
         "engines/art": {
-            "min": 1.53,
-            "median": 2.2,
-            "max": 2.96,
+            "min": 1.54,
+            "median": 2.23,
+            "p10": 1.57,
+            "p90": 2.42,
+            "max": 2.51,
             "runs": 20
         },
         "middlewares/body-json-4kb": {
             "min": 1.76,
-            "median": 3.03,
+            "median": 3.1,
+            "p10": 1.82,
+            "p90": 3.29,
             "max": 3.55,
             "runs": 20
         },
         "middlewares/body-json-512kb": {
-            "min": 0.92,
-            "median": 1.18,
-            "max": 1.44,
+            "min": 0.93,
+            "median": 1.16,
+            "p10": 1.01,
+            "p90": 1.25,
+            "max": 1.32,
             "runs": 20
         },
         "middlewares/body-json-echo": {
             "min": 1.63,
-            "median": 3.45,
-            "max": 3.95,
+            "median": 3.54,
+            "p10": 1.68,
+            "p90": 3.91,
+            "max": 4.12,
             "runs": 20
         },
         "middlewares/compression-file": {
             "min": 1.14,
             "median": 1.23,
+            "p10": 1.16,
+            "p90": 1.25,
             "max": 1.26,
             "runs": 20
         },
         "routing/fallback-scan": {
             "min": 2.85,
-            "median": 5.25,
+            "median": 5.59,
+            "p10": 3.21,
+            "p90": 6.25,
             "max": 6.36,
             "runs": 20
         },
         "routing/hello-world": {
             "min": 1.14,
-            "median": 1.29,
+            "median": 1.37,
+            "p10": 1.16,
+            "p90": 1.55,
             "max": 1.57,
             "runs": 20
         },
         "connections/high-concurrency": {
             "min": 1.75,
-            "median": 2.03,
+            "median": 2.08,
+            "p10": 1.94,
+            "p90": 2.26,
             "max": 2.34,
             "runs": 20
         },
         "routing/json-list-gzip": {
             "min": 1.2,
-            "median": 1.48,
-            "max": 1.56,
+            "median": 1.49,
+            "p10": 1.24,
+            "p90": 1.56,
+            "max": 1.58,
             "runs": 20
         },
         "routing/json-list": {
             "min": 1.43,
-            "median": 2.43,
-            "max": 2.68,
+            "median": 2.41,
+            "p10": 1.53,
+            "p90": 2.62,
+            "max": 2.81,
             "runs": 20
         },
         "routing/middlewares-100": {
             "min": 1.61,
-            "median": 1.75,
-            "max": 1.92,
+            "median": 1.77,
+            "p10": 1.67,
+            "p90": 1.83,
+            "max": 2.15,
             "runs": 20
         },
         "routing/nested-routers": {
             "min": 1.27,
-            "median": 1.52,
+            "median": 1.58,
+            "p10": 1.33,
+            "p90": 1.74,
             "max": 1.74,
             "runs": 20
         },
         "middlewares/body-urlencoded": {
             "min": 1.84,
-            "median": 3.66,
+            "median": 3.78,
+            "p10": 1.85,
+            "p90": 4.22,
             "max": 4.3,
             "runs": 20
         },
         "routing/query-string": {
             "min": 1.26,
-            "median": 1.65,
+            "median": 1.86,
+            "p10": 1.3,
+            "p90": 1.96,
             "max": 2.06,
             "runs": 20
         },
         "streaming/readable-hash-4mb": {
             "min": 0.94,
-            "median": 1.04,
-            "max": 1.08,
+            "median": 1.02,
+            "p10": 0.98,
+            "p90": 1.05,
+            "max": 1.06,
             "runs": 20
         },
         "middlewares/realistic-stack": {
             "min": 1.52,
-            "median": 2.3,
+            "median": 2.34,
+            "p10": 1.59,
+            "p90": 2.55,
             "max": 2.64,
             "runs": 20
         },
         "routing/router-list-and-item": {
             "min": 1.31,
-            "median": 1.6,
+            "median": 1.98,
+            "p10": 1.34,
+            "p90": 2.1,
             "max": 2.14,
-            "runs": 10
+            "runs": 19
         },
         "routing/router-mounted-params": {
             "min": 3.99,
             "median": 7.02,
-            "max": 7.7,
+            "p10": 4.07,
+            "p90": 7.49,
+            "max": 7.59,
             "runs": 20
         },
         "routing/routes-1000-params": {
             "min": 7.39,
-            "median": 10.23,
-            "max": 18.87,
+            "median": 10.37,
+            "p10": 7.99,
+            "p90": 13.76,
+            "max": 19.33,
             "runs": 20
         },
         "routing/routes-1000": {
             "min": 6.99,
-            "median": 9.69,
+            "median": 9.82,
+            "p10": 7.4,
+            "p90": 11.67,
             "max": 15.44,
             "runs": 20
         },
         "middlewares/express-static": {
-            "min": 1.94,
-            "median": 2.27,
-            "max": 2.39,
+            "min": 1.82,
+            "median": 2.28,
+            "p10": 2.01,
+            "p90": 2.37,
+            "max": 2.38,
             "runs": 20
         },
         "middlewares/express-static-small": {
-            "min": 3.58,
-            "median": 5.61,
+            "min": 3.63,
+            "median": 5.74,
+            "p10": 3.97,
+            "p90": 5.98,
             "max": 6.02,
             "runs": 20
         },
         "streaming/writable-with-content-length": {
             "min": 0.97,
             "median": 1,
+            "p10": 0.99,
+            "p90": 1.03,
             "max": 1.03,
             "runs": 20
         },
         "streaming/writable-no-content-length": {
             "min": 0.97,
             "median": 1,
-            "max": 1.04,
+            "p10": 0.98,
+            "p90": 1.01,
+            "max": 1.02,
             "runs": 20
         },
         "plain": {
             "min": 1.14,
-            "median": 1.59,
+            "median": 1.65,
+            "p10": 1.22,
+            "p90": 3.31,
             "max": 3.88,
             "runs": 60
         },
         "body": {
             "min": 1.63,
-            "median": 3.45,
+            "median": 3.67,
+            "p10": 1.84,
+            "p90": 4.14,
             "max": 4.3,
             "runs": 40
         },
         "tables": {
             "min": 6.99,
-            "median": 9.95,
-            "max": 18.87,
+            "median": 10.16,
+            "p10": 7.68,
+            "p90": 13.76,
+            "max": 19.33,
             "runs": 40
         }
     }

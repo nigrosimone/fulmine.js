@@ -1,6 +1,6 @@
 <img src="./assets/logo-mark.svg" alt="" width="88" align="right">
 
-# Fulmine.js: the drop-in Express 5 replacement, up to <!--speedup:tables:max-->19<!--/speedup-->x faster on large route tables
+# Fulmine.js: the drop-in Express 5 replacement, up to <!--speedup:tables:p90-->14<!--/speedup-->x faster on large route tables
 
 **Fulmine** (lightning in Italian ⚡) is an Express 5 compatible web framework for Node.js, built on
 [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js) instead of `node:http`. Same API, same
@@ -25,14 +25,14 @@ const express = require("fulmine.js"); // instead of require("express")
 
 ## Why Fulmine
 
-- **Faster than Express, measured.** <!--speedup:plain:to-->1.1x to 3.9x<!--/speedup--> on plain routing, <!--speedup:body:to-->1.6x to 4.3x<!--/speedup--> on a request with a body,
-  <!--speedup:tables:to-->7.0x to 18.9x<!--/speedup--> on a large route table, in <!--speedup:period:text-->the last 20 CI runs, 15 October 2026 to 18 October 2026<!--/speedup-->. Routes are matched in C++ by µWS's own router,
+- **Faster than Express, measured.** <!--speedup:plain:to-->1.2x to 3.3x<!--/speedup--> on plain routing, <!--speedup:body:to-->1.8x to 4.1x<!--/speedup--> on a request with a body,
+  <!--speedup:tables:to-->7.7x to 13.8x<!--/speedup--> on a large route table, 10th to 90th percentile of <!--speedup:period:text-->the last 20 CI runs, 17 October 2026 to 18 October 2026<!--/speedup-->. Routes are matched in C++ by µWS's own router,
     and a simple enough handler is answered without running any JavaScript at all.
 - **Zero rewrite.** `helmet`, `cors`, `passport`, `morgan`, `multer`, `express-session` and the rest of
   the Express ecosystem keep working. Not "mostly": every test runs against real Express first and the
   output must match byte for byte, and Express 5's own test suite passes whole.
-- **Your framework works too.** NestJS, Next.js, Astro, SvelteKit, React Router, Angular SSR, Apollo
-  Server, tRPC, tsoa, MCP servers: each one is served twice in CI, on Express and on Fulmine, and compared.
+- **Your framework works too.** NestJS, Next.js, Astro, SvelteKit, React Router, Apollo Server, tRPC,
+  tsoa, MCP servers: each one is served twice in CI, on Express and on Fulmine, and compared. Angular SSR runs as well, with one line of build configuration.
 - **Ranked in public.** See [HttpArena](https://www.http-arena.com/#sort=rps:-1&q=Js) and
   [web-frameworks](https://web-frameworks-benchmark.vercel.app/frameworks/javascript/), run on their
   hardware with their rules. No figure is copied here, the boards are the current ones.
@@ -137,7 +137,7 @@ Details in [WebSockets](./docs/websockets.md), [Performance](./docs/performance.
 
 Use the [Express 5 documentation](https://expressjs.com/en/5x/api.html) as the reference: the
 application, request, response and router APIs are all there, settings included. The full checklist,
-the tested middlewares, frameworks and view engines, and the eight settings Fulmine adds, are in
+the tested middlewares, frameworks and view engines, and the nine settings Fulmine adds, are in
 [Compatibility](./docs/compatibility.md).
 
 A few things answer differently because there is no `node:http` underneath: `app.listen()` returns

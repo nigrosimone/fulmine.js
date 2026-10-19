@@ -3,8 +3,9 @@
 // "[rounds] scenario: ..., median X" lines), the µWS pass only, and writes them between the
 // <!--speedup:KEY:STYLE--> markers of the pages below and into .vitepress/theme/speedups.json.
 // Needs the gh CLI, logged in. KEY is a group below or a scenario name, STYLE one of:
-//   to      "1.2x to 3.4x"     dash    "1.2-3.4"     median   "10", the rounded median
-//   max     "22", the rounded best run, for the home page, which says it is the best run
+//   to      "1.2x to 3.4x"     dash    "1.2-3.4", the 10th to 90th percentile
+//   median  "10", the rounded median     p90 "14", the rounded 90th percentile, for the headlines
+// The percentiles leave out the luckiest and unluckiest runs, the min and max stay for the table.
 import { execFileSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 
@@ -55,11 +56,13 @@ function summary(values) {
     return {
         min: sorted[0],
         median: sorted[Math.floor(sorted.length / 2)],
+        p10: sorted[sorted.length - Math.ceil(sorted.length * 0.9)],
+        p90: sorted[Math.ceil(sorted.length * 0.9) - 1],
         max: sorted[sorted.length - 1],
         runs: values.length
     };
 }
-/** @type {Record<string, {min: number, median: number, max: number, runs: number}>} */
+/** @type {Record<string, {min: number, p10: number, median: number, p90: number, max: number, runs: number}>} */
 const figures = {};
 for (const [name, values] of Object.entries(medians)) {
     figures[name] = summary(values);
@@ -74,12 +77,12 @@ const day = (/** @type {string} */ iso) =>
 const period = `the last ${runs.length} CI runs, ${day(dates[0])} to ${day(dates[dates.length - 1])}`;
 
 const one = (/** @type {number} */ n) => n.toFixed(1);
-/** @type {Record<string, (f: {min: number, median: number, max: number}) => string>} */
+/** @type {Record<string, (f: {p10: number, median: number, p90: number}) => string>} */
 const STYLES = {
-    to: (f) => `${one(f.min)}x to ${one(f.max)}x`,
-    dash: (f) => `${one(f.min)}-${one(f.max)}`,
+    to: (f) => `${one(f.p10)}x to ${one(f.p90)}x`,
+    dash: (f) => `${one(f.p10)}-${one(f.p90)}`,
     median: (f) => String(Math.round(f.median)),
-    max: (f) => String(Math.round(f.max))
+    p90: (f) => String(Math.round(f.p90))
 };
 
 for (const page of PAGES) {
@@ -99,10 +102,10 @@ for (const page of PAGES) {
 
 await writeFile(
     new URL(".vitepress/theme/speedups.json", import.meta.url),
-    JSON.stringify({ period, headline: Math.round(figures.tables.max), figures }, null, 4) + "\n"
+    JSON.stringify({ period, headline: Math.round(figures.tables.p90), figures }, null, 4) + "\n"
 );
 for (const name of [...Object.keys(GROUPS), ...Object.keys(medians).sort()]) {
     const f = figures[name];
-    console.log(`${name.padEnd(40)} ${one(f.min)}x to ${one(f.max)}x, median ${one(f.median)}x over ${f.runs}`);
+    console.log(`${name.padEnd(40)} ${one(f.p10)}x to ${one(f.p90)}x, median ${one(f.median)}x over ${f.runs}`);
 }
 console.log(period);
