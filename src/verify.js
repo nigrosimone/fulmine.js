@@ -179,7 +179,7 @@ function checkBinary(platform = process.platform, arch = process.arch, abi = pro
         return result(
             "no",
             `no µWebSockets.js binary for ${platform} ${arch}`,
-            "this platform is not one the pinned build ships. Linux, macOS and Windows on x64 or arm64 are."
+            "this platform is not one the pinned build ships. Linux and macOS on x64 or arm64, and Windows on x64, are."
         );
     }
     return result(

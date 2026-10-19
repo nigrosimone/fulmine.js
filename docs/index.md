@@ -132,7 +132,7 @@ app.listen(3000);
 <a class="fm-text-link" href="/compatibility">Explore compatibility <span aria-hidden="true">→</span></a>
 </div>
 <div class="fm-stack">
-<div class="fm-stack-row"><p class="fm-stack-label">YOUR FRAMEWORKS</p><p class="fm-frameworks"><span>NestJS</span><span>Next.js</span><span>Astro</span><span>SvelteKit</span><span>React Router</span><span>Angular SSR</span></p></div>
+<div class="fm-stack-row"><p class="fm-stack-label">YOUR FRAMEWORKS</p><p class="fm-frameworks"><span>NestJS</span><span>Next.js</span><span>Astro</span><span>SvelteKit</span><span>React Router</span><span>tRPC</span></p></div>
 <div class="fm-stack-row"><p class="fm-stack-label">YOUR MIDDLEWARE</p><p class="fm-middleware"><span>helmet</span><span>cors</span><span>passport</span><span>morgan</span><span>multer</span><span>express-session</span></p></div>
 <div class="fm-stack-bottom"><span class="fm-status-dot" aria-hidden="true"></span> Familiar tools. Tested together.</div>
 </div>

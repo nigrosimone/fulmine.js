@@ -30,7 +30,7 @@ npm run typecheck         # checkJs over src, which is where the JSDoc types are
 
 npm run lint              # eslint, including the rule that every function in src carries a JSDoc block
 npm run format            # prettier
-npm run cover             # the comparison suite under nyc, then an HTML report
+npm run cover             # the comparison, unit and Express suites under nyc, then an HTML report
 
 npm run fuzz              # random applications, compared against Express
 npm run fuzz -- --self    # the same, against itself with the optimizer off
@@ -68,13 +68,14 @@ These are expected green. Run them, do not assume:
 ```sh
 npm test              # the comparison suite
 npm run test:unit
+npm run test:types    # the published types, with tsd
 npm run test:express  # Express's own suite; 1153 passing, 0 failing
 npm run typecheck
 npm run lint
 npm run format:check
 ```
 
-`npm run gates` runs the six in that order, a red one does not stop the next, and ends with one line
+`npm run gates` runs the seven in that order, a red one does not stop the next, and ends with one line
 per gate: green, red or not run. That last line is the thing to quote.
 
 A behaviour fix needs a comparison test under `tests/tests/`, and the test has to be checked against
@@ -165,7 +166,7 @@ internals. `app.close()`, `res.aborted` and the rest of the `http.Server` surfac
 readme and in the runtime for months with nothing in the types, which is what that test is for.
 
 `npm run test:integrations` is the comparison suite again, with a framework on top. Nest, Next,
-Astro, SvelteKit, React Router, Apollo, tRPC and tsoa each serve one application, once on Express and once
+Astro, SvelteKit, React Router, Apollo, tRPC, tsoa and MCP each serve one application, once on Express and once
 here, and the two outputs have to match. It lives in [`integrations/`](./integrations) rather than in
 `tests/` because those dependencies are frameworks rather than middlewares: heavy, installed on their
 own, five of them needing their own build to run first, and none of it something `npm test` should
@@ -216,9 +217,9 @@ next run will only find it again. When it is not going to be fixed, open an issu
 diverges, the seed that replays it and the reason it was left, so the decision is written down
 somewhere other than a terminal that has scrolled.
 
-**All five run on every push**, each short and on a random seed, so CI explores different ground
-every time rather than repeating: twenty rounds against Express, twenty more with `--self`, and the
-wire, header and session fuzzers under them. Red there is usually a real, pre-existing bug that the
+**All six run on every push**, each short and on a random seed, so CI explores different ground
+every time rather than repeating: twenty rounds against Express, twenty more with `--self`, ten through the
+`node:http` shim, and the wire, header and session fuzzers under them. Red there is usually a real, pre-existing bug that the
 push merely exposed: read the shrunk case before assuming the last commit caused it.
 
 `--self` is the fourth, and it is the only one with no oracle in it. Both `npm test -- --self` and
@@ -268,7 +269,7 @@ Some changes need no benchmark at all. If the code sits behind a guard most appl
 reach, say which guard and move on. Anything under about 20 ns per request is below what matters
 against a request budget of tens of microseconds.
 
-[`tools/README.md`](./tools/README.md) covers the five tools and the release script.
+[`tools/README.md`](./tools/README.md) covers the tools and the release script.
 [`benchmark/README.md`](./benchmark/README.md) covers measuring, including why the A/B runs
 pipelined by default, why a null control matters, and how a run is compared against the last one on
 the same machine.

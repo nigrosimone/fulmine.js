@@ -1,4 +1,4 @@
-// React Router v7 through @react-router/express: createRequestHandler over the server build.
+// React Router v8 through @react-router/express: createRequestHandler over the server build.
 //
 // The third of the handler-shaped cases, and the one that goes through an adapter written for
 // Express rather than for node: @react-router/express reads req.method, req.url, req.headers and

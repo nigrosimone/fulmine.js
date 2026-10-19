@@ -91,7 +91,7 @@ test("a platform the build does not ship says so instead", () => {
     const answer = checkBinary("freebsd", "x64", "127", dir);
     assert.strictEqual(answer.level, "no");
     assert.match(answer.what, /no µWebSockets\.js binary for freebsd x64/);
-    assert.match(answer.detail, /Linux, macOS and Windows/);
+    assert.match(answer.detail, /Linux and macOS on x64 or arm64, and Windows on x64/);
 });
 
 test("an ABI nobody here knows is reported as itself", () => {

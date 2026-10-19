@@ -97,7 +97,7 @@ routes get:
 - the path is a plain string, or its parameters are whole segments: `/users/:id` and `/a/:b/c/:d` qualify, `/flights/:from-:to` does not, and neither does a `*splat` or a `{}` group. Routing is case-insensitive by default, as in Express; a request in the registered case is still served natively, any other case takes the ordinary path, and a route whose overlap with an earlier one leans on a cased literal goes the ordinary way for every request. That last one is worth knowing about: `app.set("case sensitive routing", true)` is Express's own setting, and with it `/Users/list` no longer overlaps `/users/:id`, so both are matched by µWS instead of one of them falling back.
 - inside a mounted router, nothing registered after the route in that router could match the same path. `/orders/:id`, `/orders/:id/items` and `/invoices/:id` are all optimized together, since no request reaches two of them. `/users/:id` followed by `/users/me` is not: Express answers `/users/me` with the first of the two and the native router would answer it with the second, so both go the ordinary way.
 
-Optimized routes can be up to 10 times faster than normal routes, as they're using native uWS router and have pre-calculated path.
+Optimized routes are faster than normal routes, as they're using native uWS router and have pre-calculated path: how much depends on the table, see the numbers at the top of this page.
 
 On top of that, a handler simple enough to be read at registration time is compiled into a uWS declarative response and answered natively, without entering JavaScript at all. That needs the route to have nothing in front of it, not a middleware and not a `Router` it was mounted under, and a single handler that only calls `res.status`, `res.set`, `res.type`, `res.append`, `res.send`, `res.json`, `res.sendStatus` or `res.end` with literal arguments. `res.set` takes a pair or a whole object of them, and `res.type` takes what it takes anywhere, since a media type is a lookup on a literal. Anything else, a variable, a call, an `if`, falls back to ordinary routing. `return res.send(...)` compiles, `res.send(...)` does too, and so does an object or an array of literals however deeply nested. Mounting a `Router` costs only this: the routes inside one are still registered on the native uWS router with their full path, and are as fast as any other optimized route.
 
@@ -122,25 +122,35 @@ npx fulmine.js profile server.js    # or name it
 ```
 
 ```text
-7 route(s), 4 answered by µWS itself
+7 route(s), 4 answered by µWS itself, 1 of them without running any javascript
 
-  GET    /api/health          µWS  /api/health  (2 in front of it in its chain)
-  GET    /hello               µWS  /hello  (compiled to a response, reads no query)
-  GET    /:anything           router: something before it in the same router overlaps its paths
-  GET    /after-the-param     router: the parameter route /:anything is written before it
-  SEARCH /odd                 router: µWS does not serve SEARCH
+  GET    /hello                            µWS  /hello  (compiled to a response, copies no request headers, reads no query)
+  GET    /api/health                       µWS  /api/health  (3 in front of it in its chain)
+  GET    /users/:id                        µWS  /users/:x  (1 in front of it in its chain, copies no request headers, reads no query)
+  GET    /orders                           µWS  /orders  (1 in front of it in its chain, copies no request headers, reads no query)
+  GET    /:anything                        router: something before it in the same router overlaps its paths
+  GET    /after-the-param                  router: the parameter route /:anything is written before it
+  SEARCH /odd                              router: µWS does not serve SEARCH
+
+2 middleware in front of them. Every request walks the ones whose path it matches,
+and a compiled route walks them from a list worked out at startup rather than by matching.
 
 What this adds up to
 
   4 of 7 route(s) matched by µWS in C++
   1 answered from a response written at startup, running no javascript
-  layers in front of a compiled handler: 1 at least, 2 at most, 1.8 on average
+  3 copy no request headers, 3 read no query: the analysis proved nothing asks for them
+  layers in front of a compiled handler: 0 at least, 3 at most, 1.3 on average
 
 Worth changing, if these are routes that carry traffic
 
+  GET /:anything
+    something registered earlier answers some of the same paths, so the chain that would reach this route
+    cannot be worked out ahead of time. Narrowing the earlier path, or moving this one above it, frees it.
+
   GET /after-the-param
-    write it above /:anything. Express answers whichever matches first, so the order is
-    already what decides, and with the literal first µWS can match it in C++ as well.
+    write it above /:anything. Express answers whichever matches first, so the order is already what decides,
+    and with the literal first µWS can match it in C++ as well.
 ```
 
 It loads the application with `listen()` replaced by the half that compiles the routes, so nothing binds a port and the listen callback does not run: profiling a running service does not start a second copy of it. There is no score, on purpose. A percentage of routes is not a percentage of traffic, and an application with a thousand cold routes and one hot one that fell back would score well and serve badly.
@@ -193,7 +203,7 @@ Server-Timing: route;desc="native", hdr;desc="not copied", db;dur=3.62, total;du
 
 `route;desc="native"` means µWS matched the path in C++ and the chain was worked out at startup; `route;desc="router"` means this one was matched here, layer by layer. `res.timing(name, ms, desc)` and `res.time(name, fn)` add marks of your own, and `fn` may return a promise. The duration ends where the header does, since Server-Timing goes out with the head. A route compiled into a response never enters JavaScript, so nothing times it: `npx fulmine.js profile` is where those are counted. The same middleware writes `work;desc="headers, query"` when the request built something a fast one does not, the fields `expectLazy` checks, and writes nothing when it built none of them. `serverTiming({ work: false })` turns that off. Runnable: [`examples/server-timing.js`](../examples/server-timing.js).
 
-2. Do not use external `serve-static` module. Instead use built-in `express.static()` middleware, which is optimized for Fulmine. If your build already writes `.br` and `.gz` files next to the originals, `express.static(dir, { preCompressed: true })` serves those to the clients that accept them, so nothing is compressed at request time and a fraction of the bytes goes out: on a 4KB script with a brotli twin, 12 times fewer. It costs no more than serving the file itself, one `stat` per request, because the twin is looked for before the file and its own `stat` is the only one the request needs. A type that is already compressed, a woff2 or a webp, is not looked up at all, and which twins a path has is remembered for a second: `{ cache: false }` asks the disk every time, `{ cache: "5s" }` sets the window. Only their presence is remembered, never their size or mtime, so nothing is ever described by a stale number. `Vary: Accept-Encoding` is sent whether or not a twin is found, the content type stays the one the requested name implies, and each variant carries its own ETag. Runnable: [`examples/static-precompressed.js`](../examples/static-precompressed.js).
+2. Do not use external `serve-static` module. Instead use built-in `express.static()` middleware, which is optimized for Fulmine. If your build already writes `.br` and `.gz` files next to the originals, `express.static(dir, { preCompressed: true })` serves those to the clients that accept them, so nothing is compressed at request time and a fraction of the bytes goes out: on a 4KB script with a brotli twin, 12 times fewer. It costs no more than serving the file itself, one `stat` per request, because the twin is looked for before the file and its own `stat` is the only one the request needs. A type that is already compressed, a woff2 or a webp, is not looked up at all, and which twins a path has is remembered for a second: `{ preCompressed: { cache: false } }` asks the disk every time, `{ preCompressed: { cache: "5s" } }` sets the window. Only their presence is remembered, never their size or mtime, so nothing is ever described by a stale number. `Vary: Accept-Encoding` is sent whether or not a twin is found, the content type stays the one the requested name implies, and each variant carries its own ETag. Runnable: [`examples/static-precompressed.js`](../examples/static-precompressed.js).
 
 3. Do not use `body-parser` module. Instead use built-in `express.text()`, `express.json()` etc.
 
@@ -219,7 +229,7 @@ Runnable: [`examples/compression.js`](../examples/compression.js).
 
 7. `app.set("etag", false)` is worth about 8% on small responses, measured on both Fulmine and Express, which pay it almost identically. It is the single biggest thing an ordinary route does: in a CPU profile of one, hashing the body and building the tag are about 21% of the time that is not spent waiting, more than writing the headers and more than building the request and the response together. Know what you are trading: without an ETag a client cannot make a conditional request, so there are no `304 Not Modified` replies and every response is downloaded in full. On anything cacheable the bandwidth a 304 saves is usually worth far more than the 8%. It is left on by default for that reason. Turn it off for an API whose responses are never revalidated, and note that it is the same setting that decides whether a simple route is compiled into a native response, above.
 
-8. By default, Fulmine creates 1 (or 0 if your CPU has only 1 core) child thread to improve performance of reading files. You can change this number by setting `threads` to a different number in `express()`, or set to 0 to disable thread pool (`express({ threads: 0 })`). Threads are shared between all express() instances, with largest `threads` number being used. Using more threads will not necessarily improve performance. Sometimes not using threads at all is faster, so measure both.
+8. By default, Fulmine creates 1 (or 0 if your CPU has only 1 core) child thread to improve performance of reading files. You can change this number by setting `threads` to a different number in `express()`, or set to 0 to disable thread pool (`express({ threads: 0 })`). Threads come from one pool shared between all express() instances: each app uses its own `threads` count, and the pool grows to the largest. Using more threads will not necessarily improve performance. Sometimes not using threads at all is faster, so measure both.
 
 9. One node process uses one core, and this is the setting that changes it. `express({ cluster: "auto" })` forks one process per core and each of them binds the same port with µWS's shared flag, which is `SO_REUSEPORT`: every process has its own listening socket and the kernel decides which one gets each connection. Node's own `cluster` cannot do that with an `http.Server`, so the primary holds the socket and passes each accepted connection to a worker over IPC; here the primary is not in the path at all. On a 16-core machine that is close to 16 times the throughput, and no other setting comes near it. On one core `"auto"` forks nothing and the one process serves, since a primary that only supervises one worker costs memory and a container restarts a dead process anyway; `cluster: 1` still forks one worker under a primary.
 
@@ -236,6 +246,6 @@ app.get("/", (req, res) => res.send("hello"));
 app.listen(3000, () => console.log(`worker ${process.pid} listening`));
 ```
 
-Each worker opens its own database pool, so a pool sized for one process opens that many connections per core. `app.cluster.share(40)` is this worker's part of 40, the shares adding up to 40, and `app.cluster` also says how many workers serve, which one this is, and `serves`, false in the primary, where no pool should be opened: [a pool per worker](/examples/cluster-pool). Anything held per process is now held per worker: an in-memory cache, a rate-limit counter, a session store or a `Map` of connected sockets is not shared, and needs Redis or something like it to be. `app.close()` in the primary stops the workers, and a `SIGTERM` or `SIGINT` that reaches only the primary, which is what a container sends, is passed on to them. Runnable: [`examples/cluster.js`](../examples/cluster.js).
+Each worker opens its own database pool, so a pool sized for one process opens that many connections per core. `app.cluster.share(40)` is this worker's part of 40, the shares adding up to 40, and `app.cluster` also says how many workers serve, which one this is, and `serves`, false in the primary, where no pool should be opened: [a pool per worker](./examples/cluster-pool.md). Anything held per process is now held per worker: an in-memory cache, a rate-limit counter, a session store or a `Map` of connected sockets is not shared, and needs Redis or something like it to be. `app.close()` in the primary stops the workers, and a `SIGTERM` or `SIGINT` that reaches only the primary, which is what a container sends, is passed on to them. Runnable: [`examples/cluster.js`](../examples/cluster.js).
 
-10. `app.set("connection headers", false)` stops `Connection: keep-alive` and `Keep-Alive: timeout=10` going out on every response. Express sends both, so Fulmine sends both by default. An HTTP/1.1 connection stays open without being told, so to an HTTP/1.1 client the two headers say nothing it does not know already, and they cost 46 bytes and two header writes per response. A request that asked for `Connection: close` still gets `Connection: close`, and the connection is closed. Turn it off for an API behind a proxy or serving HTTP/1.1 clients; keep the default where a client or a proxy relies on the header to keep the connection open. Worth 2% to 3.5% here on a route that is not compiled, plus the bytes.
+10. `app.set("connection headers", false)` stops `Connection: keep-alive` and `Keep-Alive: timeout=10` going out on every response. Express sends both, so Fulmine sends both by default. An HTTP/1.1 connection stays open without being told, so to an HTTP/1.1 client the two headers say nothing it does not know already, and they cost 48 bytes and two header writes per response. A request that asked for `Connection: close` still gets `Connection: close`, and the connection is closed. Turn it off for an API behind a proxy or serving HTTP/1.1 clients; keep the default where a client or a proxy relies on the header to keep the connection open. Worth 2% to 3.5% here on a route that is not compiled, plus the bytes.

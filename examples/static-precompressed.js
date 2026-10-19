@@ -27,11 +27,10 @@ const app = express();
 
 app.use(
     express.static(dir, {
-        preCompressed: true,
         // which twins a path has is remembered for a second. "5s" widens the window, false asks
         // the disk every time. Only their presence is remembered, never a size or an mtime, so
         // nothing is ever described by a stale number
-        cache: "1s",
+        preCompressed: { cache: "1s" },
         maxAge: "1h"
     })
 );

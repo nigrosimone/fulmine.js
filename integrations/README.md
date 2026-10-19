@@ -28,7 +28,7 @@ cd integrations && node build.js --force  # rebuild the applications from scratc
 | [mcp.js](./cases/mcp.js)                   | an MCP server on `StreamableHTTPServerTransport`, asked by the SDK's own client and by hand       |
 | [astro.js](./cases/astro.js)               | `@astrojs/node` in middleware mode, including the `next()` it calls for a path it does not answer |
 | [sveltekit.js](./cases/sveltekit.js)       | the handler `@sveltejs/adapter-node` builds                                                       |
-| [react-router.js](./cases/react-router.js) | React Router v7 through `@react-router/express`                                                   |
+| [react-router.js](./cases/react-router.js) | React Router v8 through `@react-router/express`                                                   |
 | [next.js](./cases/next.js)                 | Next.js as a custom server, `next().getRequestHandler()`                                          |
 | [tsoa.js](./cases/tsoa.js)                 | the routes tsoa generates from a decorated controller, `RegisterRoutes(app)`, validation included |
 

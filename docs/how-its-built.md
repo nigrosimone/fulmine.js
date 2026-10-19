@@ -6,7 +6,7 @@ description: How Fulmine.js is built, where its speed comes from, and the fixes 
 
 **Measured at every layer, fixed where the problem is.**
 
-Most of Fulmine's speed is not ours. [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js) does the network work and matches routes in C++. Fulmine's part is to give it every route it can, and to answer the simple ones without going back to JavaScript. This is where the big numbers on the [performance page](/performance) come from.
+Most of Fulmine's speed is not ours. [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js) does the network work and matches routes in C++. Fulmine's part is to give it every route it can, and to answer the simple ones without going back to JavaScript. This is where the big numbers on the [performance page](./performance.md) come from.
 
 A request also goes through Node.js, the µWS binding and the µWS server. When a measure found a problem in one of them, we fixed it there, with a pull request and its benchmark. Below there is one fact for each layer, with the link to check it.
 
@@ -17,7 +17,7 @@ A request also goes through Node.js, the µWS binding and the µWS server. When 
 
 ## µWebSockets.js
 
-Fourteen pull requests merged. Some of them:
+Fifteen pull requests merged. Some of them:
 
 - `res.onAborted` from 91 ns to 45 ns per call: [#1330](https://github.com/uNetworking/uWebSockets.js/pull/1330), [#1331](https://github.com/uNetworking/uWebSockets.js/pull/1331).
 - Strings written as UTF-8 in one pass: a 200 KB ASCII body from 12.0 µs to 6.9 µs. [#1335](https://github.com/uNetworking/uWebSockets.js/pull/1335), [#1337](https://github.com/uNetworking/uWebSockets.js/pull/1337).

@@ -32,6 +32,7 @@ const ROOT = path.join(__dirname, "..");
 const GATES = [
     { name: "test", args: ["test"] },
     { name: "unit", args: ["run", "test:unit"] },
+    { name: "types", args: ["run", "test:types"] },
     // --ci is what makes Express's suite a gate; without it the exit status says nothing
     { name: "express", args: ["run", "test:express", "--", "--ci"] },
     { name: "typecheck", args: ["run", "typecheck"] },

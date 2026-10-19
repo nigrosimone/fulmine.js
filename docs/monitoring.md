@@ -7,7 +7,7 @@ description: Attach Sentry and other tracers to Fulmine.js, on µWS and through 
 Fulmine publishes what Express and Node.js publish for tracers, on `node:diagnostics_channel`, whether `app.listen()` serves the app on µWS or `http.createServer(app)` serves it through node:
 
 - `http.server.request.start`, `http.server.response.created` and `http.server.response.finish`, node:http's own. On µWS the server in them is the app `listen()` returns, and every request goes through its `emit("request")`, as node sends it.
-- `express.router.request`, the TracingChannel Express's router publishes for every middleware, route handler and error handler ([pillarjs/router#196](https://github.com/pillarjs/router/pull/196)).
+- `express.router.request`, the TracingChannel for every middleware, route handler and error handler that [pillarjs/router#196](https://github.com/pillarjs/router/pull/196) adds to Express's router, merged and out with the next router release.
 
 Without a subscriber they cost nothing. A tracer has to subscribe before `listen()`: routes µWS can answer on its own are compiled then, and none is while something listens, so every handler runs.
 
@@ -45,7 +45,7 @@ Tested with `@sentry/node` 11.6, on `app.listen()` and on `http.createServer(app
 - an error thrown in a route, synchronous or after an `await`, is reported with the request: method, URL and the route as the transaction name;
 - each request has its own scope, so `Sentry.setTag()` in a middleware stays with its request, with requests running at the same time.
 
-What is not there yet: a span per middleware and route handler. Sentry draws those for Express by patching the `express` module, which Fulmine is not. Once Sentry reads `express.router.request`, the channel Express's router now publishes, they come from Fulmine too, with nothing to change here.
+What is not there yet: a span per middleware and route handler. Sentry draws those for Express by patching the `express` module, which Fulmine is not. Once Sentry reads `express.router.request`, the channel Express's router will publish, they come from Fulmine too, with nothing to change here.
 
 ## Other tracers
 

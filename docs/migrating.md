@@ -144,7 +144,7 @@ hand it is one of these:
     }
 }
 
-// pnpm, in package.json
+// pnpm 10, in package.json (pnpm 11 reads overrides only from pnpm-workspace.yaml)
 {
     "pnpm": {
         "overrides": {

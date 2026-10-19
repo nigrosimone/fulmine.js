@@ -34,8 +34,8 @@ test that passes on Express and fails on Fulmine would count against it.
 
 No test fails on Fulmine that passes on Express: what fails on Fulmine fails on Express too, on the
 machine the suites ran on. One setting was needed, `body methods`, since Express reads a body on any
-verb and Fulmine by default only on POST, PUT, PATCH and QUERY; LibreChat's DELETE routes take a
-body, see [differences](/differences).
+verb and Fulmine by default only on POST, PUT, PATCH and QUERY; Actual's tests send a body with GET and
+DELETE, and LibreChat's DELETE routes take one, see [differences](./differences.md).
 
 ## Their endpoints
 
@@ -60,7 +60,7 @@ the database is the work it is smaller, and still there.
 
 The best setup moves the project to Fulmine's own compression and static files,
 `express.compression()` and `express.static(dir, { preCompressed: true })`, see
-[performance](/performance#performance-tips):
+[performance](./performance.md#performance-tips):
 [five lines in LibreChat](https://github.com/nigrosimone/fulmine-compat/blob/main/patches/librechat.diff),
 [one in Actual](https://github.com/nigrosimone/fulmine-compat/blob/main/patches/actual.diff) plus a
 build step that writes the brotli and gzip files.

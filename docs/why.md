@@ -8,7 +8,7 @@ There are several fast HTTP servers for Node built on [µWebSockets.js](https://
 
 ## Compatibility is a test suite, not a claim
 
-Every test in the repository runs against real Express first and then against Fulmine, and the two outputs have to match byte for byte: status, headers, body. That is what makes `helmet`, `cors`, `passport`, `morgan`, `multer`, `express-session` and the rest of the ecosystem work rather than "mostly work". Express 5's own test suite runs against Fulmine too and passes whole, 1130 passing, 0 failing, at the pinned Express version.
+Every test in the repository runs against real Express first and then against Fulmine, and the two outputs have to match byte for byte: status, headers, body. That is what makes `helmet`, `cors`, `passport`, `morgan`, `multer`, `express-session` and the rest of the ecosystem work rather than "mostly work". Express 5's own test suite runs against Fulmine too and passes whole, 1153 passing, 0 failing, at the pinned Express version.
 
 Frameworks are a larger user of the Express surface than any application, so they have [a suite of their own](./compatibility.md#tested-frameworks): NestJS, Next.js, Astro, SvelteKit, React Router, Apollo Server, tRPC, tsoa and an MCP server, each served twice and compared.
 
@@ -38,7 +38,7 @@ Express has no answer for these, so Fulmine adds them, all optional:
 
 Every one of these is a real price, so here they are:
 
-- **A native binary.** Node 22, 24 or 26 on Linux, macOS or Windows, x64 or arm64, glibc 2.38 or newer. No Alpine. Bun and Deno run it without µWS, through their own `node:http`, so plain HTTP only, at 1.3x to 1.5x Express rather than the several times µWS gives on Node. `npx fulmine.js verify` checks a machine and a Dockerfile in thirty seconds, and [Deploying](./deployment.md) has the image that works.
+- **A native binary.** Node 22, 24 or 26 on Linux or macOS (x64 or arm64) or Windows (x64), glibc 2.38 or newer. No Alpine. Bun and Deno run it without µWS, through their own `node:http`, so plain HTTP only, at 1.3x to 1.5x Express rather than the several times µWS gives on Node. `npx fulmine.js verify` checks a machine and a Dockerfile in thirty seconds, and [Deploying](./deployment.md) has the image that works.
 - **µWebSockets.js is not on npm.** It is installed from GitHub, which needs git at install time and [one command under pnpm](./deployment.md#pnpm).
 - **A few things answer differently**, because there is no `node:http` underneath: [Differences from Express](./differences.md).
 - **The major tracks Express**, not semver. Fulmine 5 follows Express 5. If you pin, pin the minor.

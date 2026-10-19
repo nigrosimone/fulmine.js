@@ -4,7 +4,7 @@ description: Deploy Fulmine.js with Docker, pnpm, private registries and reverse
 
 # Deploying Fulmine.js
 
-Docker, pnpm, a private npm registry, and a proxy in front. Requirements first: Node 22, 24 or 26 on x64 or arm64, glibc 2.38 or newer. Bun and Deno run it without µWS, plain HTTP only, see [Express on Bun](./compare.md#express-on-bun). `npx fulmine.js verify` checks all of it in one run.
+Docker, pnpm, a private npm registry, and a proxy in front. Requirements first: Node 22, 24 or 26 on x64 or arm64 (x64 only on Windows), glibc 2.38 or newer. Bun and Deno run it without µWS, plain HTTP only, see [Express on Bun](./compare.md#express-on-bun). `npx fulmine.js verify` checks all of it in one run.
 
 ## Docker
 
@@ -34,7 +34,7 @@ EXPOSE 3000
 CMD ["node", "server.js"]
 ```
 
-A single-stage `node:26-trixie-slim` image works too if you `apt-get install -y git ca-certificates` before `npm ci`. Prebuilt binaries exist for x64 and arm64 on Linux, macOS and Windows, so nothing is compiled at install time either way.
+A single-stage `node:26-trixie-slim` image works too if you `apt-get install -y git ca-certificates` before `npm ci`. Prebuilt binaries exist for x64 and arm64 on Linux and macOS, and x64 on Windows, so nothing is compiled at install time either way.
 
 ## pnpm
 
@@ -67,14 +67,14 @@ overrides:
 // package.json
 "dependencies": {
     "fulmine.js": "^5",
-    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.69.0"
+    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.71.0"
 }
 ```
 
 Nothing is turned off, and nothing is redistributed: µWebSockets.js still comes from uNetworking's
 repository, fetched by pnpm as your dependency. What it costs is that the tag is now yours to
 move. Nothing is left to memory: when fulmine changes its pin, the server says so once at startup
-(`uWebSockets.js 20.68.0 is installed, this version was tested with 20.69.0`), `npx fulmine.js verify`
+(`uWebSockets.js 20.70.0 is installed, this version was tested with 20.71.0`), `npx fulmine.js verify`
 says the two differ, and running `npx fulmine.js pnpm` again writes the new one. Each pin change is
 also a line in the changelog.
 
@@ -98,7 +98,7 @@ have turned git dependencies off, or that cannot reach github.com at all:
 ```
 allow-git=none   npm error code EALLOWGIT
                  npm error Fetching packages of type "git" have been disabled
-                 npm error Refusing to fetch "uWebSockets.js@github:uNetworking/uWebSockets.js#v20.69.0"
+                 npm error Refusing to fetch "uWebSockets.js@github:uNetworking/uWebSockets.js#v20.71.0"
 
 allow-git=root   npm error code EALLOWGIT
                  npm error Fetching non-root packages of type "git" have been disabled
@@ -114,7 +114,7 @@ prebuilt binaries included.
 **1. Pack the tag.** No clone needed, npm takes the git spec directly:
 
 ```sh
-npm pack "github:uNetworking/uWebSockets.js#v20.69.0"
+npm pack "github:uNetworking/uWebSockets.js#v20.71.0"
 ```
 
 Read the version out of [`package.json`](../package.json) rather than copying the one above, since
@@ -123,7 +123,7 @@ it moves with each release of this package.
 **2. Publish it to your registry.**
 
 ```sh
-npm publish uWebSockets.js-20.69.0.tgz --registry https://registry.internal/
+npm publish uWebSockets.js-20.71.0.tgz --registry https://registry.internal/
 ```
 
 The tarball is around 33 MB, because it carries a binary for every Node ABI and platform, and that
@@ -141,8 +141,8 @@ max_body_size: 200mb
 
 ```json
 {
-    "dependencies": { "fulmine.js": "5.17.0" },
-    "overrides": { "uWebSockets.js": "20.69.0" }
+    "dependencies": { "fulmine.js": "^5" },
+    "overrides": { "uWebSockets.js": "20.71.0" }
 }
 ```
 
@@ -151,14 +151,14 @@ registry with an integrity hash, so nothing reaches for git at install time:
 
 ```json
 "node_modules/uWebSockets.js": {
-    "version": "20.69.0",
-    "resolved": "https://registry.internal/uWebSockets.js/-/uWebSockets.js-20.69.0.tgz",
+    "version": "20.71.0",
+    "resolved": "https://registry.internal/uWebSockets.js/-/uWebSockets.js-20.71.0.tgz",
     "integrity": "sha512-kO7bcc/Hy3K6YnAVKBCu9ffYC1tl/ccDzDJqVK/GAO81XRRL+R1VmJP8mReg..."
 }
 ```
 
 One thing to tell your security team before their scanner does: the lockfile still contains the
-line `"uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.69.0"`. That is fulmine's declared
+line `"uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.71.0"`. That is fulmine's declared
 range, not a resolution, and a scanner that reads what is declared rather than what was installed
 will report a git dependency that the install never used.
 

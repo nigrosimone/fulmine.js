@@ -63,8 +63,8 @@ speed comes from and where it does not.
 - **`forceCloseConnections` has nothing to close.** The sockets belong to µWS and nothing emits
   `connection`, so it logs a warning instead. `app.close()` stops accepting and waits for the
   requests in flight; an idle keep-alive connection is closed by µWS after its fixed 10 seconds.
-- **Nest's body parsers are added once.** Nest looks for them in `app.router.stack`, which does not
-  exist here, so the adapter remembers instead of adding a second pair.
+- **Nest's body parsers are added once.** Nest looks for them by name in `app.router.stack`, and the
+  adapter also remembers them, so a second call never adds a second pair.
 
 ## WebSocket gateways
 

@@ -82,8 +82,8 @@ class FulmineExpressAdapter extends ExpressAdapter {
 
     /**
      * Nest's json and urlencoded parsers, added once however often this is called. Express looks
-     * for them in `app.router.stack`; there is no such array here, so a second call was putting a
-     * second pair in front of every request.
+     * for them in `app.router.stack`, which once did not exist here; remembering them keeps a second
+     * call from putting a second pair in front of every request.
      *
      * @override
      * @param {string} [prefix]

@@ -20,7 +20,7 @@ node websocket.js
 | [websocket.js](./websocket.js)                       | `app.ws()`, with the upgrade deciding whether the socket opens                                                  |
 | [socket-io.js](./socket-io.js)                       | socket.io through `io.attachApp(app.uwsApp)`, since the upgrade never reaches node                              |
 | [mcp.js](./mcp.js)                                   | an MCP server on the official SDK, a session per client, and what a held-open stream needs here                 |
-| [static-precompressed.js](./static-precompressed.js) | `express.static({ preCompressed: true })`: the `.br` and `.gz` twins on disk                                    |
+| [static-precompressed.js](./static-precompressed.js) | `express.static(dir, { preCompressed: true })`: the `.br` and `.gz` twins on disk                               |
 | [compression.js](./compression.js)                   | `express.compression()`, which Express has none of                                                              |
 | [server-timing.js](./server-timing.js)               | `express.serverTiming()`: how the request was routed, in the browser's own tools                                |
 | [https.js](./https.js)                               | TLS through `express({ uwsOptions })` rather than `https.createServer()`                                        |
@@ -30,6 +30,6 @@ node websocket.js
 | [node-http.js](./node-http.js)                       | `http.createServer(app)`, the way supertest, Bun and Deno serve it                                              |
 | [body-methods.js](./body-methods.js)                 | `body methods`, for a DELETE that carries a JSON body                                                           |
 
-Each one is also a page of the site, under [Examples](https://fulmine.sndesign.it/examples/). The readme's [Performance tips](../docs/performance.md#performance-tips) is the prose these go with, and
+Each one is also a page of the site, under [Examples](https://fulmine.sndesign.it/examples/). The [Performance tips](../docs/performance.md#performance-tips) is the prose these go with, and
 [Differences from Express](../docs/differences.md) is what to read before assuming
 something here behaves as it does there.

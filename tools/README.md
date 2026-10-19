@@ -1,20 +1,21 @@
 # tools
 
-Seven programs that are not the library and not its tests. Five of them look for compatibility bugs
-from the outside, one runs every check a commit needs, and one publishes.
+Eight programs that are not the library and not its tests. Five of them look for compatibility bugs
+from the outside, one runs every check a commit needs, one guards a commit, and one publishes.
 
 Each file's own header carries the detail, including what it got wrong before it was fixed. This is
 the map.
 
-|                                        | what it is                                      | run it                  |
-| -------------------------------------- | ----------------------------------------------- | ----------------------- |
-| [`fuzz.js`](fuzz.js)                   | random applications, compared against Express   | `npm run fuzz`          |
-| [`wire-fuzz.js`](wire-fuzz.js)         | raw bytes, compared against node's parser       | `npm run fuzz:wire`     |
-| [`header-fuzz.js`](header-fuzz.js)     | hostile values through the response API         | `npm run fuzz:headers`  |
-| [`session-fuzz.js`](session-fuzz.js)   | several requests down one connection            | `npm run fuzz:session`  |
-| [`express-suite.js`](express-suite.js) | Express's own test suite, run against this      | `npm run test:express`  |
-| [`release-local.js`](release-local.js) | publishing by hand, when the workflow cannot    | `npm run release:local` |
-| [`gates.js`](gates.js)                 | the checks under "Before you commit", summed up | `npm run gates`         |
+|                                                              | what it is                                                | run it                  |
+| ------------------------------------------------------------ | --------------------------------------------------------- | ----------------------- |
+| [`fuzz.js`](fuzz.js)                                         | random applications, compared against Express             | `npm run fuzz`          |
+| [`wire-fuzz.js`](wire-fuzz.js)                               | raw bytes, compared against node's parser                 | `npm run fuzz:wire`     |
+| [`header-fuzz.js`](header-fuzz.js)                           | hostile values through the response API                   | `npm run fuzz:headers`  |
+| [`session-fuzz.js`](session-fuzz.js)                         | several requests down one connection                      | `npm run fuzz:session`  |
+| [`express-suite.js`](express-suite.js)                       | Express's own test suite, run against this                | `npm run test:express`  |
+| [`release-local.js`](release-local.js)                       | publishing by hand, when the workflow cannot              | `npm run release:local` |
+| [`gates.js`](gates.js)                                       | the checks under "Before you commit", summed up           | `npm run gates`         |
+| [`check-differential-tests.js`](check-differential-tests.js) | refuses a test left pointing at src/ by tests/singular.js | lint-staged             |
 
 ## fuzz.js
 
@@ -217,10 +218,8 @@ was checked the way the rest of this file is: with the framing refusal reverted,
 
 The `chunked;a=b` half is already gone upstream. µWS answers 400 to anything but `chunked` since
 v20.70.0, deliberately — _"that entirely eliminates all forms of transfer-encoding obfuscation
-tricks"_, says the comment beside the check — so once the pin moves past the v20.69.0 in
-`package.json` that case stops reaching this exception at all, and what holds the pin there is
-[uWebSockets#1941](https://github.com/uNetworking/uWebSockets/issues/1941), where the same check is
-too strict about the codings beside it. The trimming is not version bound and stays.
+tricks"_, says the comment beside the check — so with the v20.71.0 pin in `package.json`
+that case does not reach this exception any more. The trimming is not version bound and stays.
 
 What µWS decides before any of this can see it, measured against node with
 [Http11Probe](https://github.com/MDA2AV/Http11Probe) on 2026-08-18: a request line it cannot parse
@@ -314,7 +313,7 @@ npm run test:express -- --refresh       # throw the clone away and take it again
 
 It was a bug mine first and became a gate second. With `--ci` it is red on any failing test, any
 file without a result, or a moved Express tag, which is possible only because the count reached
-1130 passing and **zero** failing: a nonzero floor would need a list of expected failures, and that
+1130 passing and **zero** failing (1153 now, at Express 5.3.0): a nonzero floor would need a list of expected failures, and that
 rots the moment either project moves.
 
 Two caveats keep their marks in the table. Rows marked `lib` are tests that import Express's own

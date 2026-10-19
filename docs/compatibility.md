@@ -30,6 +30,7 @@ In general, basically all features and options are supported. Use the [Express 5
 - 🚧 express.request (this is not a constructor but a prototype for replacing methods)
 - 🚧 express.response (this is not a constructor but a prototype for replacing methods)
 - 🚧 express.application (likewise: a method added here is on every app)
+- ✅ express.isFulmine, `true` here and undefined on Express, for code that runs on either
 - ✅ express.Route. Both `app.route("/path").get(...).post(...)` and the class itself, for building a route by hand and dispatching to it.
 
 ## Application
@@ -38,6 +39,7 @@ In general, basically all features and options are supported. Use the [Express 5
 - ✅ app.listen(unix_socket[, callback])
 - ✅ app.METHOD() (app.get, app.post, etc.)
 - ✅ app.route()
+- ✅ app.router, and its `stack` of layers
 - ✅ app.all()
 - ✅ app.use()
 - ✅ app.mountpath
@@ -82,10 +84,11 @@ recognise it: `app.close()`, `app.address()`, `app.listening`, `app.getConnectio
 - ✅ view engine
 - ✅ x-powered-by
 
-Two of these keep a compiled form alongside the value, which you can also set directly:
+Three of these keep a compiled form alongside the value, which you can also set directly:
 
 - `etag fn`, the function that produces an ETag. Setting `etag` compiles one; setting this replaces it.
 - `query parser fn`, likewise for `query parser`.
+- `trust proxy fn`, likewise for `trust proxy`.
 
 Fulmine adds nine of its own:
 
@@ -108,6 +111,7 @@ Fulmine adds nine of its own:
 - ✅ req.cookies
 - ✅ req.fresh
 - ✅ req.hostname
+- ✅ req.host
 - ✅ req.header
 - ✅ req.headers
 - ✅ req.headersDistinct
@@ -128,7 +132,7 @@ Fulmine adds nine of its own:
 - ✅ req.subdomains
 - ✅ req.xhr
 - 🚧 req.route (route implementation is different from Express)
-- 🚧 req.connection, req.socket (only `end()`, `encrypted`, `remoteAddress`, `remotePort` and `localPort` are supported)
+- 🚧 req.connection, req.socket (a stand-in, not a `net.Socket`: the remote and local address and port, `encrypted`, `address()`, `end()`, `write()`, `destroy()`, `pause()` and `resume()` work; `setTimeout()`, `setKeepAlive()` and `setNoDelay()` do nothing)
 - ✅ req.accepts()
 - ✅ req.acceptsCharsets()
 - ✅ req.acceptsEncodings()
@@ -229,6 +233,10 @@ Almost all middlewares that are compatible with Express are compatible with Fulm
 - ✅ [graphql-http](https://www.npmjs.com/package/graphql-http)
 - ✅ [better-sse](https://www.npmjs.com/package/better-sse)
 - ✅ [supertest](https://www.npmjs.com/package/supertest)
+- ✅ [express-basic-auth](https://www.npmjs.com/package/express-basic-auth)
+- ✅ [express-validator](https://www.npmjs.com/package/express-validator)
+- ✅ [serve-favicon](https://www.npmjs.com/package/serve-favicon)
+- ✅ [on-finished](https://www.npmjs.com/package/on-finished) and [on-headers](https://www.npmjs.com/package/on-headers)
 
 ## Tested frameworks
 
@@ -242,7 +250,7 @@ built first by that suite, so what is compared is what their own build produces.
 - ✅ [Next.js](https://nextjs.org) as a custom server, `next().getRequestHandler()`
 - ✅ [Astro](https://astro.build) through `@astrojs/node` in middleware mode
 - ✅ [SvelteKit](https://svelte.dev/docs/kit) through `@sveltejs/adapter-node`
-- ✅ [React Router v7](https://reactrouter.com) through `@react-router/express`
+- ✅ [React Router v8](https://reactrouter.com) through `@react-router/express`
 - ✅ [Apollo Server](https://www.apollographql.com/docs/apollo-server) through
   [`@as-integrations/express5`](https://www.npmjs.com/package/@as-integrations/express5)
 - ✅ [tRPC](https://trpc.io) through `@trpc/server/adapters/express`
@@ -252,8 +260,9 @@ built first by that suite, so what is compared is what their own build produces.
   Runnable: [`examples/mcp.js`](../examples/mcp.js)
 - ✅ [tsoa](https://tsoa-project.github.io/docs/): the routes `tsoa spec-and-routes` generates from a decorated
   controller, registered with `RegisterRoutes(app)`, validation errors included
-- ✅ [Angular SSR](./migrating.md#angular-ssr), which is an ordinary Express `server.ts` plus one line of build
-  configuration
+
+[Angular SSR](./migrating.md#angular-ssr) works too but is not in that suite: it is an ordinary Express
+`server.ts` plus one line of build configuration.
 
 Each of these mounts on an ordinary Express application, so there is nothing to install and nothing
 to configure beyond what that framework already asks for. Nest is the exception, and only because
@@ -269,3 +278,4 @@ Any Express view engine should work. Here's list of engines we include in our te
 - ✅ [express-art-template](https://npmjs.com/package/express-art-template)
 - ✅ [express-handlebars](https://npmjs.com/package/express-handlebars)
 - ✅ [swig](https://npmjs.com/package/swig)
+- ✅ [mustache-express](https://npmjs.com/package/mustache-express)

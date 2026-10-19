@@ -33,8 +33,8 @@ const express = require("fulmine.js"); // instead of require("express")
   output must match byte for byte, and Express 5's own test suite passes whole.
 - **Your framework works too.** NestJS, Next.js, Astro, SvelteKit, React Router, Apollo Server, tRPC,
   tsoa, MCP servers: each one is served twice in CI, on Express and on Fulmine, and compared. Angular SSR runs as well, with one line of build configuration.
-- **Ranked in public.** See [HttpArena](https://www.http-arena.com/#sort=rps:-1&q=Js) and
-  [web-frameworks](https://web-frameworks-benchmark.vercel.app/frameworks/javascript/), run on their
+- **Ranked in public.** See [HttpArena](https://www.http-arena.com/#sort=rps:-1&q=Js),
+  [web-frameworks](https://web-frameworks-benchmark.vercel.app/frameworks/javascript/) and [Sharkbench](https://sharkbench.dev/web/javascript), run on their
   hardware with their rules. No figure is copied here, the boards are the current ones.
 - **More than Express, when you want it.** Multi-core cluster on one port, native WebSockets, built-in
   compression and pre-compressed static files, Server-Timing, PROXY protocol, TLS. All optional.
@@ -70,7 +70,7 @@ import express, { Router, json } from "fulmine.js";
 import type { Request, Response } from "fulmine.js";
 ```
 
-Requirements: Node 22, 24 or 26, on Linux, macOS or Windows, x64 or arm64. Not Alpine (glibc 2.38+
+Requirements: Node 22, 24 or 26, on Linux or macOS (x64 or arm64) or Windows (x64). Not Alpine (glibc 2.38+
 is needed). Bun and Deno run it without µWS, through their own `node:http`: plain HTTP only, and
 [1.3x to 1.5x Express](./docs/compare.md#express-on-bun). pnpm refuses the install (`ERR_PNPM_EXOTIC_SUBDEP` on uWebSockets.js) until
 [one command](./docs/deployment.md#pnpm) is run. `npx fulmine.js verify` tells
@@ -155,10 +155,13 @@ with the reason for each: [Differences from Express](./docs/differences.md).
 ## Documentation
 
 - [Why Fulmine](./docs/why.md): what it is, what it costs, who is behind it
+- [How it's built](./docs/how-its-built.md): where the speed comes from, and the fixes made in Node.js and µWS
 - [Migrating](./docs/migrating.md): the CLI, Angular SSR, NestJS, and when Express is somebody else's dependency
 - [NestJS](./docs/nest.md): the adapter, WebSocket gateways, against the Express and Fastify adapters
 - [Deploying](./docs/deployment.md): Docker, pnpm, a private npm registry, behind a proxy
 - [Performance](./docs/performance.md): the numbers, the tips, `profile`, `explain` and the testing helpers
+- [Real applications](./docs/real-apps.md): LibreChat, n8n and Actual Budget on Fulmine, CPU per user
+- [Monitoring](./docs/monitoring.md): Sentry and other tracers, through the diagnostics channels
 - [Differences from Express](./docs/differences.md): what answers differently and why
 - [WebSockets](./docs/websockets.md): `app.ws()` and socket.io
 - [Compatibility](./docs/compatibility.md): the API checklist, tested middlewares, frameworks and view engines
