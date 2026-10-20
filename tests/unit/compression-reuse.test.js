@@ -128,3 +128,36 @@ test("brotli is left on the one-shot call, whose stream cannot be reset", async 
         assert.deepStrictEqual(zlib.brotliDecompressSync(answer), body);
     });
 });
+
+test("a body compressed whole keeps the headers object fast, its Content-Length is overwritten", async () => {
+    const v8 = require("node:v8");
+    v8.setFlagsFromString("--allow-natives-syntax");
+    const hasFastProperties = new Function("o", "return %HasFastProperties(o)");
+    v8.setFlagsFromString("--no-allow-natives-syntax");
+    /** @type {boolean[]} */
+    const fast = [];
+    const app = express();
+    app.get("/j", express.compression({ encodings: ["gzip"] }), (req, res) => {
+        res.json({ items: Array.from({ length: 60 }, (item, i) => ({ id: i, name: `item-${i}` })) });
+        // a delete on the headers object turns it to dictionary mode, which every compressed
+        // response paid for in writeHeaders and in GC
+        fast.push(hasFastProperties(res.headers));
+    });
+    const server = app.listen(0);
+    try {
+        const { headers, body } = await new Promise((resolve, reject) => {
+            http.get({ port: app.address().port, path: "/j", headers: { "accept-encoding": "gzip" } }, (res) => {
+                /** @type {Buffer[]} */
+                const chunks = [];
+                res.on("data", (chunk) => chunks.push(chunk));
+                res.on("end", () => resolve({ headers: res.headers, body: Buffer.concat(chunks) }));
+            }).on("error", reject);
+        });
+        assert.strictEqual(headers["content-encoding"], "gzip");
+        assert.strictEqual(Number(headers["content-length"]), body.length);
+        assert.strictEqual(JSON.parse(zlib.gunzipSync(body).toString()).items.length, 60);
+        assert.deepStrictEqual(fast, [true]);
+    } finally {
+        server.close();
+    }
+});

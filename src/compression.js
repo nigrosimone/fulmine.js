@@ -452,9 +452,10 @@ function compression(options) {
          * the compression module's order, Vary included.
          *
          * @param {number} [length] the size of the body, when end() already has all of it
+         * @param {boolean} [whole] called from end(), whose whole-body path writes the length again
          * @returns {string} the encoding chosen, "" to send the body as it is
          */
-        function decide(length) {
+        function decide(length, whole) {
             decided = true;
             // after res.flushHeaders() there is no room for a Content-Encoding
             if (res.headersSent) {
@@ -481,8 +482,11 @@ function compression(options) {
                 return noCompress();
             }
             res.setHeader("Content-Encoding", chosen);
-            // the whole-body path puts the right one back
-            res.removeHeader("Content-Length");
+            // the whole-body path overwrites it: a delete turns the headers object to dictionary
+            // mode, and every compressed response paid it in writeHeaders and in GC
+            if (!whole) {
+                res.removeHeader("Content-Length");
+            }
             return chosen;
         }
 
@@ -566,7 +570,7 @@ function compression(options) {
                 return this;
             }
             if (!decided) {
-                method = decide(chunkLength(chunk, encoding));
+                method = decide(chunkLength(chunk, encoding), true);
             }
             // after a writeHead the head cannot take a length any more, so the body streams
             if (method && !stream && res.headersSent) {
