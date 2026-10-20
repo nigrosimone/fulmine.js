@@ -1,5 +1,15 @@
 # Changelog
 
+## [5.25.5](https://github.com/nigrosimone/fulmine.js/compare/v5.25.4...v5.25.5) (2026-10-20)
+
+### Bug Fixes
+
+* override writes pnpm-workspace.yaml for pnpm and works on bun, benchmarks run in production, Sentry is tested in CI ([8315d05](https://github.com/nigrosimone/fulmine.js/commit/8315d05f09fddd78423dd18af99f951e4a662814))
+
+### Performance Improvements
+
+* **query:** req.query keeps fast properties, Object.create(null) was dictionary mode, a for-in is 3x cheaper ([cda131e](https://github.com/nigrosimone/fulmine.js/commit/cda131e5b3872311838f2c443d6ce5e422a0f941))
+
 ## [5.25.4](https://github.com/nigrosimone/fulmine.js/compare/v5.25.3...v5.25.4) (2026-10-18)
 
 ### Bug Fixes
