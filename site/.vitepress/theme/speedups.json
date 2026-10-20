@@ -4,9 +4,9 @@
     "figures": {
         "routing/api-endpoint": {
             "min": 1.67,
-            "median": 3.22,
+            "median": 3.24,
             "p10": 2.07,
-            "p90": 3.4,
+            "p90": 3.43,
             "max": 3.55,
             "runs": 20
         },
@@ -14,13 +14,13 @@
             "min": 1.39,
             "median": 2.33,
             "p10": 1.53,
-            "p90": 2.39,
-            "max": 2.43,
+            "p90": 2.38,
+            "max": 2.39,
             "runs": 20
         },
         "routing/arena-baseline-get": {
             "min": 1.31,
-            "median": 1.98,
+            "median": 1.99,
             "p10": 1.37,
             "p90": 2.05,
             "max": 2.12,
@@ -28,7 +28,7 @@
         },
         "routing/arena-baseline-post": {
             "min": 1.63,
-            "median": 3.46,
+            "median": 3.49,
             "p10": 2.06,
             "p90": 3.64,
             "max": 3.71,
@@ -36,23 +36,23 @@
         },
         "engines/art": {
             "min": 1.54,
-            "median": 2.23,
-            "p10": 1.91,
-            "p90": 2.41,
+            "median": 2.26,
+            "p10": 1.93,
+            "p90": 2.45,
             "max": 2.46,
             "runs": 20
         },
         "middlewares/body-json-4kb": {
             "min": 1.82,
-            "median": 3.07,
-            "p10": 2.16,
-            "p90": 3.28,
+            "median": 3.1,
+            "p10": 2.21,
+            "p90": 3.34,
             "max": 3.47,
             "runs": 20
         },
         "middlewares/body-json-512kb": {
             "min": 0.99,
-            "median": 1.16,
+            "median": 1.21,
             "p10": 1.08,
             "p90": 1.31,
             "max": 1.44,
@@ -60,23 +60,23 @@
         },
         "middlewares/body-json-echo": {
             "min": 1.7,
-            "median": 3.61,
+            "median": 3.67,
             "p10": 2.16,
-            "p90": 3.91,
+            "p90": 4.01,
             "max": 4.12,
             "runs": 20
         },
         "middlewares/compression-file": {
             "min": 1.12,
             "median": 1.23,
-            "p10": 1.15,
+            "p10": 1.18,
             "p90": 1.24,
             "max": 1.26,
             "runs": 20
         },
         "routing/fallback-scan": {
             "min": 3.17,
-            "median": 5.67,
+            "median": 5.72,
             "p10": 3.33,
             "p90": 6.25,
             "max": 6.44,
@@ -84,10 +84,10 @@
         },
         "routing/hello-world": {
             "min": 1.02,
-            "median": 1.42,
-            "p10": 1.17,
-            "p90": 1.55,
-            "max": 1.57,
+            "median": 1.43,
+            "p10": 1.2,
+            "p90": 1.52,
+            "max": 1.56,
             "runs": 20
         },
         "connections/high-concurrency": {
@@ -116,7 +116,7 @@
         },
         "routing/middlewares-100": {
             "min": 1.61,
-            "median": 1.79,
+            "median": 1.78,
             "p10": 1.64,
             "p90": 1.99,
             "max": 2.54,
@@ -124,9 +124,9 @@
         },
         "routing/nested-routers": {
             "min": 1.3,
-            "median": 1.63,
-            "p10": 1.33,
-            "p90": 1.72,
+            "median": 1.65,
+            "p10": 1.35,
+            "p90": 1.71,
             "max": 1.74,
             "runs": 20
         },
@@ -134,13 +134,13 @@
             "min": 1.93,
             "median": 3.91,
             "p10": 2.57,
-            "p90": 4.22,
-            "max": 4.3,
+            "p90": 4.18,
+            "max": 4.26,
             "runs": 20
         },
         "routing/query-string": {
             "min": 1.27,
-            "median": 1.86,
+            "median": 1.87,
             "p10": 1.33,
             "p90": 1.96,
             "max": 1.99,
@@ -149,16 +149,16 @@
         "streaming/readable-hash-4mb": {
             "min": 0.94,
             "median": 1.02,
-            "p10": 0.98,
+            "p10": 0.99,
             "p90": 1.05,
-            "max": 1.09,
+            "max": 1.13,
             "runs": 20
         },
         "middlewares/realistic-stack": {
             "min": 1.57,
-            "median": 2.32,
+            "median": 2.34,
             "p10": 1.63,
-            "p90": 2.55,
+            "p90": 2.57,
             "max": 2.64,
             "runs": 20
         },
@@ -172,9 +172,9 @@
         },
         "routing/router-mounted-params": {
             "min": 4.07,
-            "median": 7.14,
+            "median": 7.2,
             "p10": 5.27,
-            "p90": 7.58,
+            "p90": 7.59,
             "max": 8.47,
             "runs": 20
         },
@@ -182,7 +182,7 @@
             "min": 7.8,
             "median": 10.66,
             "p10": 9.89,
-            "p90": 18.87,
+            "p90": 15.88,
             "max": 19.56,
             "runs": 20
         },
@@ -190,8 +190,8 @@
             "min": 7.89,
             "median": 10.05,
             "p10": 9.18,
-            "p90": 15.07,
-            "max": 15.44,
+            "p90": 11.99,
+            "max": 15.23,
             "runs": 20
         },
         "middlewares/express-static": {
@@ -207,14 +207,14 @@
             "median": 5.86,
             "p10": 4.51,
             "p90": 5.98,
-            "max": 6.02,
+            "max": 5.99,
             "runs": 20
         },
         "streaming/writable-with-content-length": {
-            "min": 0.97,
+            "min": 0.98,
             "median": 1.01,
             "p10": 0.99,
-            "p90": 1.03,
+            "p90": 1.02,
             "max": 1.03,
             "runs": 20
         },
@@ -228,25 +228,25 @@
         },
         "plain": {
             "min": 1.02,
-            "median": 1.77,
-            "p10": 1.22,
-            "p90": 3.31,
+            "median": 1.85,
+            "p10": 1.27,
+            "p90": 3.32,
             "max": 3.55,
             "runs": 60
         },
         "body": {
             "min": 1.7,
-            "median": 3.68,
+            "median": 3.72,
             "p10": 2.16,
             "p90": 4.14,
-            "max": 4.3,
+            "max": 4.26,
             "runs": 40
         },
         "tables": {
             "min": 7.8,
             "median": 10.36,
             "p10": 9.18,
-            "p90": 15.44,
+            "p90": 15.07,
             "max": 19.56,
             "runs": 40
         }
