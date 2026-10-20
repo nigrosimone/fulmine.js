@@ -7,6 +7,16 @@ const assert = require("node:assert");
 
 const parseQuery = require("../../src/parse-query.js");
 const fqs = require("fast-querystring");
+const util = require("util");
+const v8 = require("v8");
+
+// nothing of Object.prototype is reachable: a null-prototype object with no named keys, then null
+function assertBare(result) {
+    assert.ok(!(result instanceof Object));
+    const proto = Object.getPrototypeOf(result);
+    assert.equal(Object.getPrototypeOf(proto), null);
+    assert.deepEqual(Object.getOwnPropertyNames(proto), []);
+}
 
 const INPUTS = [
     "",
@@ -46,13 +56,26 @@ test("a non-string input answers an empty bare object", () => {
     for (const input of [undefined, null, 42, {}, ["a=1"]]) {
         const result = parseQuery(/** @type {any} */ (input));
         assert.equal(Object.keys(result).length, 0);
-        assert.equal(Object.getPrototypeOf(result), null);
+        assertBare(result);
     }
 });
 
 test("the result carries no prototype, so header-shaped keys are plain data", () => {
     const result = parseQuery("constructor=x&__proto__=y&hasOwnProperty=z");
-    assert.equal(Object.getPrototypeOf(result), null);
+    assertBare(result);
     assert.equal(result.constructor, "x");
     assert.equal(result.hasOwnProperty, "z");
+});
+
+test("the result prints as Express prints node's querystring result", () => {
+    assert.equal(util.inspect(parseQuery("a=1&a=2&b=x")), util.inspect(require("querystring").parse("a=1&a=2&b=x")));
+    assert.equal(util.inspect(parseQuery("")), "[Object: null prototype] {}");
+    assert.equal(util.inspect({ q: parseQuery("a=1") }), "{ q: [Object: null prototype] { a: '1' } }");
+});
+
+test("the result keeps fast properties, where Object.create(null) starts in dictionary mode", () => {
+    v8.setFlagsFromString("--allow-natives-syntax");
+    const hasFastProperties = new Function("o", "return %HasFastProperties(o)");
+    v8.setFlagsFromString("--no-allow-natives-syntax");
+    assert.equal(hasFastProperties(parseQuery("a=1&b=2&c=3")), true);
 });

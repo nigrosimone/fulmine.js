@@ -318,25 +318,25 @@ test("withUtf8Charset replaces the charset instead of appending one", () => {
     assert.strictEqual(withUtf8Charset("text/html;charset=ISO-8859-1"), "text/html; charset=utf-8");
 });
 
-test("fastQueryParse keeps a null prototype whichever parser it used", () => {
+test("fastQueryParse reaches nothing of Object.prototype whichever parser it used", () => {
     // the short simple path, through fast-querystring
     const simple = fastQueryParse("a=1&b=2");
     assert.deepStrictEqual({ ...simple }, { a: "1", b: "2" });
-    assert.strictEqual(Object.getPrototypeOf(simple), null);
+    assert.strictEqual(Object.getPrototypeOf(Object.getPrototypeOf(simple)), null);
 
     // the qs path, taken because of the bracket
     const nested = fastQueryParse("a[b]=1");
     assert.deepStrictEqual(JSON.parse(JSON.stringify(nested)), { a: { b: "1" } });
-    assert.strictEqual(Object.getPrototypeOf(nested), null);
+    assert.strictEqual(Object.getPrototypeOf(Object.getPrototypeOf(nested)), null);
 
     // empty
     assert.deepStrictEqual({ ...fastQueryParse("") }, {});
-    assert.strictEqual(Object.getPrototypeOf(fastQueryParse("")), null);
+    assert.strictEqual(Object.getPrototypeOf(Object.getPrototypeOf(fastQueryParse(""))), null);
 
     // a key that would otherwise reach Object.prototype
     const polluted = fastQueryParse("__proto__[x]=1");
     assert.strictEqual({}.x, undefined, "Object.prototype must not have been touched");
-    assert.strictEqual(Object.getPrototypeOf(polluted), null);
+    assert.strictEqual(Object.getPrototypeOf(Object.getPrototypeOf(polluted)), null);
 });
 
 test("NullObject instances cannot reach Object.prototype", () => {

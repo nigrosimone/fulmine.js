@@ -55,12 +55,12 @@ const QUERY_QS_OPTIONS = { allowPrototypes: true };
  *
  * @param {string} query the query string, without the leading "?"
  * @param {object} [options] passed through to qs when it is used
- * @returns {Record<string, any>} null-prototype
+ * @returns {Record<string, any>} a QueryObject, see parse-query.js
  */
 function fastQueryParse(query, options) {
     const len = query.length;
     if (len === 0) {
-        return Object.create(null);
+        return new parseQuery.QueryObject();
     }
     if (len <= 128) {
         // an empty name ("=v", "a=1&=2") is a pair to fast-querystring and nothing to qs
@@ -80,7 +80,7 @@ function fastQueryParse(query, options) {
             return parsed;
         }
     }
-    return Object.assign(Object.create(null), qs.parse(query, options ?? QUERY_QS_OPTIONS));
+    return Object.assign(new parseQuery.QueryObject(), qs.parse(query, options ?? QUERY_QS_OPTIONS));
 }
 
 /**

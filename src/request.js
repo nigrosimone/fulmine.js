@@ -896,7 +896,7 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * Parsed by the "query parser" setting into a null-prototype object, a new one on every read as
+     * Parsed by the "query parser" setting into a QueryObject (see parse-query.js), a new one on every read as
      * express re-parses on every read: a sanitiser writing into req.query (express-validator's
      * trim) must not be seen by the next reader. Not parse-once-then-copy: the copy between
      * null-prototype objects measured 638ns against 119ns for the parse, -8% on the arena. The
@@ -906,11 +906,11 @@ module.exports = class Request extends LazyReadable {
      */
     get query() {
         const qp = this.app._hot().queryParserFn;
-        // the vendored default already answers on a bare null prototype, any other parser is copied
-        // onto one. A parser of the application's own gets what express hands it, parseurl's query:
+        // the vendored default already answers a QueryObject, any other parser is copied onto
+        // one. A parser of the application's own gets what express hands it, parseurl's query:
         // null with no "?", the text after it otherwise, "" included
         if (!qp) {
-            return Object.create(null);
+            return new parseQuery.QueryObject();
         }
         if (qp === parseQuery) {
             const raw = this._rawQuery;
@@ -919,7 +919,7 @@ module.exports = class Request extends LazyReadable {
                 if (snap === false) {
                     return parseQuery(raw);
                 }
-                const out = Object.create(null);
+                const out = new parseQuery.QueryObject();
                 const pairs = /** @type {string[]} */ (snap);
                 for (let i = 0, len = pairs.length; i < len; i += 2) {
                     out[pairs[i]] = pairs[i + 1];
@@ -937,9 +937,9 @@ module.exports = class Request extends LazyReadable {
         this._querySnapRaw = this._rawQuery;
         this._querySnap = false;
         if (qp === fastQueryParse) {
-            return Object.assign(Object.create(null), fastQueryParse(this._rawQuery));
+            return Object.assign(new parseQuery.QueryObject(), fastQueryParse(this._rawQuery));
         }
-        return Object.assign(Object.create(null), qp(this.urlQuery === "" ? null : this._rawQuery));
+        return Object.assign(new parseQuery.QueryObject(), qp(this.urlQuery === "" ? null : this._rawQuery));
     }
 
     /**
