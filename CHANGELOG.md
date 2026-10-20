@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.25.6](https://github.com/nigrosimone/fulmine.js/compare/v5.25.5...v5.25.6) (2026-10-20)
+
+### Performance Improvements
+
+* **compression:** a body compressed whole overwrites Content-Length, no delete turning the headers to dictionary mode ([51be52b](https://github.com/nigrosimone/fulmine.js/commit/51be52b59137281bb315be28fbf743a6ebc5a02b))
+
 ## [5.25.5](https://github.com/nigrosimone/fulmine.js/compare/v5.25.4...v5.25.5) (2026-10-20)
 
 ### Bug Fixes
