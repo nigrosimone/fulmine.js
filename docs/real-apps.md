@@ -1,5 +1,5 @@
 ---
-description: LibreChat, n8n and Actual Budget on Fulmine instead of Express. Their own test suites pass, and with no change to their code Actual spends 16% less CPU, and LibreChat 24% with Fulmine's own compression and static files.
+description: LibreChat, n8n and Actual Budget on Fulmine instead of Express. Their own test suites pass, and with no change to their code Actual spends 16% less CPU, and LibreChat 26% with Fulmine's own compression and static files.
 ---
 
 <!--
