@@ -171,6 +171,11 @@ test("µWS is asked for nothing a request does not need", { skip: otherRuntime }
         ["POST /echo", "POST /form", "POST /text"],
         "collectBody only for a body within the limit"
     );
+    assert.deepStrictEqual(
+        callers(counts, "getHeader with a string name"),
+        [],
+        "header names go to getHeader as Buffers, a string one costs twice the read"
+    );
     // the whole table: a call that grows, or appears, is named in the diff
     assert.deepStrictEqual(counts, BUDGET);
 });

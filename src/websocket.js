@@ -18,6 +18,11 @@ limitations under the License.
 
 const { canBeOptimizedWithParams, decodeParam, NullObject } = require("./utils.js");
 
+// the handshake's names as bytes, uWS reads a Buffer name without converting it (see request.js)
+const SEC_WEBSOCKET_KEY = Buffer.from("sec-websocket-key");
+const SEC_WEBSOCKET_PROTOCOL = Buffer.from("sec-websocket-protocol");
+const SEC_WEBSOCKET_EXTENSIONS = Buffer.from("sec-websocket-extensions");
+
 /** @typedef {import("./router.js")} Router */
 /** @typedef {import("./application.js").Application} Application */
 /** @typedef {import("./request.js")} Request */
@@ -120,9 +125,9 @@ function makeUpgradeHandler(app, path, behavior) {
     return (res, req, context) => {
         // read off the uWS request before anything can await: it is neutered on return, and the
         // handshake needs these three even when the upgrade is decided asynchronously
-        const key = req.getHeader("sec-websocket-key");
-        const protocol = req.getHeader("sec-websocket-protocol");
-        const extensions = req.getHeader("sec-websocket-extensions");
+        const key = req.getHeader(SEC_WEBSOCKET_KEY);
+        const protocol = req.getHeader(SEC_WEBSOCKET_PROTOCOL);
+        const extensions = req.getHeader(SEC_WEBSOCKET_EXTENSIONS);
 
         const request = new app._request(req, res, app);
         if (paramNames.length) {

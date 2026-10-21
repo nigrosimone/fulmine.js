@@ -41,6 +41,15 @@ const {
     isByteCount
 } = require("./request-utils.js");
 
+// The names getHeader is asked for, as bytes: uWS converts a string name on every call and reads a
+// Buffer as it is, half the cost of a read (0.5k instructions against 1k)
+const CONTENT_LENGTH = Buffer.from("content-length");
+const TRANSFER_ENCODING = Buffer.from("transfer-encoding");
+const CONNECTION = Buffer.from("connection");
+const IF_NONE_MATCH = Buffer.from("if-none-match");
+const IF_MODIFIED_SINCE = Buffer.from("if-modified-since");
+const CACHE_CONTROL = Buffer.from("cache-control");
+
 // whose headers #collectHeader is filling: uWS's forEach is synchronous, so one callback serves
 // every request
 /** @type {import("./request.js")|null} */
@@ -389,8 +398,8 @@ module.exports = class Request extends LazyReadable {
             // whatever is on the wire, the full copy is 1.16us at four headers, 1.61 at eight, 2.90
             // at sixteen. A GET that declares a body takes the full copy. accept is not read: the
             // error and 404 pages never negotiate
-            const length = req.getHeader("content-length");
-            const transferEncoding = req.getHeader("transfer-encoding");
+            const length = req.getHeader(CONTENT_LENGTH);
+            const transferEncoding = req.getHeader(TRANSFER_ENCODING);
             // Anything that says a word about framing takes the full copy, "0" included: getHeader
             // returns only the first of a repeated header, and a duplicate must be refused, see
             // _mustRefuse. An empty content-length reads as "" like a header never sent, and only
@@ -401,7 +410,7 @@ module.exports = class Request extends LazyReadable {
                 currentRequest = null;
             } else {
                 const entries = this.#rawHeadersEntries;
-                const connection = req.getHeader("connection");
+                const connection = req.getHeader(CONNECTION);
                 if (connection !== "") {
                     entries.push("connection", connection);
                     if (saysClose(connection)) {
@@ -409,17 +418,17 @@ module.exports = class Request extends LazyReadable {
                     }
                 }
                 // send consults freshness whatever the etag setting, so the conditional pair is read
-                const ifNoneMatch = req.getHeader("if-none-match");
+                const ifNoneMatch = req.getHeader(IF_NONE_MATCH);
                 if (ifNoneMatch !== "") {
                     entries.push("if-none-match", ifNoneMatch);
                 }
-                const ifModifiedSince = req.getHeader("if-modified-since");
+                const ifModifiedSince = req.getHeader(IF_MODIFIED_SINCE);
                 if (ifModifiedSince !== "") {
                     entries.push("if-modified-since", ifModifiedSince);
                 }
                 // fresh() reads cache-control only after a conditional
                 if (ifNoneMatch !== "" || ifModifiedSince !== "") {
-                    const cacheControl = req.getHeader("cache-control");
+                    const cacheControl = req.getHeader(CACHE_CONTROL);
                     if (cacheControl !== "") {
                         entries.push("cache-control", cacheControl);
                     }

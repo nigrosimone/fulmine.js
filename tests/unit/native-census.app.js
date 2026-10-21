@@ -32,6 +32,10 @@ function count(instance, countsOf) {
             const counts = countsOf(this);
             if (counts) {
                 counts[name] = (counts[name] ?? 0) + 1;
+                // a name crossing as a string is converted on every call, a Buffer is read as it is
+                if (name === "getHeader" && typeof args[0] === "string") {
+                    counts["getHeader with a string name"] = (counts["getHeader with a string name"] ?? 0) + 1;
+                }
             }
             return original.apply(this, args);
         };
