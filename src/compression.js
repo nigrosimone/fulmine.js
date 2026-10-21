@@ -97,7 +97,8 @@ const noop = () => {};
  * A whole-body compressor on one reused zlib stream: building one per call costs more than the
  * compression under the sync limit, this is the same bytes in a third of the time. It holds
  * node's private close and handle in place across FINISH, and a probe falls back to `oneShot` on
- * a node that behaves differently. Deflate formats only, a brotli stream keeps context on reset.
+ * a node that behaves differently. Deflate formats only: a brotli stream keeps context on its own
+ * reset, see reusableBrotli.
  *
  * @param {() => any} create makes the stream. Loose because what is checked below is node's zlib
  *   internals, which its typings do not declare
@@ -173,6 +174,89 @@ function reusableCompressor(create, finishFlag, oneShot) {
         }
     }
     return compress;
+}
+
+/**
+ * The brotli counterpart, driven through the native handle. From node 26.11 a reset clears the
+ * encoder, so one is kept: same bytes as brotliCompressSync without building an encoder per call
+ * (q3 on a 6KB body, 57us against 84). Before 26.11 the reset keeps the context of the last body,
+ * the probe sees a second body come out different and `oneShot` stays.
+ *
+ * @param {() => any} create makes the stream, its handle and write state are node internals
+ * @param {(body: Buffer) => Buffer} oneShot
+ * @returns {(body: Buffer) => Buffer}
+ */
+function reusableBrotli(create, oneShot) {
+    let stream;
+    try {
+        stream = create();
+    } catch {
+        return oneShot;
+    }
+    const handle = stream._handle;
+    // [avail_out, avail_in] after each writeSync, the array processChunkSync reads too
+    const state = stream._writeState;
+    if (
+        !handle ||
+        typeof handle.writeSync !== "function" ||
+        typeof handle.reset !== "function" ||
+        !(state instanceof Uint32Array) ||
+        state.length < 2
+    ) {
+        return oneShot;
+    }
+    stream.on("error", noop);
+    const finish = zlib.constants.BROTLI_OPERATION_FINISH;
+    let broken = false;
+
+    /** @param {Buffer} body */
+    const compress = (body) => {
+        /** @type {Buffer[]} */
+        const chunks = [];
+        let inOffset = 0;
+        let inLength = body.length;
+        let size = body.length < 512 ? 256 : body.length >> 1;
+        for (;;) {
+            const out = Buffer.allocUnsafe(size);
+            handle.writeSync(finish, body, inOffset, inLength, out, 0, size);
+            const produced = size - state[0];
+            chunks.push(produced === size ? out : out.subarray(0, produced));
+            inOffset += inLength - state[1];
+            inLength = state[1];
+            if (state[0] !== 0) {
+                break;
+            }
+            size *= 2;
+        }
+        handle.reset();
+        return chunks.length === 1 ? chunks[0] : Buffer.concat(chunks);
+    };
+
+    /** @param {Buffer} body */
+    const guarded = (body) => {
+        if (broken) {
+            return oneShot(body);
+        }
+        try {
+            return compress(body);
+        } catch {
+            // the handle is in an unknown state from here, this body and the rest go the long way
+            broken = true;
+            stream.destroy();
+            return oneShot(body);
+        }
+    };
+
+    // twice per probe: a context kept from the body before answers the second one differently
+    for (const probe of [Buffer.alloc(64, 0x61), Buffer.from("{}".repeat(600))]) {
+        const expected = oneShot(probe);
+        if (!guarded(probe).equals(expected) || !guarded(probe).equals(expected)) {
+            broken = true;
+            stream.destroy();
+            return oneShot;
+        }
+    }
+    return guarded;
 }
 
 /**
@@ -288,6 +372,7 @@ function compression(options) {
     // built on first use
     let gzipWhole;
     let deflateWhole;
+    let brotliWhole;
 
     /**
      * A whole body compressed on this thread, only a small one, see SYNC_LIMIT.
@@ -306,7 +391,11 @@ function compression(options) {
             return gzipWhole(body);
         }
         if (method === "br") {
-            return zlib.brotliCompressSync(body, brotliOptions);
+            brotliWhole ??= reusableBrotli(
+                () => zlib.createBrotliCompress(brotliOptions),
+                (b) => zlib.brotliCompressSync(b, brotliOptions)
+            );
+            return brotliWhole(body);
         }
         if (method === "zstd") {
             return zlib.zstdCompressSync(body, zstdOptions);

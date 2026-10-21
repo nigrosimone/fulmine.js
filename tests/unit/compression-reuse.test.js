@@ -121,13 +121,83 @@ test("the kept stream is the one answering, not zlib.gzipSync per response", asy
     }
 });
 
-test("brotli is left on the one-shot call, whose stream cannot be reset", async () => {
-    const answers = await askAll({}, "br");
-    answers.forEach((answer, n) => {
-        const body = BODIES[n % BODIES.length];
-        assert.deepStrictEqual(zlib.brotliDecompressSync(answer), body);
-    });
+test("brotli answers the bytes brotliCompressSync would, on every response", async () => {
+    for (const quality of [undefined, 1, 3, 11]) {
+        const params = quality === undefined ? {} : { [zlib.constants.BROTLI_PARAM_QUALITY]: quality };
+        const answers = await askAll({ brotli: { params } }, "br");
+        // the middleware's default quality is 4, as the compression module's
+        const expected = { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4, ...params } };
+        answers.forEach((answer, n) => {
+            const body = BODIES[n % BODIES.length];
+            assert.deepStrictEqual(
+                answer,
+                zlib.brotliCompressSync(body, expected),
+                `br quality ${quality} differs on response ${n}`
+            );
+            assert.deepStrictEqual(zlib.brotliDecompressSync(answer), body);
+        });
+    }
 });
+
+// whether this node's brotli handle forgets the last body on reset, which it does from 26.11
+function brotliResets() {
+    const params = { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } };
+    const stream = /** @type {any} */ (zlib.createBrotliCompress(params));
+    const out = Buffer.allocUnsafe(4096);
+    const body = Buffer.from("{}".repeat(600));
+    let same = 0;
+    for (let i = 0; i < 2; i++) {
+        stream._handle.writeSync(zlib.constants.BROTLI_OPERATION_FINISH, body, 0, body.length, out, 0, 4096);
+        same += out.subarray(0, 4096 - stream._writeState[0]).equals(zlib.brotliCompressSync(body, params)) ? 1 : 0;
+        stream._handle.reset();
+    }
+    stream.destroy();
+    return same === 2;
+}
+
+test(
+    "the kept brotli handle is the one answering, not zlib.brotliCompressSync per response",
+    {
+        skip: brotliResets() ? false : "this node keeps the brotli context on reset, the one-shot call answers"
+    },
+    async () => {
+        const real = zlib.brotliCompressSync;
+        let calls = 0;
+        zlib.brotliCompressSync = (...args) => {
+            calls++;
+            return real(...args);
+        };
+        const app = express();
+        app.set("etag", false);
+        app.get("/b", express.compression({ encodings: ["br"], threshold: 0 }), (req, res) => {
+            res.type("application/json").send(BODIES[1]);
+        });
+        const server = app.listen(0);
+        const port = app.address().port;
+        const ask = () =>
+            new Promise((resolve, reject) => {
+                http.get({ port, path: "/b", headers: { "accept-encoding": "br" } }, (res) => {
+                    res.on("data", () => {});
+                    res.on("end", resolve);
+                }).on("error", reject);
+            });
+        try {
+            await ask();
+            const afterFirst = calls;
+            for (let i = 0; i < 11; i++) {
+                await ask();
+            }
+            assert.strictEqual(
+                calls,
+                afterFirst,
+                `brotliCompressSync ran ${calls - afterFirst} more times over 11 responses`
+            );
+        } finally {
+            zlib.brotliCompressSync = real;
+            server.close();
+        }
+    }
+);
 
 test("a body compressed whole keeps the headers object fast, its Content-Length is overwritten", async () => {
     const v8 = require("node:v8");
