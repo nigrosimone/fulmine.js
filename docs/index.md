@@ -41,7 +41,7 @@ const bestCut = Math.max(...realapps.projects.map((p) => Math.round((1 - p.day['
 <div class="fm-speed-field">
 <div class="fm-field-top"><span>NATIVE ENGINE</span><span>01 / µWS</span></div>
 <img class="fm-speed-art" src="/speed-field.svg" alt="" width="600" height="500" fetchpriority="high" decoding="async">
-<div class="fm-speed-readout"><span class="fm-up-to">UP TO</span><strong><!--speedup:routing/routes-1000-params:p90-->16<!--/speedup--><span>×</span></strong><span class="fm-speed-label">faster than Express<span>on 1,000 parameterized routes</span></span></div>
+<div class="fm-speed-readout"><span class="fm-up-to">UP TO</span><strong><!--speedup:routing/routes-1000-params:p90-->14<!--/speedup--><span>×</span></strong><span class="fm-speed-label">faster than Express<span>on 1,000 parameterized routes</span></span></div>
 <a class="fm-field-footnote" href="/performance">90th percentile of the last 20 CI runs, median <!--speedup:routing/routes-1000-params:median-->11<!--/speedup-->×. Explore the conditions <span aria-hidden="true">↗</span></a>
 </div>
 </section>
@@ -95,10 +95,10 @@ app.listen(3000);
 </div>
 <div class="fm-metrics">
 <div class="fm-metric"><p class="fm-metric-value"><!--speedup:plain:dash-->1.3-3.3<!--/speedup--><span>×</span></p><h3>Plain routing</h3><p>The everyday requests.<br>Less framework overhead.</p><SpeedRace figure="plain" /></div>
-<div class="fm-metric"><p class="fm-metric-value"><!--speedup:routing/routes-1000:dash-->9.2-12.0<!--/speedup--><span>×</span></p><h3>1,000 routes</h3><p>Your route table grows.<br>The native router keeps up.</p><SpeedRace figure="routing/routes-1000" /></div>
-<div class="fm-metric"><p class="fm-metric-value"><!--speedup:routing/routes-1000-params:dash-->9.9-15.9<!--/speedup--><span>×</span></p><h3>1,000 parameterized routes</h3><p>More paths. More parameters.<br>This is where native shines.</p><SpeedRace figure="routing/routes-1000-params" /></div>
+<div class="fm-metric"><p class="fm-metric-value"><!--speedup:routing/routes-1000:dash-->8.0-12.0<!--/speedup--><span>×</span></p><h3>1,000 routes</h3><p>Your route table grows.<br>The native router keeps up.</p><SpeedRace figure="routing/routes-1000" /></div>
+<div class="fm-metric"><p class="fm-metric-value"><!--speedup:routing/routes-1000-params:dash-->8.1-13.8<!--/speedup--><span>×</span></p><h3>1,000 parameterized routes</h3><p>More paths. More parameters.<br>This is where native shines.</p><SpeedRace figure="routing/routes-1000-params" /></div>
 </div>
-<p class="fm-benchmark-note">Throughput relative to Express. Ranges are the 10th to 90th percentile of <!--speedup:period:text-->the last 20 CI runs, 17 October 2026 to 20 October 2026<!--/speedup-->, on Node 26 and on whatever runner GitHub gives each run; the dots move at the upper end of each range. Results depend on workload and hardware; shared work such as JSON parsing or compression sees smaller gains. <a href="/performance">Methodology &amp; limitations ↗</a></p>
+<p class="fm-benchmark-note">Throughput relative to Express. Ranges are the 10th to 90th percentile of <!--speedup:period:text-->the last 20 CI runs, 18 October 2026 to 21 October 2026<!--/speedup-->, on Node 26 and on whatever runner GitHub gives each run; the dots move at the upper end of each range. Results depend on workload and hardware; shared work such as JSON parsing or compression sees smaller gains. <a href="/performance">Methodology &amp; limitations ↗</a></p>
 </div>
 </section>
 
