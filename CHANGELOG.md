@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.25.7](https://github.com/nigrosimone/fulmine.js/compare/v5.25.6...v5.25.7) (2026-10-21)
+
+### Performance Improvements
+
+* **compression:** brotli reuses one encoder through the native handle on node 26.11+, 57us against 84 ([609001a](https://github.com/nigrosimone/fulmine.js/commit/609001a7bd0baa8fb85c67f8b23dccd42fa44b62))
+* **req:** header names go to uWS getHeader as Buffers, half the cost of a read, -12% instructions on a GET ([a651e2d](https://github.com/nigrosimone/fulmine.js/commit/a651e2defae06092d98466401ea69e2c7b915369))
+* **res:** res.type() keeps the Content-Type it stored per argument, -4.5% instructions on a GET ([4df4fa2](https://github.com/nigrosimone/fulmine.js/commit/4df4fa2472a4ff1b8bc53b6e3ff185639e6ee3c3))
+
 ## [5.25.6](https://github.com/nigrosimone/fulmine.js/compare/v5.25.5...v5.25.6) (2026-10-20)
 
 ### Performance Improvements
