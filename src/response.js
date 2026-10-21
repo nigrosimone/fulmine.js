@@ -83,6 +83,9 @@ const SEEDED_KEEP_ALIVE = "timeout=10";
 // 572ns to 438 per head with a content-type, on node 26
 const SEEDED_PAIR = "keep-alive\r\nkeep-alive: " + SEEDED_KEEP_ALIVE;
 const SEEDED_PAIR_BUF = Buffer.from(SEEDED_PAIR);
+// res.type()'s argument to the Content-Type it stored, bounded as the header name caches
+/** @type {Map<string, string>} */
+const TYPE_VALUES = new Map();
 // send's ceiling for maxAge, one year
 const MAX_MAXAGE = 60 * 60 * 24 * 365 * 1000;
 
@@ -2094,8 +2097,28 @@ module.exports = class Response extends LazyWritable {
      * @returns {this}
      */
     type(type) {
+        // the same few arguments on every response: the stored value, validated the first time.
+        // Not past a set or setHeader replaced on the response, a library watching the headers
+        const cached = TYPE_VALUES.get(type);
+        if (cached !== undefined && this.set === RESPONSE_SET && this.setHeader === RESPONSE_SET_HEADER) {
+            if (this.headersSent) {
+                throw headersSentError("set");
+            }
+            this.headers["content-type"] = cached;
+            return this;
+        }
         const ct = type.indexOf("/") === -1 ? contentTypeFor(type) : type;
-        return this.set("Content-Type", ct);
+        this.set("Content-Type", ct);
+        const stored = this.headers["content-type"];
+        if (
+            typeof stored === "string" &&
+            TYPE_VALUES.size < 256 &&
+            this.set === RESPONSE_SET &&
+            this.setHeader === RESPONSE_SET_HEADER
+        ) {
+            TYPE_VALUES.set(type, stored);
+        }
+        return this;
     }
 
     /**
@@ -2132,6 +2155,10 @@ module.exports = class Response extends LazyWritable {
         return this.finished;
     }
 };
+
+// what type() compares against before it skips set() and setHeader()
+const RESPONSE_SET = module.exports.prototype.set;
+const RESPONSE_SET_HEADER = module.exports.prototype.setHeader;
 
 // express's other name for res.type, on the prototype so no own property is written per response
 /** @type {{contentType?: typeof module.exports.prototype.type}} */ (module.exports.prototype).contentType =
