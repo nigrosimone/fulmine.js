@@ -586,6 +586,8 @@ class Application extends Router {
                 this._routeRequestDirect(request, response);
             }
         } finally {
+            // a body nobody collected streams into the request, registered before this returns
+            request._settleBody();
             // the synchronous stretch ran under uWS's own cork
             response._corkNeeded = true;
             // an abort can only arrive after this callback returns

@@ -533,13 +533,16 @@ function serveNodeRequest(router, nodeReq, nodeRes, next) {
     // listener only for a response the synchronous part left open
     if (next === undefined) {
         router._routeRequestDirect(request, response);
+        request._settleBody();
         if (!response.finished) {
             router._armAbort(shimRes, response);
         }
         return;
     }
     router._armAbort(shimRes, response);
-    return router._routeRequest(request, response).then((matched) => {
+    const routed = router._routeRequest(request, response);
+    request._settleBody();
+    return routed.then((matched) => {
         // the same rule as nativeDone in router-utils.js
         if (matched || response.aborted || (response.headersSent && !request._error)) {
             return;

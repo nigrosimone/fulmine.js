@@ -1062,6 +1062,8 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 const declaresLength = !Number.isNaN(declared) && declared > 0;
                 if (!req.receivedData && !inflate && req._res.collectBody && (declaresLength || isNaN(declared))) {
                     req.bodyRead = true;
+                    // the body is this callback's, _settleBody has nothing to stream
+                    req._bodyClaimed = true;
                     // the Readable never runs, and a later parser asks it
                     req.complete = true;
                     req.readable = false;
@@ -1227,6 +1229,8 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
 
                 // straight from uWS unless the stream already started
                 if (!req.receivedData) {
+                    // the body is this handler's, _settleBody must not replace it with the stream
+                    req._bodyClaimed = true;
                     req._res.onData((/** @type {ArrayBuffer} */ ab, /** @type {boolean} */ isLast) => {
                         onData(ab);
                         if (isLast) {

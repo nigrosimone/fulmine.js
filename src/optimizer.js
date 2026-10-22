@@ -471,6 +471,8 @@ function registerUwsRoute(router, route, optimizedPath) {
             } catch (err) {
                 nativeFail.call(walk, err);
             } finally {
+                // a body nobody collected streams into the request, registered before this returns
+                request._settleBody();
                 // after this line writes are outside uWS's own cork
                 response._corkNeeded = true;
                 // an abort can only arrive after this callback returns

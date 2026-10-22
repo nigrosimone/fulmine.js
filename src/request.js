@@ -202,6 +202,13 @@ module.exports = class Request extends LazyReadable {
     _declaresBody;
 
     /**
+     * Whether someone registered with uWS for the body: the request's own stream, or a parser
+     * collecting it natively. Settled once the synchronous dispatch is over, see _settleBody.
+     * @type {boolean|undefined}
+     */
+    _bodyClaimed;
+
+    /**
      * Whether the request said anything about framing, a content-length of "0" included: a parser
      * seeing one answers about that body, so a chain may not step over it.
      * @type {boolean|undefined}
@@ -509,10 +516,9 @@ module.exports = class Request extends LazyReadable {
             this.rawIp = this._readRawIp();
         }
 
-        // a body is on the wire only when declared, whatever the verb
-        if (this._declaresBody) {
-            this._subscribeBody();
-        } else {
+        // a body is on the wire only when declared, whatever the verb. Nothing subscribes to it yet:
+        // a parser reached synchronously collects it natively, and _settleBody streams the rest
+        if (!this._declaresBody) {
             this.receivedData = true;
             this.complete = true;
             // the null goes out from _read(): ending a Readable costs a tick nobody may ever need
@@ -521,11 +527,23 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * Subscribes to the uWS body stream, out of the constructor so a bodyless request allocates no
-     * closure. Still during the constructor call: uWS only feeds a handler registered before the
-     * route handler returns.
+     * Streams a body nobody collected into the request, once the synchronous dispatch is over and
+     * still inside uWS's callback: uWS only feeds a handler registered before the route handler
+     * returns. A parser reached synchronously took the body natively, so a POST through one pays
+     * no second onData and no closure, and a late reader is served as before. A response already
+     * over takes no handler, uWS throws on one; its unread body is consumed by uWS's own parser.
+     */
+    _settleBody() {
+        if (this._declaresBody === true && this._bodyClaimed !== true && !this.#responseEnded) {
+            this._subscribeBody();
+        }
+    }
+
+    /**
+     * Subscribes to the uWS body stream, with the closure a bodyless request never allocates.
      */
     _subscribeBody() {
+        this._bodyClaimed = true;
         this._res.onData((ab, isLast) => {
             this.receivedData = true;
             if (this.#responseEnded) {

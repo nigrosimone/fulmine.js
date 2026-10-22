@@ -130,6 +130,8 @@ function makeUpgradeHandler(app, path, behavior) {
         const extensions = req.getHeader(SEC_WEBSOCKET_EXTENSIONS);
 
         const request = new app._request(req, res, app);
+        // an upgrade carries no body, this only keeps a stray one drained as before
+        request._settleBody();
         if (paramNames.length) {
             const params = new NullObject();
             for (let i = 0; i < paramNames.length; i++) {

@@ -54,36 +54,9 @@ const BUDGET = {
     "GET /ip, trust proxy": { end: 1, forEach: 1, getQuery: 1, getRemoteAddress: 1, writeHeader: 1 },
     "GET /ua": { end: 1, forEach: 1, getQuery: 1, writeHeader: 1 },
     "GET /socket": { end: 1, forEach: 1, getQuery: 1, writeHeader: 1 },
-    "POST /echo": {
-        collectBody: 1,
-        cork: 1,
-        end: 1,
-        forEach: 1,
-        getQuery: 1,
-        onAborted: 1,
-        onData: 1,
-        writeHeader: 1
-    },
-    "POST /form": {
-        collectBody: 1,
-        cork: 1,
-        end: 1,
-        forEach: 1,
-        getQuery: 1,
-        onAborted: 1,
-        onData: 1,
-        writeHeader: 1
-    },
-    "POST /text": {
-        collectBody: 1,
-        cork: 1,
-        end: 1,
-        forEach: 1,
-        getQuery: 1,
-        onAborted: 1,
-        onData: 1,
-        writeHeader: 1
-    },
+    "POST /echo": { collectBody: 1, cork: 1, end: 1, forEach: 1, getQuery: 1, onAborted: 1, writeHeader: 1 },
+    "POST /form": { collectBody: 1, cork: 1, end: 1, forEach: 1, getQuery: 1, onAborted: 1, writeHeader: 1 },
+    "POST /text": { collectBody: 1, cork: 1, end: 1, forEach: 1, getQuery: 1, onAborted: 1, writeHeader: 1 },
     "POST /small, over the limit": {
         cork: 1,
         end: 1,
@@ -95,7 +68,7 @@ const BUDGET = {
         writeStatus: 1
     },
     "GET /parsed": { end: 1, getHeader: 5, writeHeader: 1 },
-    "GET /parsed, declaring a body": { end: 1, forEach: 1, getHeader: 2, onData: 1, writeHeader: 1 },
+    "GET /parsed, declaring a body": { end: 1, forEach: 1, getHeader: 2, writeHeader: 1 },
     "GET /file": { cork: 1, end: 1, forEach: 1, getQuery: 1, onAborted: 1, writeHeader: 1 },
     "GET /static/small.txt": {
         cork: 1,
@@ -163,8 +136,8 @@ test("µWS is asked for nothing a request does not need", { skip: otherRuntime }
     );
     assert.deepStrictEqual(
         callers(counts, "onData"),
-        ["POST /echo", "POST /form", "POST /text", "POST /small, over the limit", "GET /parsed, declaring a body"],
-        "onData only for a request that declares a body"
+        ["POST /small, over the limit"],
+        "onData only for a declared body nobody collected, on a response still open"
     );
     assert.deepStrictEqual(
         callers(counts, "collectBody"),
