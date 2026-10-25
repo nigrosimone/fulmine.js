@@ -1,5 +1,14 @@
 # Changelog
 
+## [5.25.8](https://github.com/nigrosimone/fulmine.js/compare/v5.25.7...v5.25.8) (2026-10-25)
+
+### Performance Improvements
+
+* **body:** avoid unused streaming state in native parsers ([a9e99c8](https://github.com/nigrosimone/fulmine.js/commit/a9e99c87af247131687b5d2452c9d439dae2b2b4))
+* **compression:** avoid compressor allocations on identity responses ([802b36a](https://github.com/nigrosimone/fulmine.js/commit/802b36ab66cb1b90889151557c52567ea0f678bd))
+* **req:** the body stream is subscribed only when no parser collected it natively, -2.7% instructions on a POST ([466792a](https://github.com/nigrosimone/fulmine.js/commit/466792af1771f2b2de5300dcf376a321d8e6cbc2))
+* **uws:** pin the optimized binaries commit ([295463d](https://github.com/nigrosimone/fulmine.js/commit/295463dcf341545e1486db70c9ae9e8f463678b9))
+
 ## [5.25.7](https://github.com/nigrosimone/fulmine.js/compare/v5.25.6...v5.25.7) (2026-10-21)
 
 ### Performance Improvements
