@@ -16,6 +16,8 @@ limitations under the License.
 
 "use strict";
 
+// the global Buffer is a getter, a call on every read
+const { Buffer } = require("buffer");
 const { canBeOptimizedWithParams, decodeParam, NullObject } = require("./utils.js");
 
 // the handshake's names as bytes, uWS reads a Buffer name without converting it (see request.js)

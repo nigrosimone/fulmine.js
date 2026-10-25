@@ -34,6 +34,8 @@ limitations under the License.
 
 "use strict";
 
+// the global Buffer is a getter, a call on every read
+const { Buffer } = require("buffer");
 const zlib = require("zlib");
 const bytes = require("bytes");
 const compressible = require("compressible");

@@ -17,6 +17,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// the global Buffer is a getter, a call on every read
+const { Buffer } = require("buffer");
 const http = require("http");
 const statuses = require("statuses");
 const { EventEmitter } = require("events");

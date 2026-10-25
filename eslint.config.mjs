@@ -88,6 +88,16 @@ export default [
         rules: { "local/no-early-allocation": "error" }
     },
     {
+        // node's global Buffer is a getter: a read in optimized code is a call, three per response
+        files: ["src/**/*.js"],
+        rules: {
+            "no-restricted-globals": [
+                "error",
+                { name: "Buffer", message: 'Use `const { Buffer } = require("buffer")`, the global is a getter.' }
+            ]
+        }
+    },
+    {
         // Adopted 2026-09-08, only src/. The recommended set minus the rules below: those fire on
         // things this codebase does on purpose, and a rule nobody may act on is worse than no rule.
         // The count each one was carrying when it was turned off is written next to it, so a later

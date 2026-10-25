@@ -17,6 +17,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// the global Buffer is a getter, a call on every read
+const { Buffer } = require("buffer");
 const cookie = require("cookie");
 const mime = require("mime-types");
 const vary = require("vary");

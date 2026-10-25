@@ -19,6 +19,8 @@ limitations under the License.
 // models disagree node's gives way: cork only runs its callback, a status is kept until the first
 // byte of body
 
+// the global Buffer is a getter, a call on every read
+const { Buffer } = require("buffer");
 const { IncomingMessage } = require("http");
 const { HEADER_NAME_BUF, HEADER_VALUE_BUF } = require("./response-utils.js");
 
