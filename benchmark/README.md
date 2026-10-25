@@ -123,6 +123,8 @@ measured rounds was tried in the same sitting and did not narrow the spread eith
 
 `npm run test:performance` gates allocation budgets in CI on Linux x64, Node 26.11.1.
 It checks retained heap, temporary allocations, and native abort-handler handles.
+`request-allocations.test.js` does it for whole requests on a real server, the HttpArena routes
+included: heap read in the µWS handler every thousand requests, a client in another process.
 Heap probes run without JIT or coverage, with fixed young-generation bounds; GC inside
 an allocation sample invalidates it. Budgets do not measure throughput. Runtime upgrades
 require recalibration and a failing check against the previous implementations.
