@@ -81,6 +81,62 @@ function addVary(res) {
 /** res.flush for a response not being compressed: the compression module puts one on every response. */
 function noFlush() {}
 
+/**
+ * The identity response still varies with Accept-Encoding when the filter permits compression.
+ * Cache-Control is read before the filter, which may change headers or reenter a response method.
+ *
+ * @param {any} req
+ * @param {any} res
+ * @param {(req: any, res: any) => boolean} filter
+ */
+function applyIdentityVary(req, res, filter) {
+    const cacheControl = res.headersSent ? undefined : res.getHeader("Cache-Control");
+    if (!res.headersSent && filter(req, res) && !(cacheControl && NO_TRANSFORM.test(String(cacheControl)))) {
+        addVary(res);
+    }
+}
+
+/**
+ * Installs the identity hooks in their own small scope, without retaining the compression path's
+ * state. Each installation keeps its own originals, so repeated middleware and intervening hooks
+ * retain their call order. The filter sees the captured response; the originals keep the receiver.
+ *
+ * @param {any} req
+ * @param {any} res
+ * @param {(req: any, res: any) => boolean} filter
+ */
+function installIdentity(req, res, filter) {
+    res.flush = noFlush;
+    const plainEnd = res.end;
+    const plainWriteHead = res.writeHead;
+    let varied = false;
+    /**
+     * @param {WriteHeadArgs[0]} statusCode
+     * @param {WriteHeadArgs[1]} [statusMessage]
+     * @param {WriteHeadArgs[2]} [headers]
+     */
+    res.writeHead = function writeHead(statusCode, statusMessage, headers) {
+        const reason = applyWriteHead(this, statusMessage, headers);
+        if (!varied) {
+            varied = true;
+            applyIdentityVary(req, res, filter);
+        }
+        return plainWriteHead.call(this, statusCode, reason);
+    };
+    /**
+     * @param {any} [chunk]
+     * @param {BufferEncoding|WriteCallback} [encoding]
+     * @param {WriteCallback} [callback]
+     */
+    res.end = function end(chunk, encoding, callback) {
+        if (!varied) {
+            varied = true;
+            applyIdentityVary(req, res, filter);
+        }
+        return plainEnd.call(this, chunk, encoding, callback);
+    };
+}
+
 // what enforceEncoding may name
 const ENFORCEABLE = new Set(["gzip", "deflate", "identity", "br"]);
 if (HAS_ZSTD) {
@@ -445,60 +501,17 @@ function compression(options) {
         return zlib.createDeflate(zlibOptions);
     }
 
-    return function compression(req, res, next) {
-        // negotiated now: a request that cannot take a compressed body, which is most, gets the
-        // Vary and none of the wrapping below. Off the raw entries, req.headers built the object
-        const accept =
-            typeof req._foldedHeader === "function"
-                ? req._foldedHeader("accept-encoding")
-                : req.headers["accept-encoding"];
-        let chosen = negotiateEncoding(accept === undefined ? "" : accept, allowed);
-        if (accept === undefined && ENFORCEABLE.has(enforceEncoding)) {
-            chosen = enforceEncoding;
-        }
-        if (!chosen || chosen === "identity" || req.method === "HEAD") {
-            res.flush = noFlush;
-            const _plainEnd = res.end;
-            const _plainWriteHead = res.writeHead;
-            let varied = false;
-            /** Says the answer varies, once, before the head is settled. */
-            const vary = () => {
-                if (varied) {
-                    return;
-                }
-                varied = true;
-                const cacheControl = res.headersSent ? undefined : res.getHeader("Cache-Control");
-                if (
-                    !res.headersSent &&
-                    filter(req, res) &&
-                    !(cacheControl && NO_TRANSFORM.test(String(cacheControl)))
-                ) {
-                    addVary(res);
-                }
-            };
-            // at writeHead too, its headers applied first as on-headers orders it
-            /**
-             * @param {WriteHeadArgs[0]} statusCode
-             * @param {WriteHeadArgs[1]} [statusMessage]
-             * @param {WriteHeadArgs[2]} [headers]
-             */
-            res.writeHead = function writeHead(statusCode, statusMessage, headers) {
-                const reason = applyWriteHead(this, statusMessage, headers);
-                vary();
-                return _plainWriteHead.call(this, statusCode, reason);
-            };
-            /**
-             * @param {any} [chunk]
-             * @param {BufferEncoding|WriteCallback} [encoding]
-             * @param {WriteCallback} [callback]
-             */
-            res.end = function end(chunk, encoding, callback) {
-                vary();
-                return _plainEnd.call(this, chunk, encoding, callback);
-            };
-            return next();
-        }
-
+    /**
+     * The compressor state and its closures are only allocated for a negotiated encoding.
+     * Keeping them in the dispatch function creates its context and hoisted closures even on
+     * an identity response that returns before reaching this code.
+     *
+     * @param {any} req
+     * @param {any} res
+     * @param {(err?: unknown) => void} next
+     * @param {string} chosen
+     */
+    function compressResponse(req, res, next, chosen) {
         const _write = res.write;
         const _end = res.end;
         const _on = res.on;
@@ -717,6 +730,23 @@ function compression(options) {
         };
 
         next();
+    }
+
+    return function compression(req, res, next) {
+        // Off the raw entries: req.headers would build the object just to read one header.
+        const accept =
+            typeof req._foldedHeader === "function"
+                ? req._foldedHeader("accept-encoding")
+                : req.headers["accept-encoding"];
+        let chosen = negotiateEncoding(accept === undefined ? "" : accept, allowed);
+        if (accept === undefined && ENFORCEABLE.has(enforceEncoding)) {
+            chosen = enforceEncoding;
+        }
+        if (!chosen || chosen === "identity" || req.method === "HEAD") {
+            installIdentity(req, res, filter);
+            return next();
+        }
+        return compressResponse(req, res, next, chosen);
     };
 }
 

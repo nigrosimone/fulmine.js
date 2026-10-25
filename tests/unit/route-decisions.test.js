@@ -25,6 +25,7 @@ const DECIDED = {
     "hello-world": [1, 1, 1, 1],
     "high-concurrency": [1, 1, 1, 1],
     "json-list-gzip": [1, 1, 0, 0],
+    "json-list-identity": [1, 1, 0, 0],
     "json-list": [1, 1, 1, 0],
     "middlewares-100": [1, 1, 0, 0],
     "nested-routers-3": [1, 1, 1, 1],

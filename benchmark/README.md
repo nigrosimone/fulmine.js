@@ -142,6 +142,37 @@ The settings are `benchmark/server.js`'s, the same ones `run.js` measures under:
 `x-powered-by` and the declarative compiler are off on both arms, so what is measured is the
 framework doing the work rather than what a default application would pay.
 
+## HttpArena workloads
+
+`arena-baseline-get` and `arena-baseline-post` isolate the GET and Content-Length POST
+arms of HttpArena's baseline. The published profile also rotates chunked POST requests, so neither
+scenario alone reproduces its score. `json-list-identity` adds compression middleware to the JSON
+list with no Accept-Encoding, the application path exercised by JSON TLS; this local scenario uses
+plain HTTP and the suite's fixed dataset, so it does not measure TLS or reproduce the published load.
+
+Use `node benchmark/ab.js --against HEAD --scenario json-list-identity --rounds 15` for a change
+with its same-sitting null control. Compare GET and POST separately when changing a shared path.
+Published HttpArena results from different runs are a target for investigation, not an A/B result.
+
+The identity middleware's retained heap can be isolated from the HTTP workload:
+
+```bash
+node --expose-gc benchmark/identity-allocation.js --null
+node --expose-gc benchmark/identity-allocation.js --against HEAD
+```
+
+`--against` defaults to `HEAD`; `--null` uses the working tree on both arms. Each arm installs the
+middleware on 50,000 synthetic GET responses without Accept-Encoding, retaining those responses
+until after explicit GC. Two warmup rounds are discarded, then fifteen rounds alternate which arm
+runs first. Run this by itself: it shares the A/B harness's temporary worktree with the other tools.
+
+`bytesPerPendingResponse` is the heap retained by the synthetic request, response and middleware
+hooks after GC. A reduction here is fewer bytes kept alive by that path, not the percentage saved
+on a complete response or the server's total RAM. The script also reports installation time and CPU
+per operation, their per-round values and `allocationSpeedup`; those timings need the same-sitting
+null control and do not establish HTTP throughput or latency gains. Use the `json-list-identity`
+scenario above to measure the application path.
+
 ## Writing a scenario
 
 A scenario module exports the route setup and, when the request is anything other than a plain GET,
