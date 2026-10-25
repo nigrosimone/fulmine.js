@@ -1,5 +1,14 @@
 # Changelog
 
+## [5.25.9](https://github.com/nigrosimone/fulmine.js/compare/v5.25.8...v5.25.9) (2026-10-25)
+
+### Performance Improvements
+
+* load mime-db, qs, fast-zlib and acorn on first use, release acorn after listen: about a megabyte less old generation, out of the full collections V8 starts past 8 MB ([28d0be6](https://github.com/nigrosimone/fulmine.js/commit/28d0be61079d6d173552016aa13886ecfe5fa739))
+* make String.prototype fast again at listen, a class extending String (ioredis has one) leaves it slow, -13% instructions on a GET ([06e677d](https://github.com/nigrosimone/fulmine.js/commit/06e677dad0996d36f6d06e89368e73e42f45f7bb))
+* read Buffer from the buffer module, the global is a getter ([067b966](https://github.com/nigrosimone/fulmine.js/commit/067b966f159d5f4cd739cf3c64eeea2a4f027f91))
+* **response:** connection headers from the hot settings, close called directly ([147420d](https://github.com/nigrosimone/fulmine.js/commit/147420d88680cb025b8444551fa295616791bf15))
+
 ## [5.25.8](https://github.com/nigrosimone/fulmine.js/compare/v5.25.7...v5.25.8) (2026-10-25)
 
 ### Performance Improvements
