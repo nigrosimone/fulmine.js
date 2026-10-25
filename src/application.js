@@ -29,7 +29,8 @@ const {
     fastQueryParse,
     durationSetting,
     NullObject,
-    settingsEpoch
+    settingsEpoch,
+    repairStringPrototype
 } = require("./utils.js");
 const parseQuery = require("./parse-query.js");
 const Request = require("./request.js");
@@ -633,6 +634,8 @@ class Application extends Router {
         if (port == null) {
             port = 0;
         }
+        // the app's modules are loaded by now
+        repairStringPrototype();
         if (otherRuntime) {
             return this._listenNodeHttp(port, host, callback);
         }

@@ -1645,6 +1645,30 @@ function asStatError(err) {
 const NullObject = /** @type {new () => Record<string, any>} */ (/** @type {unknown} */ (function () {}));
 NullObject.prototype = Object.create(null);
 
+let stringPrototypeRepaired = false;
+
+/**
+ * A `class extends String` (ioredis has one) leaves String.prototype in dictionary mode, and V8
+ * makes a prototype fast again only from a load on an object, never on a primitive string: every
+ * charCodeAt or slice in optimized code stays a generic load. Loads through a wrapper repair it.
+ */
+function repairStringPrototype() {
+    if (stringPrototypeRepaired) {
+        return;
+    }
+    stringPrototypeRepaired = true;
+    const wrapper = Object("");
+    // past V8's first calls, which run without feedback and never reach the repair
+    for (let i = 0; i < 20; i++) {
+        loadThroughWrapper(wrapper);
+    }
+}
+
+/** @param {any} wrapper */
+function loadThroughWrapper(wrapper) {
+    return wrapper.fulmineRepair;
+}
+
 module.exports = {
     cachedStat,
     durationSetting,
@@ -1700,5 +1724,6 @@ module.exports = {
     headersSentError,
     applyWriteHead,
     EMPTY_REGEX,
-    settingsEpoch
+    settingsEpoch,
+    repairStringPrototype
 };

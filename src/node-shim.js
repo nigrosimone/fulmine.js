@@ -23,6 +23,7 @@ limitations under the License.
 const { Buffer } = require("buffer");
 const { IncomingMessage } = require("http");
 const { HEADER_NAME_BUF, HEADER_VALUE_BUF } = require("./response-utils.js");
+const { repairStringPrototype } = require("./utils.js");
 
 /** What µWS returns for an address nobody declared. */
 const emptyAddress = new ArrayBuffer(0);
@@ -521,6 +522,8 @@ function isNodeRequest(req) {
  * @param {(err?: unknown) => void} [next] called when nothing in the router answered
  */
 function serveNodeRequest(router, nodeReq, nodeRes, next) {
+    // createServer(app) never calls listen(), the first request does what it would have
+    repairStringPrototype();
     const shimRes = /** @type {import("uWebSockets.js").HttpResponse} */ (
         /** @type {unknown} */ (new NodeHttpResponse(nodeReq, nodeRes))
     );
