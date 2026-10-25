@@ -800,6 +800,9 @@ function inflateError(inflate, err) {
     return err;
 }
 
+/** @type {{inflate?: Inflater|undefined, error?: HttpError}} nothing to inflate, shared */
+const IDENTITY_ENCODING = Object.freeze({});
+
 /**
  * What a Content-Encoding means: the decompressor to run, or the 415 it is refused with.
  *
@@ -808,6 +811,10 @@ function inflateError(inflate, err) {
  * @returns {{inflate?: Inflater|undefined, error?: HttpError}}
  */
 function encodingFor(rawContentEncoding, options) {
+    // nearly every body comes without one: no lowercase and no object per request
+    if (rawContentEncoding === undefined) {
+        return IDENTITY_ENCODING;
+    }
     if (!options.inflate) {
         const contentEncoding = (rawContentEncoding || "identity").toLowerCase();
         if (contentEncoding !== "identity") {
@@ -817,7 +824,7 @@ function encodingFor(rawContentEncoding, options) {
                 })
             };
         }
-        return {};
+        return IDENTITY_ENCODING;
     }
     const inflate = createInflate(rawContentEncoding);
     if (inflate === false) {

@@ -260,9 +260,9 @@ module.exports = class Request extends LazyReadable {
     noEtag;
 
     /**
-     * The decoded pairs of the first default-parser parse of req.query, flat; false after a
-     * repeated key, which a flat replay cannot reproduce. See `get query`.
-     * @type {string[]|false|undefined}
+     * The decoded pairs of the second default-parser parse of req.query, flat; null after only
+     * one, false after a repeated key, which a flat replay cannot reproduce. See `get query`.
+     * @type {string[]|false|null|undefined}
      */
     _querySnap;
 
@@ -342,8 +342,12 @@ module.exports = class Request extends LazyReadable {
     /** @type {boolean|null} */
     _mayFailDecode = null;
 
-    /** @type {Record<string, any>} */
-    params = {};
+    /**
+     * Set by every route before its handlers run, see _preprocessRequest: a {} here was 48 bytes
+     * per request thrown away.
+     * @type {Record<string, any>}
+     */
+    params = /** @type {Record<string, any>} */ (/** @type {unknown} */ (undefined));
 
     /** The verbs a path answers, for an OPTIONS; null on every other method. @type {Set<string>|null} */
     _matchedMethods = null;
@@ -949,6 +953,15 @@ module.exports = class Request extends LazyReadable {
                 if (snap === false) {
                     return parseQuery(raw);
                 }
+                // the second read captures, the third on replays: most requests read it once,
+                // and the capture array was 168 bytes each
+                if (snap === null) {
+                    /** @type {string[] & {invalid?: boolean}} */
+                    const capture = [];
+                    const out = parseQuery(raw, capture);
+                    this._querySnap = capture.invalid === true ? false : capture;
+                    return out;
+                }
                 const out = new parseQuery.QueryObject();
                 const pairs = /** @type {string[]} */ (snap);
                 for (let i = 0, len = pairs.length; i < len; i += 2) {
@@ -956,12 +969,9 @@ module.exports = class Request extends LazyReadable {
                 }
                 return out;
             }
-            /** @type {string[] & {invalid?: boolean}} */
-            const capture = [];
-            const out = parseQuery(raw, capture);
             this._querySnapRaw = raw;
-            this._querySnap = capture.invalid === true ? false : capture;
-            return out;
+            this._querySnap = null;
+            return parseQuery(raw);
         }
         // the other parsers keep no snapshot, only the mark that a parse happened
         this._querySnapRaw = this._rawQuery;
