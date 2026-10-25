@@ -8,18 +8,18 @@ const { execFileSync } = require("node:child_process");
 // B/request on the server, the whole request: µWS wrappers, fulmine, the route. Medians on Node
 // 26.11.1 plus a margin; a value that falls lowers its budget in the same commit
 const budgets = {
-    "GET /hello": 2792,
-    "GET /json": 3000,
-    "GET /users/:id?q": 3432,
-    "GET /ua": 3104,
-    "GET /mw/x": 3352,
-    "GET /r/x": 3296,
-    "GET /missing": 3816,
-    "POST /echo json": 4232,
-    "arena GET /baseline11": 2328,
-    "arena POST /baseline11": 3560,
+    "GET /hello": 2728,
+    "GET /json": 2936,
+    "GET /users/:id?q": 3376,
+    "GET /ua": 3048,
+    "GET /mw/x": 3288,
+    "GET /r/x": 3240,
+    "GET /missing": 3760,
+    "POST /echo json": 4168,
+    "arena GET /baseline11": 2264,
+    "arena POST /baseline11": 3496,
     "arena GET /json/:count br": 14920,
-    "arena POST /echo": 3296
+    "arena POST /echo": 3232
 };
 // a closure or a header object kept per request is more than this
 const retainedBudget = 16;

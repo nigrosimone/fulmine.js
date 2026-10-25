@@ -259,24 +259,25 @@ module.exports = class Response extends LazyWritable {
         this._res = res;
         this._hasBody = req._isHead !== true;
         this.app = app;
+        const hot = app._hot();
         // timeout=10 is uWS's idle timeout. On the node shim node writes its own pair; "connection
         // headers" off advertises neither, as Express always does
         this.headers =
-            res._nodeRes || app._settings["connection headers"] === false
+            res._nodeRes || hot.connectionHeadersOff
                 ? {}
                 : {
                       connection: "keep-alive",
                       "keep-alive": SEEDED_KEEP_ALIVE
                   };
         // node writes its pair unless the header was removed, which still keeps the connection alive
-        if (res._nodeRes && app._settings["connection headers"] === false) {
+        if (res._nodeRes && hot.connectionHeadersOff) {
             res._nodeRes.removeHeader("connection");
         }
         // the client asked to close and uWS closes: a declarative response, written once, cannot say so
         if (req._connectionClose) {
             this.headers.connection = "close";
         }
-        if (app._hot().xPoweredBy) {
+        if (hot.xPoweredBy) {
             this.headers["x-powered-by"] = "Fulmine";
         }
         // shared methods, not arrows: two closures and a once() were four allocations per request.
@@ -935,8 +936,15 @@ module.exports = class Response extends LazyWritable {
 
         this.finished = true;
         this.#socket?.emit("close");
-        this.emit("finish");
-        this.emit("close");
+        // only the constructor's two listeners: no finish to emit, and close is a direct call, as
+        // node's emit() reads every emitter's _events through one megamorphic load
+        const events = this._events;
+        if (this._eventsCount === 2 && events.close === this._onCloseCleanup && events.finish === undefined) {
+            this._onCloseCleanup();
+        } else {
+            this.emit("finish");
+            this.emit("close");
+        }
         cb &&
             queueMicrotask(() => {
                 this.#ended = true;

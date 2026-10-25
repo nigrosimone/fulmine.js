@@ -29,6 +29,9 @@ class HotSettings {
     /** @type {boolean} */
     xPoweredBy = false;
 
+    /** The app's own "connection headers" is false. @type {boolean} */
+    connectionHeadersOff = false;
+
     /** @type {import("./utils.js").ETagFn|undefined} */
     etagFn = undefined;
 
