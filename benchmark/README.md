@@ -119,6 +119,14 @@ reading to keep: the garbage collector is 381 us per thousand requests against 1
 request, 2.5% of it, on a row that is 62% idle. Collecting on both servers between the warmup and the
 measured rounds was tried in the same sitting and did not narrow the spread either.
 
+### Allocation regression tests
+
+`npm run test:performance` gates allocation budgets in CI on Linux x64, Node 26.11.1.
+It checks retained heap, temporary allocations, and native abort-handler handles.
+Heap probes run without JIT or coverage, with fixed young-generation bounds; GC inside
+an allocation sample invalidates it. Budgets do not measure throughput. Runtime upgrades
+require recalibration and a failing check against the previous implementations.
+
 ## Where the time goes
 
 ```bash

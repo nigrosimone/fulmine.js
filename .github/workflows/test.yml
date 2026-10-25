@@ -37,6 +37,17 @@ jobs:
             - name: Lint commit messages
               run: npx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
 
+    performance:
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        steps:
+            - uses: actions/checkout@v7
+            - uses: actions/setup-node@v7
+              with:
+                  node-version: "26.11.1"
+            - run: npm ci --include=dev
+            - run: npm run test:performance
+
     test:
         runs-on: ubuntu-latest
         strategy:

@@ -24,6 +24,7 @@
         "test": "node tests/index.js",
         "gates": "node tools/gates.js",
         "test:unit": "node --expose-gc --test --test-timeout=120000 \"tests/unit/*.test.js\"",
+        "test:performance": "node --test --test-concurrency=1 --test-timeout=120000 \"tests/performance/*.test.js\"",
         "test:types": "tsd --files tests/types/*.test-d.ts",
         "test:express": "node tools/express-suite.js",
         "fuzz": "node tools/fuzz.js",
