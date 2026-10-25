@@ -20,8 +20,9 @@ limitations under the License.
 // the global Buffer is a getter, a call on every read
 const { Buffer } = require("buffer");
 const { deprecated, fastQueryParse } = require("./utils.js");
-const accepts = require("accepts");
-const typeis = require("type-is");
+const { lazyRequire } = require("./lazy-require.js");
+const accepts = /** @type {() => typeof import("accepts")} */ (lazyRequire("accepts"));
+const typeis = /** @type {() => typeof import("type-is")} */ (lazyRequire("type-is"));
 const parseRange = require("range-parser");
 const proxyaddr = require("proxy-addr");
 const fresh = require("fresh");
@@ -1196,7 +1197,7 @@ module.exports = class Request extends LazyReadable {
      *   acceptable type when called with no arguments
      */
     accepts(...types) {
-        return accepts(asMessage(this)).types(.../** @type {string[]} */ (types));
+        return accepts()(asMessage(this)).types(.../** @type {string[]} */ (types));
     }
 
     /**
@@ -1205,7 +1206,7 @@ module.exports = class Request extends LazyReadable {
      * @returns {string|string[]|false}
      */
     acceptsCharsets(...charsets) {
-        return accepts(asMessage(this)).charsets(.../** @type {string[]} */ (charsets));
+        return accepts()(asMessage(this)).charsets(.../** @type {string[]} */ (charsets));
     }
 
     /**
@@ -1214,7 +1215,7 @@ module.exports = class Request extends LazyReadable {
      * @returns {string|string[]|false}
      */
     acceptsEncodings(...encodings) {
-        return accepts(asMessage(this)).encodings(.../** @type {string[]} */ (encodings));
+        return accepts()(asMessage(this)).encodings(.../** @type {string[]} */ (encodings));
     }
 
     /**
@@ -1223,7 +1224,7 @@ module.exports = class Request extends LazyReadable {
      * @returns {string|string[]|false}
      */
     acceptsLanguages(...languages) {
-        return accepts(asMessage(this)).languages(.../** @type {string[]} */ (languages));
+        return accepts()(asMessage(this)).languages(.../** @type {string[]} */ (languages));
     }
 
     /**
@@ -1266,14 +1267,14 @@ module.exports = class Request extends LazyReadable {
      */
     is(types) {
         if (Array.isArray(types)) {
-            return typeis(asMessage(this), types);
+            return typeis()(asMessage(this), types);
         }
 
         if (arguments.length === 1) {
-            return typeis(asMessage(this), [types]);
+            return typeis()(asMessage(this), [types]);
         }
 
-        return typeis(asMessage(this), [...arguments]);
+        return typeis()(asMessage(this), [...arguments]);
     }
 
     /**

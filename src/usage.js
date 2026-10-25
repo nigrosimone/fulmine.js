@@ -16,7 +16,7 @@ limitations under the License.
 
 "use strict";
 
-const acorn = require("acorn");
+const { acorn } = require("./lazy-require.js");
 
 /** @typedef {import("./router-utils.js").RouteEntry} RouteEntry */
 
@@ -113,7 +113,7 @@ function analyze(fn) {
     }
     let tree;
     try {
-        tree = acorn.parse(code, { ecmaVersion: "latest" });
+        tree = acorn().parse(code, { ecmaVersion: "latest" });
     } catch {
         // class methods and native functions do not parse alone, and unread code is unknown code
         return UNKNOWN;

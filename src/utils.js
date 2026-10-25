@@ -19,11 +19,12 @@ limitations under the License.
 
 // the global Buffer is a getter, a call on every read
 const { Buffer } = require("buffer");
-const mime = require("mime-types");
+const { lazyRequire } = require("./lazy-require.js");
+const mime = /** @type {() => typeof import("mime-types")} */ (lazyRequire("mime-types"));
 const contentType = require("content-type");
 const path = require("path");
 const proxyaddr = require("proxy-addr");
-const qs = require("qs");
+const qs = /** @type {() => typeof import("qs")} */ (lazyRequire("qs"));
 const parseQuery = require("./parse-query.js");
 const crypto = require("crypto");
 const statuses = require("statuses");
@@ -82,7 +83,7 @@ function fastQueryParse(query, options) {
             return parsed;
         }
     }
-    return Object.assign(new parseQuery.QueryObject(), qs.parse(query, options ?? QUERY_QS_OPTIONS));
+    return Object.assign(new parseQuery.QueryObject(), qs().parse(query, options ?? QUERY_QS_OPTIONS));
 }
 
 /**
@@ -737,14 +738,14 @@ function memoizeByString(fn) {
 }
 
 // mime.lookup is 273ns for the same "json" on every response, memoised 6
-const lookupType = memoizeByString((type) => mime.lookup(type) || "application/octet-stream");
+const lookupType = memoizeByString((type) => mime().lookup(type) || "application/octet-stream");
 
 /**
  * The full content-type an extension stands for, charset included, as res.type() writes it.
  * @param {string} type an extension, or a media type, which is returned as given
  * @returns {string}
  */
-const contentTypeFor = memoizeByString((type) => mime.contentType(type) || "application/octet-stream");
+const contentTypeFor = memoizeByString((type) => mime().contentType(type) || "application/octet-stream");
 
 /**
  * The content-type res.set stores, as express stores it: an extension resolved with its charset,
@@ -753,7 +754,7 @@ const contentTypeFor = memoizeByString((type) => mime.contentType(type) || "appl
  * @param {string} value
  * @returns {string|false}
  */
-const contentTypeSet = memoizeByString((value) => mime.contentType(value));
+const contentTypeSet = memoizeByString((value) => mime().contentType(value));
 
 /**
  * A media type from an extension or a full type with its parameters. A fresh object each time,
@@ -1424,7 +1425,7 @@ const withDefaultCharset = memoizeByString((value) => {
     if (CHARSET_PRESENT.test(value)) {
         return value;
     }
-    const charset = mime.charset(value.split(";")[0]);
+    const charset = mime().charset(value.split(";")[0]);
     return charset ? `${value}; charset=${charset.toLowerCase()}` : value;
 });
 

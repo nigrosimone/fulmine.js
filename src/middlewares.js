@@ -22,12 +22,13 @@ const { Buffer } = require("buffer");
 const fs = require("fs");
 const path = require("path");
 const bytes = require("bytes");
-const zlib = require("fast-zlib");
-const typeis = require("type-is");
-const mime = require("mime-types");
-const compressible = require("compressible");
+const { lazyRequire } = require("./lazy-require.js");
+const zlib = /** @type {() => typeof import("fast-zlib")} */ (lazyRequire("fast-zlib"));
+const typeis = /** @type {() => typeof import("type-is")} */ (lazyRequire("type-is"));
+const mime = /** @type {() => typeof import("mime-types")} */ (lazyRequire("mime-types"));
+const compressible = /** @type {() => typeof import("compressible")} */ (lazyRequire("compressible"));
 const ms = require("ms");
-const qs = require("qs");
+const qs = /** @type {() => typeof import("qs")} */ (lazyRequire("qs"));
 const statuses = require("statuses");
 const parseQuery = require("./parse-query.js");
 const { kGetSafe } = require("./usage.js");
@@ -384,8 +385,8 @@ function asBodyError(err, status, type, extra) {
  * @returns {boolean}
  */
 const hasTwins = memoizeByString((extension) => {
-    const type = mime.lookup(extension);
-    return type ? compressible(type) === true : true;
+    const type = mime().lookup(extension);
+    return type ? compressible()(type) === true : true;
 });
 
 // which twins a path has, remembered for a moment: only their presence, never size or mtime, so a
@@ -763,7 +764,7 @@ function serveStatic(root, options) {
                 stat = variant.stat;
                 res.setHeader("Content-Encoding", variant.encoding);
                 // the type of the file asked for, not of the .br; sendFile leaves it alone
-                const type = mime.lookup(filePath);
+                const type = mime().lookup(filePath);
                 res.type(type || "application/octet-stream");
             }
         }
@@ -842,20 +843,20 @@ function createInflate(contentEncoding) {
         case "identity":
             return;
         case "deflate":
-            stream = new zlib.Inflate();
+            stream = new (zlib().Inflate)();
             break;
         case "gzip":
-            stream = new zlib.Gunzip();
+            stream = new (zlib().Gunzip)();
             break;
         case "br":
-            stream = new zlib.BrotliDecompress();
+            stream = new (zlib().BrotliDecompress)();
             break;
         default:
             return false;
     }
     // the flag the final flush passes, so a truncated stream errors instead of resolving empty
     /** @type {Inflater} */ (stream)._finishFlag =
-        encoding === "br" ? zlib.constants.BROTLI_OPERATION_FINISH : zlib.constants.Z_FINISH;
+        encoding === "br" ? zlib().constants.BROTLI_OPERATION_FINISH : zlib().constants.Z_FINISH;
     return stream;
 }
 
@@ -919,7 +920,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
         // 4ns memoised. The header is the client's, so the memo has a ceiling. typeis.is, not
         // typeis(req): the caller already established there is a body
         const claimsType = memoizeByString(
-            (contentType) => !!typeis.is(contentType, /** @type {string[]} */ (options.type))
+            (contentType) => !!typeis().is(contentType, /** @type {string[]} */ (options.type))
         );
 
         /** @type {string[]|null|undefined} the "body methods" setting, read on the first request */
@@ -1432,13 +1433,13 @@ const urlencoded = createBodyParser(
                         parameterLimit: options.parameterLimit
                     };
                     req.body = needsQs
-                        ? Object.assign(Object.create(null), qs.parse(body, qsOptions))
+                        ? Object.assign(Object.create(null), qs().parse(body, qsOptions))
                         : fastQueryParse(body, qsOptions);
                 } else {
                     // body-parser's extended: false is still qs, depth 0
                     req.body = Object.assign(
                         Object.create(null),
-                        qs.parse(body, {
+                        qs().parse(body, {
                             allowPrototypes: true,
                             arrayLimit: count + 1,
                             depth: 0,

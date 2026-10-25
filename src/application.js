@@ -20,6 +20,7 @@ limitations under the License.
 // the global Buffer is a getter, a call on every read
 const { Buffer } = require("buffer");
 const { loadUWS, otherRuntime } = require("./uws.js");
+const { acorn } = require("./lazy-require.js");
 const Router = require("./router.js");
 const {
     removeDuplicateSlashes,
@@ -642,6 +643,8 @@ class Application extends Router {
         this._compileOptimizedRoutes();
         registerWebSocketRoutes(this);
         this._createRequestHandler();
+        // the routes are analysed, a later one loads the parser again
+        acorn.release();
         // uWS runs this inside its own listen(), so everything reported to the caller is deferred
         // a tick, as node emits 'listening' and 'error'
         const onListen = (/** @type {import("uWebSockets.js").us_listen_socket|false} */ socket) => {

@@ -38,7 +38,8 @@ limitations under the License.
 const { Buffer } = require("buffer");
 const zlib = require("zlib");
 const bytes = require("bytes");
-const compressible = require("compressible");
+const { lazyRequire } = require("./lazy-require.js");
+const compressible = /** @type {() => typeof import("compressible")} */ (lazyRequire("compressible"));
 const {
     negotiateEncoding,
     ENCODING_ANY,
@@ -333,7 +334,7 @@ function shouldCompress(req, res) {
     return isCompressible(typeof type === "string" ? type : String(type));
 }
 
-const isCompressible = memoizeByString((type) => compressible(type) === true);
+const isCompressible = memoizeByString((type) => compressible()(type) === true);
 
 /**
  * How many bytes a chunk is, for the threshold.

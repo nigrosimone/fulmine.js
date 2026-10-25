@@ -20,7 +20,8 @@ limitations under the License.
 // the global Buffer is a getter, a call on every read
 const { Buffer } = require("buffer");
 const cookie = require("cookie");
-const mime = require("mime-types");
+const { lazyRequire } = require("./lazy-require.js");
+const mime = /** @type {() => typeof import("mime-types")} */ (lazyRequire("mime-types"));
 const vary = require("vary");
 const encodeUrl = require("encodeurl");
 const contentDisposition = require("content-disposition");
@@ -1223,7 +1224,7 @@ module.exports = class Response extends LazyWritable {
 
         // headers
         if (!this.headers["content-type"]) {
-            const m = mime.lookup(fullpath);
+            const m = mime().lookup(fullpath);
             if (m) this.type(m);
             else this.type("application/octet-stream");
         }

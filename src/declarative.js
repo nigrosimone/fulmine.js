@@ -17,15 +17,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-const acorn = require("acorn");
+const { acorn } = require("./lazy-require.js");
 const { stringify, contentTypeSet, withUtf8Charset, contentTypeFor, headerIsWritable } = require("./utils.js");
 const { loadUWS } = require("./uws.js");
 const statuses = require("statuses");
 
 /** @typedef {import("./application.js").Application} Application */
 /** @typedef {import("./router.js")} Router */
-
-const parser = acorn.Parser;
 
 const allowedResMethods = [
     "set",
@@ -504,7 +502,7 @@ function readHandler(cb) {
     // widening the list is not worth it: over 1113 handlers in tests, demo and benchmark, 42.6%
     // call something that is not res, `const` would unlock 0.6%, a conditional 0.1%
     /** @type {any[]} loose because acorn's Token type leaves out value */
-    const tokens = [...acorn.tokenizer(code, { ecmaVersion: "latest" })];
+    const tokens = [...acorn().tokenizer(code, { ecmaVersion: "latest" })];
 
     if (
         tokens.some((token) =>
@@ -533,7 +531,7 @@ function readHandler(cb) {
     }
 
     /** @type {any[]} loose, readParamNames checks the parameters by hand */
-    const parsed = parser.parse(code, { ecmaVersion: "latest" }).body;
+    const parsed = acorn().Parser.parse(code, { ecmaVersion: "latest" }).body;
     let fn = parsed[0];
 
     if (fn.type === "ExpressionStatement") {
