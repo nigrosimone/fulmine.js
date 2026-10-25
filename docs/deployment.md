@@ -48,7 +48,7 @@ allowed in subdependencies when blockExoticSubdeps is enabled
 ```
 
 The same rule allows a git dependency that is the project's own. So the project takes
-µWebSockets.js on itself, at the tag fulmine pins, and an override drops the copy fulmine asks for.
+µWebSockets.js on itself, at the revision fulmine pins, and an override drops the copy fulmine asks for.
 One command writes both lines, and `npx fulmine.js create my-app --pnpm` starts a new project with
 them already in (it also reads that it was started by `pnpm dlx`):
 
@@ -67,16 +67,23 @@ overrides:
 // package.json
 "dependencies": {
     "fulmine.js": "^5",
-    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.71.0"
+    "uWebSockets.js": "github:uNetworking/uWebSockets.js#ea0d00dd9a45b76fa89a9609116973fe5794fc3c"
 }
 ```
 
 Nothing is turned off, and nothing is redistributed: µWebSockets.js still comes from uNetworking's
-repository, fetched by pnpm as your dependency. What it costs is that the tag is now yours to
+repository, fetched by pnpm as your dependency. What it costs is that the revision is now yours to
 move. Nothing is left to memory: when fulmine changes its pin, the server says so once at startup
-(`uWebSockets.js 20.70.0 is installed, this version was tested with 20.71.0`), `npx fulmine.js verify`
+if the installed release version or source marker differs, `npx fulmine.js verify`
 says the two differ, and running `npx fulmine.js pnpm` again writes the new one. Each pin change is
 also a line in the changelog.
+
+The current pin is a commit on upstream's `binaries` branch. Its
+[`source_commit`](https://github.com/uNetworking/uWebSockets.js/blob/ea0d00dd9a45b76fa89a9609116973fe5794fc3c/source_commit)
+records source `139419cece198053af3478e4a367ecac4e006bb9`, also recorded as `uwsSourceCommit` in
+Fulmine's `package.json`. The binaries still report version `20.71.0`, so that version alone cannot
+identify the build. When updating a commit pin, copy its source marker too; the source branch itself
+does not contain the installable package or binaries. A missing marker is left unreported.
 
 Two other ways through, for completeness. `blockExoticSubdeps: false` in `pnpm-workspace.yaml`
 turns the check off for the whole project, so any dependency of a dependency may then come from
@@ -98,7 +105,7 @@ have turned git dependencies off, or that cannot reach github.com at all:
 ```
 allow-git=none   npm error code EALLOWGIT
                  npm error Fetching packages of type "git" have been disabled
-                 npm error Refusing to fetch "uWebSockets.js@github:uNetworking/uWebSockets.js#v20.71.0"
+                 npm error Refusing to fetch "uWebSockets.js@github:uNetworking/uWebSockets.js#ea0d00dd9a45b76fa89a9609116973fe5794fc3c"
 
 allow-git=root   npm error code EALLOWGIT
                  npm error Fetching non-root packages of type "git" have been disabled
@@ -108,16 +115,16 @@ allow-git=root   npm error code EALLOWGIT
 for, and still refuses this one, because it is asked for by fulmine rather than by you.
 
 The answer is to put µWebSockets.js in your own registry and point at it from there. Three steps,
-and nothing is compiled on the way: the tarball is what uNetworking already publishes on the tag,
+and nothing is compiled on the way: the tarball is what uNetworking already publishes at the pinned revision,
 prebuilt binaries included.
 
-**1. Pack the tag.** No clone needed, npm takes the git spec directly:
+**1. Pack the pinned revision.** No clone needed, npm takes the git spec directly:
 
 ```sh
-npm pack "github:uNetworking/uWebSockets.js#v20.71.0"
+npm pack "github:uNetworking/uWebSockets.js#ea0d00dd9a45b76fa89a9609116973fe5794fc3c"
 ```
 
-Read the version out of [`package.json`](../package.json) rather than copying the one above, since
+Read the dependency spec out of [`package.json`](../package.json) rather than copying the one above, since
 it moves with each release of this package.
 
 **2. Publish it to your registry.**
@@ -125,6 +132,10 @@ it moves with each release of this package.
 ```sh
 npm publish uWebSockets.js-20.71.0.tgz --registry https://registry.internal/
 ```
+
+If that registry already has another build published as `20.71.0`, give this package a distinct
+private version before packing and publishing it, and use that version in the override below.
+Keep its `source_commit` file: the native build's source identity does not change when repackaged.
 
 The tarball is around 33 MB, because it carries a binary for every Node ABI and platform, and that
 is larger than several defaults along the way. Verdaccio refuses it at `max_body_size: 10mb`,
@@ -158,7 +169,7 @@ registry with an integrity hash, so nothing reaches for git at install time:
 ```
 
 One thing to tell your security team before their scanner does: the lockfile still contains the
-line `"uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.71.0"`. That is fulmine's declared
+line `"uWebSockets.js": "github:uNetworking/uWebSockets.js#ea0d00dd9a45b76fa89a9609116973fe5794fc3c"`. That is fulmine's declared
 range, not a resolution, and a scanner that reads what is declared rather than what was installed
 will report a git dependency that the install never used.
 

@@ -17,6 +17,13 @@ A request also goes through Node.js, the µWS binding and the µWS server. When 
 
 ## µWebSockets.js
 
+Fulmine pins the installable [`binaries` commit
+`ea0d00dd9a45b76fa89a9609116973fe5794fc3c`](https://github.com/uNetworking/uWebSockets.js/tree/ea0d00dd9a45b76fa89a9609116973fe5794fc3c).
+Its [`source_commit`](https://github.com/uNetworking/uWebSockets.js/blob/ea0d00dd9a45b76fa89a9609116973fe5794fc3c/source_commit)
+identifies source `139419cece198053af3478e4a367ecac4e006bb9`, from 16 October 2026. Upstream's package
+version remains `20.71.0`; these commits include changes made after the `v20.71.0` release tag.
+The measurements below belong to the linked upstream changes, not to a comparison of Fulmine builds.
+
 Fifteen pull requests merged. Some of them:
 
 - `res.onAborted` from 91 ns to 45 ns per call: [#1330](https://github.com/uNetworking/uWebSockets.js/pull/1330), [#1331](https://github.com/uNetworking/uWebSockets.js/pull/1331).

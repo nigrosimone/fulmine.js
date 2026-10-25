@@ -31,19 +31,33 @@ const otherRuntime = process.versions.bun ? "Bun" : process.versions.deno ? "Den
  * it is loaded: an app served through node's http never loads it and has nothing to hear.
  */
 function warnOnDrift() {
-    const pinned = /#v?([\d.]+)$/.exec(require("../package.json").dependencies["uWebSockets.js"])?.[1];
+    const pkg = require("../package.json");
+    const spec = pkg.dependencies["uWebSockets.js"];
+    const pinnedVersion = /#v?([\d.]+)$/.exec(spec)?.[1];
+    // The binaries branch can keep the release's version after rebuilding newer source. Its
+    // source_commit file records that source; uwsSourceCommit is copied from the pinned build.
+    const pinnedSource = /#[a-f\d]{40}$/i.test(spec) ? pkg.uwsSourceCommit : undefined;
     /** @type {string|undefined} */
     let installed;
+    /** @type {string|undefined} */
+    let source;
     try {
         // its exports map does not expose package.json, so it is read beside the entry point
-        const beside = require("path").join(require.resolve("uWebSockets.js"), "..", "package.json");
-        installed = JSON.parse(require("fs").readFileSync(beside, "utf8")).version;
+        const path = require("path");
+        const fs = require("fs");
+        const beside = path.dirname(require.resolve("uWebSockets.js"));
+        installed = JSON.parse(fs.readFileSync(path.join(beside, "package.json"), "utf8")).version;
+        if (pinnedSource) source = fs.readFileSync(path.join(beside, "source_commit"), "utf8").trim();
     } catch {
         // nothing to compare against, which is not worth a warning of its own
     }
-    if (pinned && installed && installed !== pinned) {
+    const expected = pinnedSource ?? pinnedVersion;
+    const actual = pinnedSource ? source : installed;
+    if (expected && actual && actual !== expected) {
+        const found = pinnedSource ? `${installed ?? "unknown"} (source ${source})` : installed;
+        const tested = pinnedSource ? `source ${pinnedSource}` : pinnedVersion;
         console.warn(
-            `fulmine.js: uWebSockets.js ${installed} is installed, this version was tested with ${pinned}.\n` +
+            `fulmine.js: uWebSockets.js ${found} is installed, this version was tested with ${tested}.\n` +
                 "  On pnpm the pin is the project's own: `npx fulmine.js pnpm` writes the tested one."
         );
     }
