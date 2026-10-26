@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.25.10](https://github.com/nigrosimone/fulmine.js/compare/v5.25.9...v5.25.10) (2026-10-26)
+
+### Performance Improvements
+
+* allocate less per request, no params {} on the class, shared identity encoding, query captured on second read ([e65994b](https://github.com/nigrosimone/fulmine.js/commit/e65994b2611af46c7e52cb8cf9caa7e8bed36b58))
+* res.locals made on first read, no res._req, request headers copied at their size ([ddbef6a](https://github.com/nigrosimone/fulmine.js/commit/ddbef6aa708a226256de25d49bfb7140e1032599))
+* **request:** req.params made on first read, a route that never reads it allocates nothing: 2225 -> 1610 bytes per GET on the arena entry since 5.25.9 ([af39d68](https://github.com/nigrosimone/fulmine.js/commit/af39d6873c5f88488d942621286b2b79c0986d81))
+
 ## [5.25.9](https://github.com/nigrosimone/fulmine.js/compare/v5.25.8...v5.25.9) (2026-10-25)
 
 ### Performance Improvements
