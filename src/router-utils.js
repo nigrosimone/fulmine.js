@@ -17,7 +17,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-const { getPatternMeta, pathsCanOverlap, regexpGroupKeys, EMPTY_REGEX } = require("./utils.js");
+const { getPatternMeta, pathsCanOverlap, regexpGroupKeys, EMPTY_REGEX, UNREAD_PARAMS } = require("./utils.js");
 const Response = require("./response.js");
 const Request = require("./request.js");
 const { METHODS } = require("http");
@@ -460,6 +460,12 @@ const PATH_PROPERTY = {
     enumerable: true
 };
 
+// and req.params, which the routes write as _params
+const PARAMS_PROPERTY = {
+    .../** @type {PropertyDescriptor} */ (Object.getOwnPropertyDescriptor(Request.prototype, "params")),
+    enumerable: true
+};
+
 // and the two the walk calls on a rewrite, which an adopted request has no prototype to find
 const ABSORB_URL = Request.prototype._absorbUrlRewrite;
 const ABSORB_METHOD = Request.prototype._absorbMethodRewrite;
@@ -653,7 +659,8 @@ function adoptPlainRequest(req, router) {
     req._lastMethod = req.method;
     req._isOptions = req.method === "OPTIONS";
     req._isHead = req.method === "HEAD";
-    req.params = req.params ?? Object.create(null);
+    req._params = req.params ?? UNREAD_PARAMS;
+    Object.defineProperty(req, "params", PARAMS_PROPERTY);
     // null as in the Request constructor, the push sites materialise them
     req._stack = null;
     req._baseUrlLevels = null;

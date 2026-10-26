@@ -1646,6 +1646,10 @@ function asStatError(err) {
 const NullObject = /** @type {new () => Record<string, any>} */ (/** @type {unknown} */ (function () {}));
 NullObject.prototype = Object.create(null);
 
+// req.params of a route nobody has read yet, see Request#params: Object.create(null) is a
+// dictionary of 177 bytes, and most handlers never read it
+const UNREAD_PARAMS = Object.freeze(Object.create(null));
+
 let stringPrototypeRepaired = false;
 
 /**
@@ -1686,6 +1690,7 @@ module.exports = {
     deprecated,
     UP_PATH_REGEXP,
     NullObject,
+    UNREAD_PARAMS,
     decode,
     decodeParam,
     containsDotFile,

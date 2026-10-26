@@ -19,7 +19,7 @@ limitations under the License.
 
 // the global Buffer is a getter, a call on every read
 const { Buffer } = require("buffer");
-const { deprecated, fastQueryParse } = require("./utils.js");
+const { deprecated, fastQueryParse, UNREAD_PARAMS } = require("./utils.js");
 const { lazyRequire } = require("./lazy-require.js");
 const accepts = /** @type {() => typeof import("accepts")} */ (lazyRequire("accepts"));
 const typeis = /** @type {() => typeof import("type-is")} */ (lazyRequire("type-is"));
@@ -343,11 +343,11 @@ module.exports = class Request extends LazyReadable {
     _mayFailDecode = null;
 
     /**
-     * Set by every route before its handlers run, see _preprocessRequest: a {} here was 48 bytes
-     * per request thrown away.
-     * @type {Record<string, any>}
+     * What req.params answers, set by every route before its handlers run, see _preprocessRequest;
+     * UNREAD_PARAMS until the first read.
+     * @type {Record<string, any>|undefined}
      */
-    params = /** @type {Record<string, any>} */ (/** @type {unknown} */ (undefined));
+    _params = undefined;
 
     /** The verbs a path answers, for an OPTIONS; null on every other method. @type {Set<string>|null} */
     _matchedMethods = null;
@@ -866,6 +866,22 @@ module.exports = class Request extends LazyReadable {
         const index = header.indexOf(",");
 
         return index !== -1 ? header.slice(0, index).trim() : header.trim();
+    }
+
+    /**
+     * The route's parameters, with a null prototype as in express 5, made on first read.
+     *
+     * @returns {Record<string, any>}
+     */
+    get params() {
+        const params = this._params;
+        return params === UNREAD_PARAMS
+            ? (this._params = Object.create(null))
+            : /** @type {Record<string, any>} */ (params);
+    }
+
+    set params(value) {
+        this._params = value;
     }
 
     /**

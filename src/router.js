@@ -26,6 +26,7 @@ const {
     pathsCanOverlap,
     regexpGroupKeys,
     NullObject,
+    UNREAD_PARAMS,
     headersSentError,
     EMPTY_REGEX,
     settingsEpoch
@@ -302,7 +303,7 @@ module.exports = class Router extends EventEmitter {
             useApp(req, this);
         }
         // express restores req.params when a router hands back
-        const callerParams = req.params;
+        const callerParams = req._params;
         const callerBaseUrl = req._baseUrlOverride;
         // a router called by hand puts back req.baseUrl as a mounted one does, see enterMount
         const pushedLevel = Boolean(req._baseUrlLevels);
@@ -315,7 +316,7 @@ module.exports = class Router extends EventEmitter {
         }
         const routed = await this._routeRequest(req, res, 0);
         if (!routed) {
-            req.params = callerParams;
+            req._params = callerParams;
             if (req._baseUrlLevels) {
                 if (pushedLevel) {
                     req._baseUrlLevels.pop();
@@ -1075,9 +1076,11 @@ module.exports = class Router extends EventEmitter {
             }
         } else {
             // null-prototype params as express 5, except a pathless middleware layer (fast_slash)
-            req.params = route.use && route.path === "" ? {} : Object.create(null);
+            const own = route.use && route.path === "" ? {} : UNREAD_PARAMS;
             if (req._paramStack !== null && req._paramStack.length > 0 && mergesParams(route, this)) {
-                req.params = mergeParams(req.params, req._paramStack);
+                req._params = mergeParams(own, req._paramStack);
+            } else {
+                req._params = own;
             }
         }
         // only a route writes it, as express does in Route#dispatch: a metric naming itself after

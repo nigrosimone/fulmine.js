@@ -512,10 +512,10 @@ class Walk {
         }
         const pushedParams = callback._settings.mergeParams;
         if (pushedParams) {
-            (req._paramStack ??= []).push(req.params);
+            (req._paramStack ??= []).push(/** @type {Record<string, any>} */ (req._params));
         }
         // express restores req.params when a router hands back, and req.baseUrl
-        const parentParams = req.params;
+        const parentParams = req._params;
         const parentBaseUrl = req._baseUrlOverride;
         // a level of its own, so leaving a path layer inside resets to what this router read
         const pushedLevel = Boolean(req._baseUrlLevels);
@@ -543,7 +543,7 @@ class Walk {
                 if (pushedParams) {
                     /** @type {Record<string, any>[]} */ (req._paramStack).pop();
                 }
-                req.params = parentParams;
+                req._params = parentParams;
                 if (req._error) {
                     req._errorKey = route.routeKey;
                     req._errorGroup = route.group;
