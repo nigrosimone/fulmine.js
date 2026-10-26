@@ -58,6 +58,15 @@ const CACHE_CONTROL = Buffer.from("cache-control");
 /** @type {import("./request.js")|null} */
 let currentRequest = null;
 
+// where #collectHeader writes, then copied at its size: an array grown by push was 168 bytes of
+// elements for three headers. Never cleared, the next request writes over it
+/** @type {string[]} */
+const collected = [];
+let collectedCount = 0;
+
+// the headers of a request that kept none, shared: an empty array is 32 bytes per GET
+const NO_ENTRIES = /** @type {string[]} */ (/** @type {unknown} */ (Object.freeze([])));
+
 module.exports = class Request extends LazyReadable {
     /** @type {import("http").IncomingHttpHeaders|null} */
     #cachedHeaders = null;
@@ -68,10 +77,11 @@ module.exports = class Request extends LazyReadable {
     /**
      * Every header, flat: name then value, walked two at a time (an array per pair was one
      * allocation per header). Names are lowercase, uWS and the node shim both lower them.
+     * NO_ENTRIES until the first header is kept, see #addEntry.
      *
      * @type {string[]}
      */
-    #rawHeadersEntries = [];
+    #rawHeadersEntries = NO_ENTRIES;
 
     /** @type {string|undefined|null} */
     #cachedParsedIp = null;
@@ -112,7 +122,8 @@ module.exports = class Request extends LazyReadable {
     static #collectHeader = (headerKey, value) => {
         // set by the two forEach callers, never null while uWS is calling back
         const r = /** @type {Request} */ (currentRequest);
-        r.#rawHeadersEntries.push(headerKey, value);
+        collected[collectedCount++] = headerKey;
+        collected[collectedCount++] = value;
         // the response, built right after, must not answer keep-alive to a client that said close
         if (headerKey.length === 10 && headerKey === "connection" && saysClose(value)) {
             r._connectionClose = true;
@@ -139,6 +150,28 @@ module.exports = class Request extends LazyReadable {
             }
         }
     };
+
+    /** Every header of the uWS request into #rawHeadersEntries, through #collectHeader. */
+    #copyHeaders() {
+        currentRequest = this;
+        collectedCount = 0;
+        this._req.forEach(Request.#collectHeader);
+        currentRequest = null;
+        this.#rawHeadersEntries = collected.slice(0, collectedCount);
+    }
+
+    /**
+     * Keeps one header on a request that read only a few, see the constructor.
+     *
+     * @param {string} name
+     * @param {string} value
+     */
+    #addEntry(name, value) {
+        if (this.#rawHeadersEntries === NO_ENTRIES) {
+            this.#rawHeadersEntries = [];
+        }
+        this.#rawHeadersEntries.push(name, value);
+    }
 
     /**
      * The parameters a native uWS route matched, by name, or undefined off that path.
@@ -419,14 +452,11 @@ module.exports = class Request extends LazyReadable {
             // _mustRefuse. An empty content-length reads as "" like a header never sent, and only
             // the full copy below refuses it
             if (length !== "" || transferEncoding !== "") {
-                currentRequest = this;
-                this._req.forEach(Request.#collectHeader);
-                currentRequest = null;
+                this.#copyHeaders();
             } else {
-                const entries = this.#rawHeadersEntries;
                 const connection = req.getHeader(CONNECTION);
                 if (connection !== "") {
-                    entries.push("connection", connection);
+                    this.#addEntry("connection", connection);
                     if (saysClose(connection)) {
                         this._connectionClose = true;
                     }
@@ -434,24 +464,22 @@ module.exports = class Request extends LazyReadable {
                 // send consults freshness whatever the etag setting, so the conditional pair is read
                 const ifNoneMatch = req.getHeader(IF_NONE_MATCH);
                 if (ifNoneMatch !== "") {
-                    entries.push("if-none-match", ifNoneMatch);
+                    this.#addEntry("if-none-match", ifNoneMatch);
                 }
                 const ifModifiedSince = req.getHeader(IF_MODIFIED_SINCE);
                 if (ifModifiedSince !== "") {
-                    entries.push("if-modified-since", ifModifiedSince);
+                    this.#addEntry("if-modified-since", ifModifiedSince);
                 }
                 // fresh() reads cache-control only after a conditional
                 if (ifNoneMatch !== "" || ifModifiedSince !== "") {
                     const cacheControl = req.getHeader(CACHE_CONTROL);
                     if (cacheControl !== "") {
-                        entries.push("cache-control", cacheControl);
+                        this.#addEntry("cache-control", cacheControl);
                     }
                 }
             }
         } else {
-            currentRequest = this;
-            this._req.forEach(Request.#collectHeader);
-            currentRequest = null;
+            this.#copyHeaders();
         }
         this.app = app;
         // both forms are asked for: with the "?" in req.url, raw for req.query. When the chain

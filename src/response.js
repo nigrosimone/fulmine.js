@@ -179,9 +179,6 @@ module.exports = class Response extends LazyWritable {
     /** on-finished stores its state here, declared so the store is not a shape change. @type {any} */
     __onFinished = null;
 
-    /** @type {InstanceType<typeof import("./request.js")>} */
-    _req;
-
     /** @type {import("uWebSockets.js").HttpResponse} */
     _res;
 
@@ -198,8 +195,8 @@ module.exports = class Response extends LazyWritable {
     /** @type {import("./application.js").Application} */
     app;
 
-    /** @type {Record<string, any>} */
-    locals = new NullObject();
+    /** What res.locals answers, made on first read: most requests never touch it. @type {Record<string, any>|null} */
+    _locals = null;
 
     /** Whether end() ran through, or the response was torn down. @type {boolean} */
     finished = false;
@@ -246,6 +243,15 @@ module.exports = class Response extends LazyWritable {
     /** @type {Response|null} */
     _pendingNext = null;
 
+    /** @returns {Record<string, any>} */
+    get locals() {
+        return (this._locals ??= new NullObject());
+    }
+
+    set locals(value) {
+        this._locals = value;
+    }
+
     /**
      * Built for every request, right after its Request.
      *
@@ -255,7 +261,6 @@ module.exports = class Response extends LazyWritable {
      */
     constructor(res, req, app) {
         super();
-        this._req = req;
         this.req = req;
         this._res = res;
         this._hasBody = req._isHead !== true;
