@@ -103,6 +103,8 @@ function applyIdentityVary(req, res, filter) {
  * Installs the identity hooks in their own small scope, without retaining the compression path's
  * state. Each installation keeps its own originals, so repeated middleware and intervening hooks
  * retain their call order. The filter sees the captured response; the originals keep the receiver.
+ * The pair is dropped once the filter has it: V8 kept a closure assigned to the response alive
+ * through the scavenges, and the request with it, the young generation grew from 8 to 55 MB.
  *
  * @param {any} req
  * @param {any} res
@@ -122,7 +124,10 @@ function installIdentity(req, res, filter) {
         const reason = applyWriteHead(this, statusMessage, headers);
         if (!varied) {
             varied = true;
-            applyIdentityVary(req, res, filter);
+            const request = req;
+            const response = res;
+            req = res = null;
+            applyIdentityVary(request, response, filter);
         }
         return plainWriteHead.call(this, statusCode, reason);
     };
@@ -134,7 +139,10 @@ function installIdentity(req, res, filter) {
     res.end = function end(chunk, encoding, callback) {
         if (!varied) {
             varied = true;
-            applyIdentityVary(req, res, filter);
+            const request = req;
+            const response = res;
+            req = res = null;
+            applyIdentityVary(request, response, filter);
         }
         return plainEnd.call(this, chunk, encoding, callback);
     };
