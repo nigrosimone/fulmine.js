@@ -30,6 +30,10 @@ app.listen(13333, async () => {
         "a=1",
         "a=1&a=2",
         "a[]=1&a[]=2",
+        // qs keeps an array to 20 entries for a query, then makes it an object
+        "a&".repeat(19) + "a",
+        "a&".repeat(20) + "a",
+        "a=%41%ZZ",
         "a[b][c]=1",
         // the names that live on Object.prototype: express asks qs to keep them, and req.query has
         // no prototype for them to reach

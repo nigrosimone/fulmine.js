@@ -23,6 +23,7 @@ the result inspects as the bare null-prototype object Express shows.
 */
 
 const { inspect } = require("util");
+const { unescape } = require("querystring");
 const fastDecode = require("fast-decode-uri-component");
 
 const plusRegex = /\+/g;
@@ -42,16 +43,19 @@ Object.defineProperty(QueryObject.prototype, inspect.custom, {
 
 /**
  * node's querystring.parse semantics on a null-prototype result: repeated keys become arrays, '+'
- * is a space, a broken percent sequence stays literal. `capture` collects the decoded pairs flat so
- * `get query` can replay them, a repeated key marks it invalid. `separatorLimit` is body-parser's
- * parameterCount: over it the overflow flag is set and the caller answers 413.
+ * is a space, a broken percent sequence keeps the escapes around it decoded, 1000 pairs at most.
+ * `capture` collects the decoded pairs flat so `get query` can replay them, a repeated key marks it
+ * invalid. `separatorLimit` is body-parser's parameterCount: over it the overflow flag is set and
+ * the caller answers 413. `qsRules` is qs at depth 0 instead: a broken sequence leaves the whole
+ * text literal, an empty name and "__proto__" are dropped.
  *
  * @param {string} input
  * @param {string[] & {invalid?: boolean}} [capture]
  * @param {number} [separatorLimit]
+ * @param {boolean} [qsRules]
  * @returns {Record<string, string | string[]>}
  */
-function parseQuery(input, capture, separatorLimit) {
+function parseQuery(input, capture, separatorLimit, qsRules) {
     const result = new QueryObject();
     if (separatorLimit !== undefined) {
         parseQuery.overflow = false;
@@ -63,6 +67,7 @@ function parseQuery(input, capture, separatorLimit) {
 
     const inputLength = input.length;
     let separators = 0;
+    let pairs = 0;
     let key;
     let value = "";
     let startingIndex = -1;
@@ -96,12 +101,13 @@ function parseQuery(input, capture, separatorLimit) {
             key = input.slice(startingIndex + 1, equalityIndex);
 
             // only a pair with at least an '=' or a non-empty key lands in the result
-            if (hasBothKeyValuePair || key.length > 0) {
+            let lands = hasBothKeyValuePair || key.length > 0;
+            if (lands) {
                 if (keyHasPlus) {
                     key = key.replace(plusRegex, " ");
                 }
                 if (shouldDecodeKey) {
-                    key = fastDecode(key) || key;
+                    key = fastDecode(key) ?? (qsRules ? key : unescape(key));
                 }
                 if (hasBothKeyValuePair) {
                     value = input.slice(equalityIndex + 1, i);
@@ -109,10 +115,13 @@ function parseQuery(input, capture, separatorLimit) {
                         value = value.replace(plusRegex, " ");
                     }
                     if (shouldDecodeValue) {
-                        value = fastDecode(value) || value;
+                        value = fastDecode(value) ?? (qsRules ? value : unescape(value));
                     }
                 }
+                lands = !qsRules || (key !== "" && key !== "__proto__");
+            }
 
+            if (lands) {
                 const currentValue = result[key];
                 if (currentValue === undefined) {
                     result[key] = value;
@@ -130,6 +139,11 @@ function parseQuery(input, capture, separatorLimit) {
                         result[key] = [currentValue, value];
                     }
                 }
+            }
+
+            // node's maxKeys and qs's parameterLimit, both 1000; a body is refused before
+            if (separatorLimit === undefined && ++pairs === 1000) {
+                return result;
             }
 
             value = "";

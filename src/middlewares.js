@@ -1418,7 +1418,7 @@ const urlencoded = createBodyParser(
             const needsQs = encoding !== "utf-8" || options.charsetSentinel || options.interpretNumericEntities;
             if (!extended && !needsQs) {
                 // the vendored parser, the limit enforced inside its scan
-                const parsed = parseQuery(body, undefined, options.parameterLimit);
+                const parsed = parseQuery(body, undefined, options.parameterLimit, true);
                 if (parseQuery.overflow === true) {
                     return next(Object.assign(bodyError("too many parameters", 413, "parameters.too.many"), { body }));
                 }

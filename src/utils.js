@@ -57,7 +57,7 @@ const QUERY_QS_OPTIONS = { allowPrototypes: true };
  * bracket and no dot goes through fast-querystring, several times quicker, same answer.
  *
  * @param {string} query the query string, without the leading "?"
- * @param {object} [options] passed through to qs when it is used
+ * @param {{arrayLimit?: number}} [options] passed through to qs when it is used
  * @returns {Record<string, any>} a QueryObject, see parse-query.js
  */
 function fastQueryParse(query, options) {
@@ -66,21 +66,19 @@ function fastQueryParse(query, options) {
         return new parseQuery.QueryObject();
     }
     if (len <= 128) {
-        // an empty name ("=v", "a=1&=2") is a pair to fast-querystring and nothing to qs
+        // qs makes more values of one name than arrayLimit an object, 20 for a query
+        let separators = 0;
+        for (let i = query.indexOf("&"); i !== -1; i = query.indexOf("&", i + 1)) {
+            separators++;
+        }
         if (
+            separators < (options?.arrayLimit ?? 20) &&
             !query.includes("[") &&
             !query.includes("%5B") &&
             !query.includes(".") &&
-            !query.includes("%2E") &&
-            query.charCodeAt(0) !== 0x3d &&
-            !query.includes("&=")
+            !query.includes("%2E")
         ) {
-            const parsed = parseQuery(query);
-            // qs drops a "__proto__" key whatever allowPrototypes says; an own property here
-            if (parsed.__proto__ !== undefined) {
-                delete parsed.__proto__;
-            }
-            return parsed;
+            return parseQuery(query, undefined, undefined, true);
         }
     }
     return Object.assign(new parseQuery.QueryObject(), qs().parse(query, options ?? QUERY_QS_OPTIONS));
