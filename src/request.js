@@ -1023,7 +1023,8 @@ module.exports = class Request extends LazyReadable {
         if (qp === fastQueryParse) {
             return Object.assign(new parseQuery.QueryObject(), fastQueryParse(this._rawQuery));
         }
-        return Object.assign(new parseQuery.QueryObject(), qp(this.urlQuery === "" ? null : this._rawQuery));
+        // the application's own parser answers as it likes, an array or a class of its own
+        return qp(this.urlQuery === "" ? null : this._rawQuery);
     }
 
     /**
