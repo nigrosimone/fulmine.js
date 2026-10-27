@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.25.11](https://github.com/nigrosimone/fulmine.js/compare/v5.25.10...v5.25.11) (2026-10-27)
+
+### Performance Improvements
+
+* start the file thread on the first small file read, 6.5 MB less per process that serves none ([d64100a](https://github.com/nigrosimone/fulmine.js/commit/d64100ac05b178f47e143fa412024b67e039c6da))
+* **compression:** identity hooks drop the request once used, young generation 15 MB instead of 55 under load ([d3124e3](https://github.com/nigrosimone/fulmine.js/commit/d3124e3017363d3396a52e80e619db742a864a65))
+
 ## [5.25.10](https://github.com/nigrosimone/fulmine.js/compare/v5.25.9...v5.25.10) (2026-10-26)
 
 ### Performance Improvements
