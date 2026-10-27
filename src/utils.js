@@ -21,6 +21,7 @@ limitations under the License.
 const { Buffer } = require("buffer");
 const { lazyRequire } = require("./lazy-require.js");
 const mime = /** @type {() => typeof import("mime-types")} */ (lazyRequire("mime-types"));
+const compressible = /** @type {() => typeof import("compressible")} */ (lazyRequire("compressible"));
 const contentType = require("content-type");
 const path = require("path");
 const proxyaddr = require("proxy-addr");
@@ -738,12 +739,67 @@ function memoizeByString(fn) {
 // mime.lookup is 273ns for the same "json" on every response, memoised 6
 const lookupType = memoizeByString((type) => mime().lookup(type) || "application/octet-stream");
 
+// mime-db's answers for the types most apps send, so these do not load the database: half a
+// megabyte of old generation in every worker. A test checks them against mime-types and compressible
+/** @type {Map<string, {charset: string|false, compressible: boolean}>} */
+const KNOWN_TYPES = new Map([
+    ["text/plain", { charset: "UTF-8", compressible: true }],
+    ["text/html", { charset: "UTF-8", compressible: true }],
+    ["text/css", { charset: "UTF-8", compressible: true }],
+    ["text/javascript", { charset: "UTF-8", compressible: true }],
+    ["application/json", { charset: "UTF-8", compressible: true }],
+    ["application/javascript", { charset: "UTF-8", compressible: true }],
+    ["application/octet-stream", { charset: false, compressible: true }]
+]);
+
+// the media type mime-types and compressible read, before any parameter
+const BARE_TYPE = /^\s*([^;\s]*)(?:;|\s|$)/;
+
+/**
+ * mime-types' charset(), without the database for a known type.
+ *
+ * @param {string} type
+ * @returns {string|false}
+ */
+function charsetOf(type) {
+    const known = KNOWN_TYPES.get(BARE_TYPE.exec(type)?.[1].toLowerCase() ?? "");
+    return known === undefined ? mime().charset(type) : known.charset;
+}
+
+/**
+ * compressible(), without the database for a known type.
+ *
+ * @param {string} type
+ * @returns {boolean|undefined}
+ */
+function compressibleType(type) {
+    const known = KNOWN_TYPES.get(BARE_TYPE.exec(type)?.[1].toLowerCase() ?? "");
+    return known === undefined ? compressible()(type) : known.compressible;
+}
+
+/**
+ * mime-types' contentType(): a full type only needs its charset, an extension the database.
+ *
+ * @param {string} value
+ * @returns {string|false}
+ */
+function contentTypeOf(value) {
+    if (value.indexOf("/") === -1) {
+        return mime().contentType(value);
+    }
+    if (value.indexOf("charset") !== -1) {
+        return value;
+    }
+    const charset = charsetOf(value);
+    return charset ? `${value}; charset=${charset.toLowerCase()}` : value;
+}
+
 /**
  * The full content-type an extension stands for, charset included, as res.type() writes it.
  * @param {string} type an extension, or a media type, which is returned as given
  * @returns {string}
  */
-const contentTypeFor = memoizeByString((type) => mime().contentType(type) || "application/octet-stream");
+const contentTypeFor = memoizeByString((type) => contentTypeOf(type) || "application/octet-stream");
 
 /**
  * The content-type res.set stores, as express stores it: an extension resolved with its charset,
@@ -752,7 +808,7 @@ const contentTypeFor = memoizeByString((type) => mime().contentType(type) || "ap
  * @param {string} value
  * @returns {string|false}
  */
-const contentTypeSet = memoizeByString((value) => mime().contentType(value));
+const contentTypeSet = memoizeByString((value) => contentTypeOf(value));
 
 /**
  * A media type from an extension or a full type with its parameters. A fresh object each time,
@@ -1423,7 +1479,7 @@ const withDefaultCharset = memoizeByString((value) => {
     if (CHARSET_PRESENT.test(value)) {
         return value;
     }
-    const charset = mime().charset(value.split(";")[0]);
+    const charset = charsetOf(value.split(";")[0]);
     return charset ? `${value}; charset=${charset.toLowerCase()}` : value;
 });
 
@@ -1701,6 +1757,9 @@ module.exports = {
     mtimeOf,
     contentTypeFor,
     contentTypeSet,
+    charsetOf,
+    compressibleType,
+    KNOWN_TYPES,
     negotiateEncoding,
     ENCODING_BR,
     ENCODING_GZIP,

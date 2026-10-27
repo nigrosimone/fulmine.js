@@ -40,6 +40,46 @@ test("a listening app with a plain route holds none of the heavy dependencies", 
     assert.deepStrictEqual(loaded, []);
 });
 
+test("text, json and compressed json answer without the mime database", () => {
+    const loaded = loadedAfter(`
+        ${listLoaded}
+        const express = require(${index});
+        const app = express();
+        app.get("/text", (req, res) => res.type("text/plain").send("ok"));
+        app.get("/json", express.compression({ threshold: 0 }), (req, res) => res.json({ a: 1 }));
+        const server = app.listen(0, async () => {
+            const url = "http://127.0.0.1:" + server.address().port;
+            const types = [];
+            for (const [path, encoding] of [["/text", "identity"], ["/json", "identity"], ["/json", "br"]]) {
+                const r = await fetch(url + path, { headers: { "accept-encoding": encoding } });
+                await r.arrayBuffer();
+                types.push(r.headers.get("content-type") + " " + r.headers.get("content-encoding"));
+            }
+            process.stdout.write(JSON.stringify({ types, loaded: loaded() }));
+            server.close();
+        });
+    `);
+    assert.deepStrictEqual(loaded.types, [
+        "text/plain; charset=utf-8 null",
+        "application/json; charset=utf-8 null",
+        "application/json; charset=utf-8 br"
+    ]);
+    assert.deepStrictEqual(loaded.loaded, []);
+});
+
+test("the known types answer as mime-types and compressible", () => {
+    const { KNOWN_TYPES, charsetOf, compressibleType, contentTypeSet } = require("../../src/utils.js");
+    const mime = require("mime-types");
+    const compressible = require("compressible");
+    for (const type of KNOWN_TYPES.keys()) {
+        for (const value of [type, type.toUpperCase(), type + "; q=1", " " + type, type + "; charset=latin1"]) {
+            assert.strictEqual(charsetOf(value), mime.charset(value), value);
+            assert.strictEqual(compressibleType(value), compressible(value), value);
+            assert.strictEqual(contentTypeSet(value), mime.contentType(value), value);
+        }
+    }
+});
+
 test("a route added after listen() still answers", async () => {
     const result = spawnSync(
         process.execPath,
