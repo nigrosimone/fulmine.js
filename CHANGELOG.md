@@ -1,5 +1,18 @@
 # Changelog
 
+## [5.25.12](https://github.com/nigrosimone/fulmine.js/compare/v5.25.11...v5.25.12) (2026-10-27)
+
+### Bug Fixes
+
+* **compression:** an uncompressed res.end() keeps its encoding ([892f85f](https://github.com/nigrosimone/fulmine.js/commit/892f85f75e8b906b9b1b419ff1c9a88fe81080fa))
+* **query:** a custom query parser result is req.query as it is ([506b6af](https://github.com/nigrosimone/fulmine.js/commit/506b6af9fef088248dc5428ef7d5ee40cc86af2b))
+* **query:** broken escapes, the 1000 pair limit and qs keys as node and qs answer them ([81ca0a8](https://github.com/nigrosimone/fulmine.js/commit/81ca0a8f8f05658d56661e18b0915088406f42e3))
+* **websocket:** a parameter that does not decode answers 400, and a router mounted twice serves both paths ([94f22d7](https://github.com/nigrosimone/fulmine.js/commit/94f22d7b781034402bdab38fd0b9dc3c22649b35))
+
+### Performance Improvements
+
+* **mime:** common content types answer without loading mime-db, half a megabyte less old generation per process ([85b6b1e](https://github.com/nigrosimone/fulmine.js/commit/85b6b1e7adf7edb0a3ec9165bcf9aed9261f7bd2))
+
 ## [5.25.11](https://github.com/nigrosimone/fulmine.js/compare/v5.25.10...v5.25.11) (2026-10-27)
 
 ### Performance Improvements
