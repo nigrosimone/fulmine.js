@@ -155,8 +155,11 @@ class Application extends Router {
     /** @override @type {boolean} */
     listenCalled = false;
 
-    /** @type {FSWorker[]} */
+    /** The file threads, started on the first small file read. @type {FSWorker[]} */
     workers = [];
+
+    /** How many file threads `threads` asks for. @type {number} */
+    _fileThreads = 0;
 
     /** @type {number|undefined} */
     port;
@@ -277,13 +280,8 @@ class Application extends Router {
                 delete this._settings["trust proxy fn"];
             }
         });
-        for (let i = 0; i < settings.threads; i++) {
-            if (workers[i]) {
-                this.workers[i] = workers[i];
-            } else {
-                this.workers[i] = new FSWorker();
-            }
-        }
+        // a thread is an isolate, 6.5 MB per process an app that serves no file never needed
+        this._fileThreads = settings.threads;
         // at construction as express reads it; an empty NODE_ENV is development
         if (typeof this._settings.env === "undefined") {
             this._settings.env = process.env.NODE_ENV || "development";
@@ -330,6 +328,9 @@ class Application extends Router {
      * @returns {Promise<Buffer>}
      */
     readFileWithWorker(path) {
+        for (let i = this.workers.length; i < this._fileThreads; i++) {
+            this.workers[i] = workers[i] ?? new FSWorker();
+        }
         return new Promise((resolve, reject) => {
             const worker = this.workers[Math.floor(Math.random() * this.workers.length)];
             const key = this.createWorkerTask(resolve, reject);
@@ -359,7 +360,7 @@ class Application extends Router {
         if (pending) {
             return pending;
         }
-        const read = this.workers.length ? this.readFileWithWorker(fullpath) : fs.promises.readFile(fullpath);
+        const read = this._fileThreads > 0 ? this.readFileWithWorker(fullpath) : fs.promises.readFile(fullpath);
         pending = read.then((data) => {
             if (caching && stat.size <= FILE_CACHE_MAX_ENTRY) {
                 const existing = this._fileCache.get(fullpath);
