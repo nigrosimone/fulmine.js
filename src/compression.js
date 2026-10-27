@@ -722,7 +722,7 @@ function compression(options) {
                 return this;
             }
             ended = true;
-            return _end.call(this, chunk, callback);
+            return _end.call(this, chunk, encoding, callback);
         };
 
         /**
