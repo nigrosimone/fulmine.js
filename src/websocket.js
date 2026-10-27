@@ -66,7 +66,8 @@ function joinPaths(prefix, path) {
  * @param {Router} router
  * @param {string|null} prefix the mount path so far, null once a mount was a shape µWS cannot match
  * @param {WsRoute[]} out
- * @param {Set<Router>} seen a router may be mounted twice
+ * @param {Set<Router>} seen the routers on the way down: a router in its own tree is a cycle, one
+ * mounted twice is not
  */
 function collectRoutes(router, prefix, out, seen) {
     if (seen.has(router)) {
@@ -106,6 +107,7 @@ function collectRoutes(router, prefix, out, seen) {
             }
         }
     }
+    seen.delete(router);
 }
 
 /**
@@ -136,8 +138,16 @@ function makeUpgradeHandler(app, path, behavior) {
         request._settleBody();
         if (paramNames.length) {
             const params = new NullObject();
-            for (let i = 0; i < paramNames.length; i++) {
-                params[paramNames[i]] = decodeParam(/** @type {string} */ (req.getParameter(i)));
+            try {
+                for (let i = 0; i < paramNames.length; i++) {
+                    params[paramNames[i]] = decodeParam(/** @type {string} */ (req.getParameter(i)));
+                }
+            } catch {
+                // a broken escape is the client's: a 400 as express answers it, not a thrown URIError
+                res.cork(() => {
+                    res.writeStatus("400 Bad Request").end();
+                });
+                return;
             }
             request.params = params;
         }

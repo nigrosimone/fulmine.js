@@ -121,3 +121,32 @@ test("a mounted websocket keeps the mount path, and a bare mount keeps the route
         await new Promise((resolve) => server.close(() => resolve(undefined)));
     }
 });
+
+test("a parameter that does not decode refuses the upgrade with a 400", async () => {
+    const app = express();
+    app.ws("/room/:id", { message() {} });
+    const server = app.listen(0);
+    try {
+        const port = app.address().port;
+        assert.strictEqual(await handshake(port, "/room/%ZZ"), 400);
+        assert.strictEqual(await handshake(port, "/room/a%20b"), 101, "and the process is still up");
+    } finally {
+        await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+});
+
+test("a router mounted twice serves its websocket under both paths", async () => {
+    const app = express();
+    const router = express.Router();
+    router.ws("/echo", { message() {} });
+    app.use("/a", router);
+    app.use("/b", router);
+    const server = app.listen(0);
+    try {
+        const port = app.address().port;
+        assert.strictEqual(await handshake(port, "/a/echo"), 101);
+        assert.strictEqual(await handshake(port, "/b/echo"), 101);
+    } finally {
+        await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+});
