@@ -2,6 +2,7 @@ import { defineConfig, type HeadConfig } from "vitepress";
 import llmstxt from "vitepress-plugin-llms";
 import { fileURLToPath } from "node:url";
 import speedups from "./theme/speedups.json";
+import realapps from "./theme/realapps.json";
 
 const repo = "https://github.com/nigrosimone/fulmine.js";
 const origin = "https://fulmine.sndesign.it";
@@ -22,6 +23,7 @@ export default defineConfig({
     sitemap: { hostname: origin },
     // Store page-specific tags in page data so they also update on client-side navigation.
     transformPageData(pageData) {
+        if (pageData.relativePath === "real-apps.md") pageData.description = realAppsDescription();
         const pathname = pageData.relativePath.replace(/(^|\/)index\.md$/, "$1").replace(/\.md$/, "");
         const url = new URL(pathname, `${origin}/`).href;
         const title = pageData.titleTemplate === false ? pageData.title : `${pageData.title} | Fulmine.js`;
@@ -154,3 +156,16 @@ export default defineConfig({
         }
     }
 });
+
+// the real-apps page description, from the compat summary that realapps.mjs copies
+function realAppsDescription() {
+    const cut = (name: string, arm: string) => {
+        const day = realapps.projects.find((p) => p.name === name)!.day as Record<string, { cpuMs: number }>;
+        return Math.round((1 - day[arm].cpuMs / day.express.cpuMs) * 100);
+    };
+    return (
+        "LibreChat, n8n and Actual Budget on Fulmine instead of Express. Their own test suites pass, and with no change to " +
+        `their code Actual spends ${cut("actual", "fulmine")}% less CPU, and LibreChat ${cut("librechat", "fulmine + patch")}% with Fulmine's own ` +
+        "compression and static files."
+    );
+}

@@ -16,6 +16,8 @@ const summary = from.startsWith("http")
 const users = "1000000";
 const snapshot = {
     date: summary.date,
+    machine: summary.machine,
+    runs: summary.runs ?? 1,
     prices: summary.prices,
     projects: summary.projects.map((p) => {
         if (!p.day.express || !p.day.fulmine || !p.year[users]) throw new Error(`${p.name}: the summary changed shape`);
@@ -26,6 +28,8 @@ const snapshot = {
             fulmine: p.fulmine,
             day: p.day,
             endpoints: p.endpoints,
+            // CPU saved against Express, lowest and highest of the runs
+            spread: p.spread,
             // the largest difference Express made against a second Express: below it, nothing is a result
             noise: Math.max(...(p.noise || [0])),
             year: p.year[users]

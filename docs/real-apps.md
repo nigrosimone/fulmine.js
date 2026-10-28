@@ -1,7 +1,3 @@
----
-description: LibreChat, n8n and Actual Budget on Fulmine instead of Express. Their own test suites pass, and with no change to their code Actual spends 19% less CPU, and LibreChat 26% with Fulmine's own compression and static files.
----
-
 <!--
 <script setup>
 import RealAppsChart from '../site/.vitepress/theme/RealAppsChart.vue'
@@ -10,6 +6,12 @@ import data from '../site/.vitepress/theme/realapps.json'
 const usd = (v) => '$' + Math.round(v).toLocaleString('en-US')
 const ratio = (v) => v == null ? '' : v.toFixed(2) + 'x'
 const lessTotal = (p) => Math.round((1 - p.year['fulmine + patch'].total / p.year.express.total) * 100)
+// CPU saved in a day of use, and how far apart the runs are, in points
+const less = (name, arm) => {
+    const p = data.projects.find((x) => x.name === name)
+    return Math.round((1 - p.day[arm].cpuMs / p.day.express.cpuMs) * 100)
+}
+const agree = Math.max(1, Math.ceil(Math.max(...data.projects.flatMap((p) => Object.values(p.spread ?? {}).map(([low, high]) => high - low))) * 100))
 </script>
 -->
 
@@ -79,18 +81,18 @@ These servers are light, so it depends on scale. With a million active users a d
 </table>
 
 Compute is a small part of that bill and outbound traffic the large one. Without a change Fulmine
-takes 19% of the compute on Actual and 6% on LibreChat, which barely shows in the total. With the
+takes {{ less('actual', 'fulmine') }}% of the compute on Actual and {{ less('librechat', 'fulmine') }}% on LibreChat, which barely shows in the total. With the
 best setup most of the saving is the web app going out compressed, which Express can also do through
 a plugin: what Fulmine adds is one option, and less CPU per file. A single small instance sees no
 difference on the invoice, it pays its minimum either way.
 
 ## How it was measured
 
-One ARM core of a GitHub Actions runner (Neoverse N2, 4 cores, no SMT) for the server, wrk on two
+One ARM core of a GitHub Actions runner ({{ data.machine }}, 4 cores, no SMT) for the server, wrk on two
 others, the database on the fourth. Both servers start from one checkout as their Docker image starts
 them, each with its own database and the same seed. Five alternating rounds per endpoint, CPU read
-from `/proc`, and an A/A run of Express against Express to measure the noise. Each project runs three times, each
-time on its own machine, and the figures are the median: the three agree within 1%. Both servers run
+from `/proc`, and an A/A run of Express against Express to measure the noise. Each project runs {{ data.runs }} times, each
+time on its own machine, and the figures are the median: the runs agree within {{ agree }} points. Both servers run
 without V8's memory reducer and get one full GC after seeding, so the pauses between rounds do not
 change their heap. Measured on
 {{ data.date }}, Express {{ data.projects[0].express }}, Fulmine {{ [...new Set(data.projects.map((p) => p.fulmine))].join(' and ') }}. To run
