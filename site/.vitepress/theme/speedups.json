@@ -1,6 +1,6 @@
 {
     "period": "the last 20 CI runs, 21 October 2026 to 27 October 2026",
-    "headline": 14,
+    "headline": 16,
     "figures": {
         "routing/api-endpoint": {
             "min": 1.58,

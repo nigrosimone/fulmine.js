@@ -100,10 +100,15 @@ for (const page of PAGES) {
     }
 }
 
+// the headline is the 1,000 parameterized routes, as on the home page, and package.json says it too
+const headline = Math.round(figures["routing/routes-1000-params"].p90);
 await writeFile(
     new URL(".vitepress/theme/speedups.json", import.meta.url),
-    JSON.stringify({ period, headline: Math.round(figures.tables.p90), figures }, null, 4) + "\n"
+    JSON.stringify({ period, headline, figures }, null, 4) + "\n"
 );
+const pkgUrl = new URL("../package.json", import.meta.url);
+const pkg = await readFile(pkgUrl, "utf8");
+await writeFile(pkgUrl, pkg.replace(/("description": "[^"]*up to )\d+x/, `$1${headline}x`));
 for (const name of [...Object.keys(GROUPS), ...Object.keys(medians).sort()]) {
     const f = figures[name];
     console.log(`${name.padEnd(40)} ${one(f.p10)}x to ${one(f.p90)}x, median ${one(f.median)}x over ${f.runs}`);

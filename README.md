@@ -1,6 +1,6 @@
 <img src="./assets/logo-mark.svg" alt="" width="88" align="right">
 
-# Fulmine.js: the drop-in Express 5 replacement, up to <!--speedup:tables:p90-->14<!--/speedup-->x faster on large route tables
+# Fulmine.js: the drop-in Express 5 replacement, up to <!--speedup:routing/routes-1000-params:p90-->16<!--/speedup-->x faster on large route tables
 
 **Fulmine** (lightning in Italian ⚡) is an Express 5 compatible web framework for Node.js, built on
 [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js) instead of `node:http`. Same API, same
