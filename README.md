@@ -25,8 +25,8 @@ const express = require("fulmine.js"); // instead of require("express")
 
 ## Why Fulmine
 
-- **Faster than Express, measured.** <!--speedup:plain:to-->1.2x to 3.2x<!--/speedup--> on plain routing, <!--speedup:body:to-->1.9x to 4.1x<!--/speedup--> on a request with a body,
-  <!--speedup:tables:to-->8.0x to 13.5x<!--/speedup--> on a large route table, 10th to 90th percentile of <!--speedup:period:text-->the last 20 CI runs, 20 October 2026 to 26 October 2026<!--/speedup-->. Routes are matched in C++ by µWS's own router,
+- **Faster than Express, measured.** <!--speedup:plain:to-->1.3x to 3.0x<!--/speedup--> on plain routing, <!--speedup:body:to-->2.3x to 4.0x<!--/speedup--> on a request with a body,
+  <!--speedup:tables:to-->9.2x to 13.8x<!--/speedup--> on a large route table, 10th to 90th percentile of <!--speedup:period:text-->the last 20 CI runs, 21 October 2026 to 27 October 2026<!--/speedup-->. Routes are matched in C++ by µWS's own router,
     and a simple enough handler is answered without running any JavaScript at all.
 - **Zero rewrite.** `helmet`, `cors`, `passport`, `morgan`, `multer`, `express-session` and the rest of
   the Express ecosystem keep working. Not "mostly": every test runs against real Express first and the
