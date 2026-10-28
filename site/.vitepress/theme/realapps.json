@@ -1,5 +1,5 @@
 {
-    "date": "2026-10-21",
+    "date": "2026-10-28",
     "prices": {
         "cloud": "AWS Fargate ARM, us-east-1",
         "taskHour": 0.0395,
@@ -12,90 +12,90 @@
             "name": "actual",
             "title": "Actual Budget, sync server",
             "express": "5.3.0",
-            "fulmine": "5.25.7",
+            "fulmine": "5.25.12",
             "day": {
                 "express": {
-                    "cpuMs": 98.30991375798654,
-                    "mbOut": 0.7496807520107417
+                    "cpuMs": 60.43349506919463,
+                    "mbOut": 0.5635989921795822
                 },
                 "fulmine": {
-                    "cpuMs": 83.02495187496123,
-                    "mbOut": 0.748119354780433
+                    "cpuMs": 49.109158889135266,
+                    "mbOut": 0.5618533341327683
                 },
                 "fulmine + patch": {
-                    "cpuMs": 83.38522894677706,
-                    "mbOut": 0.5783396323376016
+                    "cpuMs": 48.90694895682908,
+                    "mbOut": 0.3927567250565061
                 }
             },
             "endpoints": [
                 {
                     "name": "health",
                     "what": "GET /health, the container health check",
-                    "plain": 3.212631327735365,
-                    "patch": 3.1183053557154277
+                    "plain": 2.944179149790146,
+                    "patch": 2.982430997699954
                 },
                 {
                     "name": "validate",
                     "what": "GET /account/validate, the session check on every client start",
-                    "plain": 1.3778793112513745,
-                    "patch": 1.403830528148578
+                    "plain": 1.400889425266418,
+                    "patch": 1.4049459041731067
                 },
                 {
                     "name": "list-files",
                     "what": "GET /sync/list-user-files, the budget picker",
-                    "plain": 1.3636906734856622,
-                    "patch": 1.3599712918660287
+                    "plain": 1.3544718064273835,
+                    "patch": 1.3516875811337083
                 },
                 {
                     "name": "sync-idle",
                     "what": "POST /sync/sync with nothing new, what an open budget sends over and over",
-                    "plain": 1.0792720879120878,
-                    "patch": 1.0893657345761207
+                    "plain": 1.1152247336970642,
+                    "patch": 1.1197029809338708
                 },
                 {
                     "name": "sync-day",
                     "what": "POST /sync/sync from a day back, a client catching up",
-                    "plain": 1.0143460464602303,
-                    "patch": 1.0209204342894183
+                    "plain": 1.0463150657325415,
+                    "patch": 1.047895561627387
                 },
                 {
                     "name": "index",
                     "what": "GET /, the web app's index.html",
-                    "plain": 7.801549100250399,
-                    "patch": 7.658071846866532
+                    "plain": 8.175916169066856,
+                    "patch": 8.043082453902354
                 },
                 {
                     "name": "bundle",
                     "what": "GET of the main bundle, 1.2 MB: a first visit, a new release, a browser without cache",
-                    "plain": 1.4342682111277152,
-                    "patch": 33.01394849785408
+                    "plain": 1.4611100860083772,
+                    "patch": 34.601540332387515
                 },
                 {
                     "name": "bundle-304",
                     "what": "GET of the main bundle with If-None-Match, a returning browser",
-                    "plain": 2.4968569691724363,
-                    "patch": 2.2237922562483865
+                    "plain": 2.229247693762298,
+                    "patch": 2.022238817909813
                 }
             ],
-            "noise": 0.006467303387275747,
+            "noise": 0.0588238874605973,
             "year": {
                 "express": {
-                    "tasks": 2.27569244810154,
-                    "compute": 787.435100892095,
-                    "egress": 24049.817093313348,
-                    "total": 24837.252194205445
+                    "tasks": 1.3989234969720978,
+                    "compute": 484.05550842228524,
+                    "egress": 18080.29970029226,
+                    "total": 18564.355208714547
                 },
                 "fulmine": {
-                    "tasks": 1.9218738859944733,
-                    "compute": 665.0068020318076,
-                    "egress": 23999.72734818088,
-                    "total": 24664.734150212687
+                    "tasks": 1.1367860853966498,
+                    "compute": 393.3507212689488,
+                    "egress": 18024.29885377094,
+                    "total": 18417.649575039886
                 },
                 "fulmine + patch": {
-                    "tasks": 1.9302136330272466,
-                    "compute": 667.8925213000879,
-                    "egress": 18553.180588174033,
-                    "total": 19221.07310947412
+                    "tasks": 1.1321052999265993,
+                    "compute": 391.73107588060185,
+                    "egress": 12599.66642393186,
+                    "total": 12991.397499812461
                 }
             }
         },
@@ -103,90 +103,90 @@
             "name": "librechat",
             "title": "LibreChat, API server",
             "express": "5.3.0",
-            "fulmine": "5.25.7",
+            "fulmine": "5.25.12",
             "day": {
                 "express": {
-                    "cpuMs": 88.14788203442396,
-                    "mbOut": 0.21781208401055177
+                    "cpuMs": 62.57382967395053,
+                    "mbOut": 0.2175413933212494
                 },
                 "fulmine": {
-                    "cpuMs": 86.92921014871519,
-                    "mbOut": 0.21775769520709654
+                    "cpuMs": 58.99992077962625,
+                    "mbOut": 0.21764644667711558
                 },
                 "fulmine + patch": {
-                    "cpuMs": 64.86740754337036,
-                    "mbOut": 0.1852517531244855
+                    "cpuMs": 46.40599179891131,
+                    "mbOut": 0.1852858253922828
                 }
             },
             "endpoints": [
                 {
                     "name": "health",
                     "what": "GET /health, the container health check",
-                    "plain": 3.5036482788777854,
-                    "patch": 3.492399992199947
+                    "plain": 3.479403108143703,
+                    "patch": 3.49619644117508
                 },
                 {
                     "name": "index",
                     "what": "GET /, the page, with a CSP nonce of its own each time",
-                    "plain": 1.099923165805237,
-                    "patch": 1.7235027283098023
+                    "plain": 1.2459681408924508,
+                    "patch": 2.180682893751677
                 },
                 {
                     "name": "bundle",
                     "what": "GET of the main bundle, 0.9 MB served from its .gz twin: a first visit, a new release",
-                    "plain": 1.0756466267590605,
-                    "patch": 11.060113462260261
+                    "plain": 1.1257027328994271,
+                    "patch": 10.758315318575905
                 },
                 {
                     "name": "config",
                     "what": "GET /api/config, the first call of every page load",
-                    "plain": 1.0501125082535012,
-                    "patch": 1.301868335634209
+                    "plain": 1.0411775111570571,
+                    "patch": 1.2198302520883166
                 },
                 {
                     "name": "user",
                     "what": "GET /api/user, the signed in user",
-                    "plain": 1.0996204388668471,
-                    "patch": 1.3149524489068996
+                    "plain": 1.085964012793281,
+                    "patch": 1.283514986376022
                 },
                 {
                     "name": "endpoints",
                     "what": "GET /api/endpoints, the model menu",
-                    "plain": 1.1032630715603853,
-                    "patch": 1.288321924911844
+                    "plain": 1.077415512231514,
+                    "patch": 1.2524253679046953
                 },
                 {
                     "name": "convos",
                     "what": "GET /api/convos, the sidebar: 25 conversations of 200",
-                    "plain": 1.0346553715825952,
-                    "patch": 1.222929618372646
+                    "plain": 1.0574297031276496,
+                    "patch": 1.2201342281879195
                 },
                 {
                     "name": "messages",
                     "what": "GET /api/messages/:id, opening a conversation of 20 messages",
-                    "plain": 1.0542116857064898,
-                    "patch": 1.2707654535813473
+                    "plain": 1.0606761051719156,
+                    "patch": 1.2415041256321533
                 }
             ],
-            "noise": 0.01709958150567803,
+            "noise": 0.018565173654026546,
             "year": {
                 "express": {
-                    "tasks": 2.0404602322783325,
-                    "compute": 706.0400495729485,
-                    "egress": 6987.428671627564,
-                    "total": 7693.468721200512
+                    "tasks": 1.4484682794895953,
+                    "compute": 501.1989940689898,
+                    "egress": 6978.744893167034,
+                    "total": 7479.943887236024
                 },
                 "fulmine": {
-                    "tasks": 2.0122502349239624,
-                    "compute": 696.2788262883895,
-                    "egress": 6985.683874563595,
-                    "total": 7681.962700851985
+                    "tasks": 1.3657389069357926,
+                    "compute": 472.572976577923,
+                    "egress": 6982.115013030513,
+                    "total": 7454.6879896084365
                 },
                 "fulmine + patch": {
-                    "tasks": 1.50156035980024,
-                    "compute": 519.5699156980791,
-                    "egress": 5942.890713026707,
-                    "total": 6462.460628724786
+                    "tasks": 1.0742127731229467,
+                    "compute": 371.69910375600205,
+                    "egress": 5943.98375403954,
+                    "total": 6315.682857795542
                 }
             }
         }

@@ -117,7 +117,7 @@ app.listen(3000);
 <div class="fm-section-copy">
 <p class="fm-eyebrow"><span class="fm-section-number">04</span> REAL APPLICATIONS</p>
 <h2 id="realapps-title">Real apps.<br>Up to {{ bestCut }}% less CPU.</h2>
-<p><a href="https://github.com/danny-avila/LibreChat">LibreChat</a>, <a href="https://github.com/n8n-io/n8n">n8n</a> and <a href="https://github.com/actualbudget/actual">Actual Budget</a> on Fulmine, with no change to their code: their test suites pass as they do on Express. Actual spends 16% less CPU per user with no change, LibreChat 24% with Fulmine's own compression and static files.</p>
+<p><a href="https://github.com/danny-avila/LibreChat">LibreChat</a>, <a href="https://github.com/n8n-io/n8n">n8n</a> and <a href="https://github.com/actualbudget/actual">Actual Budget</a> on Fulmine, with no change to their code: their test suites pass as they do on Express. Actual spends 19% less CPU per user with no change, LibreChat 26% with Fulmine's own compression and static files.</p>
 <a class="fm-text-link" href="/real-apps">See how it was measured <span aria-hidden="true">→</span></a>
 <a class="fm-subtle-link" href="https://github.com/nigrosimone/fulmine-compat">The scripts and the raw results</a>
 </div>
