@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.26.0](https://github.com/nigrosimone/fulmine.js/compare/v5.25.12...v5.26.0) (2026-10-29)
+
+### Features
+
+* the app is a listener for node:http2 too, and req.protocol behind https.createServer reads node's socket ([2ff32a8](https://github.com/nigrosimone/fulmine.js/commit/2ff32a8fd1d86c70223cf9b3f074926c6a0d9d57))
+
 ## [5.25.12](https://github.com/nigrosimone/fulmine.js/compare/v5.25.11...v5.25.12) (2026-10-27)
 
 ### Bug Fixes
