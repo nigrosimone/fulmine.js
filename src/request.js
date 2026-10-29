@@ -821,21 +821,21 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * Always "1.1": uWS reports no version through this API.
+     * "1.1" on uWS, which reports no version through this API; node's own behind the shim.
      * @returns {string}
      */
     get httpVersion() {
-        return "1.1";
+        return this._res._nodeReq?.httpVersion ?? "1.1";
     }
 
     /** @returns {number} */
     get httpVersionMajor() {
-        return 1;
+        return this._res._nodeReq?.httpVersionMajor ?? 1;
     }
 
     /** @returns {number} */
     get httpVersionMinor() {
-        return 1;
+        return this._res._nodeReq?.httpVersionMinor ?? 1;
     }
 
     /**
@@ -875,6 +875,15 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
+     * Whether the connection is TLS: the app's ssl flag on uWS, node's socket behind the shim.
+     * @returns {boolean}
+     */
+    _encrypted() {
+        const nodeReq = this._res._nodeReq;
+        return nodeReq === undefined ? Boolean(this.app.ssl) : nodeReq.socket?.encrypted === true;
+    }
+
+    /**
      * "http" or "https", from X-Forwarded-Proto behind a trusted proxy.
      * @returns {string}
      */
@@ -882,7 +891,7 @@ module.exports = class Request extends LazyReadable {
         // express reads socket.encrypted, which middleware assigns to; the app's ssl flag answers
         // while no stand-in was built
         const conn = this.#cachedConnection;
-        const proto = (conn ? conn.encrypted : this.app.ssl) ? "https" : "http";
+        const proto = (conn ? conn.encrypted : this._encrypted()) ? "https" : "http";
         const trust = this.app._hot().trustProxyFn;
         if (!trust) {
             return proto;

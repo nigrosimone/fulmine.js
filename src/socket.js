@@ -75,7 +75,9 @@ class Socket extends EventEmitter {
         super();
         this.response = response;
         this.#app = response.req.app;
-        this.encrypted = this.#app.ssl;
+        // node's own socket behind the shim, https.createServer(app) has no ssl option to read
+        const nodeReq = response._res._nodeReq;
+        this.encrypted = nodeReq === undefined ? this.#app.ssl : nodeReq.socket?.encrypted === true;
         this.localPort = this.#app.port;
 
         // shared, not an arrow: one per process instead of one per materialized socket

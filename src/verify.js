@@ -46,8 +46,8 @@ const NEEDS_A_LOOK = {
     "socket.io": "attach it with io.attachApp(app.uwsApp), not io.attach(server): there is no node socket to take over",
     ws: "the websocket server is µWS's own, through app.ws(path, behavior)",
     "express-ws": "the same: app.ws(path, behavior) is built in",
-    spdy: "no spdy here; TLS is configured through express({ uwsOptions: { key_file_name, cert_file_name } })",
-    "http2-express-bridge": "no HTTP/2 server to bridge to"
+    spdy: "no spdy here; HTTP/2 is http2.createSecureServer(options, app), TLS on µWS is express({ uwsOptions })",
+    "http2-express-bridge": "not needed: hand the app to http2.createSecureServer(options, app) directly"
 };
 
 /**

@@ -23,7 +23,7 @@ is documented by Express itself.
 | [Client IP behind HAProxy, AWS NLB, nginx or Envoy](./proxy-protocol)  | `app.set("trust proxy protocol", true)`        |
 | [Graceful shutdown](./graceful-shutdown)                               | `app.listen()` answers as an `http.Server`     |
 | [Trace requests with diagnostics_channel](./monitoring)                | `express.router.request`, `http.server.*`      |
-| [Run on node:http, Bun and Deno](./node-http)                          | `http.createServer(app)`                       |
+| [Run on node:http, node:http2, Bun and Deno](./node-http)              | `http.createServer(app)`                       |
 | [DELETE with a JSON body](./body-methods)                              | `app.set("body methods", ["DELETE"])`          |
 | [Move a project from Express](/migrating)                              | `npx fulmine.js migrate`                       |
 | [See what listen() decided](/performance)                              | `npx fulmine.js profile` and `explain`         |

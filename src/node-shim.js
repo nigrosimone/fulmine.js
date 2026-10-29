@@ -25,6 +25,12 @@ const { IncomingMessage } = require("http");
 const { HEADER_NAME_BUF, HEADER_VALUE_BUF } = require("./response-utils.js");
 const { repairStringPrototype } = require("./utils.js");
 
+// HTTP/2 refuses these on a response, the connection is the session's
+const CONNECTION_HEADERS = new Set(["connection", "keep-alive", "proxy-connection", "transfer-encoding", "upgrade"]);
+
+/** node:http2's compat request, loaded on the first request that is neither ours nor node:http's. @type {Function|undefined} */
+let Http2ServerRequest;
+
 /** What µWS returns for an address nobody declared. */
 const emptyAddress = new ArrayBuffer(0);
 
@@ -145,9 +151,13 @@ class NodeHttpRequest {
     /** undefined with no "?", "" with an empty query, as uWS answers. @type {string|undefined} */
     _query;
 
+    /** Whether the request came over HTTP/2, where :authority stands in for Host. @type {boolean} */
+    _h2;
+
     /** @param {import("http").IncomingMessage} req */
     constructor(req) {
         this._req = req;
+        this._h2 = req.httpVersionMajor === 2;
         const url = req.url || "/";
         const question = url.indexOf("?");
         this._path = question === -1 ? url : url.slice(0, question);
@@ -188,14 +198,38 @@ class NodeHttpRequest {
      */
     forEach(cb) {
         const raw = this._req.rawHeaders;
+        if (this._h2) {
+            this._forEachH2(raw, cb);
+            return;
+        }
         for (let i = 0; i < raw.length; i += 2) {
             cb(raw[i].toLowerCase(), raw[i + 1]);
         }
     }
 
+    /**
+     * HTTP/2's headers without the pseudo ones, :authority as Host when no Host came (RFC 9113 8.3.1).
+     * @param {string[]} raw
+     * @param {(key: string, value: string) => void} cb
+     */
+    _forEachH2(raw, cb) {
+        const hasHost = this._req.headers.host !== undefined;
+        for (let i = 0; i < raw.length; i += 2) {
+            const name = raw[i];
+            if (name.charCodeAt(0) !== 58 /* : */) {
+                cb(name.toLowerCase(), raw[i + 1]);
+            } else if (name === ":authority" && !hasHost) {
+                cb("host", raw[i + 1]);
+            }
+        }
+    }
+
     /** @param {string} name */
     getHeader(name) {
-        const value = this._req.headers[name];
+        let value = this._req.headers[name];
+        if (value === undefined && this._h2 && name === "host") {
+            value = this._req.headers[":authority"];
+        }
         if (value === undefined) {
             return "";
         }
@@ -240,6 +274,9 @@ class NodeHttpResponse {
     /** @type {boolean} */
     _onDataListening = false;
 
+    /** Whether the response goes over HTTP/2, which has no reason phrase nor connection headers. @type {boolean} */
+    _h2;
+
     /**
      * @param {import("http").IncomingMessage} req
      * @param {import("http").ServerResponse} res
@@ -247,6 +284,7 @@ class NodeHttpResponse {
     constructor(req, res) {
         this._nodeReq = req;
         this._nodeRes = res;
+        this._h2 = req.httpVersionMajor === 2;
     }
 
     /**
@@ -262,7 +300,8 @@ class NodeHttpResponse {
     writeStatus(status) {
         const space = status.indexOf(" ");
         this._nodeRes.statusCode = parseInt(space === -1 ? status : status.slice(0, space), 10);
-        if (space !== -1) {
+        // node:http2 warns on a reason phrase, the protocol has none
+        if (space !== -1 && !this._h2) {
             this._nodeRes.statusMessage = status.slice(space + 1);
         }
         return this;
@@ -277,7 +316,11 @@ class NodeHttpResponse {
     writeHeader(key, value) {
         if (!this._nodeRes.headersSent) {
             // writeHeaders hands the recurring names and values over as Buffers
-            this._nodeRes.appendHeader(headerText(key), headerText(value));
+            const name = headerText(key);
+            if (this._h2 && CONNECTION_HEADERS.has(name.toLowerCase())) {
+                return this;
+            }
+            this._nodeRes.appendHeader(name, headerText(value));
         }
         return this;
     }
@@ -295,13 +338,33 @@ class NodeHttpResponse {
             return this;
         }
         if (body === undefined || body === null || body === "") {
+            if (this._h2) {
+                this._setLength(0);
+            }
             this._nodeRes.end();
             return this;
         }
         const data = toNodeChunk(body);
-        this._offset += byteLength(data);
+        const length = byteLength(data);
+        this._offset += length;
+        if (this._h2) {
+            this._setLength(length);
+        }
         this._nodeRes.end(data);
         return this;
+    }
+
+    /**
+     * The length node:http works out for a body ended in one go and node:http2 does not.
+     *
+     * @param {number} length
+     */
+    _setLength(length) {
+        const res = this._nodeRes;
+        const status = res.statusCode;
+        if (!res.headersSent && status !== 204 && status !== 304 && status >= 200 && !res.hasHeader("content-length")) {
+            res.setHeader("Content-Length", String(length));
+        }
     }
 
     /**
@@ -510,7 +573,15 @@ class NodeHttpResponse {
  * @param {unknown} req
  */
 function isNodeRequest(req) {
-    return req instanceof IncomingMessage;
+    if (req instanceof IncomingMessage) {
+        return true;
+    }
+    // only node:http2's compat request has a stream, ours and the plain test objects do not
+    if (req === null || typeof req !== "object" || /** @type {any} */ (req).stream === undefined) {
+        return false;
+    }
+    Http2ServerRequest ??= require("http2").Http2ServerRequest;
+    return req instanceof /** @type {any} */ (Http2ServerRequest);
 }
 
 /**
