@@ -21,8 +21,9 @@ app.post(
         useTempFiles: true,
         debug: false
     }),
-    (req, res) => {
-        req.files.file.mv(moved);
+    // the move is awaited: the client stats the file once the response is in, and on Bun the stat won the race
+    async (req, res) => {
+        await req.files.file.mv(moved);
         res.send(req.files.file.size.toString());
     }
 );
