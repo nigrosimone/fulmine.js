@@ -1,6 +1,5 @@
 // must answer https for an app handed to https.createServer, which only node's socket knows
 // INSPECT
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"; // ignore self-signed certificate error
 
 const express = require("express");
 const https = require("https");
@@ -20,9 +19,15 @@ const server = https.createServer(
     app
 );
 
-server.listen(13333, async () => {
-    const response = await fetch("https://localhost:13333/test");
-    console.log(response.status, await response.text());
-    server.close();
-    process.exit(0);
+// https.get and not fetch: Deno's fetch ignores NODE_TLS_REJECT_UNAUTHORIZED
+server.listen(13333, () => {
+    https.get("https://localhost:13333/test", { rejectUnauthorized: false }, (response) => {
+        let body = "";
+        response.on("data", (chunk) => (body += chunk));
+        response.on("end", () => {
+            console.log(response.statusCode, body);
+            server.close();
+            process.exit(0);
+        });
+    });
 });
