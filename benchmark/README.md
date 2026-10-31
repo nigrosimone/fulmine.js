@@ -128,6 +128,8 @@ included: heap read in the µWS handler every thousand requests, a client in ano
 Heap probes run without JIT or coverage, with fixed young-generation bounds; GC inside
 an allocation sample invalidates it. Budgets do not measure throughput. Runtime upgrades
 require recalibration and a failing check against the previous implementations.
+`v8-steady-state.test.js` warms a server on a mix of requests, then turns `--trace-deopt` on: a
+deopt in `src/` after that, or a hot function that is not TurboFan code, fails it.
 
 ## Where the time goes
 
