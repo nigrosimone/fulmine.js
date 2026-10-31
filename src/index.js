@@ -20,7 +20,8 @@ limitations under the License.
 const Application = require("./application.js");
 const Router = require("./router.js");
 const Route = require("./route.js");
-const middlewares = require("./middlewares.js");
+const bodyParser = require("./body-parser.js");
+const serveStatic = require("./static.js");
 const Request = require("./request.js");
 const Response = require("./response.js");
 
@@ -70,7 +71,7 @@ module.exports.response = Response.prototype;
 // adding a method here adds it to every app, the same as express.application
 module.exports.application = Application.Application.prototype;
 
-module.exports.static = middlewares.static;
+module.exports.static = serveStatic;
 // what listen() decided about each route, as something a test can assert on. See src/testing.js
 module.exports.testing = require("./testing.js");
 // undefined on express: how code that may run on either tells which one it has
@@ -79,7 +80,7 @@ module.exports.isFulmine = true;
 module.exports.compression = require("./compression.js");
 // Server-Timing with the routing verdict in it. See src/server-timing.js
 module.exports.serverTiming = require("./server-timing.js");
-module.exports.json = middlewares.json;
-module.exports.urlencoded = middlewares.urlencoded;
-module.exports.text = middlewares.text;
-module.exports.raw = middlewares.raw;
+module.exports.json = bodyParser.json;
+module.exports.urlencoded = bodyParser.urlencoded;
+module.exports.text = bodyParser.text;
+module.exports.raw = bodyParser.raw;

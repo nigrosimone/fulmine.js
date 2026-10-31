@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const path = require("node:path");
 const { performance, PerformanceObserver } = require("node:perf_hooks");
 const source = path.resolve(process.env.FULMINE_PERF_SOURCE || path.join(__dirname, "../../src"));
@@ -12,7 +13,13 @@ assert.equal(typeof global.gc, "function");
 const middleware =
     kind === "identity"
         ? require(path.join(source, "compression.js"))
-        : require(path.join(source, "middlewares.js")).text;
+        : // body-parser.js was middlewares.js until 2026-10-31, an older source is still read
+          require(
+              path.join(
+                  source,
+                  fs.existsSync(path.join(source, "body-parser.js")) ? "body-parser.js" : "middlewares.js"
+              )
+          ).text;
 
 function fixture() {
     const keep = new Array(count).fill(null);
