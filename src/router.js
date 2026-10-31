@@ -300,7 +300,7 @@ module.exports = class Router extends EventEmitter {
             adoptPlainRequest(req, this);
         }
         // an app taking over a request becomes its req.app, as when mounted; a plain router does not
-        if (this.constructor.name === "Application") {
+        if (this._isApplication) {
             useApp(req, this);
         }
         // express restores req.params when a router hands back
@@ -1304,10 +1304,7 @@ module.exports = class Router extends EventEmitter {
             path = "";
         }
         callbacks = callbacks.flat(Infinity);
-        checkHandlers(
-            callbacks,
-            this.constructor.name === "Application" ? "app.use() requires a middleware function" : undefined
-        );
+        checkHandlers(callbacks, this._isApplication ? "app.use() requires a middleware function" : undefined);
 
         for (const callback of callbacks) {
             // only app.use() mounts an app: handed to a Router it is a function to express, with its

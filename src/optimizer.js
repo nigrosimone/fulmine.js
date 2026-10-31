@@ -295,10 +295,7 @@ function compileOptimizedRoutes(root) {
                                 callbackKinds: [],
                                 keepMount: true,
                                 // a mounted sub-app becomes req.app during its dispatch
-                                mountApp:
-                                    route.callbacks[0].constructor.name === "Application"
-                                        ? route.callbacks[0]
-                                        : undefined
+                                mountApp: route.callbacks[0]._isApplication ? route.callbacks[0] : undefined
                             }
                         ],
                         guards
