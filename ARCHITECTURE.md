@@ -65,7 +65,8 @@ Middleware and extras
 
 | file               | what it is                                                       |
 | ------------------ | ---------------------------------------------------------------- |
-| `middlewares.js`   | `express.static` and the four body parsers                       |
+| `static.js`        | `express.static`                                                 |
+| `body-parser.js`   | the four body parsers                                            |
 | `compression.js`   | `express.compression()`                                          |
 | `server-timing.js` | `express.serverTiming()`, with the routing verdict in the header |
 | `testing.js`       | `express.testing`, so a test can assert a route stayed native    |
@@ -133,7 +134,7 @@ because that is code the analysis never saw.
 ## What the walk carries on the request
 
 These fields are the dispatch protocol. They are private and they are the thing to understand
-before changing `walk.js` or `router.js`.
+before changing `walk.js` or `router.js`. The list holds the ones read in three files or more.
 
 | field                       | meaning                                                                     |
 | --------------------------- | --------------------------------------------------------------------------- |
@@ -146,6 +147,10 @@ before changing `walk.js` or `router.js`.
 | `_leaveRoute`               | the `next` that leaves the whole route, which is what `sendFile` reports to |
 | `_mustRefuse`               | the framing is not trustworthy, hang up without answering                   |
 | `_matchedMethods`           | the verbs a path answers, for the OPTIONS reply                             |
+| `_isHead` / `_isOptions`    | the method flags, read per route instead of comparing `method`              |
+| `_params` / `_paramStack`   | the params of this layer, and of the mounts entered, outermost first        |
+| `_baseUrlLevels`            | what each router puts back in `req.baseUrl` on the way out, null before use |
+| `_baseUrlOverride`          | what a middleware assigned to `req.baseUrl`                                 |
 
 Two rules follow from Express and are easy to break:
 
