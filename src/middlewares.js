@@ -27,7 +27,6 @@ const zlib = /** @type {() => typeof import("fast-zlib")} */ (lazyRequire("fast-
 const typeis = /** @type {() => typeof import("type-is")} */ (lazyRequire("type-is"));
 const mime = /** @type {() => typeof import("mime-types")} */ (lazyRequire("mime-types"));
 const compressible = /** @type {() => typeof import("compressible")} */ (lazyRequire("compressible"));
-const ms = require("ms");
 const qs = /** @type {() => typeof import("qs")} */ (lazyRequire("qs"));
 const statuses = require("statuses");
 const parseQuery = require("./parse-query.js");
@@ -78,6 +77,7 @@ const {
     fastQueryParse,
     NullObject,
     asStatError,
+    durationSetting,
     httpError,
     httpErrorName,
     memoizeByString,
@@ -490,6 +490,23 @@ function findIndexFile(dir, indexList) {
 }
 
 /**
+ * A request express.static will not serve: next() under fallthrough, else the status and an error.
+ *
+ * @param {Response} res
+ * @param {(err?: unknown) => void} next
+ * @param {boolean|undefined} fallthrough
+ * @param {number} status
+ * @param {unknown} [fsError] handed on as serve-static hands the fs error, else a plain HttpError
+ */
+function refuse(res, next, fallthrough, status, fsError) {
+    if (fallthrough) {
+        return next();
+    }
+    res.status(status);
+    return next(fsError === undefined ? httpError(status) : asStatError(/** @type {HttpError} */ (fsError)));
+}
+
+/**
  * express.static, a front for res.sendFile: the path, the root, the dotfiles and index rules.
  *
  * @param {string} root directory to serve from
@@ -531,17 +548,7 @@ function serveStatic(root, options) {
     let twinTtl = 0;
     if (options.preCompressed) {
         const cache = typeof options.preCompressed === "object" ? options.preCompressed.cache : undefined;
-        twinTtl =
-            cache === undefined
-                ? 1000
-                : cache === false
-                  ? 0
-                  : typeof cache === "string"
-                    ? ms(/** @type {import("ms").StringValue} */ (cache))
-                    : cache;
-        if (typeof twinTtl !== "number" || !(twinTtl >= 0)) {
-            throw new TypeError("option preCompressed.cache must be a duration");
-        }
+        twinTtl = cache === undefined ? 1000 : durationSetting(cache, "option preCompressed.cache");
     }
     options.root = root;
     const resolvedRoot = path.resolve(root);
@@ -574,25 +581,16 @@ function serveStatic(root, options) {
             url = decodeURIComponent(rawPath);
         } catch (e) {
             // a 400 as send answers it
-            if (!options.fallthrough) {
-                res.status(400);
-                return next(httpError(400));
-            } else return next();
+            return refuse(res, next, options.fallthrough, 400);
         }
         // a decoded NUL is a 400 as in send: reaching fs it came back as node's error with the
         // absolute root path inside
         if (url.indexOf("\0") !== -1) {
-            if (!options.fallthrough) {
-                res.status(400);
-                return next(httpError(400));
-            } else return next();
+            return refuse(res, next, options.fallthrough, 400);
         }
         // a ".." that climbs out is a 403 before the disk is asked, as in send, with "\" counted on posix too
         if (url.includes("..") && UP_PATH_REGEXP.test(path.normalize("." + path.sep + url))) {
-            if (!options.fallthrough) {
-                res.status(403);
-                return next(httpError(403));
-            } else return next();
+            return refuse(res, next, options.fallthrough, 403);
         }
         let _path = url;
         // Joined against the root, not normalised alone: a ".." must climb relative to the root so
@@ -611,10 +609,7 @@ function serveStatic(root, options) {
         const mountRelative = rawPath === "/" && !req.endsWithSlash ? "" : url;
         const statTarget = mountRelative.endsWith("/") && !fullpath.endsWith(path.sep) ? fullpath + path.sep : fullpath;
         if (root && !fullpath.startsWith(resolvedRoot)) {
-            if (!options.fallthrough) {
-                res.status(403);
-                return next(httpError(403));
-            } else return next();
+            return refuse(res, next, options.fallthrough, 403);
         }
 
         // before the stat, as send judges the path before the disk: a hidden segment in a missing
@@ -623,11 +618,7 @@ function serveStatic(root, options) {
         if (containsDotFile(fullpath.slice(resolvedRoot.length).split(path.sep))) {
             const refusal = options.dotfiles === "deny" ? 403 : options.dotfiles === "allow" ? 0 : 404;
             if (refusal !== 0 && !(options.dotfiles === "ignore_files" && !path.basename(url).startsWith("."))) {
-                if (!options.fallthrough) {
-                    res.status(refusal);
-                    return next(httpError(refusal));
-                }
-                return next();
+                return refuse(res, next, options.fallthrough, refusal);
             }
         }
 
@@ -684,22 +675,15 @@ function serveStatic(root, options) {
                 }
             }
             if (!stat) {
-                if (!options.fallthrough) {
-                    res.status(404);
-                    // the fs error itself with errno, code, syscall and path, as serve-static hands it
-                    return next(asStatError(/** @type {HttpError} */ (statError)));
-                } else return next();
+                // the fs error itself with errno, code, syscall and path, as serve-static hands it
+                return refuse(res, next, options.fallthrough, 404, statError);
             }
         }
 
         // a file asked for with a trailing slash is a 404, ENOTDIR to send; with an index
         // configured the directory branch below reports the missing index instead
         if (req.endsWithSlash && !stat.isDirectory() && indexList.length === 0) {
-            if (!options.fallthrough) {
-                res.status(404);
-                return next(httpError(404));
-            }
-            return next();
+            return refuse(res, next, options.fallthrough, 404);
         }
 
         if (stat.isDirectory() || req.endsWithSlash) {
@@ -711,10 +695,7 @@ function serveStatic(root, options) {
                     res.setHeader("X-Content-Type-Options", "nosniff");
                     return res.redirect(301, collapseLeadingSlashes(req._originalPath + "/") + req.urlQuery, true);
                 } else {
-                    if (!options.fallthrough) {
-                        res.status(404);
-                        return next(httpError(404));
-                    } else return next();
+                    return refuse(res, next, options.fallthrough, 404);
                 }
             }
             if (indexList.length > 0) {
@@ -722,29 +703,18 @@ function serveStatic(root, options) {
                 try {
                     found = findIndexFile(fullpath, indexList);
                 } catch (err) {
-                    if (!options.fallthrough) {
-                        res.status(404);
-                        return next(asStatError(/** @type {HttpError} */ (err)));
-                    } else return next();
+                    return refuse(res, next, options.fallthrough, 404, err);
                 }
                 if (found === null) {
                     // every name was a directory, send's plain 404
-                    if (!options.fallthrough) {
-                        res.status(404);
-                        return next(httpError(404));
-                    }
-                    return next();
+                    return refuse(res, next, options.fallthrough, 404);
                 }
                 stat = found.stat;
                 _path = path.join(url, found.name);
                 filePath = found.candidate;
             } else {
                 // a directory with no index is a 404, which fallthrough: false has to say
-                if (!options.fallthrough) {
-                    res.status(404);
-                    return next(httpError(404));
-                }
-                return next();
+                return refuse(res, next, options.fallthrough, 404);
             }
         }
 
