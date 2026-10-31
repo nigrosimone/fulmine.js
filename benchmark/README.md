@@ -130,6 +130,8 @@ an allocation sample invalidates it. Budgets do not measure throughput. Runtime 
 require recalibration and a failing check against the previous implementations.
 `v8-steady-state.test.js` warms a server on a mix of requests, then turns `--trace-deopt` on: a
 deopt in `src/` after that, or a hot function that is not TurboFan code, fails it.
+`young-generation.test.js` keeps the young generation under 32 MB under keep-alive load through
+compression.
 
 ## Where the time goes
 

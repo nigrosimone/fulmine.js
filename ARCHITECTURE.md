@@ -35,6 +35,7 @@ Entry and wiring
 | `hot-settings.js` | the settings the hot paths read, resolved to plain fields                                   |
 | `nest.js`         | `fulmine.js/nest`, the NestJS HTTP adapter                                                  |
 | `uws.js`          | µWebSockets.js loaded on first use, not at require, for the worker thread that crashes      |
+| `lazy-require.js` | a dependency loaded on first use, so an app that never asks for it keeps a small heap       |
 
 Routing
 
@@ -47,6 +48,7 @@ Routing
 | `declarative.js`  | reads a handler at startup and, when it can, compiles it into a response        |
 | `usage.js`        | reads a handler's source to prove it never touches headers or query             |
 | `utils.js`        | patterns to regex, path overlap, ETags, encoding negotiation, header validation |
+| `tracing.js`      | express's `express.router.request` TracingChannel, the same context as express  |
 
 Request and response
 
