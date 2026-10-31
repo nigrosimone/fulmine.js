@@ -220,37 +220,9 @@ class Walk {
             const mayFailDecode = (req._mayFailDecode ??= req._originalPath.indexOf("%") !== -1);
             // once per scan, per route it measured 0.45us over four hundred routes
             router._freezeRoutingFlags();
-            if (routes === router._routes) {
-                // through the literal index, see _scanFrom
-                routeIndex = router._scanFrom(req, routeIndex, mayFailDecode);
-            } else {
-                // a short chain array, scanned linearly, written out (a predicate was a closure per hop)
-                const method = req.method;
-                const length = routes.length;
-                for (; routeIndex < length; routeIndex++) {
-                    const r = routes[routeIndex];
-                    // a HEAD enters a matched route whose verb cannot serve it, as express exempts
-                    // HEAD from the method check, so its param() callbacks run; runRoute steps over it
-                    if (!(
-                        r.all ||
-                        r.method === method ||
-                        req._isOptions ||
-                        (req._isHead && (r.gettable || r.paramCallbacks.size > 0))
-                    )) {
-                        // taken only to fail: _preprocessRequest decodes and raises the error
-                        if (mayFailDecode && router._pathMatches(r, req) && router._paramsFailToDecode(r, req)) {
-                            break;
-                        }
-                        continue;
-                    }
-                    if (router._pathMatches(r, req)) {
-                        if (r.bodyParserOnly === true && stepsOver(r, req)) {
-                            continue;
-                        }
-                        break;
-                    }
-                }
-            }
+            // the router's own table, through the literal index (see _scanFrom): a compiled chain
+            // always has skipCheck, and leaveChain() puts both back together
+            routeIndex = router._scanFrom(req, routeIndex, mayFailDecode);
         }
         const route = routes[routeIndex];
         if (!route) {
