@@ -63,6 +63,7 @@ const {
     CALLBACK_ERROR,
     CALLBACK_ROUTER,
     raiseDecodeFailure,
+    raise,
     stepsOver,
     useApp,
     methods,
@@ -1168,9 +1169,7 @@ module.exports = class Router extends EventEmitter {
                 if (err) {
                     // an error already in flight stays, as express's next(layerError || err)
                     if (err !== "route" && !req._error) {
-                        req._error = err;
-                        req._errorKey = route.routeKey;
-                        req._errorGroup = route.group;
+                        raise(req, route, err);
                     }
                     return resolve("route");
                 }

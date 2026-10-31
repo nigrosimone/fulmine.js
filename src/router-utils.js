@@ -784,6 +784,17 @@ function raiseDecodeFailure(req, route, err) {
     if (req._error) {
         return;
     }
+    raise(req, route, err);
+}
+
+/**
+ * Puts an error in flight, with the route it came from: the error handlers before it are skipped.
+ *
+ * @param {Request} req
+ * @param {RouteEntry} route
+ * @param {unknown} err
+ */
+function raise(req, route, err) {
     req._error = err;
     req._errorKey = route.routeKey;
     req._errorGroup = route.group;
@@ -1105,6 +1116,7 @@ module.exports = {
     CALLBACK_ERROR,
     CALLBACK_ROUTER,
     raiseDecodeFailure,
+    raise,
     stepsOver,
     couldAnswer,
     shadowsLeaf,

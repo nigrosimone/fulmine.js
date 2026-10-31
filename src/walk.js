@@ -24,6 +24,7 @@ const {
     rememberApp,
     restoreApp,
     useApp,
+    raise,
     CALLBACK_ERROR,
     CALLBACK_ROUTER
 } = require("./router-utils.js");
@@ -180,10 +181,7 @@ class Walk {
      */
     stepOutOfRoute(err) {
         if (err) {
-            const req = this.req;
-            req._error = err;
-            req._errorKey = this.route.routeKey;
-            req._errorGroup = this.route.group;
+            raise(this.req, this.route, err);
         }
         this.step("route");
     }
@@ -261,13 +259,6 @@ class Walk {
             }
             // the chain ran out: ordinary routing takes over from the top, skipping what ran
             useApp(req, router);
-            // a chain that went into a mount never left it (keepMount), so the path is still relative
-            if (req._stack !== null && req._stack.length > 0) {
-                leaveAllBaseUrlLevels(req);
-                req._stack.length = 0;
-                req._consumed = 0;
-                setMountedPath(req);
-            }
             // an error out of a mount is the mount's, so earlier error handlers do not catch it
             if (
                 req._error &&
@@ -278,8 +269,7 @@ class Walk {
                 req._errorKey = this.skipUntil.routeKey;
                 req._errorGroup = this.skipUntil.group;
             }
-            this.routes = router._routes;
-            this.skipCheck = false;
+            this.leaveChain();
             return this.dispatch(0);
         }
 
@@ -309,23 +299,8 @@ class Walk {
      * @returns {boolean} whether this rerouted the walk itself
      */
     takeUrlRewrite(startIndex) {
-        const req = this.req;
-        const router = this.router;
-        req._absorbUrlRewrite();
-        if (!this.skipCheck) {
-            return false;
-        }
-        this.skipUntil = startIndex > 0 ? this.routes[startIndex - 1] : undefined;
-        if (req._stack !== null && req._stack.length > 0) {
-            leaveAllBaseUrlLevels(req);
-            req._stack.length = 0;
-            req._consumed = 0;
-            setMountedPath(req);
-        }
-        this.routes = router._routes;
-        this.skipCheck = false;
-        this.dispatch(0);
-        return true;
+        this.req._absorbUrlRewrite();
+        return this.rerouteFrom(startIndex);
     }
 
     /**
@@ -335,23 +310,40 @@ class Walk {
      * @returns {boolean} whether this rerouted the walk itself
      */
     takeMethodRewrite(startIndex) {
-        const req = this.req;
-        const router = this.router;
-        req._absorbMethodRewrite();
+        this.req._absorbMethodRewrite();
+        return this.rerouteFrom(startIndex);
+    }
+
+    /**
+     * After a rewrite, a compiled chain hands over to ordinary routing, skipping what ran.
+     *
+     * @param {number} startIndex where dispatch was about to resume
+     * @returns {boolean} whether this rerouted the walk itself
+     */
+    rerouteFrom(startIndex) {
         if (!this.skipCheck) {
             return false;
         }
         this.skipUntil = startIndex > 0 ? this.routes[startIndex - 1] : undefined;
+        this.leaveChain();
+        this.dispatch(0);
+        return true;
+    }
+
+    /**
+     * Leaves a compiled chain for the router's own routes. A chain that went into a mount never
+     * left it (keepMount), so the path is made whole again first.
+     */
+    leaveChain() {
+        const req = this.req;
         if (req._stack !== null && req._stack.length > 0) {
             leaveAllBaseUrlLevels(req);
             req._stack.length = 0;
             req._consumed = 0;
             setMountedPath(req);
         }
-        this.routes = router._routes;
+        this.routes = this.router._routes;
         this.skipCheck = false;
-        this.dispatch(0);
-        return true;
     }
 
     /**
@@ -429,9 +421,7 @@ class Walk {
             if (out instanceof Promise) {
                 // a rejection moves on to the next error handler, a bare one with express's error
                 out.catch((err) => {
-                    req._error = err || new Error("Rejected promise");
-                    req._errorKey = route.routeKey;
-                    req._errorGroup = route.group;
+                    raise(req, route, err || new Error("Rejected promise"));
                     return this.step(undefined);
                 });
             }
@@ -593,9 +583,7 @@ class Walk {
             if (thingamabob === "router" || (thingamabob === "route" && !route.use)) {
                 return this.leaveHop(thingamabob === "router");
             } else if (thingamabob !== "route") {
-                req._error = thingamabob;
-                req._errorKey = route.routeKey;
-                req._errorGroup = route.group;
+                raise(req, route, thingamabob);
             }
         }
         const kind = route.callbackKinds[this.callbackIndex];
@@ -651,16 +639,12 @@ class Walk {
                 if (out instanceof Promise) {
                     // Express 5 forwards a rejected handler promise itself, a bare one with this error
                     out.catch((err) => {
-                        req._error = err || new Error("Rejected promise");
-                        req._errorKey = route.routeKey;
-                        req._errorGroup = route.group;
+                        raise(req, route, err || new Error("Rejected promise"));
                         return this.step(undefined);
                     });
                 }
             } catch (err) {
-                req._error = err;
-                req._errorKey = route.routeKey;
-                req._errorGroup = route.group;
+                raise(req, route, err);
                 return this.step(undefined);
             }
         }
