@@ -113,6 +113,18 @@ test("the request reaches the handlers and outlives the response", async () => {
     await close();
 });
 
+test("a unicode parameter name is read whole, as a route reads it", async () => {
+    const { port, close } = await serve((app) => {
+        app.ws("/room/:café", {
+            open: (ws) => ws.send(JSON.stringify(ws.req.params))
+        });
+    });
+
+    const talked = await talk(port, "/room/42");
+    await close();
+    assert.deepEqual(JSON.parse(talked.messages[0]), { café: "42" });
+});
+
 test("the upgrade hook refuses a socket by answering the request", async () => {
     const { port, close } = await serve((app) => {
         app.ws("/guarded", {

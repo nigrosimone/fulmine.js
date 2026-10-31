@@ -19,6 +19,7 @@ limitations under the License.
 // the global Buffer is a getter, a call on every read
 const { Buffer } = require("buffer");
 const { canBeOptimizedWithParams, decodeParam, NullObject } = require("./utils.js");
+const { regExParam } = require("./router-utils.js");
 
 // the handshake's names as bytes, uWS reads a Buffer name without converting it (see request.js)
 const SEC_WEBSOCKET_KEY = Buffer.from("sec-websocket-key");
@@ -33,9 +34,6 @@ const SEC_WEBSOCKET_EXTENSIONS = Buffer.from("sec-websocket-extensions");
 /** @typedef {import("uWebSockets.js").HttpRequest} UwsRequest */
 /** @typedef {import("uWebSockets.js").HttpResponse} UwsResponse */
 /** @typedef {import("uWebSockets.js").us_socket_context_t} UwsContext */
-
-// the parameter names in a path, in the order µWS numbers them
-const PARAM = /:(\w+)/g;
 
 // Handlers uWS calls with the socket. Everything else in a behavior object is a uWS setting
 // (maxPayloadLength, idleTimeout, compression, ...) and rides through untouched.
@@ -120,7 +118,8 @@ function collectRoutes(router, prefix, out, seen) {
  * @returns {(res: UwsResponse, req: UwsRequest, context: UwsContext) => void}
  */
 function makeUpgradeHandler(app, path, behavior) {
-    const paramNames = [...path.matchAll(PARAM)].map((match) => match[1]);
+    // the parameter names in the order µWS numbers them, by the name rule a route reads
+    const paramNames = [...path.matchAll(regExParam)].map((match) => match[1]);
     // a function, checked by checkBehavior where it was registered
     const userUpgrade = /** @type {((req: Request, res: Response) => void|Promise<void>)|undefined} */ (
         behavior.upgrade
