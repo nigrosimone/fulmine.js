@@ -309,7 +309,9 @@ function findSpecifiers(source, seen) {
             seen.add(node.value);
         }
     };
-    walk(tree, (node) => {
+    // by key rather than by a table of node types, which could skip an import
+    const { walk } = require("./usage.js");
+    walk(tree, null, (node) => {
         if (
             (node.type === "ImportDeclaration" ||
                 node.type === "ExportNamedDeclaration" ||
@@ -330,24 +332,6 @@ function findSpecifiers(source, seen) {
         }
     });
     return found;
-}
-
-/**
- * Visits every node by key rather than by a table of node types, which could skip an import.
- * @param {any} node
- * @param {(node: any) => void} visit
- */
-function walk(node, visit) {
-    if (!node || typeof node !== "object") return;
-    if (Array.isArray(node)) {
-        for (const child of node) walk(child, visit);
-        return;
-    }
-    if (typeof node.type === "string") visit(node);
-    for (const key in node) {
-        if (key === "type" || key === "start" || key === "end" || key === "loc" || key === "range") continue;
-        walk(node[key], visit);
-    }
 }
 
 /** Where an application usually is. */

@@ -395,4 +395,4 @@ function chainUsage(chain, allowTerminalNext, onError = 0) {
     return { skipHeaders: true, skipQuery: !query };
 }
 
-module.exports = { chainUsage, callbackUsage, kGetSafe, UNKNOWN, NEXT_PLAIN, NEXT_ERROR, QUERY };
+module.exports = { chainUsage, callbackUsage, walk, kGetSafe, UNKNOWN, NEXT_PLAIN, NEXT_ERROR, QUERY };
