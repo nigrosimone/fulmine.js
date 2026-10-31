@@ -126,13 +126,11 @@ export default [
             "sonarjs/super-linear-regex": "off",
             // one site each, left off until someone decides whether to change the site or the rule:
             // no-empty-group and void-use in utils.js, no-ignored-exceptions in declarative.js,
-            // no-invariant-returns in response.js, no-nested-functions in middlewares.js,
-            // pseudo-random and no-hardcoded-ip in application.js
+            // no-invariant-returns in response.js, pseudo-random and no-hardcoded-ip in application.js
             "sonarjs/no-empty-group": "off",
             "sonarjs/void-use": "off",
             "sonarjs/no-ignored-exceptions": "off",
             "sonarjs/no-invariant-returns": "off",
-            "sonarjs/no-nested-functions": "off",
             "sonarjs/pseudo-random": "off",
             "sonarjs/no-hardcoded-ip": "off"
         }
