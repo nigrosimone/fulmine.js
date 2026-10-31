@@ -217,6 +217,19 @@ test("what µWS could not match is refused where it is written, or at listen", a
     assert.throws(() => app.listen(0), /sits under a mount µWS cannot match/);
 });
 
+test("a router mounted inside its own tree is collected once, listen does not loop", async () => {
+    const { port, close } = await serve((app) => {
+        const router = express.Router();
+        router.ws("/echo", { message: (ws, message, isBinary) => ws.send(message, isBinary) });
+        router.use("/again", router);
+        app.use("/r", router);
+    });
+
+    const talked = await talk(port, "/r/echo", "hello");
+    await close();
+    assert.deepEqual(talked.messages, ["hello"]);
+});
+
 test("a client that leaves while the upgrade awaits marks the response aborted", async () => {
     let seen;
     const { port, close } = await serve((app) => {

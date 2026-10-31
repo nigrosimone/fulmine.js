@@ -35,17 +35,20 @@ const { otherRuntime } = require("./uws.js");
  * @param {Router} router
  * @param {string} prefix
  * @param {{route: RouteEntry, full: string}[]} [into]
+ * @param {Set<Router>} [inside] the routers on the way down: one mounted in its own tree is listed once
  * @returns {{route: RouteEntry, full: string}[]}
  */
-function collectRoutes(router, prefix, into = []) {
+function collectRoutes(router, prefix, into = [], inside = new Set()) {
+    inside.add(router);
     for (const route of router._routes ?? []) {
         const full = prefix + (typeof route.path === "string" ? route.path : String(route.pattern)) || "/";
         into.push({ route, full });
         const mounted = route.callbacks?.[0];
-        if (mounted && Array.isArray(mounted._routes)) {
-            collectRoutes(mounted, typeof route.path === "string" ? prefix + route.path : prefix, into);
+        if (mounted && Array.isArray(mounted._routes) && !inside.has(mounted)) {
+            collectRoutes(mounted, typeof route.path === "string" ? prefix + route.path : prefix, into, inside);
         }
     }
+    inside.delete(router);
     return into;
 }
 

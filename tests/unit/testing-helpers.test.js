@@ -141,3 +141,18 @@ test("a listening application is read without being compiled twice", async () =>
         await new Promise((resolve) => server.close(() => resolve(undefined)));
     }
 });
+
+test("a router mounted inside its own tree is reported once, with why it stayed generic", () => {
+    const app = express();
+    const folder = express.Router();
+    folder.get("/file", (req, res) => res.send("file"));
+    folder.use("/sub", folder);
+    app.use("/folder", folder);
+
+    const report = routeReport(app);
+    assert.deepStrictEqual(
+        report.map((entry) => `${entry.method} ${entry.path}`),
+        ["GET /folder/file"]
+    );
+    assert.throws(() => expectNative(app, "/folder/file"), /could answer the same paths/);
+});

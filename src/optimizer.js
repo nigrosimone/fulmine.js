@@ -252,6 +252,10 @@ function compileOptimizedRoutes(root) {
         return;
     }
 
+    // the routers being walked into: one mounted inside its own tree stays generic, which
+    // recurses as far as the path goes, as express does
+    const inside = new Set([root]);
+
     // pathPrefix and chainPrefix accumulate across nested mounts, outerGuards carries what was
     // written before them and answers only part of what is under them
     /**
@@ -271,6 +275,10 @@ function compileOptimizedRoutes(root) {
                     route.callbacks.length === 1 &&
                     route.callbacks[0] instanceof Router
                 ) {
+                    if (inside.has(route.callbacks[0])) {
+                        route._whyGeneric = "the router is mounted inside its own tree";
+                        continue;
+                    }
                     let pathToMount = router._optimizeRoute(route, router._routes);
                     if (!pathToMount) {
                         route._whyGeneric = "something before it in the same router overlaps its paths";
@@ -283,6 +291,7 @@ function compileOptimizedRoutes(root) {
                         continue;
                     }
                     route._walkedInto = true;
+                    inside.add(route.callbacks[0]);
                     walk(
                         route.callbacks[0],
                         pathPrefix + route.path,
@@ -300,6 +309,7 @@ function compileOptimizedRoutes(root) {
                         ],
                         guards
                     );
+                    inside.delete(route.callbacks[0]);
                 } else {
                     route._whyGeneric = !(route.callbacks.length === 1 && route.callbacks[0] instanceof Router)
                         ? "it is middleware rather than a single mounted router"
