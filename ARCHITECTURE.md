@@ -137,6 +137,9 @@ because that is code the analysis never saw.
 
 These fields are the dispatch protocol. They are private and they are the thing to understand
 before changing `walk.js` or `router.js`. The list holds the ones read in three files or more.
+The rare ones (`_errorKey`, `_errorGroup`, `_matchedMethods`, `_paramStack`, `_baseUrlLevels`,
+`_baseUrlOverride`) are accessors over a `RequestExtras`, made on the first write that is not the
+default: a hot path that writes them only when needed keeps the request 8 bytes smaller per field.
 
 | field                       | meaning                                                                     |
 | --------------------------- | --------------------------------------------------------------------------- |
