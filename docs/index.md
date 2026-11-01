@@ -45,14 +45,14 @@ const cut = (name, arm) => {
 <div class="fm-speed-field">
 <div class="fm-field-top"><span>NATIVE ENGINE</span><span>01 / µWS</span></div>
 <img class="fm-speed-art" src="/speed-field.svg" alt="" width="600" height="500" fetchpriority="high" decoding="async">
-<div class="fm-speed-readout"><span class="fm-up-to">UP TO</span><strong><!--speedup:routing/routes-1000-params:p90-->16<!--/speedup--><span>×</span></strong><span class="fm-speed-label">faster than Express<span>on 1,000 parameterized routes</span></span></div>
-<a class="fm-field-footnote" href="/performance">90th percentile of the last 20 CI runs, median <!--speedup:routing/routes-1000-params:median-->11<!--/speedup-->×. Explore the conditions <span aria-hidden="true">↗</span></a>
+<div class="fm-speed-readout"><span class="fm-up-to">UP TO</span><strong><!--speedup:routing/routes-1000-params:p90-->17<!--/speedup--><span>×</span></strong><span class="fm-speed-label">faster than Express<span>on 1,000 parameterized routes</span></span></div>
+<a class="fm-field-footnote" href="/performance">90th percentile of the last 20 CI runs, median <!--speedup:routing/routes-1000-params:median-->13<!--/speedup-->×. Explore the conditions <span aria-hidden="true">↗</span></a>
 </div>
 </section>
 
 <div class="fm-proof-strip">
 <div class="fm-wrap fm-proof-grid">
-<div><span class="fm-proof-symbol" aria-hidden="true">↗</span><p><strong><!--speedup:tables:median-->10<!--/speedup-->× median</strong><span>on large route tables, measured on every push</span></p></div>
+<div><span class="fm-proof-symbol" aria-hidden="true">↗</span><p><strong><!--speedup:tables:median-->11<!--/speedup-->× median</strong><span>on large route tables, measured on every push</span></p></div>
 <div><span class="fm-proof-symbol" aria-hidden="true">=</span><p><strong>1 line to migrate</strong><span>Your routes and middleware keep working</span></p></div>
 <div><span class="fm-proof-symbol" aria-hidden="true">✓</span><p><strong>9 frameworks</strong><span>NestJS, Next.js, Astro and more, tested in CI</span></p></div>
 </div>
@@ -98,11 +98,11 @@ app.listen(3000);
 <div><p>Native routing. Less work per request. More room for your application.</p><a class="fm-text-link" href="/performance">Go under the hood <span aria-hidden="true">↗</span></a></div>
 </div>
 <div class="fm-metrics">
-<div class="fm-metric"><p class="fm-metric-value"><!--speedup:plain:dash-->1.3-3.0<!--/speedup--><span>×</span></p><h3>Plain routing</h3><p>The everyday requests.<br>Less framework overhead.</p><SpeedRace figure="plain" /></div>
-<div class="fm-metric"><p class="fm-metric-value"><!--speedup:routing/routes-1000:dash-->9.2-11.7<!--/speedup--><span>×</span></p><h3>1,000 routes</h3><p>Your route table grows.<br>The native router keeps up.</p><SpeedRace figure="routing/routes-1000" /></div>
-<div class="fm-metric"><p class="fm-metric-value"><!--speedup:routing/routes-1000-params:dash-->9.5-15.5<!--/speedup--><span>×</span></p><h3>1,000 parameterized routes</h3><p>More paths. More parameters.<br>This is where native shines.</p><SpeedRace figure="routing/routes-1000-params" /></div>
+<div class="fm-metric"><p class="fm-metric-value"><!--speedup:plain:dash-->1.3-2.8<!--/speedup--><span>×</span></p><h3>Plain routing</h3><p>The everyday requests.<br>Less framework overhead.</p><SpeedRace figure="plain" /></div>
+<div class="fm-metric"><p class="fm-metric-value"><!--speedup:routing/routes-1000:dash-->9.2-13.6<!--/speedup--><span>×</span></p><h3>1,000 routes</h3><p>Your route table grows.<br>The native router keeps up.</p><SpeedRace figure="routing/routes-1000" /></div>
+<div class="fm-metric"><p class="fm-metric-value"><!--speedup:routing/routes-1000-params:dash-->9.8-17.2<!--/speedup--><span>×</span></p><h3>1,000 parameterized routes</h3><p>More paths. More parameters.<br>This is where native shines.</p><SpeedRace figure="routing/routes-1000-params" /></div>
 </div>
-<p class="fm-benchmark-note">Throughput relative to Express. Ranges are the 10th to 90th percentile of <!--speedup:period:text-->the last 20 CI runs, 21 October 2026 to 27 October 2026<!--/speedup-->, on Node 26 and on whatever runner GitHub gives each run; the dots move at the upper end of each range. Results depend on workload and hardware; shared work such as JSON parsing or compression sees smaller gains. <a href="/performance">Methodology &amp; limitations ↗</a></p>
+<p class="fm-benchmark-note">Throughput relative to Express. Ranges are the 10th to 90th percentile of <!--speedup:period:text-->the last 20 CI runs, 27 October 2026 to 1 November 2026<!--/speedup-->, on Node 26 and on whatever runner GitHub gives each run; the dots move at the upper end of each range. Results depend on workload and hardware; shared work such as JSON parsing or compression sees smaller gains. <a href="/performance">Methodology &amp; limitations ↗</a></p>
 </div>
 </section>
 
