@@ -1,5 +1,17 @@
 # Changelog
 
+## [5.26.1](https://github.com/nigrosimone/fulmine.js/compare/v5.26.0...v5.26.1) (2026-11-01)
+
+### Bug Fixes
+
+* a sub-app is told by _isApplication, not by its class name, which a minifier renames ([10ef017](https://github.com/nigrosimone/fulmine.js/commit/10ef017d8f2780e31fdbd15c413d57286ee50484))
+* **router:** a router mounted inside its own tree stays generic, listen() and expectNative() recursed into it forever ([9095aef](https://github.com/nigrosimone/fulmine.js/commit/9095aef80064ff5dad0a87549bd496f14f88d3dd))
+* **websocket:** a unicode parameter name in app.ws() is read whole, as a route reads it ([a92cc19](https://github.com/nigrosimone/fulmine.js/commit/a92cc192269fba2a0fc6b7a5a59830bc6c265e8e))
+
+### Performance Improvements
+
+* the rare request fields and the streaming state of the response live apart, 140 bytes less per request ([87668df](https://github.com/nigrosimone/fulmine.js/commit/87668dff6ad628e02cee92edbee565abf74773ab))
+
 ## [5.26.0](https://github.com/nigrosimone/fulmine.js/compare/v5.25.12...v5.26.0) (2026-10-29)
 
 ### Features
