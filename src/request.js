@@ -305,8 +305,9 @@ module.exports = class Request extends LazyReadable {
     }
 
     /**
-     * The parameters a native uWS route matched, by name, or undefined off that path.
-     * @type {Record<string, string>|undefined}
+     * The raw values a native uWS route matched, in the order its path declares them, or undefined
+     * off that path. Each route layer names them with its own optimizedParams.
+     * @type {string[]|undefined}
      */
     optimizedParams;
 

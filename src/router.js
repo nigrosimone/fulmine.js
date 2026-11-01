@@ -1052,12 +1052,16 @@ module.exports = class Router extends EventEmitter {
      */
     _preprocessRequest(req, res, route) {
         // both: the route flag says it was registered natively, the values that this request came that way
-        if (route.optimizedParams && req.optimizedParams) {
-            req.params = Object.create(null);
+        const names = route.optimizedParams;
+        const values = req.optimizedParams;
+        if (names && values && names.length === values.length) {
+            // the prototype itself is null, as express: a NullObject would show its own
+            const params = Object.create(null);
             try {
-                for (const name in req.optimizedParams) {
-                    req.params[name] = decodeParam(req.optimizedParams[name]);
+                for (let i = 0; i < names.length; i++) {
+                    params[names[i]] = decodeParam(values[i]);
                 }
+                req.params = params;
             } catch (err) {
                 raiseDecodeFailure(req, route, err);
                 return "route";

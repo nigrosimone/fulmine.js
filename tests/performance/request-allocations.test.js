@@ -10,7 +10,7 @@ const { execFileSync } = require("node:child_process");
 const budgets = {
     "GET /hello": 2200,
     "GET /json": 2400,
-    "GET /users/:id?q": 2808,
+    "GET /users/:id?q": 2760,
     "GET /ua": 2416,
     "GET /mw/x": 2576,
     "GET /r/x": 2512,

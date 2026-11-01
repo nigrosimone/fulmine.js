@@ -29,8 +29,7 @@ const {
     canBeOptimized,
     canBeOptimizedWithParams,
     pathsCanOverlap,
-    uwsPrefersEarlier,
-    NullObject
+    uwsPrefersEarlier
 } = require("./utils.js");
 const Walk = require("./walk.js");
 const compileDeclarative = require("./declarative.js");
@@ -468,10 +467,11 @@ function registerUwsRoute(router, route, optimizedPath) {
             if (optimizedParams) {
                 // slicing them out of the path instead measured a wash. The index is one the
                 // registered path declares, so the value is never undefined
-                request.optimizedParams = new NullObject();
-                for (let i = 0; i < optimizedParams.length; i++) {
-                    request.optimizedParams[optimizedParams[i]] = /** @type {string} */ (req.getParameter(i));
+                const values = new Array(optimizedParams.length);
+                for (let i = 0; i < values.length; i++) {
+                    values[i] = /** @type {string} */ (req.getParameter(i));
                 }
+                request.optimizedParams = values;
             }
             const walk = new Walk(router, request, response, chain, true, skipUntil, nativeDone, nativeFail);
             try {
