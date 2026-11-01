@@ -28,6 +28,7 @@ app.use(
 );
 
 app.listen(13333, async () => {
+    if (express.testing) express.testing.expectNative(app, ["/api/data", "/abccc/*"]);
     console.log("Server is running on port 13333");
 
     let res = await fetchTest("http://localhost:13333/api/data");

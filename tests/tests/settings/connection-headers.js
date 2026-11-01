@@ -9,6 +9,8 @@ const app = express();
 // here are plain fetches: fetchTest would print the very headers the setting removes.
 const isFulmine = express.isFulmine === true;
 app.set("connection headers", false);
+// without an ETag /compiled is compiled into a declarative response
+app.set("etag", false);
 
 app.get("/compiled", (req, res) => res.send("ok"));
 app.get("/ordinary", (req, res) => {
@@ -17,6 +19,7 @@ app.get("/ordinary", (req, res) => {
 });
 
 app.listen(13333, async () => {
+    if (express.testing) express.testing.expectDeclarative(app, "/compiled");
     for (const path of ["/compiled", "/ordinary"]) {
         const response = await fetch("http://localhost:13333" + path);
         await response.text();

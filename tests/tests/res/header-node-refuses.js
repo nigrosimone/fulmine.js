@@ -65,6 +65,7 @@ const paths = [
 ];
 
 app.listen(13333, async () => {
+    if (express.testing) express.testing.expectDeclarative(app, "/good");
     console.log("Server is running on port 13333");
     await sequential(
         paths.map((path) => async () => {

@@ -18,6 +18,10 @@ app.get("/literal", (req, res) => res.end("ok"));
 app.use((err, req, res, next) => res.status(err.status ?? 500).send("error: " + err.message));
 
 app.listen(13333, async () => {
+    if (express.testing) {
+        express.testing.expectNative(app, "/p/:id");
+        express.testing.expectDeclarative(app, "/literal");
+    }
     console.log("Server is running on port 13333");
 
     for (const path of ["/p/a-b%5Ec@d%e", "/p/%", "/p/good", "/p/a%20b", "/literal"]) {

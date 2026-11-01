@@ -38,6 +38,7 @@ for (const bad of ["/:1a", "/:", "/*1a", "/:{x}"]) {
 }
 
 app.listen(13333, async () => {
+    if (express.testing) express.testing.expectNative(app, ["/u/:café", "/d/:año/:x"]);
     console.log("Server is running on port 13333");
 
     const paths = [

@@ -70,6 +70,7 @@ app.use("/catch", catching);
 app.use((err, req, res, next) => res.status(500).send("handler: " + err.message));
 
 app.listen(13333, async () => {
+    if (express.testing) express.testing.expectNative(app, "/compiled/leaf");
     console.log("Server is running on port 13333");
 
     for (const path of [

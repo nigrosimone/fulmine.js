@@ -4,6 +4,8 @@ const express = require("express");
 const { fetchTest } = require("../../helpers.js");
 
 const app = express();
+// without an ETag the two declarative-* routes are compiled
+app.set("etag", false);
 
 app.get("/declarative-test", (req, res) => {
     res.sendStatus(201);
@@ -26,6 +28,7 @@ app.get("/unknown", (req, res) => {
 });
 
 app.listen(13333, async () => {
+    if (express.testing) express.testing.expectDeclarative(app, "/declarative-*");
     console.log("Server is running on port 13333");
 
     let response = await fetchTest("http://localhost:13333/declarative-test");

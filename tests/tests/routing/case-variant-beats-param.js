@@ -47,6 +47,7 @@ app.use("/mnt", mounted);
 app.use((req, res) => res.status(404).send("no route"));
 
 app.listen(13333, async () => {
+    if (express.testing) express.testing.expectNative(app, ["/posts", "/:slug", "/api/*", "/differ/*"]);
     console.log("Server is running on port 13333");
 
     const paths = [

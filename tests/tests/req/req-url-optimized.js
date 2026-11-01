@@ -16,6 +16,7 @@ app.get("/test", (req, res) => {
 });
 
 app.listen(13333, async () => {
+    if (express.testing) express.testing.expectNative(app, "/test");
     console.log("Server is running on port 13333");
 
     const res = await fetchTest("http://localhost:13333/test");

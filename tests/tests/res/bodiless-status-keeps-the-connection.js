@@ -13,7 +13,8 @@ const net = require("node:net");
 const app = express();
 app.set("etag", false);
 
-// one callback and a constant answer, which is the shape the optimizer compiles
+// one callback and a constant answer, the shape the optimizer compiles: a bodiless status is now
+// refused there and stays native, /after is the compiled one
 app.get("/send-204", (req, res) => res.sendStatus(204));
 app.get("/send-304", (req, res) => res.sendStatus(304));
 app.get("/send-205", (req, res) => res.sendStatus(205));
@@ -73,6 +74,10 @@ function framing(raw) {
 }
 
 app.listen(13333, async () => {
+    if (express.testing) {
+        express.testing.expectNative(app, "*");
+        express.testing.expectDeclarative(app, "/after");
+    }
     console.log("Server is running on port 13333");
 
     for (const target of ["/send-204", "/send-304", "/send-205", "/body-204", "/json-204"]) {

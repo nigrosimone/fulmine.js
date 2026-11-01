@@ -18,6 +18,7 @@ app.get("/string", (req, res) => {
 });
 
 app.listen(13333, async () => {
+    if (express.testing) express.testing.expectDeclarative(app, "*");
     await sequential(
         ["/weird", "/text", "/string"].map((path) => async () => {
             const res = await fetchTest(`http://localhost:13333${path}`);

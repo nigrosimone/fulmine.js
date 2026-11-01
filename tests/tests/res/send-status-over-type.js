@@ -20,6 +20,7 @@ app.get("/destructured", ({ query: { q } }, res) => {
 });
 
 app.listen(13333, async () => {
+    if (express.testing) express.testing.expectDeclarative(app, ["/type", "/set"]);
     await sequential(
         ["/type", "/set", "/destructured"].map((path) => async () => {
             const res = await fetchTest(`http://localhost:13333${path}`);

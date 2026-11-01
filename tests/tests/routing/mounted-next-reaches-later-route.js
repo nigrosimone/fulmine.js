@@ -53,6 +53,7 @@ alone.get("/a", (req, res) => res.send("alone"));
 app.use("/alone", alone);
 
 app.listen(13333, async () => {
+    if (express.testing) express.testing.expectNative(app, "/alone/a");
     console.log("Server is running on port 13333");
 
     const answersFor = await sequential([
