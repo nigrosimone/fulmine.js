@@ -131,6 +131,41 @@ for (const method of resDecMethods) {
     resCodes[method] = Response.prototype[method].toString();
 }
 
+// what Response.prototype holds before any application touches it
+const ownResponse = new Map(
+    Object.getOwnPropertyNames(Response.prototype).map((name) => [
+        name,
+        Object.getOwnPropertyDescriptor(Response.prototype, name)
+    ])
+);
+
+/**
+ * Whether a method of this response prototype is not ours: it may read the request in ways
+ * usage.js never saw, so the header and query skips cannot be granted.
+ *
+ * @param {object} proto an application's response prototype
+ * @returns {boolean}
+ */
+function responsePatched(proto) {
+    for (let level = proto; level !== null && level !== Response.prototype; level = Object.getPrototypeOf(level)) {
+        if (Object.getOwnPropertyNames(level).some((name) => name !== "constructor")) {
+            return true;
+        }
+    }
+    const names = Object.getOwnPropertyNames(Response.prototype);
+    if (names.length !== ownResponse.size) {
+        return true;
+    }
+    for (const name of names) {
+        const now = Object.getOwnPropertyDescriptor(Response.prototype, name);
+        const was = ownResponse.get(name);
+        if (!was || now?.value !== was.value || now?.get !== was.get || now?.set !== was.set) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // a route's own layer in route.stack answers "/" alone, the trailing slash allowed, as router 2's does
 const ROUTE_STACK_PATH = /^\/\/?$/;
 
@@ -1092,6 +1127,7 @@ module.exports = {
     anyGuardHits,
     resCodes,
     resDecMethods,
+    responsePatched,
     Layer,
     layerFor,
     routeLayer,

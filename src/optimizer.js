@@ -41,6 +41,7 @@ const {
     anyGuardHits,
     resCodes,
     resDecMethods,
+    responsePatched,
     nativeDone,
     nativeFail,
     nativePreset,
@@ -500,12 +501,15 @@ function registerUwsRoute(router, route, optimizedPath) {
     const strictHere = (route.owner ?? router)._strictRouting();
 
     // Whether this registration may skip the header copy: GET and HEAD only, every callback and
-    // every error handler passing usage.js. The etag setting is not a condition: the skip branch
-    // reads the conditional pair by name anyway
+    // every error handler passing usage.js, and no response method replaced, since usage.js reads
+    // the handler and not the methods it calls. The etag setting is not a condition: the skip
+    // branch reads the conditional pair by name anyway
     const NO_SKIPS = { skipHeaders: false, skipQuery: false };
     let getSkips = NO_SKIPS;
     let headSkips = NO_SKIPS;
-    if (route.method === "GET") {
+    // the response prototype the route really runs under, which sees a patched method
+    const responseProto = route.owner?.response ?? /** @type {Application} */ (router).response;
+    if (route.method === "GET" && !responsePatched(responseProto)) {
         let onError = router._errorUsage;
         if (onError === undefined) {
             onError = router._errorUsage = errorHandlersUsage(router);
@@ -542,8 +546,6 @@ function registerUwsRoute(router, route, optimizedPath) {
 
     let replacedPath = route.path;
 
-    // the response prototype the route really runs under, which sees a patched method
-    const responseProto = route.owner?.response ?? /** @type {Application} */ (router).response;
     if (
         optimizedPath.length === 1 && // no middleware in front
         route.callbacks.length === 1 &&
