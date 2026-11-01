@@ -67,6 +67,51 @@ let collectedCount = 0;
 // the headers of a request that kept none, shared: an empty array is 32 bytes per GET
 const NO_ENTRIES = /** @type {string[]} */ (/** @type {unknown} */ (Object.freeze([])));
 
+/**
+ * The fields few requests ever set, made on the first one: on the request each is 8 bytes on
+ * every GET. The accessors of the same names on Request read them, see #more.
+ */
+class RequestExtras {
+    /** Whether backpressure asked uWS to pause the body. */
+    paused = false;
+
+    /** @type {string[]|null} */
+    subdomains = null;
+
+    /** The socket stand-in `req.connection` once built. @type {import("./socket.js")|null} */
+    connection = null;
+
+    /** Behind `req.signal`. @type {AbortController|undefined} */
+    abortController = undefined;
+
+    /** @type {number|undefined} */
+    errorKey = undefined;
+
+    /** @type {number|undefined} */
+    errorGroup = undefined;
+
+    /** @type {Set<string>|null} */
+    matchedMethods = null;
+
+    /** @type {Map<Map<string, Function[]>, Map<string, import("./router.js").ParamCall>>|null} */
+    paramCalled = null;
+
+    /** Whether a mount took a trailing slash. */
+    mountSlash = false;
+
+    /** @type {Record<string, any>[]|null} */
+    paramStack = null;
+
+    /** @type {any[]|undefined} */
+    appStack = undefined;
+
+    /** @type {string|undefined} */
+    baseUrlOverride = undefined;
+
+    /** @type {import("./walk.js").BaseUrlLevel[]|null} */
+    baseUrlLevels = null;
+}
+
 module.exports = class Request extends LazyReadable {
     /** @type {import("http").IncomingHttpHeaders|null} */
     #cachedHeaders = null;
@@ -86,8 +131,8 @@ module.exports = class Request extends LazyReadable {
     /** @type {string|undefined|null} */
     #cachedParsedIp = null;
 
-    /** Whether backpressure asked uWS to pause the body. */
-    #paused = false;
+    /** The rarely set fields, null until the first, see RequestExtras. @type {RequestExtras|null} */
+    #extras = null;
 
     /** A bodyless request whose empty end has not been delivered yet, see the constructor. */
     #emptyBody = false;
@@ -102,15 +147,6 @@ module.exports = class Request extends LazyReadable {
      * @type {any}
      */
     res;
-
-    /** @type {string[]|null} */
-    #cachedSubdomains = null;
-
-    /** The socket stand-in `req.connection` once built, see the getter. @type {import("./socket.js")|null} */
-    #cachedConnection = null;
-
-    /** Behind `req.signal`, made on the first read. @type {AbortController|undefined} */
-    #abortController;
 
     /**
      * Copies one header out of uWS and notices what the constructor decides by. One function for
@@ -173,6 +209,101 @@ module.exports = class Request extends LazyReadable {
         this.#rawHeadersEntries.push(name, value);
     }
 
+    /** The rare fields, made on the first write that is not a default. */
+    #more() {
+        return (this.#extras ??= new RequestExtras());
+    }
+
+    // The rare fields under the names the router uses. A setter given the default writes nothing
+    // while there is no RequestExtras, so a reset does not make one
+
+    /** Which hop the error being carried came from, so an earlier error handler does not catch it. */
+    get _errorKey() {
+        return this.#extras === null ? undefined : this.#extras.errorKey;
+    }
+
+    set _errorKey(value) {
+        if (value !== undefined || this.#extras !== null) this.#more().errorKey = value;
+    }
+
+    /**
+     * Which app.route() the failing route belonged to: an error handler on it catches what its
+     * siblings raised, as Express builds one route out of them.
+     */
+    get _errorGroup() {
+        return this.#extras === null ? undefined : this.#extras.errorGroup;
+    }
+
+    set _errorGroup(value) {
+        if (value !== undefined || this.#extras !== null) this.#more().errorGroup = value;
+    }
+
+    /** The verbs a path answers, for an OPTIONS; null on every other method. */
+    get _matchedMethods() {
+        return this.#extras === null ? null : this.#extras.matchedMethods;
+    }
+
+    set _matchedMethods(value) {
+        if (value !== null || this.#extras !== null) this.#more().matchedMethods = value;
+    }
+
+    /** What each app.param() callback was called with, per router, made on first use. */
+    get _paramCalled() {
+        return this.#extras === null ? null : this.#extras.paramCalled;
+    }
+
+    set _paramCalled(value) {
+        if (value !== null || this.#extras !== null) this.#more().paramCalled = value;
+    }
+
+    /** Whether a mount took a trailing slash, which only a RegExp mount can, see baseUrl. */
+    get _mountSlash() {
+        return this.#extras === null ? false : this.#extras.mountSlash;
+    }
+
+    set _mountSlash(value) {
+        if (value || this.#extras !== null) this.#more().mountSlash = value;
+    }
+
+    /** The params of the mounts entered, outermost first, made at its push site. */
+    get _paramStack() {
+        return this.#extras === null ? null : this.#extras.paramStack;
+    }
+
+    set _paramStack(value) {
+        if (value !== null || this.#extras !== null) this.#more().paramStack = value;
+    }
+
+    /** Route and app alternating, one pair per sub-app entered, see rememberApp. */
+    get _appStack() {
+        return this.#extras === null ? undefined : this.#extras.appStack;
+    }
+
+    set _appStack(value) {
+        if (value !== undefined || this.#extras !== null) this.#more().appStack = value;
+    }
+
+    /** What a middleware assigned to req.baseUrl, see the setter. */
+    get _baseUrlOverride() {
+        return this.#extras === null ? undefined : this.#extras.baseUrlOverride;
+    }
+
+    set _baseUrlOverride(value) {
+        if (value !== undefined || this.#extras !== null) this.#more().baseUrlOverride = value;
+    }
+
+    /**
+     * One entry per mount the walk is inside, from the first assignment to req.baseUrl on: what
+     * express's routers put back on the way out, see enterBaseUrlLevel in walk.js. null before.
+     */
+    get _baseUrlLevels() {
+        return this.#extras === null ? null : this.#extras.baseUrlLevels;
+    }
+
+    set _baseUrlLevels(value) {
+        if (value !== null || this.#extras !== null) this.#more().baseUrlLevels = value;
+    }
+
     /**
      * The parameters a native uWS route matched, by name, or undefined off that path.
      * @type {Record<string, string>|undefined}
@@ -190,19 +321,6 @@ module.exports = class Request extends LazyReadable {
      * @type {any}
      */
     route;
-
-    /**
-     * Which hop the error being carried came from, so an earlier error handler does not catch it.
-     * @type {number|undefined}
-     */
-    _errorKey;
-
-    /**
-     * Which app.route() the failing route belonged to: an error handler on it catches what its
-     * siblings raised, as Express builds one route out of them.
-     * @type {number|undefined}
-     */
-    _errorGroup;
 
     /**
      * How much of _originalPath the mounts entered so far have taken, as a count: what a mount
@@ -382,15 +500,6 @@ module.exports = class Request extends LazyReadable {
      */
     _params = undefined;
 
-    /** The verbs a path answers, for an OPTIONS; null on every other method. @type {Set<string>|null} */
-    _matchedMethods = null;
-
-    /**
-     * What each app.param() callback was called with, per router, made on first use.
-     * @type {Map<Map<string, Function[]>, Map<string, import("./router.js").ParamCall>>|null}
-     */
-    _paramCalled = null;
-
     /**
      * What each mount entered took of _originalPath, negative for one that consumed the whole
      * path; made at its push site, see Walk#runRoute.
@@ -398,30 +507,11 @@ module.exports = class Request extends LazyReadable {
      */
     _stack = null;
 
-    /** Whether a mount took a trailing slash, which only a RegExp mount can, see baseUrl. @type {boolean} */
-    _mountSlash = false;
-
-    /** The params of the mounts entered, outermost first, made at its push site. @type {Record<string, any>[]|null} */
-    _paramStack = null;
-
-    /** Route and app alternating, one pair per sub-app entered, see rememberApp. @type {any[]|undefined} */
-    _appStack;
-
     /** Whether a body chunk arrived, true from the start when none was declared. @type {boolean} */
     receivedData = false;
 
     /** node's flag, false until the whole body arrived: on-finished reads it for body-parser. @type {boolean} */
     complete = false;
-
-    /** What a middleware assigned to req.baseUrl, see the setter. @type {string|undefined} */
-    _baseUrlOverride;
-
-    /**
-     * One entry per mount the walk is inside, from the first assignment to req.baseUrl on: what
-     * express's routers put back on the way out, see enterBaseUrlLevel in walk.js. null before.
-     * @type {import("./walk.js").BaseUrlLevel[]|null}
-     */
-    _baseUrlLevels = null;
 
     /**
      * Built for every request: the headers are copied out because uWS only lends them for this
@@ -591,7 +681,7 @@ module.exports = class Request extends LazyReadable {
             // push() may end the response synchronously through a flowing-mode listener
             if (!accepted && !isLast && !this.#responseEnded) {
                 this._res.pause();
-                this.#paused = true;
+                this.#more().paused = true;
             }
             if (isLast) {
                 this.complete = true;
@@ -660,9 +750,10 @@ module.exports = class Request extends LazyReadable {
      * @returns {AbortSignal}
      */
     get signal() {
-        if (!this.#abortController) {
+        const extras = this.#more();
+        if (!extras.abortController) {
             const controller = new AbortController();
-            this.#abortController = controller;
+            extras.abortController = controller;
             const stop = () => controller.abort();
             if (this.res?.aborted || this.res?.finished) {
                 stop();
@@ -673,7 +764,7 @@ module.exports = class Request extends LazyReadable {
             }
         }
 
-        return this.#abortController.signal;
+        return extras.abortController.signal;
     }
 
     /**
@@ -718,8 +809,9 @@ module.exports = class Request extends LazyReadable {
             this.push(null);
             return;
         }
-        if (this.#paused && !this.#responseEnded) {
-            this.#paused = false;
+        const extras = this.#extras;
+        if (extras !== null && extras.paused && !this.#responseEnded) {
+            extras.paused = false;
             this._res.resume();
         }
     }
@@ -890,7 +982,7 @@ module.exports = class Request extends LazyReadable {
     get protocol() {
         // express reads socket.encrypted, which middleware assigns to; the app's ssl flag answers
         // while no stand-in was built
-        const conn = this.#cachedConnection;
+        const conn = this.#extras === null ? null : this.#extras.connection;
         const proto = (conn ? conn.encrypted : this._encrypted()) ? "https" : "http";
         const trust = this.app._hot().trustProxyFn;
         if (!trust) {
@@ -1049,19 +1141,20 @@ module.exports = class Request extends LazyReadable {
      * @returns {string[]}
      */
     get subdomains() {
-        if (this.#cachedSubdomains !== null) {
-            return this.#cachedSubdomains;
+        const extras = this.#more();
+        if (extras.subdomains !== null) {
+            return extras.subdomains;
         }
 
         const hostname = this.hostname;
         if (!hostname) {
-            return (this.#cachedSubdomains = []);
+            return (extras.subdomains = []);
         }
 
         const offset = this.app.get("subdomain offset");
         const parts = isIP(hostname) ? [hostname] : hostname.split(".").reverse();
 
-        return (this.#cachedSubdomains = parts.slice(offset));
+        return (extras.subdomains = parts.slice(offset));
     }
 
     /**
@@ -1149,7 +1242,7 @@ module.exports = class Request extends LazyReadable {
      * @returns {import("./socket.js")}
      */
     get connection() {
-        return (this.#cachedConnection ??= this.res._socketShim());
+        return (this.#more().connection ??= this.res._socketShim());
     }
 
     /** node's other name for `connection`. */
@@ -1455,7 +1548,7 @@ module.exports = class Request extends LazyReadable {
      * @returns {boolean}
      */
     get _socketBuilt() {
-        return Boolean(this.#cachedConnection);
+        return this.#extras !== null && this.#extras.connection !== null;
     }
 };
 

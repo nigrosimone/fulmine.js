@@ -98,15 +98,13 @@ const BYTES_RANGE = /^ *bytes=/;
 // node's test for a Transfer-Encoding that means chunked framing
 const CHUNKED_VALUE = /(?:^|\W)chunked(?:$|\W)/i;
 
-module.exports = class Response extends LazyWritable {
-    /** @type {Socket|null} */
-    #socket = null;
-
-    /** Whether end() has run, so a second one is a no-op. */
-    #ended = false;
-
+/**
+ * What a body written in pieces needs, made on the first piece or chunked header: on the response
+ * each field is 8 bytes on every request, and most send once.
+ */
+class ResponseStream {
     /** @type {((err?: Error|null) => void)|null} */
-    #pendingCallback = null;
+    pendingCallback = null;
 
     /**
      * An end() that arrived while uWS still held a chunk, run once that chunk is through. Not
@@ -115,7 +113,7 @@ module.exports = class Response extends LazyWritable {
      * had not taken yet was never closed (compression-file under load, 2026-09-21).
      * @type {(() => void)|null}
      */
-    #deferredEnd = null;
+    deferredEnd = null;
 
     /**
      * Chunks written but not yet handed to uWS: a write costs uWS everything buffered behind it, so
@@ -123,23 +121,34 @@ module.exports = class Response extends LazyWritable {
      * blocks. Null until the first chunked write.
      * @type {Buffer[]|null}
      */
-    #queued = null;
+    queued = null;
 
-    /** The bytes in {@link #queued}. */
-    #queuedBytes = 0;
+    /** The bytes in queued. */
+    queuedBytes = 0;
 
     /** Whether a flush is booked for the end of this turn. */
-    #flushBooked = false;
-
-    /** Whether the status line and the headers have reached uWS, which only a body write does. */
-    #headOut = false;
+    flushBooked = false;
 
     /**
      * Whether the application set Transfer-Encoding: chunked itself. The body then goes out
      * through uWS's write(), which frames it and writes the header, and no Content-Length is
      * added beside it, as express 5.3 and node do. See writeHeaders and _finish.
      */
-    #userChunked = false;
+    userChunked = false;
+}
+
+module.exports = class Response extends LazyWritable {
+    /** @type {Socket|null} */
+    #socket = null;
+
+    /** Whether end() has run, so a second one is a no-op. */
+    #ended = false;
+
+    /** Null until a body goes out in pieces, see ResponseStream. @type {ResponseStream|null} */
+    #stream = null;
+
+    /** Whether the status line and the headers have reached uWS, which only a body write does. */
+    #headOut = false;
 
     /**
      * The status as writeHead settled it, the one the wire gets: a status set later never reaches
@@ -429,13 +438,14 @@ module.exports = class Response extends LazyWritable {
      * @param {((err?: Error|null) => void)|null} callback the stream's, when there is one waiting
      */
     #flushQueued(callback) {
-        if (this.#queued === null || this.#queuedBytes === 0) {
+        const stream = this.#stream;
+        if (stream === null || stream.queued === null || stream.queuedBytes === 0) {
             if (callback) callback(null);
             return;
         }
-        const body = this.#queued.length === 1 ? this.#queued[0] : Buffer.concat(this.#queued, this.#queuedBytes);
-        this.#queued = null;
-        this.#queuedBytes = 0;
+        const body = stream.queued.length === 1 ? stream.queued[0] : Buffer.concat(stream.queued, stream.queuedBytes);
+        stream.queued = null;
+        stream.queuedBytes = 0;
 
         const ok = this._res.write(body);
         if (ok) {
@@ -443,11 +453,11 @@ module.exports = class Response extends LazyWritable {
             if (callback) callback(null);
             else this.emit("drain");
         } else if (callback) {
-            this.#pendingCallback = callback;
+            stream.pendingCallback = callback;
             this._res.onWritable(() => {
                 if (this.aborted || this.finished) return true;
-                const cb = this.#pendingCallback;
-                this.#pendingCallback = null;
+                const cb = stream.pendingCallback;
+                stream.pendingCallback = null;
                 this.writingChunk = false;
                 if (cb) cb(null);
                 this.#afterPending();
@@ -464,9 +474,10 @@ module.exports = class Response extends LazyWritable {
      * the next buffered piece into uWS's hands, so the waiting end() runs only when nothing is.
      */
     #afterPending() {
-        if (this.#deferredEnd !== null && !this.writingChunk) {
-            const end = this.#deferredEnd;
-            this.#deferredEnd = null;
+        const stream = this.#stream;
+        if (stream !== null && stream.deferredEnd !== null && !this.writingChunk) {
+            const end = stream.deferredEnd;
+            stream.deferredEnd = null;
             end();
         }
     }
@@ -477,8 +488,9 @@ module.exports = class Response extends LazyWritable {
      * @param {any} res loose: the class named inside its own body reads as two `this` types
      */
     static #flushOnTick(res) {
-        res.#flushBooked = false;
-        if (res.aborted || res.finished || res.#queuedBytes === 0) return;
+        const stream = res.#stream;
+        stream.flushBooked = false;
+        if (res.aborted || res.finished || stream.queuedBytes === 0) return;
         res._res.cork(() => res.#flushQueued(null));
     }
 
@@ -539,13 +551,14 @@ module.exports = class Response extends LazyWritable {
         if (this.chunkedTransfer) {
             // gathered and handed over at the end of this turn, or once big enough: an SSE feed
             // writing once per turn still leaves on its own turn
-            (this.#queued ??= []).push(/** @type {Buffer} */ (chunk));
-            this.#queuedBytes += /** @type {Buffer} */ (chunk).byteLength;
-            if (this.#queuedBytes >= COALESCE_LIMIT || /** @type {Buffer} */ (chunk).byteLength >= COALESCE_BELOW) {
+            const stream = (this.#stream ??= new ResponseStream());
+            (stream.queued ??= []).push(/** @type {Buffer} */ (chunk));
+            stream.queuedBytes += /** @type {Buffer} */ (chunk).byteLength;
+            if (stream.queuedBytes >= COALESCE_LIMIT || /** @type {Buffer} */ (chunk).byteLength >= COALESCE_BELOW) {
                 this.#flushQueued(callback);
             } else {
-                if (!this.#flushBooked) {
-                    this.#flushBooked = true;
+                if (!stream.flushBooked) {
+                    stream.flushBooked = true;
                     process.nextTick(Response.#flushOnTick, this);
                 }
                 this.writingChunk = false;
@@ -679,7 +692,7 @@ module.exports = class Response extends LazyWritable {
             ) {
                 // not written: uWS writes its own on the write() path, two came out before. Node's
                 // own response, behind the shim, frames by the header itself
-                this.#userChunked = true;
+                (this.#stream ??= new ResponseStream()).userChunked = true;
                 continue;
             }
             // a string first, nearly every value is one
@@ -860,7 +873,7 @@ module.exports = class Response extends LazyWritable {
         }
 
         if (this.writingChunk) {
-            this.#deferredEnd = () => this.end(data, cb);
+            (this.#stream ??= new ResponseStream()).deferredEnd = () => this.end(data, cb);
             return this;
         }
         if (this.finished) {
@@ -909,12 +922,14 @@ module.exports = class Response extends LazyWritable {
         // for "keep-alive, close", see saysClose. Only with a length: endWithoutBody reads its
         // first argument as the length, and closing without one wrote a 2^63 Content-Length on a 204
         const closeConnection = this.req._connectionClose === true;
+        // after writeHeaders, which notices the application's own chunked header
+        const userChunked = this.#stream !== null && this.#stream.userChunked;
         // 204, 304 and 1xx carry no body whatever the caller passed, as node decides it too
         if (this.#status === 204 || this.#status === 304 || this.#status < 200) {
             this._res.endWithoutBody();
         } else if (!data && contentLength) {
             this._res.endWithoutBody(contentLength.toString(), closeConnection);
-        } else if ((headWasAlreadyOut && this.chunkedTransfer) || (this.#userChunked && this._hasBody && data)) {
+        } else if ((headWasAlreadyOut && this.chunkedTransfer) || (userChunked && this._hasBody && data)) {
             // the queue first, then the last piece as a chunk: the head already went out without a
             // length, or the application asked for chunked framing, and uWS's end() would append one.
             // An empty body under that header takes end() below: uWS frames nothing without a write()
@@ -925,7 +940,7 @@ module.exports = class Response extends LazyWritable {
             this._res.endWithoutBody();
         } else {
             if (!this._hasBody) {
-                if (this.#userChunked) {
+                if (userChunked) {
                     // a HEAD under the application's chunked framing carries no length, as node.
                     // No arguments: given a close flag alone, uWS writes a 2^63 length
                     this._res.endWithoutBody();
