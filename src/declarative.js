@@ -371,7 +371,8 @@ function readBody(callExprs, headers, body, app, queries, params) {
                         // send(null) chooses no type
                         headers.push(["content-type", "text/html; charset=utf-8"]);
                     }
-                } else {
+                } else if (!isNullBody) {
+                    // express 5.3 adds the charset in the string case of its switch only, see send()
                     existing[1] = withUtf8Charset(String(existing[1]));
                 }
             }
