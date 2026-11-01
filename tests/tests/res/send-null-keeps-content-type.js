@@ -1,4 +1,5 @@
 // res.send(null) is an empty body: express 5.3 adds the charset in the string case of its switch
+// INSPECT
 // only, so a content-type the application set goes out as it was, and none is added without one
 // (a fuzz divergence, seed 731106817)
 

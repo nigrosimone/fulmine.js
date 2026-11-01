@@ -1,4 +1,5 @@
 // a writeHead that throws over a header name has already fixed the reason phrase, and node keeps
+// INSPECT
 // it: the 500 answered after it goes out as "500 OK", or with the phrase writeHead was given
 
 const express = require("express");

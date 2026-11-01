@@ -1,4 +1,5 @@
 // what the server does with bytes node's parser refuses
+// INSPECT
 //
 // Written through a socket rather than through fetch, because undici will not send any of this: it
 // normalises the target and the header block. µWS is a different parser and hands over what node

@@ -1,4 +1,5 @@
 // req.baseUrl after a middleware assigns it, in every shape of mount
+// INSPECT
 //
 // An assignment lives in the router that made it. Express sets req.baseUrl from the path on
 // entering a mount that takes one, each callback of use(path, ...) included, and on the way out a

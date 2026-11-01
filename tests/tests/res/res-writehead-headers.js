@@ -1,4 +1,5 @@
 // must set headers through writeHead the way node does, not the way res.set does
+// INSPECT
 //
 // writeHead is node's method and Express does not override it, so a content-type given to it keeps
 // the value it was given: `res.set("content-type", "text/html")` appends a charset and

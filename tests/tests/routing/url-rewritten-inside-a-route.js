@@ -1,4 +1,5 @@
 // req.path follows a req.url one callback of a route assigned, before the next one runs
+// INSPECT
 //
 // Express reads req.path off req.url on every access, so what runs after the rewrite sees the new
 // path even inside the same route. The router here takes a rewrite over at its next hop, which

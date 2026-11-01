@@ -1,4 +1,5 @@
 // a router's get("/") and get("/:id") answer as express does, now that both are native
+// INSPECT
 //
 // The parameter needs a character, so it never takes the router's root, with or without the
 // trailing slash. next() out of either one leaves the router for what the app has after it.

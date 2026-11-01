@@ -1,4 +1,5 @@
 // req.socket and res.socket are one object, and it answers what a node socket answers
+// INSPECT
 //
 // node hands the same socket to both, and middleware relies on it: one half of a library sets
 // something on req.socket and the other half reads it off res.socket. Here they were two different

@@ -1,4 +1,5 @@
 // res.send() and res.send(undefined) after a res.write(): express writes no header for undefined,
+// INSPECT
 // so it does not refuse a head that has gone out, and the pieces already written are the answer
 
 const express = require("express");

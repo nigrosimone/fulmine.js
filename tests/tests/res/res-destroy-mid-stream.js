@@ -1,4 +1,5 @@
 // res.destroy() drops the connection, the way node's does
+// INSPECT
 //
 // A download whose source dies halfway has to leave the client with a broken connection rather than
 // a short body it would take for the whole file, and the way an application says so is res.destroy()
@@ -8,6 +9,7 @@
 // mid-transfer waited out its own timeout instead.
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 const { Readable } = require("stream");
 
 const app = express();
@@ -50,7 +52,7 @@ app.listen(13356, async () => {
         console.log("download broke the connection:", !timedOut);
     }
 
-    const after = await fetch("http://localhost:13356/after");
+    const after = await fetchTest("http://localhost:13356/after");
     console.log("and the next request is served:", await after.text());
 
     process.exit(0);

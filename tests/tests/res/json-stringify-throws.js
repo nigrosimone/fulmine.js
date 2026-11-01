@@ -1,4 +1,5 @@
 // must leave the content-type alone when res.json cannot serialise the body: express serialises
+// INSPECT
 // before it sets the type, so what the handler answers after the throw is not typed as JSON
 
 const express = require("express");

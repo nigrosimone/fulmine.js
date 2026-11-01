@@ -1,4 +1,5 @@
 // the socket methods an application calls on a request it holds open
+// INSPECT
 //
 // setTimeout, setKeepAlive and setNoDelay are node's, and an application that keeps a request open
 // calls them, almost always to take the timeout off before it starts streaming. There is no per

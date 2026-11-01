@@ -1,4 +1,5 @@
 // an app handed to a Router's use() is a function, not a mount
+// INSPECT
 //
 // Only app.use() mounts an app: it sets mountpath and parent, emits "mount" and the app then reads
 // its parent's settings. To a Router an app is middleware like any other, with its own settings, no

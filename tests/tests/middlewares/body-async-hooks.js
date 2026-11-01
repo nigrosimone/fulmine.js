@@ -1,4 +1,5 @@
 // a body parser's callback runs inside a resource an init hook saw, as raw-body's wrap makes one
+// INSPECT
 // cls-hooked and OpenTelemetry's AsyncHooksContextManager carry the request context this way
 
 const express = require("express");

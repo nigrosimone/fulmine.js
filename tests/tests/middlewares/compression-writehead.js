@@ -1,4 +1,5 @@
 // must compress a response whose head the handler wrote itself, as the compression module does
+// INSPECT
 // through on-headers: the decision is taken at writeHead, with the headers it carries applied
 // first, so a Content-Length given there is the one the decision removes
 

@@ -1,4 +1,5 @@
 // a Range request must be answered on a route that reaches sendFile through res.status()
+// INSPECT
 // (no INSPECT: the middleware it mounts reads headers, and the skip this covers is never granted)
 
 // The header skip trusts a handler whose every member of res is one that reads no request header.

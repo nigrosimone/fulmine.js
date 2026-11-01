@@ -1,4 +1,5 @@
 // req.baseUrl drops the trailing slash a RegExp mount consumed
+// INSPECT
 //
 // A registered path has its trailing slash taken off before it becomes a mount, so only a RegExp
 // mount can consume one, and only against a path that carries a second slash where the mount ends.

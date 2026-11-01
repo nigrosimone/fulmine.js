@@ -1,4 +1,5 @@
 // The peer as a logger or a tracer reads it from its "finish" listener, after the response is out:
+// INSPECT
 // node's socket still answers then, so a socket reached for during the request does too
 
 const express = require("express");

@@ -1,4 +1,5 @@
 // an error handler is read like a route: one that reads a header, or calls next() into a route
+// INSPECT
 // that does, keeps the header copy for the whole app; one that reads req.url keeps the query
 
 const express = require("express");

@@ -1,4 +1,5 @@
 // A Route built by hand and dispatched from a middleware, which is what express exports Route for.
+// INSPECT
 // What a handler returns is waited for here as the router waits for it elsewhere: a rejection
 // reaches the error handler, a bare one gets the error express invents, and a thenable counts too.
 

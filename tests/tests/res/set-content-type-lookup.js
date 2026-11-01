@@ -1,4 +1,5 @@
 // res.set("Content-Type", v) looks v up in the mime database, as express does: an extension
+// INSPECT
 // becomes its media type with the charset the database gives it, and a value the database knows
 // nothing about is stored as false, so send, json, jsonp and sendFile write their own type
 

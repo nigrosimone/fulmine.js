@@ -1,4 +1,5 @@
 // whether req.body is on the request at all, apart from what it holds
+// INSPECT
 //
 // body-parser puts the property there before it decides anything, and leaves it undefined on a
 // request it goes on to skip. Libraries read `"body" in req` to tell "a parser has run" from "none
@@ -10,6 +11,7 @@
 // body never enters the parser here, and the skip still has to leave what the parser would have.
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 
 /** What a handler can see about the property, without printing a body that differs by case. */
 function report(req) {
@@ -48,7 +50,7 @@ const FORM_BODY = "a=1";
 
 /** @param {number} port @param {string} label */
 async function ask(port, label, init) {
-    const response = await fetch(`http://localhost:${port}/x`, init);
+    const response = await fetchTest(`http://localhost:${port}/x`, init);
     console.log(label, response.status, JSON.stringify(await response.json()));
 }
 

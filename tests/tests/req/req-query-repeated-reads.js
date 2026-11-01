@@ -1,4 +1,5 @@
 // every read of req.query must answer a fresh parse: a mutation of one read must not reach the
+// INSPECT
 // next, repeated keys must accumulate the same way on every read, and a url rewrite must be seen
 
 const util = require("node:util");

@@ -1,4 +1,5 @@
 // must close the connection when an error reaches the final handler after the head has gone out,
+// INSPECT
 // as express's does: no error page can follow a head, so the client is cut off rather than left
 // waiting. A response that was already ended is left as it is
 // NODE: whether the head reaches the client before the reset depends on when the runtime writes

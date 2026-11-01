@@ -1,4 +1,5 @@
 // a HEAD runs the param() callbacks of a matching route of another verb, as Express exempts HEAD
+// INSPECT
 // from the method check; the GET route that answers stays native
 
 // Fuzzer seed 3054892626: router.param() plus put("/:p0/:p1/") before get("/list/x1"), and a HEAD

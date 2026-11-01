@@ -1,4 +1,5 @@
 // express.static serves an index whose name starts with a dot, send checks dotfiles only on the path asked for
+// INSPECT
 
 const express = require("express");
 const fs = require("fs");

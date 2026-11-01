@@ -1,4 +1,5 @@
 // A limit option the parser cannot read: body-parser 2.3 refuses it when the parser is built,
+// INSPECT
 // where before it silently stopped enforcing any limit (CVE-2026-12590). null means the default
 
 const express = require("express");

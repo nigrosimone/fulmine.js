@@ -1,4 +1,5 @@
 // must answer a conditional request the same way whichever path serves it
+// INSPECT
 
 const express = require("express");
 const { fetchTest, sequential } = require("../../helpers.js");

@@ -1,4 +1,5 @@
 // req.get folds a repeated header as req.headers does, without building it: joined with ", ",
+// INSPECT
 // cookie with "; ", the first value only where node discards duplicates
 
 const net = require("net");

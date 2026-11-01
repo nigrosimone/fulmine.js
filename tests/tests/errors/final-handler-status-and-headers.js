@@ -1,4 +1,5 @@
 // the final handler's status: the error's own when it is an error status, and with it the headers
+// INSPECT
 // the error carries; else the response's when that is one; else 500. Content headers go.
 
 const express = require("express");

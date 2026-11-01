@@ -1,4 +1,5 @@
 // must answer a Range in a unit other than bytes with the whole file, as send does: it checks the
+// INSPECT
 // header's text for "bytes=" before parsing, so "items=0-1" and "Bytes=0-1" are not range requests
 
 const express = require("express");

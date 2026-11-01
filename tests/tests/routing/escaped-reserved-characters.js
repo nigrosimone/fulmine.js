@@ -1,4 +1,5 @@
 // a backslash makes a character path-to-regexp reserves into a literal, and the route then answers
+// INSPECT
 // the path carrying it; the same character written bare is refused at registration
 
 const express = require("express");

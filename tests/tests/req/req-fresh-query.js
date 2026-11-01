@@ -1,4 +1,5 @@
 // req.fresh answers for a QUERY too since express 5.3: a matching validator is a 304, where
+// INSPECT
 // before only GET and HEAD could be fresh
 
 const express = require("express");

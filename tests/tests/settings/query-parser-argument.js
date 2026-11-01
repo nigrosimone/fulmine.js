@@ -1,4 +1,5 @@
 // what a "query parser" of the application's own is handed
+// INSPECT
 //
 // Express reads it with parseurl and passes `query`, which is null when the url carries no "?" at
 // all and the text after it otherwise, the empty string included. A parser written for express may

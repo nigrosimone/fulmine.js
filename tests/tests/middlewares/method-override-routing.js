@@ -1,4 +1,5 @@
 // must route on the method a middleware rewrote, not on the one the request arrived with
+// INSPECT
 //
 // method-override is written to assign req.method, and express reads it again at every layer, so
 // the route that answers is the one for the new verb. Here the chain in front of the route is

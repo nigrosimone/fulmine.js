@@ -1,4 +1,5 @@
 // what the response says about itself before and after it has been answered
+// INSPECT
 //
 // node sets writableEnded when end() is called and writableFinished once the bytes are out. Here
 // end() hands the whole response over, so the two land together, but both have to be true after it:

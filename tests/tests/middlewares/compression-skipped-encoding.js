@@ -1,4 +1,5 @@
 // a body compression does not take keeps the encoding res.end() was given
+// INSPECT
 
 const express = require("express");
 const compression = express.compression || require("compression");

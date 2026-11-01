@@ -1,4 +1,5 @@
 // a route written before a mount that answers the mount point itself
+// INSPECT
 //
 // The chain computed for a mount is inherited by every path under it, and a route that is not
 // itself a mount answers the mount point rather than the subtree. In the chain it ran for the whole

@@ -1,4 +1,5 @@
 // must hand the verify hook the charset as its fourth argument, as body-parser does: a hook that
+// INSPECT
 // checks a signature over the decoded text needs it, and raw is handed null
 
 const express = require("express");

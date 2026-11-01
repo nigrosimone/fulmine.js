@@ -1,4 +1,5 @@
 // must honour setHeaders in express.static and ignore it in res.sendFile, as express does: the
+// INSPECT
 // option is serve-static's own, and res.sendFile does not take it
 
 const express = require("express");

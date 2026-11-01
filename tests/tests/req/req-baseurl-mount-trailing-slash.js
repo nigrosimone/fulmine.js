@@ -1,4 +1,5 @@
 // must let an optional mount take the slash that ends the path, as path-to-regexp does
+// INSPECT
 //
 // path-to-regexp ends a mount with `(?:\/$)?`, so /{:o} on "//" takes both slashes and req.baseUrl
 // reads back as "/", not "". Found by the fuzzer, seed 3148501386. The other rows are the shapes

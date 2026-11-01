@@ -1,4 +1,5 @@
 // express.static with an index name that is a directory: send skips it, and when every name is
+// INSPECT
 // one the answer is a plain 404, passed on under fallthrough: false and skipped under the default
 
 const express = require("express");

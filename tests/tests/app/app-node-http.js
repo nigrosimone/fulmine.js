@@ -2,6 +2,7 @@
 // INSPECT
 
 const express = require("express");
+const { fetchTest } = require("../../helpers.js");
 const http = require("http");
 const path = require("path");
 
@@ -48,7 +49,7 @@ server.listen(0, async () => {
     ];
 
     for (const [method, route] of cases) {
-        const response = await fetch(base + route, {
+        const response = await fetchTest(base + route, {
             method,
             headers: method === "POST" ? { "content-type": "application/json" } : {},
             body: method === "POST" ? JSON.stringify({ a: 1, b: [2, 3] }) : undefined

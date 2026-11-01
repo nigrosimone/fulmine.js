@@ -1,8 +1,9 @@
 // must support router operators
+// INSPECT
 // NODE: Bun's node:http answers this differently from node's, and Express on Bun with it
 
 const express = require("express");
-const { fetchTest } = require("../../helpers.js");
+const { fetchTest, sequential } = require("../../helpers.js");
 
 const app = express();
 
@@ -48,18 +49,18 @@ app.listen(13333, async () => {
     console.log("Server is running on port 13333");
 
     const parts = ["acd", "abcd", "abe", "abcde"];
-    const responses1 = await Promise.all(
-        parts.map((part) => fetchTest(`http://localhost:13333/${part}?a=1&a=2&b=3`).then((res) => res.json()))
+    const responses1 = await sequential(
+        parts.map((part) => () => fetchTest(`http://localhost:13333/${part}?a=1&a=2&b=3`).then((res) => res.json()))
     );
     console.log(JSON.stringify(responses1, null, 2));
 
-    const responses2 = await Promise.all(
-        parts.map((part) => fetchTest(`http://localhost:13333/sub/${part}/?c=4#foo`).then((res) => res.json()))
+    const responses2 = await sequential(
+        parts.map((part) => () => fetchTest(`http://localhost:13333/sub/${part}/?c=4#foo`).then((res) => res.json()))
     );
     console.log(JSON.stringify(responses2, null, 2));
 
-    const responses3 = await Promise.all(
-        parts.map((part) => fetchTest(`http://localhost:13333/sub/123/${part}`).then((res) => res.json()))
+    const responses3 = await sequential(
+        parts.map((part) => () => fetchTest(`http://localhost:13333/sub/123/${part}`).then((res) => res.json()))
     );
     console.log(JSON.stringify(responses3, null, 2));
 

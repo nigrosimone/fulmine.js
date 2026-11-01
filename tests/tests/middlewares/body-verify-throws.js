@@ -1,4 +1,5 @@
 // must shape what a verify hook throws the way http-errors shapes it for body-parser: an Error
+// INSPECT
 // keeps its own status when it is one a client can be answered with, a thrown string becomes a
 // 403 carrying it as the message, anything else a plain 403, and a status outside 4xx and 5xx
 // with no message of its own becomes a 500

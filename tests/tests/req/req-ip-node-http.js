@@ -1,4 +1,5 @@
 // must report the peer of a request that arrived through node's own server as node reports it
+// INSPECT
 
 const express = require("express");
 const http = require("http");

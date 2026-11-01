@@ -1,4 +1,5 @@
 // a req.url rewrite inside a prefix mount: the rest of the routing sees the rejoined url, and the
+// INSPECT
 // 404 page prints the pathname of originalUrl, which a rewrite never changes
 
 const express = require("express");

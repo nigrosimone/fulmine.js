@@ -1,4 +1,5 @@
 // must refuse res.json() and res.jsonp() once the head has gone out, as express does through
+// INSPECT
 // res.set: with an undefined body send() has nothing to refuse, so the content-type is where
 // it throws, and the final handler then closes the connection. Fuzz seed 2753660276
 // NODE: Deno's node:http answers this differently from node's, and Express on Deno with it

@@ -1,4 +1,5 @@
 // what code reading the router from outside finds: the layers of app.router.stack with matchers,
+// INSPECT
 // slash and the params match() fills, handleRequest and handleError, router 2's options as
 // properties, "trust proxy fn", rawListeners and the Route app.route() hands back
 

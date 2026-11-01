@@ -1,4 +1,5 @@
 // must tell the response the client hung up, whether or not the handler writes again
+// INSPECT
 //
 // `res.on("close", ...)` is how code learns the visitor has gone and stops working for them. Every
 // proxy and every streaming endpoint hangs its cancellation on it. Node emits it when the connection

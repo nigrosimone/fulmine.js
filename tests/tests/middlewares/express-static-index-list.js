@@ -1,4 +1,5 @@
 // express.static looks for the index inside whatever a trailing slash asked for, and takes a list
+// INSPECT
 //
 // A trailing slash is a request for a directory, and send answers it by looking for the index
 // inside it whether or not the path is one: a file asked for that way fails as a missing index

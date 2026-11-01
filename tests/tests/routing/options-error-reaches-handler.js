@@ -1,4 +1,5 @@
 // an error raised under OPTIONS reaches the error handlers, not the default page
+// INSPECT
 //
 // A router that collected verbs for the automatic reply stopped the walk when it handed back, so an
 // error carried out of it was never offered to the handlers written after the mount and the default

@@ -1,4 +1,5 @@
 // The express.router.request TracingChannel against express itself: start, end, asyncStart,
+// INSPECT
 // asyncEnd and error for every middleware, route handler and error handler, request by request
 // OFF: express 5.3.0 resolves router 2.2.0, which publishes nothing; on once a router release has pillarjs/router#196
 //

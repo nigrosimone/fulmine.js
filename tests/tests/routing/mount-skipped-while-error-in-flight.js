@@ -1,4 +1,5 @@
 // a mount is stepped over while an error is in flight, and its settings never answer
+// INSPECT
 //
 // A mounted router or application is handed the request through a handle that takes three
 // arguments, so express walks past it when an error is already there: what a mount catches is what

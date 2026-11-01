@@ -1,4 +1,5 @@
 // an empty body under a Content-Encoding: the encoding is judged before the empty body becomes
+// INSPECT
 // the parser's empty value, so one nobody can inflate answers 415, one zlib refuses to end
 // answers 400, and with inflate off every encoding but identity answers 415
 

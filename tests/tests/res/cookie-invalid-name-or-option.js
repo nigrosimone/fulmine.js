@@ -1,4 +1,5 @@
 // what an invalid cookie name, path or domain throws
+// INSPECT
 //
 // The cookie package writes that message, and its 1.x wording puts the offending value at the end
 // of it where the 0.7 express depends on does not. Being on the newer one made every one of these

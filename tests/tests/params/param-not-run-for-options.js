@@ -1,4 +1,5 @@
 // an automatic OPTIONS reply does not run the app.param() callbacks of the routes it counted
+// INSPECT
 //
 // A route whose verb the reply is collecting is not a route the request runs, so express never
 // reaches its parameter callbacks. Here the walk decoded the parameters and then ran them anyway,

@@ -1,4 +1,5 @@
 // a router's param() runs for what its own pattern captured, not for what it inherited
+// INSPECT
 //
 // mergeParams puts the mounts' parameters into req.params, and reading that to decide which
 // callbacks to run called this router's param() for names a mount above had captured. Express

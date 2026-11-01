@@ -1,4 +1,5 @@
 // the text between a parameter and the parameter inside the optional group after it
+// INSPECT
 //
 // path-to-regexp keeps the whole of that text out of the group's own parameter, so the two cannot
 // both take it, and lets the parameter be exactly that text as well. Reading only its first

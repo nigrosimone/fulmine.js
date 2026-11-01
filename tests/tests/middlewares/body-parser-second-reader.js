@@ -1,4 +1,5 @@
 // a body somebody already read is stepped over by the parser that runs after them
+// INSPECT
 //
 // body-parser asks on-finished whether the request is over before it reads, and a request that has
 // been read says yes: `complete` is set once the whole body has arrived, and the stream is no

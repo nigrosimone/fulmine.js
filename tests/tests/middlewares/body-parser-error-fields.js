@@ -1,4 +1,5 @@
 // every own field of a body parser error, as body-parser puts them for an error handler to read:
+// INSPECT
 // body, length, limit, expected, received, charset, encoding, beside status and type
 
 const express = require("express");

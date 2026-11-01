@@ -1,4 +1,5 @@
 // res.send() under a Transfer-Encoding the application set itself: express 5.3 adds no
+// INSPECT
 // Content-Length next to it, so the body goes out chunked as the header says, but still an ETag
 // (expressjs/express#7459). Both set at once is left out, express then writes both and a client
 // refuses the response. end() and write() under the header, which express 5.2 already framed, are

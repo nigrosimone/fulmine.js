@@ -1,4 +1,5 @@
 // must apply the encoding res.end is given to a string body, as node does, and call the callback
+// INSPECT
 // of the three-argument shape: res.end(data, "binary") is how old code sends an image
 
 const express = require("express");

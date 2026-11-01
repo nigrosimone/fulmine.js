@@ -1,4 +1,5 @@
 // res.send() of a symbol, a bigint or a function: what node's Buffer throws for it is the answer,
+// INSPECT
 // with and without an ETag to make, since express sizes the two differently
 
 const express = require("express");

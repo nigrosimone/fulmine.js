@@ -1,4 +1,5 @@
 // a router reached through a mount written in another case still reads its parameters
+// INSPECT
 //
 // The mount belongs to the router that declares it, so an insensitive app enters /list through
 // /LIST whatever the mounted router thinks about case. What runs below has to see the path with

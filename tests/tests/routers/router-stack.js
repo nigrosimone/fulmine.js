@@ -1,4 +1,5 @@
 // router.stack, the layers express keeps, read back the way express keeps them
+// INSPECT
 //
 // Libraries that list an application's endpoints walk this, and so do tests that reach in for one
 // handler by name: LibreChat's own tests pull a middleware out of their router that way, and while

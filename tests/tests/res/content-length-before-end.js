@@ -1,4 +1,5 @@
 // Content-Length as a middleware sees it while the response goes out
+// INSPECT
 //
 // express's send() puts it in the headers before end(), so an end wrapper (express-winston), an
 // on-headers hook (compression, response-time) and a finish listener (morgan) all read it. A plain

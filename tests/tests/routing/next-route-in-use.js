@@ -1,4 +1,5 @@
 // next("route") in a callback of use(path, f1, f2) goes on to f2
+// INSPECT
 //
 // Express makes each callback of use() a layer of its own, and its router turns next("route") into
 // next() there: the next layer runs. Fulmine left the whole use(). A param callback's next("route")

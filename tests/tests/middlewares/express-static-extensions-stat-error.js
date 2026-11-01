@@ -1,4 +1,5 @@
 // express.static tries its extensions only when the path does not exist, as send does
+// INSPECT
 // ENOTDIR or ENAMETOOLONG must report the path asked, not the last extension (fuzz seed 3561875562)
 
 const express = require("express");

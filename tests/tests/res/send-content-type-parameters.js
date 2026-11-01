@@ -1,4 +1,5 @@
 // What res.send() makes of the Content-Type the application set: express 5.3 parses and formats
+// INSPECT
 // it with content-type 2, so the type is lowercased, the whitespace and quoting are normalised, a
 // parameter it cannot read is dropped, and a type that is not one is an error
 

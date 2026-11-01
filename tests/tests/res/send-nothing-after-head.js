@@ -1,4 +1,5 @@
 // send() with nothing after the head is out answers, unless the status strips headers: express
+// INSPECT
 // strips them through removeHeader, and node refuses that once the head has gone out
 // NODE: Deno's node:http answers this differently from node's, and Express on Deno with it
 

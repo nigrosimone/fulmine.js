@@ -1,4 +1,5 @@
 // Identity responses still run each compression filter, last installed first, after writeHead's
+// INSPECT
 // headers have been applied. Repeated middleware must keep separate decisions and merge Vary.
 const express = require("express");
 const compression = express.compression || require("compression");
