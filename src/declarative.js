@@ -381,6 +381,10 @@ function readBody(callExprs, headers, body, app, queries, params) {
                     if (typeof arg.value === "number") {
                         return null;
                     }
+                    // node takes a string or null; true throws and false writes nothing
+                    if (call.obj.propertyName === "end" && typeof arg.value !== "string" && arg.value !== null) {
+                        return null;
+                    }
                     const val = arg.value === null ? "" : arg.value;
                     body.push({ type: "text", value: val });
                 } else if (arg.type === "TemplateLiteral") {
@@ -433,38 +437,40 @@ function readBody(callExprs, headers, body, app, queries, params) {
                     }
                     body.push({ type: arg.object.property.name, value: arg.property.name });
                 } else if (arg.type === "BinaryExpression") {
-                    /** @type {any[]} the parts, in the same loose shape as body */
-                    const stuff = [];
-                    /**
-                     * A chain of string concatenations right to left: each side a literal, a param
-                     * or a query value, anything else falls back.
-                     *
-                     * @param {any} node a BinaryExpression
-                     * @returns {boolean}
-                     */
-                    function check(node) {
+                    /** @type {any[]} the operands, left to right */
+                    const operands = [];
+                    let node = arg;
+                    while (node.type === "BinaryExpression") {
                         if (node.operator !== "+") {
-                            return false;
+                            return null;
                         }
-                        if (node.right.type === "Literal") {
-                            stuff.push({ type: "text", value: node.right.value });
-                        } else if (node.right.type === "MemberExpression") {
-                            stuff.push({ type: node.right.object.property.name, value: node.right.property.name });
-                        } else return false;
-                        if (node.left.type === "Literal") {
-                            stuff.push({ type: "text", value: node.left.value });
-                        } else if (node.left.type === "MemberExpression") {
-                            stuff.push({ type: node.left.object.property.name, value: node.left.property.name });
-                        } else if (node.left.type === "BinaryExpression") {
-                            return check(node.left);
-                        } else return false;
-
-                        return true;
+                        operands.unshift(node.right);
+                        node = node.left;
                     }
-                    if (!check(arg)) {
-                        return null;
+                    operands.unshift(node);
+                    // each + has to be a concatenation: 1 + 2 + " items" is "3 items", not "12 items"
+                    let isString = false;
+                    for (const [i, operand] of operands.entries()) {
+                        // a request value is a string
+                        const value =
+                            operand.type === "MemberExpression" &&
+                            !operand.computed &&
+                            operand.property.type === "Identifier" &&
+                            (operand.object.property?.name === "query" || operand.object.property?.name === "params");
+                        if (!value && operand.type !== "Literal") {
+                            return null;
+                        }
+                        const string = value || typeof operand.value === "string";
+                        if (i > 0 && !isString && !string) {
+                            return null;
+                        }
+                        isString ||= string;
+                        body.push(
+                            value
+                                ? { type: operand.object.property.name, value: operand.property.name }
+                                : { type: "text", value: operand.value }
+                        );
                     }
-                    body.push(...stuff.reverse());
                 } else if (arg.type === "ObjectExpression") {
                     if (call.obj.propertyName === "end") {
                         return null;
