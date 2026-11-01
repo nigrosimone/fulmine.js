@@ -1,4 +1,5 @@
 // a compiled body says what javascript says: + adds before it concatenates, end() takes no boolean
+// NODE: end(false) throws in Bun's node:http and writes nothing in node's, and Bun compiles nothing
 //
 // The compiler joined every operand of + as text, so 1 + 2 + " items" answered "12 items", and it
 // wrote end(true) and end(false) as text where node throws on the first and writes nothing for the
