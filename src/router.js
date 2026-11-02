@@ -372,6 +372,7 @@ module.exports = class Router extends EventEmitter {
         }
         hot.xPoweredBy = !!this.get("x-powered-by");
         hot.connectionHeadersOff = this._settings["connection headers"] === false;
+        hot.conditionalGetOff = this.get("conditional get") === false;
         hot.etagFn = this.get("etag fn");
         const etagMethods = this.get("etag methods");
         hot.etagMethods = etagMethods == null ? null : new Set(etagMethods);

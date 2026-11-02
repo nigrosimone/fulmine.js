@@ -32,6 +32,9 @@ class HotSettings {
     /** The app's own "connection headers" is false. @type {boolean} */
     connectionHeadersOff = false;
 
+    /** "conditional get" is false: the conditional headers are not read and nothing is fresh. @type {boolean} */
+    conditionalGetOff = false;
+
     /** @type {import("./utils.js").ETagFn|undefined} */
     etagFn = undefined;
 

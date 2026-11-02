@@ -104,6 +104,8 @@ json/sendStatus/end` with literal arguments, and `app.set("etag", false)` (a val
       on a 4 KB POST answer, no downside.
     - `app.set("connection headers", false)`: drops `Connection`/`Keep-Alive` headers, 2-3.5%.
       Keep them if a client or proxy relies on them.
+    - `app.set("conditional get", false)`: never a 304, the conditional headers are not read, about 2% CPU.
+      Only for APIs that are never revalidated.
     - `app.set("stat cache", "1s")`: `express.static` and `res.sendFile` skip the `stat` syscall
       inside the window, up to 15% on small files. Edited files are served stale inside the window.
     - `app.set("case sensitive routing", true)`: lets more overlapping routes stay native.

@@ -552,20 +552,23 @@ module.exports = class Request extends LazyReadable {
                         this._connectionClose = true;
                     }
                 }
-                // send consults freshness whatever the etag setting, so the conditional pair is read
-                const ifNoneMatch = req.getHeader(IF_NONE_MATCH);
-                if (ifNoneMatch !== "") {
-                    this.#addEntry("if-none-match", ifNoneMatch);
-                }
-                const ifModifiedSince = req.getHeader(IF_MODIFIED_SINCE);
-                if (ifModifiedSince !== "") {
-                    this.#addEntry("if-modified-since", ifModifiedSince);
-                }
-                // fresh() reads cache-control only after a conditional
-                if (ifNoneMatch !== "" || ifModifiedSince !== "") {
-                    const cacheControl = req.getHeader(CACHE_CONTROL);
-                    if (cacheControl !== "") {
-                        this.#addEntry("cache-control", cacheControl);
+                // send consults freshness whatever the etag setting, so the conditional pair is
+                // read, unless "conditional get" is off: two native reads less per request
+                if (!app._hot().conditionalGetOff) {
+                    const ifNoneMatch = req.getHeader(IF_NONE_MATCH);
+                    if (ifNoneMatch !== "") {
+                        this.#addEntry("if-none-match", ifNoneMatch);
+                    }
+                    const ifModifiedSince = req.getHeader(IF_MODIFIED_SINCE);
+                    if (ifModifiedSince !== "") {
+                        this.#addEntry("if-modified-since", ifModifiedSince);
+                    }
+                    // fresh() reads cache-control only after a conditional
+                    if (ifNoneMatch !== "" || ifModifiedSince !== "") {
+                        const cacheControl = req.getHeader(CACHE_CONTROL);
+                        if (cacheControl !== "") {
+                            this.#addEntry("cache-control", cacheControl);
+                        }
                     }
                 }
             }
@@ -1279,12 +1282,16 @@ module.exports = class Request extends LazyReadable {
     /**
      * Whether the client's cached copy is still good, from If-None-Match and If-Modified-Since
      * against the response headers set so far. Only GET, HEAD and QUERY can be fresh, the last
-     * since express 5.3.
+     * since express 5.3. Never with "conditional get" off.
      * @returns {boolean}
      */
     get fresh() {
         const method = this.method;
         if (method !== "HEAD" && method !== "GET" && method !== "QUERY") {
+            return false;
+        }
+        // with "conditional get" off nothing is fresh, also when the full copy has the headers
+        if (this.app._hot().conditionalGetOff) {
             return false;
         }
         if ((this.res.statusCode >= 200 && this.res.statusCode < 300) || this.res.statusCode === 304) {
