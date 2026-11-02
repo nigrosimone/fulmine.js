@@ -1,5 +1,21 @@
 # Changelog
 
+## [5.27.0](https://github.com/nigrosimone/fulmine.js/compare/v5.26.1...v5.27.0) (2026-11-02)
+
+### Features
+
+* **settings:** conditional get, off it reads neither conditional header and nothing is fresh ([ca780da](https://github.com/nigrosimone/fulmine.js/commit/ca780da03c826dd16894aca8dec054baa17b9120))
+
+### Bug Fixes
+
+* **declarative:** a + between two non strings adds, and end() takes only a string or null literal ([12b15d9](https://github.com/nigrosimone/fulmine.js/commit/12b15d95fe316c2ccce69aa4e8481851aca28b0f))
+* **declarative:** res.type(x).send(null) keeps the type without a charset, as the generic path and express 5.3 ([9d6f5e8](https://github.com/nigrosimone/fulmine.js/commit/9d6f5e8ef913139b9010233cdddfcb98040acd08))
+* **optimizer:** no header or query skip when a response method is replaced, usage.js never read it ([05e298f](https://github.com/nigrosimone/fulmine.js/commit/05e298fd86e8b048907835f9ea11448fd303bb28))
+
+### Performance Improvements
+
+* **router:** native params kept as an array of raw values, req.params built once, 48 bytes less per request ([09c261b](https://github.com/nigrosimone/fulmine.js/commit/09c261b3b5ff9f32a54caae15ef78d7e9fa55454))
+
 ## [5.26.1](https://github.com/nigrosimone/fulmine.js/compare/v5.26.0...v5.26.1) (2026-11-01)
 
 ### Bug Fixes
