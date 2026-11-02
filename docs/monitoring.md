@@ -1,5 +1,5 @@
 ---
-description: Attach Sentry and other tracers to Fulmine.js, on µWS and through node:http, with the diagnostics channels Express and Node.js publish.
+description: Attach Sentry, OpenTelemetry and other tracers to Fulmine.js, on µWS and through node:http, with the diagnostics channels Express and Node.js publish.
 ---
 
 # Monitoring
@@ -8,6 +8,8 @@ Fulmine publishes what Express and Node.js publish for tracers, on `node:diagnos
 
 - `http.server.request.start`, `http.server.response.created` and `http.server.response.finish`, node:http's own. On µWS the server in them is the app `listen()` returns, and every request goes through its `emit("request")`, as node sends it.
 - `express.router.request`, the TracingChannel for every middleware, route handler and error handler that [pillarjs/router#196](https://github.com/pillarjs/router/pull/196) adds to Express's router, merged and out with the next router release.
+
+A tracer that wraps `http.Server.prototype.emit` instead, as OpenTelemetry's HTTP instrumentation does, gets the requests on µWS too: they go through that wrapper as on node.
 
 Without a subscriber they cost nothing. A tracer has to subscribe before `listen()`: routes µWS can answer on its own are compiled then, and none is while something listens, so every handler runs.
 
@@ -47,6 +49,18 @@ Tested with `@sentry/node` 11.8 in CI ([the case](../integrations/cases/sentry.j
 
 What is not there yet: a span per middleware and route handler, and the route as the transaction name. The transaction is named after the path, `GET /users/7`, where Express gets `GET /users/:id`. Sentry takes both from rewriting the `router` package as it loads, which Fulmine does not use. Once Sentry reads `express.router.request`, the channel Express's router will publish, they come from Fulmine too, with nothing to change here.
 
+## OpenTelemetry
+
+As for Express: start the SDK with `@opentelemetry/instrumentation-http` before the app is loaded, for example with `node --require ./instrumentation.js app.js`.
+
+Tested with `@opentelemetry/instrumentation-http` 0.300 in CI ([the case](../integrations/cases/otel.js)), on `app.listen()` and on `http.createServer(app)`, against the same app on Express:
+
+- one SERVER span per request, with the same attributes and status, 404 and 500 included;
+- an incoming `traceparent` is continued;
+- the request's span is the active one in the handler, before and after an `await`.
+
+As on Express, the route (`http.route`) comes from `@opentelemetry/instrumentation-express`, which rewrites the `express` package as it loads, and Fulmine is not that package.
+
 ## Other tracers
 
-A tracer that reads the channels above sees Fulmine as it sees Express. One that patches node's `http` module, as OpenTelemetry's HTTP instrumentation does, sees the requests only through `http.createServer(app)`, where node itself serves them.
+A tracer that reads the channels above, or wraps `http.Server.prototype.emit`, sees Fulmine as it sees Express. One that patches something else in node's `http` module sees the requests only through `http.createServer(app)`, where node itself serves them.

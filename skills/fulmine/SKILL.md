@@ -66,9 +66,9 @@ files are not Express here.
   nothing. Bodies slower than 16 KB/s are dropped.
 - `x-powered-by` is off by default.
 - `res.writeEarlyHints()`, `writeContinue()` and trailers exist but send nothing.
-- OpenTelemetry's HTTP instrumentation patches `node:http`, so it sees nothing on `app.listen()`.
-  Tracers that read `diagnostics_channel` (`http.server.*`, `express.router.request`) work, and
-  must subscribe before `listen()`. Sentry: `Sentry.setupExpressErrorHandler(app)` as on Express.
+- Tracers that read `diagnostics_channel` (`http.server.*`, `express.router.request`) or wrap
+  `http.Server.prototype.emit` (OpenTelemetry's HTTP instrumentation) work, and must subscribe
+  before `listen()`. Sentry: `Sentry.setupExpressErrorHandler(app)` as on Express.
 
 Full list: https://fulmine.sndesign.it/differences
 

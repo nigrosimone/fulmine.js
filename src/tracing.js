@@ -236,8 +236,16 @@ const requestStart = dc.channel("http.server.request.start");
 const responseCreated = dc.channel("http.server.response.created");
 const responseFinish = dc.channel("http.server.response.finish");
 
+// OpenTelemetry's HTTP instrumentation reads no channel, it wraps http.Server.prototype.emit. On µWS
+// the request goes through that wrapper too, so its span opens as on node:http
+const serverProto = require("http").Server.prototype;
+const EventEmitter = require("events");
+const plainEmit = EventEmitter.prototype.emit;
+
 /** @type {WeakSet<object>} the apps whose "request" event already runs the walk */
 const dispatching = new WeakSet();
+/** @type {WeakMap<object, EventEmitter>} per app, a node emitter that hands "request" to the app */
+const relays = new WeakMap();
 
 /**
  * Whether node:http's server channels have subscribers.
@@ -245,7 +253,12 @@ const dispatching = new WeakSet();
  * @returns {boolean}
  */
 function serverObserved() {
-    return requestStart.hasSubscribers || responseCreated.hasSubscribers || responseFinish.hasSubscribers;
+    return (
+        requestStart.hasSubscribers ||
+        responseCreated.hasSubscribers ||
+        responseFinish.hasSubscribers ||
+        serverProto.emit !== plainEmit
+    );
 }
 
 /**
@@ -281,7 +294,18 @@ function serveObserved(app, request, response) {
         dispatching.add(app);
         app.on("request", (/** @type {any} */ req, /** @type {any} */ res) => app._routeRequestDirect(req, res));
     }
-    app.emit("request", request, response);
+    if (serverProto.emit === plainEmit) {
+        app.emit("request", request, response);
+    } else {
+        // the wrapper ends in node's own emit, which does not see the app's listeners
+        let relay = relays.get(app);
+        if (relay === undefined) {
+            relay = new EventEmitter();
+            relay.on("request", (/** @type {any} */ req, /** @type {any} */ res) => app.emit("request", req, res));
+            relays.set(app, relay);
+        }
+        serverProto.emit.call(relay, "request", request, response);
+    }
 }
 
 module.exports = {

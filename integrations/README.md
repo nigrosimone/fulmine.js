@@ -20,20 +20,21 @@ cd integrations && node run.js trpc     # just that one
 cd integrations && node build.js --force  # rebuild the applications from scratch
 ```
 
-| Case                                       | What it serves                                                                                    |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| [nest.js](./cases/nest.js)                 | a Nest controller with a pipe, a body and an exception filter, through the adapter                |
-| [apollo.js](./cases/apollo.js)             | Apollo Server through `@as-integrations/express5`                                                 |
-| [trpc.js](./cases/trpc.js)                 | a tRPC router through `@trpc/server/adapters/express`                                             |
-| [mcp.js](./cases/mcp.js)                   | an MCP server on `StreamableHTTPServerTransport`, asked by the SDK's own client and by hand       |
-| [sentry.js](./cases/sentry.js)             | `@sentry/node`: the errors it reports and the scope of each request, on `listen()` and the shim   |
-| [astro.js](./cases/astro.js)               | `@astrojs/node` in middleware mode, including the `next()` it calls for a path it does not answer |
-| [sveltekit.js](./cases/sveltekit.js)       | the handler `@sveltejs/adapter-node` builds                                                       |
-| [react-router.js](./cases/react-router.js) | React Router v8 through `@react-router/express`                                                   |
-| [next.js](./cases/next.js)                 | Next.js as a custom server, `next().getRequestHandler()`                                          |
-| [tsoa.js](./cases/tsoa.js)                 | the routes tsoa generates from a decorated controller, `RegisterRoutes(app)`, validation included |
+| Case                                       | What it serves                                                                                     |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| [nest.js](./cases/nest.js)                 | a Nest controller with a pipe, a body and an exception filter, through the adapter                 |
+| [apollo.js](./cases/apollo.js)             | Apollo Server through `@as-integrations/express5`                                                  |
+| [trpc.js](./cases/trpc.js)                 | a tRPC router through `@trpc/server/adapters/express`                                              |
+| [mcp.js](./cases/mcp.js)                   | an MCP server on `StreamableHTTPServerTransport`, asked by the SDK's own client and by hand        |
+| [sentry.js](./cases/sentry.js)             | `@sentry/node`: the errors it reports and the scope of each request, on `listen()` and the shim    |
+| [otel.js](./cases/otel.js)                 | `@opentelemetry/instrumentation-http`: the server span of each request, on `listen()` and the shim |
+| [astro.js](./cases/astro.js)               | `@astrojs/node` in middleware mode, including the `next()` it calls for a path it does not answer  |
+| [sveltekit.js](./cases/sveltekit.js)       | the handler `@sveltejs/adapter-node` builds                                                        |
+| [react-router.js](./cases/react-router.js) | React Router v8 through `@react-router/express`                                                    |
+| [next.js](./cases/next.js)                 | Next.js as a custom server, `next().getRequestHandler()`                                           |
+| [tsoa.js](./cases/tsoa.js)                 | the routes tsoa generates from a decorated controller, `RegisterRoutes(app)`, validation included  |
 
-The first five are libraries: a case requires them and runs. The other five compile an application
+The first six are libraries: a case requires them and runs. The other five compile an application
 first, so each keeps a small one in [`apps/`](./apps) and [`build.js`](./build.js) builds it before
 the case runs. tsoa is the odd one: what it compiles is not a page but the Express routes themselves,
 generated from a controller written with decorators, so the case is the generated code calling into
