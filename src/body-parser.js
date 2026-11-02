@@ -343,6 +343,32 @@ function encodingFor(rawContentEncoding, options) {
     return { inflate };
 }
 
+/** @type {(new () => Inflater)|null|undefined} built on first use, null where node has no zstd */
+let ZstdDecompress;
+
+/**
+ * A zstd decompressor on fast-zlib's base class, which has none. body-parser 2.4 inflates zstd
+ * where node's zlib can, and answers 415 elsewhere, as here.
+ *
+ * @returns {(new () => Inflater)|null}
+ */
+function zstdDecompress() {
+    if (ZstdDecompress === undefined) {
+        const Base = Object.getPrototypeOf(zlib().Inflate);
+        ZstdDecompress =
+            "createZstdDecompress" in require("zlib")
+                ? /** @type {new () => Inflater} */ (
+                      class extends Base {
+                          constructor() {
+                              super("ZstdDecompress", { flush: zlib().constants.ZSTD_e_flush });
+                          }
+                      }
+                  )
+                : null;
+    }
+    return /** @type {(new () => Inflater)|null} */ (ZstdDecompress);
+}
+
 /**
  * The decompressor for a Content-Encoding, undefined for identity, false for one nobody knows.
  *
@@ -364,12 +390,24 @@ function createInflate(contentEncoding) {
         case "br":
             stream = new (zlib().BrotliDecompress)();
             break;
+        case "zstd": {
+            const Zstd = zstdDecompress();
+            if (Zstd === null) {
+                return false;
+            }
+            stream = new Zstd();
+            break;
+        }
         default:
             return false;
     }
     // the flag the final flush passes, so a truncated stream errors instead of resolving empty
     /** @type {Inflater} */ (stream)._finishFlag =
-        encoding === "br" ? zlib().constants.BROTLI_OPERATION_FINISH : zlib().constants.Z_FINISH;
+        encoding === "br"
+            ? zlib().constants.BROTLI_OPERATION_FINISH
+            : encoding === "zstd"
+              ? zlib().constants.ZSTD_e_end
+              : zlib().constants.Z_FINISH;
     return stream;
 }
 

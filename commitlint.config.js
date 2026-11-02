@@ -6,6 +6,8 @@
 // does not decide the major on its own.
 module.exports = {
     extends: ["@commitlint/config-conventional"],
+    // dependabot writes "Bump" with a capital, and its commits are chores the changelog skips anyway
+    ignores: [(message) => /^Signed-off-by: dependabot\[bot\]/m.test(message)],
     rules: {
         // the default 100 is tight for a subject that has to say what changed and why
         "header-max-length": [2, "always", 120],
