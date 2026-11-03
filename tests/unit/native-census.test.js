@@ -68,7 +68,7 @@ const BUDGET = {
         writeStatus: 1
     },
     "GET /parsed": { end: 1, getHeader: 5, writeHeader: 1 },
-    "GET /parsed, declaring a body": { end: 1, forEach: 1, getHeader: 2, writeHeader: 1 },
+    "GET /parsed, declaring a body": { end: 1, forEach: 1, getHeader: 1, writeHeader: 1 },
     "GET /file": { cork: 1, end: 1, forEach: 1, getQuery: 1, onAborted: 1, writeHeader: 1 },
     "GET /static/small.txt": {
         cork: 1,

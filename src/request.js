@@ -537,12 +537,11 @@ module.exports = class Request extends LazyReadable {
             // at sixteen. A GET that declares a body takes the full copy. accept is not read: the
             // error and 404 pages never negotiate
             const length = req.getHeader(CONTENT_LENGTH);
-            const transferEncoding = req.getHeader(TRANSFER_ENCODING);
             // Anything that says a word about framing takes the full copy, "0" included: getHeader
             // returns only the first of a repeated header, and a duplicate must be refused, see
             // _mustRefuse. An empty content-length reads as "" like a header never sent, and only
-            // the full copy below refuses it
-            if (length !== "" || transferEncoding !== "") {
+            // the full copy below refuses it. With a length the copy reads transfer-encoding itself
+            if (length !== "" || req.getHeader(TRANSFER_ENCODING) !== "") {
                 this.#copyHeaders();
             } else {
                 const connection = req.getHeader(CONNECTION);
