@@ -1168,6 +1168,9 @@ function findIndexStartingFrom(arr, fn, index = 0) {
  * @returns {string|-1} -1 when the path cannot be decoded
  */
 function decode(path) {
+    if (path.indexOf("%") === -1) {
+        return path;
+    }
     try {
         return decodeURIComponent(path);
     } catch (err) {
@@ -1276,7 +1279,8 @@ function parseHttpDate(date) {
  * @returns {boolean}
  */
 function isPreconditionFailure(req, res) {
-    const match = req.headers["if-match"];
+    // off the raw entries: req.headers would build the whole object for a header nearly never sent
+    const match = req._foldedHeader("if-match");
 
     if (match) {
         const etag = res.get("etag");
@@ -1289,7 +1293,7 @@ function isPreconditionFailure(req, res) {
         );
     }
 
-    const unmodifiedSince = parseHttpDate(req.headers["if-unmodified-since"]);
+    const unmodifiedSince = parseHttpDate(req._foldedHeader("if-unmodified-since"));
     if (!isNaN(unmodifiedSince)) {
         const lastModified = parseHttpDate(/** @type {string|undefined} */ (res.get("Last-Modified")));
         return isNaN(lastModified) || lastModified > unmodifiedSince;
@@ -1315,8 +1319,8 @@ function entityTag(entity, weak, byteLength) {
         return weak ? "W/" + EMPTY_ENTITY_TAG : EMPTY_ENTITY_TAG;
     }
     const len = byteLength ?? (typeof entity === "string" ? Buffer.byteLength(entity, "utf8") : entity.length);
-    const tag = `"${len.toString(16)}-${crypto.hash("sha1", entity, "base64").substring(0, 27)}"`;
-    return weak ? "W/" + tag : tag;
+    // the prefix inside the template, one string less than "W/" + tag
+    return `${weak ? 'W/"' : '"'}${len.toString(16)}-${crypto.hash("sha1", entity, "base64").substring(0, 27)}"`;
 }
 
 // stat.mtime builds a Date on first read and then it is formatted, 4 us a request on static-4kb
@@ -1356,8 +1360,7 @@ function mtimeOf(stat) {
  * @returns {string}
  */
 function statTag(stat, weak) {
-    const tag = `"${stat.size.toString(16)}-${mtimeOf(stat).hex}"`;
-    return weak ? "W/" + tag : tag;
+    return `${weak ? 'W/"' : '"'}${stat.size.toString(16)}-${mtimeOf(stat).hex}"`;
 }
 
 /**
@@ -1404,7 +1407,7 @@ function createETagGenerator(options) {
  * @returns {boolean}
  */
 function isRangeFresh(req, res) {
-    const ifRange = /** @type {string|undefined} */ (req.headers["if-range"]);
+    const ifRange = /** @type {string|undefined} */ (req._foldedHeader("if-range"));
     if (!ifRange) {
         return true;
     }
@@ -1811,6 +1814,7 @@ module.exports = {
     ENCODING_ANY,
     memoizeByString,
     isRangeFresh,
+    lookupType,
     findIndexStartingFrom,
     fastQueryParse,
     canBeOptimized,

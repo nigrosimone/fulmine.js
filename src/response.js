@@ -20,8 +20,6 @@ limitations under the License.
 // the global Buffer is a getter, a call on every read
 const { Buffer } = require("buffer");
 const cookie = require("cookie");
-const { lazyRequire } = require("./lazy-require.js");
-const mime = /** @type {() => typeof import("mime-types")} */ (lazyRequire("mime-types"));
 const vary = require("vary");
 const encodeUrl = require("encodeurl");
 const contentDisposition = require("content-disposition");
@@ -33,6 +31,7 @@ const {
     containsDotFile,
     isPreconditionFailure,
     isRangeFresh,
+    lookupType,
     escapeHtml,
     validateHeaderName,
     validateHeaderValue,
@@ -285,7 +284,7 @@ module.exports = class Response extends LazyWritable {
                       "keep-alive": SEEDED_KEEP_ALIVE
                   };
         // node writes its pair unless the header was removed, which still keeps the connection alive
-        if (res._nodeRes && hot.connectionHeadersOff) {
+        if (hot.connectionHeadersOff && res._nodeRes) {
             res._nodeRes.removeHeader("connection");
         }
         // the client asked to close and uWS closes: a declarative response, written once, cannot say so
@@ -684,12 +683,7 @@ module.exports = class Response extends LazyWritable {
                 this.totalSize = parseInt(value);
                 continue;
             }
-            if (
-                header === "transfer-encoding" &&
-                typeof value === "string" &&
-                res._nodeRes === undefined &&
-                CHUNKED_VALUE.test(value)
-            ) {
+            if (header === "transfer-encoding" && typeof value === "string" && joins && CHUNKED_VALUE.test(value)) {
                 // not written: uWS writes its own on the write() path, two came out before. Node's
                 // own response, behind the shim, frames by the header itself
                 (this.#stream ??= new ResponseStream()).userChunked = true;
@@ -917,7 +911,8 @@ module.exports = class Response extends LazyWritable {
             }
             this.writeHeaders(true);
         }
-        const contentLength = this.headers["content-length"];
+        // read only where it is used, without a body
+        const contentLength = data ? undefined : this.headers["content-length"];
         // The client said the connection ends here: uWS closes by itself for a bare "close", not
         // for "keep-alive, close", see saysClose. Only with a length: endWithoutBody reads its
         // first argument as the length, and closing without one wrote a 2^63 Content-Length on a 204
@@ -1182,7 +1177,10 @@ module.exports = class Response extends LazyWritable {
         // send's two branches: with a root an in-root ".." collapses first and only a path still
         // escaping is refused, without a root any ".." is refused on the raw path
         let parts, fullpath;
-        if (options.root) {
+        if (options._fullpath !== undefined && options._ownDotfiles && !path.includes("..")) {
+            // express.static's file, checked there: the normalised path and its parts would not be read
+            fullpath = options._fullpath;
+        } else if (options.root) {
             path = Path.normalize("." + Path.sep + path);
             if (UP_PATH_REGEXP.test(path)) {
                 return done(httpError(403));
@@ -1206,15 +1204,16 @@ module.exports = class Response extends LazyWritable {
         }
 
         // dotfile checks, which express.static did itself
-        if (!options._ownDotfiles && containsDotFile(parts)) {
+        // the parts are always set when express.static did not check the dotfiles itself
+        if (!options._ownDotfiles && containsDotFile(/** @type {string[]} */ (parts))) {
             switch (options.dotfiles) {
                 case "allow":
                     break;
                 case "deny":
                     return done(httpError(403));
                 case "ignore_files": {
-                    const len = parts.length;
-                    if (parts[len - 1].startsWith(".")) {
+                    const all = /** @type {string[]} */ (parts);
+                    if (all[all.length - 1].startsWith(".")) {
                         return done(httpError(404));
                     }
                     break;
@@ -1244,9 +1243,8 @@ module.exports = class Response extends LazyWritable {
 
         // headers
         if (!this.headers["content-type"]) {
-            const m = mime().lookup(fullpath);
-            if (m) this.type(m);
-            else this.type("application/octet-stream");
+            // by extension, memoised: mime.lookup took it from the path the same way, octet-stream when unknown
+            this.type(lookupType(Path.extname(fullpath)));
         }
         if (options.cacheControl) {
             this.headers["cache-control"] =
@@ -1305,7 +1303,7 @@ module.exports = class Response extends LazyWritable {
         // range requests
         if (options.acceptRanges) {
             // only the bytes unit, checked on the text as send does: "Bytes=0-1" is the whole file
-            const rangeHeader = this.req.headers.range;
+            const rangeHeader = this.req._foldedHeader("range");
             if (rangeHeader !== undefined && BYTES_RANGE.test(rangeHeader)) {
                 let ranges = /** @type {ReturnType<typeof import("range-parser")>} */ (
                     this.req.range(len, { combine: true })

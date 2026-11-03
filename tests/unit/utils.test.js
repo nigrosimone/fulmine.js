@@ -267,7 +267,7 @@ test("createETagGenerator takes a body or a stat, and weak differs from strong",
 
 test("isRangeFresh reads If-Range as either an etag or a date", () => {
     const res = (headers) => /** @type {any} */ ({ get: (name) => headers[name.toLowerCase()] });
-    const req = (headers) => /** @type {any} */ ({ headers });
+    const req = (headers) => /** @type {any} */ ({ headers, _foldedHeader: (name) => headers[name] });
 
     // no If-Range at all: nothing to be stale against
     assert.strictEqual(isRangeFresh(req({}), res({})), true);
@@ -288,7 +288,7 @@ test("isRangeFresh reads If-Range as either an etag or a date", () => {
 
 test("isPreconditionFailure is about If-Match: a 412, not a 304", () => {
     const res = (headers) => /** @type {any} */ ({ get: (name) => headers[name.toLowerCase()] });
-    const req = (headers) => /** @type {any} */ ({ headers });
+    const req = (headers) => /** @type {any} */ ({ headers, _foldedHeader: (name) => headers[name] });
 
     assert.strictEqual(isPreconditionFailure(req({}), res({})), false);
     assert.strictEqual(isPreconditionFailure(req({ "if-match": '"abc"' }), res({ etag: '"abc"' })), false);

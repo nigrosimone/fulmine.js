@@ -37,6 +37,8 @@ const {
     ENCODING_GZIP
 } = require("./utils.js");
 
+const SEP_DOT = path.sep + ".";
+
 /** @typedef {import("./request.js")} Request */
 /** @typedef {import("./response.js")} Response */
 /** @typedef {import("./utils.js").HttpError} HttpError */
@@ -269,7 +271,8 @@ function serveStatic(root, options) {
         const rawPath = iq !== -1 ? req.url.substring(0, iq) : req.url;
 
         try {
-            url = decodeURIComponent(rawPath);
+            // without a % there is nothing to decode and nothing to throw
+            url = rawPath.indexOf("%") === -1 ? rawPath : decodeURIComponent(rawPath);
         } catch (e) {
             // a 400 as send answers it
             return refuse(res, next, options.fallthrough, 400);
@@ -306,7 +309,12 @@ function serveStatic(root, options) {
         // before the stat, as send judges the path before the disk: a hidden segment in a missing
         // path answers the dotfiles rule, not ENOENT. Normalised first, ".." is not a dotfile. Split on
         // the platform separator as send does: on posix "a\.b" is one name
-        if (containsDotFile(fullpath.slice(resolvedRoot.length).split(path.sep))) {
+        // the split only when a segment can start with a dot
+        const rel = resolvedRoot.length;
+        if (
+            (fullpath.charCodeAt(rel) === 0x2e || fullpath.includes(SEP_DOT, rel)) &&
+            containsDotFile(fullpath.slice(rel).split(path.sep))
+        ) {
             const refusal = options.dotfiles === "deny" ? 403 : options.dotfiles === "allow" ? 0 : 404;
             if (refusal !== 0 && !(options.dotfiles === "ignore_files" && !path.basename(url).startsWith("."))) {
                 return refuse(res, next, options.fallthrough, refusal);
