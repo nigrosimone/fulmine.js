@@ -584,6 +584,10 @@ function buildLiteralIndex(routes, caseFlag) {
  * @returns {number}
  */
 function firstAtLeast(list, from) {
+    // a scan from the start, the common case, needs no search
+    if (list.length === 0 || list[0] >= from) {
+        return 0;
+    }
     let low = 0;
     let high = list.length;
     while (low < high) {

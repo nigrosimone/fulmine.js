@@ -213,8 +213,7 @@ class Walk {
                 }
                 routeIndex++;
             }
-        }
-        if (!this.skipCheck) {
+        } else {
             // express decodes a matched layer's parameters before the method check, so a bad
             // escape is a 400 even with no route of this method; only a path with a percent can
             const mayFailDecode = (req._mayFailDecode ??= req._originalPath.indexOf("%") !== -1);
@@ -558,11 +557,12 @@ class Walk {
                 raise(req, route, thingamabob);
             }
         }
-        const kind = route.callbackKinds[this.callbackIndex];
-        const callback = route.callbacks[this.callbackIndex++];
+        // the callback first: at the route's end its kind would be read out of bounds
+        const callback = route.callbacks[this.callbackIndex];
         if (!callback) {
             return this.leaveHop(false);
         }
+        const kind = route.callbackKinds[this.callbackIndex++];
         // express makes each callback of use(path, ...) a layer of its own, and entering one sets
         // req.baseUrl from the path again
         if (
