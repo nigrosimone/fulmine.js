@@ -19,7 +19,7 @@ limitations under the License.
 
 // the global Buffer is a getter, a call on every read
 const { Buffer } = require("buffer");
-const { deprecated, fastQueryParse, UNREAD_PARAMS } = require("./utils.js");
+const { deprecated, fastQueryParse, UNREAD_PARAMS, UNREAD_PLAIN_PARAMS } = require("./utils.js");
 const { lazyRequire } = require("./lazy-require.js");
 const accepts = /** @type {() => typeof import("accepts")} */ (lazyRequire("accepts"));
 const typeis = /** @type {() => typeof import("type-is")} */ (lazyRequire("type-is"));
@@ -1007,9 +1007,14 @@ module.exports = class Request extends LazyReadable {
      */
     get params() {
         const params = this._params;
-        return params === UNREAD_PARAMS
-            ? (this._params = Object.create(null))
-            : /** @type {Record<string, any>} */ (params);
+        if (params === UNREAD_PARAMS) {
+            return (this._params = Object.create(null));
+        }
+        // a pathless middleware's, made per hop as express does
+        if (params === UNREAD_PLAIN_PARAMS) {
+            return (this._params = {});
+        }
+        return /** @type {Record<string, any>} */ (params);
     }
 
     set params(value) {

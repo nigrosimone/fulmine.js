@@ -27,6 +27,7 @@ const {
     regexpGroupKeys,
     NullObject,
     UNREAD_PARAMS,
+    UNREAD_PLAIN_PARAMS,
     headersSentError,
     EMPTY_REGEX,
     settingsEpoch
@@ -1082,7 +1083,7 @@ module.exports = class Router extends EventEmitter {
             }
         } else {
             // null-prototype params as express 5, except a pathless middleware layer (fast_slash)
-            const own = route.use && route.path === "" ? {} : UNREAD_PARAMS;
+            const own = route.use && route.path === "" ? UNREAD_PLAIN_PARAMS : UNREAD_PARAMS;
             if (req._paramStack !== null && req._paramStack.length > 0 && mergesParams(route, this)) {
                 req._params = mergeParams(own, req._paramStack);
             } else {

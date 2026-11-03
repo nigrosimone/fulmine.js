@@ -1707,6 +1707,8 @@ NullObject.prototype = Object.create(null);
 // req.params of a route nobody has read yet, see Request#params: Object.create(null) is a
 // dictionary of 177 bytes, and most handlers never read it
 const UNREAD_PARAMS = Object.freeze(Object.create(null));
+// the same for a pathless middleware, whose params express makes a plain {} on every hop
+const UNREAD_PLAIN_PARAMS = Object.freeze({});
 
 let stringPrototypeRepaired = false;
 
@@ -1791,6 +1793,7 @@ module.exports = {
     UP_PATH_REGEXP,
     NullObject,
     UNREAD_PARAMS,
+    UNREAD_PLAIN_PARAMS,
     decode,
     decodeParam,
     containsDotFile,
