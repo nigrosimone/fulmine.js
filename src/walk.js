@@ -424,8 +424,9 @@ class Walk {
             } else {
                 if (pushed < 0 && req._originalPath.length > req._consumed) {
                     // a rewrite below left a remainder: express strips its first character, issue #17
-                    req._originalPath =
-                        req._originalPath.slice(0, req._consumed) + req._originalPath.slice(req._consumed + 1);
+                    const original = req._originalPath;
+                    const consumed = req._consumed;
+                    req._originalPath = original.slice(0, consumed) + original.slice(consumed + 1);
                     req._mayFailDecode = null;
                 }
                 if (taken !== 0) {

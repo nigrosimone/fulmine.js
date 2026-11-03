@@ -76,16 +76,15 @@ class FSWorker {
 
         this.worker.on("message", (message) => {
             // under --watch node reports {"watch:import": [...]} here too, with no key of ours
-            if (workerTasks[message.key] === undefined) return;
+            const task = workerTasks[message.key];
+            if (task === undefined) return;
             this.busy = false;
             if (message.err) {
-                workerTasks[message.key].reject(new Error(message.err));
+                task.reject(new Error(message.err));
             } else {
                 // the transferred ArrayBuffer as a Buffer, zero-copy: express-session calls
                 // Buffer.byteLength on what res.end() gets
-                workerTasks[message.key].resolve(
-                    message.data instanceof ArrayBuffer ? Buffer.from(message.data) : message.data
-                );
+                task.resolve(message.data instanceof ArrayBuffer ? Buffer.from(message.data) : message.data);
             }
             delete workerTasks[message.key];
         });

@@ -143,9 +143,9 @@ function analyze(fn) {
     }
     // an error handler, four parameters as the router counts them, has err in front
     const shift = fn.length >= 4 ? 1 : 0;
-    const reqName = params[shift] ? params[shift].name : null;
-    const resName = params[shift + 1] ? params[shift + 1].name : null;
-    const nextName = params[shift + 2] ? params[shift + 2].name : null;
+    const reqName = params[shift]?.name ?? null;
+    const resName = params[shift + 1]?.name ?? null;
+    const nextName = params[shift + 2]?.name ?? null;
     // next(err) passes the error on, while err is still the one the router gave, never "route"
     const errName = shift && !rebinds(root, params[0].name) ? params[0].name : null;
 

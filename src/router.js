@@ -435,10 +435,11 @@ module.exports = class Router extends EventEmitter {
      */
     getFullMountpath(req) {
         // null until a mount is entered; pathless mounts push "", which joins to EMPTY_REGEX
-        if (req._stack === null || req._stack.length === 0) {
+        const stack = req._stack;
+        if (stack === null || stack.length === 0) {
             return EMPTY_REGEX;
         }
-        const fullStack = req._stack.join("");
+        const fullStack = stack.join("");
         let fullMountpath = this._mountpathCache.get(fullStack);
         if (!fullMountpath) {
             // a RegExp mount keys this by what it matched, per request
@@ -799,9 +800,7 @@ module.exports = class Router extends EventEmitter {
             }
             if (
                 route.pattern instanceof RegExp &&
-                (path instanceof RegExp ||
-                    (typeof route.path === "string" &&
-                        (route.path.includes(":") || route.path.includes("*") || route.path.includes("{"))))
+                (path instanceof RegExp || (typeof path === "string" && /[:*{]/.test(path)))
             ) {
                 route.complex = true;
             }

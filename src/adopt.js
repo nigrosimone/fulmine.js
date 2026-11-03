@@ -146,8 +146,9 @@ function readPath(object, keys) {
 function writePath(object, keys, value) {
     let at = object;
     for (const key of keys.slice(0, -1)) {
-        if (at[key] === null || typeof at[key] !== "object") at[key] = {};
-        at = at[key];
+        let next = at[key];
+        if (next === null || typeof next !== "object") next = at[key] = {};
+        at = next;
     }
     at[keys[keys.length - 1]] = value;
 }

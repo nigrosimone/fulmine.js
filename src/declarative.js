@@ -148,11 +148,12 @@ function literalValue(node) {
                 if (property.type !== "Property" || property.computed || property.kind !== "init") {
                     throw new Error("not a literal");
                 }
+                const written = property.key;
                 const key =
-                    property.key.type === "Identifier"
-                        ? property.key.name
-                        : property.key.type === "Literal"
-                          ? String(property.key.value)
+                    written.type === "Identifier"
+                        ? written.name
+                        : written.type === "Literal"
+                          ? String(written.value)
                           : null;
                 if (key === null) {
                     throw new Error("not a literal");
@@ -212,35 +213,33 @@ function readStatusAndHeaders(callExprs, headers) {
     let sendStatusUsed = false;
     for (const call of callExprs) {
         if (call.obj.propertyName === "status") {
-            if (call.arguments[0].type !== "Literal") {
+            const args = call.arguments;
+            if (args[0].type !== "Literal") {
                 return null;
             }
-            statusCode = call.arguments[0].value;
+            statusCode = args[0].value;
         }
     }
 
     for (const call of callExprs) {
-        const isType = call.obj.propertyName === "type" || call.obj.propertyName === "contentType";
-        if (
-            call.obj.propertyName === "header" ||
-            call.obj.propertyName === "setHeader" ||
-            call.obj.propertyName === "set" ||
-            isType
-        ) {
+        const method = call.obj.propertyName;
+        const args = call.arguments;
+        const isType = method === "type" || method === "contentType";
+        if (method === "header" || method === "setHeader" || method === "set" || isType) {
             // type() is set("content-type") after a lookup; set() also takes an object; setHeader
             // is node's and takes only strings
             let pairs;
             if (isType) {
-                if (call.arguments[0].type !== "Literal") {
+                if (args[0].type !== "Literal") {
                     return null;
                 }
-                pairs = [["content-type", typeValueOf(String(call.arguments[0].value))]];
-            } else if (call.arguments.length === 1 && call.obj.propertyName !== "setHeader") {
-                if (call.arguments[0].type !== "ObjectExpression") {
+                pairs = [["content-type", typeValueOf(String(args[0].value))]];
+            } else if (args.length === 1 && method !== "setHeader") {
+                if (args[0].type !== "ObjectExpression") {
                     return null;
                 }
                 pairs = [];
-                for (const property of call.arguments[0].properties) {
+                for (const property of args[0].properties) {
                     const key = literalKeyOf(property);
                     if (key === null || property.value.type !== "Literal") {
                         return null;
@@ -248,11 +247,11 @@ function readStatusAndHeaders(callExprs, headers) {
                     pairs.push([key, String(property.value.value)]);
                 }
             } else {
-                if (call.arguments[0].type !== "Literal" || call.arguments[1]?.type !== "Literal") {
+                if (args[0].type !== "Literal" || args[1]?.type !== "Literal") {
                     return null;
                 }
                 // String(): uWS's writeHeader refuses a number
-                pairs = [[call.arguments[0].value, String(call.arguments[1].value)]];
+                pairs = [[args[0].value, String(args[1].value)]];
             }
 
             for (let [header, value] of pairs) {
@@ -263,7 +262,7 @@ function readStatusAndHeaders(callExprs, headers) {
                     return null;
                 }
                 // res.set resolves a content-type through the mime database, setHeader does not
-                if (call.obj.propertyName !== "setHeader" && name === "content-type") {
+                if (method !== "setHeader" && name === "content-type") {
                     const resolved = contentTypeSet(String(value));
                     if (resolved === false) {
                         // res.set stores false and the body method picks a type: left to the ordinary path
@@ -277,22 +276,22 @@ function readStatusAndHeaders(callExprs, headers) {
                 }
                 setIn(headers, header, value);
             }
-        } else if (call.obj.propertyName === "append") {
-            if (call.arguments[0].type !== "Literal" || call.arguments[1].type !== "Literal") {
+        } else if (method === "append") {
+            if (args[0].type !== "Literal" || args[1].type !== "Literal") {
                 return null;
             }
-            if (String(call.arguments[0].value).toLowerCase() === "transfer-encoding") {
+            if (String(args[0].value).toLowerCase() === "transfer-encoding") {
                 return null;
             }
-            if (!headerIsWritable(String(call.arguments[0].value), String(call.arguments[1].value))) {
+            if (!headerIsWritable(String(args[0].value), String(args[1].value))) {
                 return null;
             }
-            headers.push([call.arguments[0].value, String(call.arguments[1].value)]);
-        } else if (call.obj.propertyName === "sendStatus") {
-            if (call.arguments[0].type !== "Literal") {
+            headers.push([args[0].value, String(args[1].value)]);
+        } else if (method === "sendStatus") {
+            if (args[0].type !== "Literal") {
                 return null;
             }
-            statusCode = call.arguments[0].value;
+            statusCode = args[0].value;
             sendStatusUsed = true;
             // sendStatus is type("txt") then send, over a type set before it (a fuzz divergence)
             if (headers.some((entry) => String(entry[0]).toLowerCase() === "content-type")) {
@@ -426,16 +425,14 @@ function readBody(callExprs, headers, body, app, queries, params) {
                         }
                     }
                 } else if (arg.type === "MemberExpression") {
-                    if (!arg.object.property) {
+                    const source = arg.object.property;
+                    if (!source) {
                         return null;
                     }
-                    if (
-                        arg.object.property.type !== "Identifier" ||
-                        (arg.object.property.name !== "query" && arg.object.property.name !== "params")
-                    ) {
+                    if (source.type !== "Identifier" || (source.name !== "query" && source.name !== "params")) {
                         return null;
                     }
-                    body.push({ type: arg.object.property.name, value: arg.property.name });
+                    body.push({ type: source.name, value: arg.property.name });
                 } else if (arg.type === "BinaryExpression") {
                     /** @type {any[]} the operands, left to right */
                     const operands = [];

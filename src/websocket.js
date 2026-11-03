@@ -257,7 +257,8 @@ function checkBehavior(path, behavior) {
     }
     const handlers = /** @type {Record<string, unknown>} */ (behavior);
     for (const name of [...SOCKET_HANDLERS, "upgrade"]) {
-        if (handlers[name] !== undefined && typeof handlers[name] !== "function") {
+        const handler = handlers[name];
+        if (handler !== undefined && typeof handler !== "function") {
             throw new TypeError(`app.ws() behavior.${name} must be a function`);
         }
     }

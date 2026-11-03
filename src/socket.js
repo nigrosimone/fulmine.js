@@ -266,12 +266,13 @@ class Socket extends EventEmitter {
 
     /** Closes the connection outright, without finishing a response first. */
     close() {
-        if (this.response.finished) {
+        const response = this.response;
+        if (response.finished) {
             return;
         }
-        this.response.finished = true;
+        response.finished = true;
         this.emit("close");
-        this.response._res.close();
+        response._res.close();
     }
 }
 

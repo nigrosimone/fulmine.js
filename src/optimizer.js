@@ -120,12 +120,14 @@ function optimizeRoute(router, route, routes) {
         // a RegExp mount runs where its match starts the path and ends on a separator, decidable
         // against a literal path only
         if (r.regexMount) {
-            const matched = typeof route.path === "string" ? r.pattern.exec(route.path) : null;
+            const routePath = route.path;
+            const matched = typeof routePath === "string" ? r.pattern.exec(routePath) : null;
+            const prefix = matched === null ? null : matched[0];
             const runsAlways =
-                matched !== null &&
-                !matched[0].includes(":") &&
-                route.path.slice(0, matched[0].length) === matched[0] &&
-                (route.path.length === matched[0].length || route.path[matched[0].length] === "/");
+                prefix !== null &&
+                !prefix.includes(":") &&
+                routePath.startsWith(prefix) &&
+                (routePath.length === prefix.length || routePath[prefix.length] === "/");
             if (runsAlways) {
                 if (r.callbacks.some((/** @type {unknown} */ c) => c instanceof Router)) {
                     return false;
@@ -267,15 +269,11 @@ function compileOptimizedRoutes(root) {
     const walk = (router, pathPrefix, chainPrefix, outerGuards) => {
         for (const route of router._routes) {
             if (route.use) {
+                const callbacks = route.callbacks;
+                const mounted = callbacks.length === 1 && callbacks[0] instanceof Router ? callbacks[0] : null;
                 // only sole-router mounts; each level's _optimizeRoute guards under its own case setting
-                if (
-                    !route.complex &&
-                    canBeOptimized(route.path) &&
-                    route.path !== "/*" &&
-                    route.callbacks.length === 1 &&
-                    route.callbacks[0] instanceof Router
-                ) {
-                    if (inside.has(route.callbacks[0])) {
+                if (mounted !== null && !route.complex && canBeOptimized(route.path) && route.path !== "/*") {
+                    if (inside.has(mounted)) {
                         route._whyGeneric = "the router is mounted inside its own tree";
                         continue;
                     }
@@ -291,9 +289,9 @@ function compileOptimizedRoutes(root) {
                         continue;
                     }
                     route._walkedInto = true;
-                    inside.add(route.callbacks[0]);
+                    inside.add(mounted);
                     walk(
-                        route.callbacks[0],
+                        mounted,
                         pathPrefix + route.path,
                         [
                             ...chainPrefix,
@@ -304,16 +302,17 @@ function compileOptimizedRoutes(root) {
                                 callbackKinds: [],
                                 keepMount: true,
                                 // a mounted sub-app becomes req.app during its dispatch
-                                mountApp: route.callbacks[0]._isApplication ? route.callbacks[0] : undefined
+                                mountApp: mounted._isApplication ? mounted : undefined
                             }
                         ],
                         guards
                     );
-                    inside.delete(route.callbacks[0]);
+                    inside.delete(mounted);
                 } else {
-                    route._whyGeneric = !(route.callbacks.length === 1 && route.callbacks[0] instanceof Router)
-                        ? "it is middleware rather than a single mounted router"
-                        : "µWS cannot match this mount path on its own";
+                    route._whyGeneric =
+                        mounted === null
+                            ? "it is middleware rather than a single mounted router"
+                            : "µWS cannot match this mount path on its own";
                 }
             } else if (
                 (canBeOptimized(route.path) || canBeOptimizedWithParams(route.path)) &&

@@ -1323,9 +1323,10 @@ module.exports = class Request extends LazyReadable {
             if (!reqHeaders["if-none-match"] && !reqHeaders["if-modified-since"]) {
                 return false;
             }
+            const resHeaders = this.res.headers;
             return fresh(reqHeaders, {
-                etag: this.res.headers["etag"],
-                "last-modified": this.res.headers["last-modified"]
+                etag: resHeaders["etag"],
+                "last-modified": resHeaders["last-modified"]
             });
         }
         return false;

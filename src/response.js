@@ -1928,18 +1928,19 @@ module.exports = class Response extends LazyWritable {
      * @returns {this}
      */
     format(object) {
+        const req = this.req;
         const keys = Object.keys(object).filter((v) => v !== "default");
-        const key = keys.length > 0 ? /** @type {string|false} */ (this.req.accepts(keys)) : false;
+        const key = keys.length > 0 ? /** @type {string|false} */ (req.accepts(keys)) : false;
 
         this.vary("Accept");
 
         // the router next, as express: a 406 leaves the route, see Walk#runRoute
-        const next = this.req._leaveRoute ?? this.req.next;
+        const next = req._leaveRoute ?? req.next;
         if (key) {
             this.set("Content-Type", normalizeType(key).value);
-            object[key](this.req, this, next);
+            object[key](req, this, next);
         } else if (object.default) {
-            object.default(this.req, this, next);
+            object.default(req, this, next);
         } else {
             // an error carrying the types it could have sent, as express
             const err = httpError(406);
@@ -1977,13 +1978,9 @@ module.exports = class Response extends LazyWritable {
      * @returns {this}
      */
     jsonp(object) {
-        let callback = this.req.query[this.app.get("jsonp callback name")];
-        let body = stringify(
-            object,
-            this.app.get("json replacer"),
-            this.app.get("json spaces"),
-            this.app.get("json escape")
-        );
+        const app = this.app;
+        let callback = this.req.query[app.get("jsonp callback name")];
+        let body = stringify(object, app.get("json replacer"), app.get("json spaces"), app.get("json escape"));
         let js = false;
 
         if (Array.isArray(callback)) {

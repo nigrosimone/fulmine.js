@@ -53,11 +53,12 @@ class Route {
      */
     handlesMethod(method) {
         // all() answers every verb, registered or not, which is what express reads _all for
-        if (this.methods._all) {
+        const methods = this.methods;
+        if (methods._all) {
             return true;
         }
         const lowered = method.toLowerCase();
-        return Boolean(this.methods[lowered] || (lowered === "head" && this.methods.get));
+        return Boolean(methods[lowered] || (lowered === "head" && methods.get));
     }
 
     /**

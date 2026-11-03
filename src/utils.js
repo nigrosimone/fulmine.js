@@ -594,7 +594,9 @@ function pathsCanOverlap(a, b, aIsPrefix = false) {
     }
     const shared = left.length < right.length ? left.length : right.length;
     for (let i = 0; i < shared; i++) {
-        if (left[i] === right[i]) {
+        const l = left[i];
+        const r = right[i];
+        if (l === r) {
             continue;
         }
         // an empty segment never meets a whole-segment parameter: express's :name needs a character,
@@ -602,12 +604,11 @@ function pathsCanOverlap(a, b, aIsPrefix = false) {
         if (
             fixedLength &&
             !aIsPrefix &&
-            ((left[i] === "" && WHOLE_SEGMENT_PARAM.test(right[i])) ||
-                (right[i] === "" && WHOLE_SEGMENT_PARAM.test(left[i])))
+            ((l === "" && WHOLE_SEGMENT_PARAM.test(r)) || (r === "" && WHOLE_SEGMENT_PARAM.test(l)))
         ) {
             return false;
         }
-        if (NOT_A_LITERAL.test(left[i]) || NOT_A_LITERAL.test(right[i])) {
+        if (NOT_A_LITERAL.test(l) || NOT_A_LITERAL.test(r)) {
             continue;
         }
         return false;
