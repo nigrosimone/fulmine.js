@@ -610,7 +610,9 @@ function firstAtLeast(list, from) {
  * @returns {Record<string, any>}
  */
 function mergeParams(own, stack) {
-    const merged = Object.create(null);
+    // a plain object, as express's Object.assign({}, parent): only unmerged params have a null prototype
+    /** @type {Record<string, any>} */
+    const merged = {};
     for (const params of stack) {
         Object.assign(merged, params);
     }
