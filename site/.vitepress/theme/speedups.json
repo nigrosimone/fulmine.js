@@ -1,262 +1,301 @@
 {
-    "period": "the last 20 CI runs, 27 October 2026 to 1 November 2026",
+    "period": "the last 40 CI runs on 5 CPU types, 27 October 2026 to 3 November 2026",
     "headline": 17,
+    "cpus": {
+        "AMD EPYC 7763": 18,
+        "AMD EPYC 9V74": 8,
+        "AMD EPYC 9V45": 4,
+        "Intel Xeon Platinum 8370C": 5,
+        "Intel Xeon Platinum 8573C": 5
+    },
     "figures": {
         "routing/api-endpoint": {
-            "min": 1.68,
-            "median": 2.65,
-            "p10": 2.02,
-            "p90": 2.96,
+            "min": 1.64,
+            "low": 1.71,
+            "median": 2.275,
+            "best": 2.915,
             "max": 3.21,
-            "runs": 20
+            "cpu": "AMD EPYC 7763",
+            "runs": 40
         },
         "routing/api-mixed": {
-            "min": 1.44,
-            "median": 2.05,
-            "p10": 1.6,
-            "p90": 2.34,
+            "min": 1.37,
+            "low": 1.42,
+            "median": 1.77,
+            "best": 2.33,
             "max": 2.41,
-            "runs": 20
+            "cpu": "AMD EPYC 7763",
+            "runs": 40
         },
         "routing/arena-baseline-get": {
-            "min": 1.34,
-            "median": 1.7,
-            "p10": 1.48,
-            "p90": 1.95,
-            "max": 2.05,
-            "runs": 20
+            "min": 1.31,
+            "low": 1.33,
+            "median": 1.53,
+            "best": 1.94,
+            "max": 2.09,
+            "cpu": "AMD EPYC 7763",
+            "runs": 40
         },
         "routing/arena-baseline-post": {
-            "min": 1.73,
-            "median": 2.72,
-            "p10": 2.18,
-            "p90": 3.33,
+            "min": 1.65,
+            "low": 1.7149999999999999,
+            "median": 2.38,
+            "best": 3.14,
             "max": 3.89,
-            "runs": 20
+            "cpu": "AMD EPYC 7763",
+            "runs": 40
         },
         "engines/art": {
-            "min": 1.66,
-            "median": 2.33,
-            "p10": 2.12,
-            "p90": 2.46,
+            "min": 1.54,
+            "low": 1.61,
+            "median": 2.2,
+            "best": 2.41,
             "max": 2.6,
-            "runs": 20
+            "cpu": "AMD EPYC 7763",
+            "runs": 40
         },
         "middlewares/body-json-4kb": {
-            "min": 1.88,
-            "median": 2.9,
-            "p10": 2.35,
-            "p90": 3.2,
+            "min": 1.8,
+            "low": 1.87,
+            "median": 2.53,
+            "best": 3.1550000000000002,
             "max": 3.57,
-            "runs": 20
+            "cpu": "AMD EPYC 7763",
+            "runs": 40
         },
         "middlewares/body-json-512kb": {
             "min": 1.03,
-            "median": 1.16,
-            "p10": 1.09,
-            "p90": 1.46,
+            "low": 1.1,
+            "median": 1.185,
+            "best": 1.2349999999999999,
             "max": 1.96,
-            "runs": 20
+            "cpu": "AMD EPYC 7763",
+            "runs": 40
         },
         "middlewares/body-json-echo": {
-            "min": 1.73,
-            "median": 2.9,
-            "p10": 2.36,
-            "p90": 3.37,
+            "min": 1.71,
+            "low": 1.745,
+            "median": 2.4800000000000004,
+            "best": 3.325,
             "max": 3.61,
-            "runs": 20
+            "cpu": "AMD EPYC 7763",
+            "runs": 40
         },
         "middlewares/compression-file": {
             "min": 1.16,
-            "median": 1.23,
-            "p10": 1.17,
-            "p90": 1.25,
-            "max": 1.26,
-            "runs": 20
+            "low": 1.16,
+            "median": 1.2,
+            "best": 1.24,
+            "max": 1.3,
+            "cpu": "AMD EPYC 7763",
+            "runs": 40
         },
         "routing/fallback-scan": {
             "min": 3.04,
-            "median": 5.14,
-            "p10": 3.42,
-            "p90": 5.63,
+            "low": 3.16,
+            "median": 5.074999999999999,
+            "best": 5.63,
             "max": 5.98,
-            "runs": 20
+            "cpu": "Intel Xeon Platinum 8370C",
+            "runs": 40
         },
         "routing/hello-world": {
             "min": 1.11,
-            "median": 1.34,
-            "p10": 1.14,
-            "p90": 1.42,
-            "max": 1.44,
-            "runs": 20
+            "low": 1.14,
+            "median": 1.25,
+            "best": 1.42,
+            "max": 1.5,
+            "cpu": "AMD EPYC 7763",
+            "runs": 40
         },
         "connections/high-concurrency": {
-            "min": 2.03,
-            "median": 2.21,
-            "p10": 2.05,
-            "p90": 2.29,
+            "min": 1.82,
+            "low": 2,
+            "median": 2.17,
+            "best": 2.21,
             "max": 2.39,
-            "runs": 20
+            "cpu": "Intel Xeon Platinum 8370C",
+            "runs": 40
         },
         "routing/json-list-gzip": {
-            "min": 1.27,
-            "median": 1.53,
-            "p10": 1.34,
-            "p90": 1.57,
+            "min": 1.21,
+            "low": 1.28,
+            "median": 1.495,
+            "best": 1.55,
             "max": 1.64,
-            "runs": 20
+            "cpu": "Intel Xeon Platinum 8370C",
+            "runs": 40
         },
         "middlewares/json-list-identity": {
             "min": 1.58,
-            "median": 2.26,
-            "p10": 1.81,
-            "p90": 2.55,
+            "low": 1.6099999999999999,
+            "median": 2.0700000000000003,
+            "best": 2.4850000000000003,
             "max": 3.02,
-            "runs": 20
+            "cpu": "AMD EPYC 7763",
+            "runs": 40
         },
         "routing/json-list": {
-            "min": 1.57,
-            "median": 2.1,
-            "p10": 1.79,
-            "p90": 2.36,
+            "min": 1.53,
+            "low": 1.58,
+            "median": 1.855,
+            "best": 2.325,
             "max": 2.83,
-            "runs": 20
+            "cpu": "AMD EPYC 7763",
+            "runs": 40
         },
         "routing/middlewares-100": {
             "min": 1.62,
-            "median": 1.86,
-            "p10": 1.78,
-            "p90": 2.29,
+            "low": 1.665,
+            "median": 1.95,
+            "best": 2.32,
             "max": 2.53,
-            "runs": 20
+            "cpu": "Intel Xeon Platinum 8573C",
+            "runs": 40
         },
         "routing/nested-routers": {
             "min": 1.29,
-            "median": 1.55,
-            "p10": 1.38,
-            "p90": 1.65,
-            "max": 1.67,
-            "runs": 20
+            "low": 1.295,
+            "median": 1.39,
+            "best": 1.62,
+            "max": 1.68,
+            "cpu": "AMD EPYC 7763",
+            "runs": 40
         },
         "middlewares/body-urlencoded": {
-            "min": 1.93,
-            "median": 3.23,
-            "p10": 2.67,
-            "p90": 3.68,
+            "min": 1.82,
+            "low": 1.915,
+            "median": 2.77,
+            "best": 3.5250000000000004,
             "max": 3.87,
-            "runs": 20
+            "cpu": "AMD EPYC 7763",
+            "runs": 40
         },
         "routing/query-string": {
-            "min": 1.25,
-            "median": 1.64,
-            "p10": 1.4,
-            "p90": 1.93,
+            "min": 1.24,
+            "low": 1.2650000000000001,
+            "median": 1.48,
+            "best": 1.885,
             "max": 2.04,
-            "runs": 20
+            "cpu": "AMD EPYC 7763",
+            "runs": 40
         },
         "streaming/readable-hash-4mb": {
             "min": 0.96,
-            "median": 1.01,
-            "p10": 0.97,
-            "p90": 1.05,
-            "max": 1.06,
-            "runs": 20
+            "low": 0.98,
+            "median": 1,
+            "best": 1.045,
+            "max": 1.19,
+            "cpu": "AMD EPYC 7763",
+            "runs": 40
         },
         "middlewares/realistic-stack": {
             "min": 1.59,
-            "median": 2.32,
-            "p10": 1.88,
-            "p90": 2.44,
+            "low": 1.64,
+            "median": 2.175,
+            "best": 2.365,
             "max": 2.78,
-            "runs": 20
+            "cpu": "AMD EPYC 7763",
+            "runs": 40
         },
         "routing/router-list-and-item": {
             "min": 1.33,
-            "median": 1.78,
-            "p10": 1.52,
-            "p90": 2.06,
+            "low": 1.335,
+            "median": 1.5550000000000002,
+            "best": 2.01,
             "max": 2.25,
-            "runs": 20
+            "cpu": "AMD EPYC 7763",
+            "runs": 40
         },
         "routing/router-mounted-params": {
             "min": 3.95,
-            "median": 6.68,
-            "p10": 5.29,
-            "p90": 7.97,
+            "low": 4.145,
+            "median": 6.385,
+            "best": 7.97,
             "max": 8.24,
-            "runs": 20
+            "cpu": "Intel Xeon Platinum 8370C",
+            "runs": 40
         },
         "routing/routes-1000-params": {
-            "min": 7.9,
-            "median": 12.8,
-            "p10": 9.8,
-            "p90": 17.19,
+            "min": 7.88,
+            "low": 7.9350000000000005,
+            "median": 14.16,
+            "best": 17.19,
             "max": 17.86,
-            "runs": 20
+            "cpu": "Intel Xeon Platinum 8573C",
+            "runs": 40
         },
         "routing/routes-1000": {
-            "min": 7.36,
-            "median": 10.79,
-            "p10": 9.24,
-            "p90": 13.56,
+            "min": 7.15,
+            "low": 7.470000000000001,
+            "median": 10.92,
+            "best": 13.56,
             "max": 14.32,
-            "runs": 20
+            "cpu": "Intel Xeon Platinum 8573C",
+            "runs": 40
         },
         "middlewares/express-static": {
             "min": 1.62,
-            "median": 2.12,
-            "p10": 1.71,
-            "p90": 2.27,
+            "low": 1.71,
+            "median": 1.855,
+            "best": 2.2,
             "max": 2.33,
-            "runs": 20
+            "cpu": "AMD EPYC 7763",
+            "runs": 40
         },
         "middlewares/express-static-small": {
-            "min": 4.18,
+            "min": 3.62,
+            "low": 4.2,
             "median": 5.3,
-            "p10": 4.38,
-            "p90": 5.83,
-            "max": 6.12,
-            "runs": 20
+            "best": 6.09,
+            "max": 6.29,
+            "cpu": "Intel Xeon Platinum 8573C",
+            "runs": 40
         },
         "streaming/writable-with-content-length": {
-            "min": 0.97,
+            "min": 0.94,
+            "low": 1,
             "median": 1.01,
-            "p10": 0.98,
-            "p90": 1.03,
+            "best": 1.02,
             "max": 1.05,
-            "runs": 20
+            "cpu": "Intel Xeon Platinum 8370C",
+            "runs": 40
         },
         "streaming/writable-no-content-length": {
-            "min": 0.98,
-            "median": 1.02,
-            "p10": 0.99,
-            "p90": 1.04,
+            "min": 0.97,
+            "low": 1,
+            "median": 1.01,
+            "best": 1.0150000000000001,
             "max": 1.06,
-            "runs": 20
+            "cpu": "AMD EPYC 9V45",
+            "runs": 40
         },
         "plain": {
             "min": 1.11,
-            "median": 1.64,
-            "p10": 1.26,
-            "p90": 2.8,
+            "low": 1.14,
+            "median": 1.48,
+            "best": 2.915,
             "max": 3.21,
-            "runs": 60
+            "cpu": "AMD EPYC 7763",
+            "runs": 120
         },
         "body": {
-            "min": 1.73,
-            "median": 3.15,
-            "p10": 2.42,
-            "p90": 3.65,
+            "min": 1.71,
+            "low": 1.745,
+            "median": 2.625,
+            "best": 3.5250000000000004,
             "max": 3.87,
-            "runs": 40
+            "cpu": "AMD EPYC 7763",
+            "runs": 80
         },
         "tables": {
-            "min": 7.36,
-            "median": 11.2,
-            "p10": 9.38,
-            "p90": 15.39,
+            "min": 7.15,
+            "low": 7.470000000000001,
+            "median": 12.54,
+            "best": 17.19,
             "max": 17.86,
-            "runs": 40
+            "cpu": "Intel Xeon Platinum 8573C",
+            "runs": 80
         }
     }
 }
