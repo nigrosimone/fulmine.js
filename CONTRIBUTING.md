@@ -266,8 +266,10 @@ anything else on the machine while a benchmark measures: if the Express column m
 runs, the machine moved and the run is void.
 
 Some changes need no benchmark at all. If the code sits behind a guard most applications never
-reach, say which guard and move on. Anything under about 20 ns per request is below what matters
-against a request budget of tens of microseconds.
+reach, say which guard and move on. A change of one or two lines that removes real work, a native
+read skipped when the answer is already known or the cheap check moved first, is taken even at a few
+nanoseconds and with no benchmark that can see it, if it changes no behavior and adds no deopt. A gain
+is a gain. A bigger change, that costs complexity and maintenance, is not done inside the noise.
 
 [`tools/README.md`](./tools/README.md) covers the tools and the release script.
 [`benchmark/README.md`](./benchmark/README.md) covers measuring, including why the A/B runs
