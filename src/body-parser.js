@@ -725,7 +725,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 const lengthNumber = length === undefined ? NaN : +length;
 
                 // no framing at all is no body, which type-is checks and the simpleType shortcut would skip
-                if (req._rawHeader("transfer-encoding") === undefined && Number.isNaN(lengthNumber)) {
+                if (Number.isNaN(lengthNumber) && req._rawHeader("transfer-encoding") === undefined) {
                     return next();
                 }
 
@@ -758,7 +758,8 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 if (charsetPolicy) {
                     encoding = charsetOf(type) ?? defaultCharset;
                     if (
-                        (charsetPolicy === "utf" && encoding.slice(0, 4) !== "utf-") ||
+                        // the default checked first: slice allocates a string per body
+                        (charsetPolicy === "utf" && encoding !== "utf-8" && encoding.slice(0, 4) !== "utf-") ||
                         (charsetPolicy === "urlencoded" && encoding !== "utf-8" && encoding !== "iso-8859-1")
                     ) {
                         return next(charsetError(encoding));
@@ -771,7 +772,12 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 }
                 const inflate = encoded.inflate;
 
-                if (encoding !== undefined && !BUFFER_CHARSETS.has(encoding) && !loadIconv().encodingExists(encoding)) {
+                if (
+                    encoding !== undefined &&
+                    encoding !== "utf-8" &&
+                    !BUFFER_CHARSETS.has(encoding) &&
+                    !loadIconv().encodingExists(encoding)
+                ) {
                     return next(charsetError(encoding));
                 }
 
@@ -874,8 +880,9 @@ const json = createBodyParser(
             while (code === 0x20 || code === 0x09 || code === 0x0a || code === 0x0d) {
                 code = text.charCodeAt(++at);
             }
-            const first = at < text.length ? text[at] : undefined;
-            if (first !== "{" && first !== "[") {
+            // the code already read, past the end it is NaN; the string only for the message
+            if (code !== 0x7b && code !== 0x5b) {
+                const first = at < text.length ? text[at] : undefined;
                 // a SyntaxError, as body-parser builds it
                 return next(
                     asBodyError(new SyntaxError(strictSyntaxMessage(text, first)), 400, "entity.parse.failed", {

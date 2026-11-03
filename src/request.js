@@ -1286,14 +1286,15 @@ module.exports = class Request extends LazyReadable {
      */
     get fresh() {
         const method = this.method;
-        if (method !== "HEAD" && method !== "GET" && method !== "QUERY") {
+        if (method !== "GET" && method !== "HEAD" && method !== "QUERY") {
             return false;
         }
         // with "conditional get" off nothing is fresh, also when the full copy has the headers
         if (this.app._hot().conditionalGetOff) {
             return false;
         }
-        if ((this.res.statusCode >= 200 && this.res.statusCode < 300) || this.res.statusCode === 304) {
+        const status = this.res.statusCode;
+        if ((status >= 200 && status < 300) || status === 304) {
             // send() asks on every response: without a conditional header the answer is no, read
             // off the raw entries instead of building the headers object
             if (this.#cachedHeaders === null) {
@@ -1312,7 +1313,12 @@ module.exports = class Request extends LazyReadable {
                     return false;
                 }
             }
-            return fresh(this.headers, {
+            // fresh's own first test, before its object is built
+            const reqHeaders = this.headers;
+            if (!reqHeaders["if-none-match"] && !reqHeaders["if-modified-since"]) {
+                return false;
+            }
+            return fresh(reqHeaders, {
                 etag: this.res.headers["etag"],
                 "last-modified": this.res.headers["last-modified"]
             });

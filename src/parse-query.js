@@ -66,6 +66,9 @@ function parseQuery(input, capture, separatorLimit, qsRules) {
     }
 
     const inputLength = input.length;
+    if (inputLength === 0) {
+        return result;
+    }
     let separators = 0;
     let pairs = 0;
     let key;
