@@ -206,7 +206,11 @@ function saysClose(value) {
     const length = value.length;
     let at = 0;
     while (at < length) {
-        while (at < length && (value.charCodeAt(at) === 0x20 || value.charCodeAt(at) === 0x09)) {
+        while (at < length) {
+            const code = value.charCodeAt(at);
+            if (code !== 0x20 && code !== 0x09) {
+                break;
+            }
             at++;
         }
         const start = at;
@@ -214,7 +218,11 @@ function saysClose(value) {
             at++;
         }
         let end = at;
-        while (end > start && (value.charCodeAt(end - 1) === 0x20 || value.charCodeAt(end - 1) === 0x09)) {
+        while (end > start) {
+            const code = value.charCodeAt(end - 1);
+            if (code !== 0x20 && code !== 0x09) {
+                break;
+            }
             end--;
         }
         if (
