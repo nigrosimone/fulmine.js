@@ -24,6 +24,7 @@ const { lazyRequire } = require("./lazy-require.js");
 const zlib = /** @type {() => typeof import("fast-zlib")} */ (lazyRequire("fast-zlib"));
 const typeis = /** @type {() => typeof import("type-is")} */ (lazyRequire("type-is"));
 const qs = /** @type {() => typeof import("qs")} */ (lazyRequire("qs"));
+const parseMultipart = /** @type {() => typeof import("./multipart.js")} */ (lazyRequire("./multipart.js"));
 const statuses = require("statuses");
 const parseQuery = require("./parse-query.js");
 const { kGetSafe } = require("./usage.js");
@@ -413,7 +414,7 @@ function createInflate(contentEncoding) {
 
 /**
  * Builds a body parser: whether the request has a body, collecting it within the limit,
- * decompressing, handing the bytes over. The four differ in the type they claim and what they make.
+ * decompressing, handing the bytes over. The five differ in the type they claim and what they make.
  *
  * @param {string} defaultType the type matched when the caller names none
  * @param {BodyHandler} beforeReturn turns the collected bytes into req.body
@@ -858,6 +859,7 @@ const PARSER_NAMES = {
     "application/json": "jsonParser",
     "application/octet-stream": "rawParser",
     "text/plain": "textParser",
+    "multipart/form-data": "multipartParser",
     "application/x-www-form-urlencoded": "urlencodedParser"
 };
 
@@ -1041,8 +1043,27 @@ const urlencoded = createBodyParser(
     "urlencoded"
 );
 
+// express has none: what multer leaves with memoryStorage, in one pass over the buffer the others
+// collect too
+const multipart = createBodyParser(
+    "multipart/form-data",
+    function (req, res, next, options, buf) {
+        const parsed = parseMultipart()(buf, /** @type {string} */ (req.headers["content-type"]));
+        if (parsed === null) {
+            return next(bodyError("malformed multipart body", 400, "entity.parse.failed"));
+        }
+        req.body = parsed.fields;
+        /** @type {any} */ (req).files = parsed.files;
+        next();
+    },
+    undefined,
+    undefined,
+    true
+);
+
 module.exports = {
     json,
+    multipart,
     raw,
     text,
     urlencoded

@@ -98,7 +98,7 @@ rewriting the application. In return the Express middlewares work as they are.
 | `set_not_found_handler(fn)`                          | `app.use(fn)` after the routes                                              |
 | `req.path_parameters`, `req.query_parameters`        | `req.params`, `req.query`                                                   |
 | `await req.json()`, `req.text()`, `req.urlencoded()` | `express.json()`, `express.text()`, `express.urlencoded()`, then `req.body` |
-| `req.multipart(fn)`                                  | a multipart middleware, such as multer                                      |
+| `req.multipart(fn)`                                  | `express.multipart()`, or multer                                            |
 | `req.locals`                                         | `res.locals`                                                                |
 | `res.setHeaders({ ... })`                            | `res.set({ ... })`                                                          |
 | `res.html(body)`                                     | `res.type("html").send(body)`                                               |

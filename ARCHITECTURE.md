@@ -68,7 +68,8 @@ Middleware and extras
 | file               | what it is                                                       |
 | ------------------ | ---------------------------------------------------------------- |
 | `static.js`        | `express.static`                                                 |
-| `body-parser.js`   | the four body parsers                                            |
+| `body-parser.js`   | the five body parsers                                            |
+| `multipart.js`     | what `express.multipart()` parses with, loaded on first use      |
 | `compression.js`   | `express.compression()`                                          |
 | `server-timing.js` | `express.serverTiming()`, with the routing verdict in the header |
 | `testing.js`       | `express.testing`, so a test can assert a route stayed native    |

@@ -95,7 +95,7 @@ export interface SettledBodyParserOptions extends BodyParserOptions {
     defaultCharset: string;
 }
 
-/** What the body parsers take. The four share these; each names below the ones it alone reads. */
+/** What the body parsers take. The five share these; each names below the ones it alone reads. */
 export interface BodyParserOptions {
     /** The largest body to accept, as bytes or as "100kb". */
     limit?: number | string;

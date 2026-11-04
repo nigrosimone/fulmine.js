@@ -150,6 +150,26 @@ declare module "fulmine.js" {
         }
         export function serverTiming(options?: ServerTimingOptions): e.RequestHandler;
 
+        /** One uploaded file, the fields multer's memory storage gives. `buffer` is a view on the body. */
+        interface MultipartFile {
+            fieldname: string;
+            originalname: string;
+            encoding: string;
+            mimetype: string;
+            size: number;
+            buffer: Buffer;
+        }
+
+        /**
+         * What express.multipart() leaves on the request. A type of its own and not a global one:
+         * multer's types declare req.files too, and two declarations of it do not merge.
+         */
+        interface MultipartRequest extends e.Request {
+            files?: MultipartFile[];
+        }
+
+        export function multipart(options?: import("./options").BodyParserOptions): e.RequestHandler;
+
         export function compression(options?: CompressionOptions): e.RequestHandler;
         export namespace compression {
             /** The default filter: any compressible content type. */

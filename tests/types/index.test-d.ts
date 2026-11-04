@@ -388,6 +388,11 @@ app.get("/probe", (req, res) => {
     res.end();
 });
 
+// express.multipart(), which express has no counterpart for
+expectAssignable<RequestHandler>(express.multipart());
+expectAssignable<RequestHandler>(express.multipart({ limit: "1mb", type: "multipart/form-data" }));
+expectType<express.MultipartFile[] | undefined>(({} as express.MultipartRequest).files);
+
 // express.compression(), which express has no counterpart for
 expectAssignable<RequestHandler>(express.compression());
 expectAssignable<RequestHandler>(

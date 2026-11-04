@@ -24,6 +24,7 @@ In general, basically all features and options are supported. Use the [Express 5
 -   - ✅ options.preCompressed, Fulmine's own: serve the `.br` or `.gz` twin on disk, described under [Performance tips](./performance.md#performance-tips)
 - ✅ express.text()
 - ✅ express.raw()
+- ✅ express.multipart(). Fulmine's own, since Express has none: the options of the other body parsers, with `req.body` and `req.files` as [multer](https://npmjs.com/package/multer) leaves them with `memoryStorage()` and `.any()`. The body stays in memory and `limit` covers all of it, 100kb by default as for the others. A repeated text field is an array, a name like `a[b]` is not expanded, and a filename is read as UTF-8 and cut to its last segment.
 - ✅ express.serverTiming(). Fulmine's own: Server-Timing carrying how the request was routed, described under [Performance tips](./performance.md#performance-tips).
 - ✅ express.testing. Fulmine's own: `expectNative`, `expectDeclarative`, `routeReport`, `expectLazy` and `workReport`, described under [Performance tips](./performance.md#performance-tips).
 - ✅ express.compression(). Fulmine's own, since Express has none: it is the [compression](https://npmjs.com/package/compression) module's options and behaviour built in, described under [Performance tips](./performance.md#performance-tips).

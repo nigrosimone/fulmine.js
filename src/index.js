@@ -50,7 +50,8 @@ try {
  *   json: Function,
  *   urlencoded: Function,
  *   text: Function,
- *   raw: Function
+ *   raw: Function,
+ *   multipart: Function
  * }}
  */
 module.exports = /** @type {any} */ (Application);
@@ -84,3 +85,4 @@ module.exports.json = bodyParser.json;
 module.exports.urlencoded = bodyParser.urlencoded;
 module.exports.text = bodyParser.text;
 module.exports.raw = bodyParser.raw;
+module.exports.multipart = bodyParser.multipart;
