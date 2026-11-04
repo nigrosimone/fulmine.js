@@ -1,5 +1,27 @@
 # Changelog
 
+## [5.28.0](https://github.com/nigrosimone/fulmine.js/compare/v5.27.0...v5.28.0) (2026-11-04)
+
+### Features
+
+* **body-parser:** express.multipart, req.files as multer leaves them, no copy of the file ([3dfe26f](https://github.com/nigrosimone/fulmine.js/commit/3dfe26f2acf899f91cb102014352d3017edc87f0))
+* **tracing:** on µWS a request goes through a wrapped http.Server.prototype.emit, so OpenTelemetry sees it ([899fce8](https://github.com/nigrosimone/fulmine.js/commit/899fce8a1aeba380b24c2d9b05b0dfdd891e0d38))
+
+### Bug Fixes
+
+* **body-parser:** a zstd body is inflated where node can, as body-parser 2.4 ([aee382b](https://github.com/nigrosimone/fulmine.js/commit/aee382b36f2096610e9786f00be4f8d1b2945879))
+* **router:** merged params are a plain object as in express, only unmerged ones have a null prototype ([a3e21c0](https://github.com/nigrosimone/fulmine.js/commit/a3e21c09f11ccebff7c1ac4f9484d87234f3431e))
+
+### Performance Improvements
+
+* values read twice in one expression or path kept in a local, for the code that stays in the interpreter ([a7cd82b](https://github.com/nigrosimone/fulmine.js/commit/a7cd82b6722706bf8a47a1b20dbac56e1c951d9e))
+* **request:** saysClose reads each whitespace char once, TurboFan already did, the lower tiers did not ([e914102](https://github.com/nigrosimone/fulmine.js/commit/e914102482e5bea32e85dd8606694a9498e49c86))
+* **request:** no slice for a utf-8 body, length before transfer-encoding, fresh() skipped early ([08716b2](https://github.com/nigrosimone/fulmine.js/commit/08716b2b85ba7ff8314a14cc3f5b0ce2e8cd7743))
+* **request:** with a content-length transfer-encoding is not read, the full copy reads it ([ba00fe1](https://github.com/nigrosimone/fulmine.js/commit/ba00fe16467863cfa4d0d0d2653aab3e724c6820))
+* **router:** a pathless middleware's params made on first read, 8.1 KB to 2.3 KB a request on middlewares-100 ([4609e95](https://github.com/nigrosimone/fulmine.js/commit/4609e95f12e0cb3c67ca84466f4cf31558e1e956))
+* **static:** conditional headers off the raw entries, no decode without a %, mime by extension ([d23a5c1](https://github.com/nigrosimone/fulmine.js/commit/d23a5c1b8ef31da750e3e58494fd132b46a00f51))
+* **walk:** the callback before its kind, an else for skipCheck, firstAtLeast without a search ([2d6271d](https://github.com/nigrosimone/fulmine.js/commit/2d6271d5ea134431cba055e57b956d93ef96d695))
+
 ## [5.27.0](https://github.com/nigrosimone/fulmine.js/compare/v5.26.1...v5.27.0) (2026-11-02)
 
 ### Features
