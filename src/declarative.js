@@ -858,7 +858,8 @@ module.exports = function compileDeclarative(cb, app) {
         }
 
         // a validator cannot answer a conditional GET without reading the request; `etag` false
-        // stays compiled, and an empty body gets no ETag in Express either
+        // stays compiled, and an empty body gets no ETag in Express either. If-None-Match: * needs
+        // no validator, so it is a 200 here and a 304 in Express, kept for the speed, see differences.md
         if (headers.some((header) => VALIDATOR_HEADERS.has(header[0].toLowerCase()))) {
             return false;
         }
