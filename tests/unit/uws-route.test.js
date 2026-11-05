@@ -1,0 +1,216 @@
+// app.uws(), which has no Express counterpart and so cannot be a comparison test: the handler is
+// µWS's own (res, req), with nothing of Express in front of it. What is pinned is the contract the
+// docs promise: the handler is handed µWS's objects untouched, no middleware runs for it, it
+// answers before the Express routes on every path its pattern takes whichever was written first,
+// the Express routes it does not take stay native, mounted routers compose their paths, a route
+// added after listen() is served, and a call that cannot work is refused where it is written.
+
+const test = require("node:test");
+const assert = require("node:assert");
+const http = require("node:http");
+
+const express = require("../../src/index.js");
+
+/**
+ * Starts an app and answers its port plus a close helper.
+ *
+ * @param {(app: any) => void} setup
+ * @returns {Promise<{app: any, port: number, close: () => Promise<void>}>}
+ */
+function serve(setup) {
+    return new Promise((resolve) => {
+        const app = express();
+        setup(app);
+        app.listen(0, () => {
+            resolve({
+                app,
+                port: app.address().port,
+                close: () => new Promise((done) => app.close(() => done()))
+            });
+        });
+    });
+}
+
+/**
+ * One request, answered as status and body.
+ *
+ * @param {number} port
+ * @param {string} path
+ * @param {string} [method]
+ * @returns {Promise<{status: number, body: string, headers: Headers}>}
+ */
+async function ask(port, path, method = "GET") {
+    const res = await fetch(`http://localhost:${port}${path}`, { method });
+    return { status: res.status, body: await res.text(), headers: res.headers };
+}
+
+test("the handler gets µWS's own response and request, and no middleware runs", async () => {
+    let middleware = 0;
+    const { port, close } = await serve((app) => {
+        app.use((req, res, next) => {
+            middleware++;
+            next();
+        });
+        app.uws("get", "/raw/:id", (res, req) => {
+            // µWS's HttpRequest and HttpResponse, not this project's Request and Response
+            assert.equal(typeof req.getParameter, "function");
+            assert.equal(typeof res.writeStatus, "function");
+            assert.equal(res.req, undefined);
+            const body = [req.getMethod(), req.getUrl(), req.getQuery(), req.getParameter(0), req.getHeader("x-a")];
+            res.writeStatus("202 Accepted").writeHeader("x-raw", "yes").end(body.join("|"));
+        });
+        app.get("/express", (req, res) => res.send("express"));
+    });
+
+    const res = await fetch(`http://localhost:${port}/raw/42?q=1`, { headers: { "x-a": "b" } });
+    assert.equal(res.status, 202);
+    assert.equal(res.headers.get("x-raw"), "yes");
+    // µWS sends no x-powered-by and no content-type of its own
+    assert.equal(res.headers.get("x-powered-by"), null);
+    assert.equal(await res.text(), "get|/raw/42|q=1|42|b");
+    assert.equal(middleware, 0);
+
+    assert.equal((await ask(port, "/express")).body, "express");
+    assert.equal(middleware, 1);
+    await close();
+});
+
+test("it answers before the Express routes its pattern takes, written before or after them", async () => {
+    const { app, port, close } = await serve((app) => {
+        app.set("etag", false);
+        // a literal µWS would prefer to the parameter, on its own native registration
+        app.get("/users/me", (req, res) => res.send("express me"));
+        app.uws("get", "/users/:id", (res, req) => res.end("raw " + req.getParameter(0)));
+        app.get("/users/admin", (req, res) => res.send("express admin"));
+        // another method and another length are not the µWS route's
+        app.post("/users/:id", (req, res) => res.send("express post"));
+        app.get("/users/:id/posts", (req, res) => res.send("express posts"));
+        app.get("/other", (req, res) => res.send("express other"));
+    });
+
+    assert.equal((await ask(port, "/users/1")).body, "raw 1");
+    assert.equal((await ask(port, "/users/me")).body, "raw me");
+    assert.equal((await ask(port, "/users/admin")).body, "raw admin");
+    assert.equal((await ask(port, "/users/1", "POST")).body, "express post");
+    assert.equal((await ask(port, "/users/1/posts")).body, "express posts");
+    assert.equal((await ask(port, "/other")).body, "express other");
+    // µWS matches bytes: another case is not the µWS route's, and Express answers it
+    assert.equal((await ask(port, "/USERS/me")).body, "express me");
+
+    // the routes it takes stay off µWS's table and say why, the rest are still native
+    const report = express.testing.routeReport(app);
+    const why = (method, path) => report.find((r) => r.method === method && r.path === path);
+    assert.equal(why("GET", "/users/me").native, false);
+    assert.match(why("GET", "/users/me").reason, /app\.uws\("get", "\/users\/:id"\)/);
+    assert.equal(why("GET", "/users/admin").native, false);
+    express.testing.expectNative(app, ["POST /users/:id", "/users/:id/posts", "/other"]);
+    await close();
+});
+
+test("a HEAD is not a GET route's: Express answers it", async () => {
+    const { port, close } = await serve((app) => {
+        app.uws("get", "/page", (res) => res.end("raw"));
+        app.get("/page", (req, res) => res.send("express"));
+    });
+    assert.equal((await ask(port, "/page")).body, "raw");
+    const head = await ask(port, "/page", "HEAD");
+    assert.equal(head.status, 200);
+    assert.equal(head.headers.get("content-type"), "text/html; charset=utf-8");
+    await close();
+});
+
+test("a trailing slash is a path of its own, and the non-strict twin stays off the table", async () => {
+    const { port, close } = await serve((app) => {
+        app.set("etag", false);
+        app.get("/a", (req, res) => res.send("express"));
+        app.uws("get", "/a/", (res) => res.end("raw"));
+    });
+    assert.equal((await ask(port, "/a")).body, "express");
+    assert.equal((await ask(port, "/a/")).body, "raw");
+    await close();
+});
+
+test("any, and a wildcard on /*, take every method and path from the catch-all", async () => {
+    const { port, close } = await serve((app) => {
+        app.get("/", (req, res) => res.send("express"));
+        app.use((req, res) => res.status(404).send("express 404"));
+        app.uws("any", "/*", (res, req) => res.end("raw " + req.getMethod() + " " + req.getUrl()));
+    });
+    assert.equal((await ask(port, "/")).body, "raw get /");
+    assert.equal((await ask(port, "/x/y", "DELETE")).body, "raw delete /x/y");
+    await close();
+});
+
+test("a mounted router composes its path, and a route added after listen() is served", async () => {
+    const { app, port, close } = await serve((app) => {
+        const api = express.Router();
+        api.uws("delete", "/items/:id", (res, req) => res.end("raw delete " + req.getParameter(0)));
+        api.get("/items/:id", (req, res) => res.send("express get " + req.params.id));
+        app.use("/api", api);
+    });
+    assert.equal((await ask(port, "/api/items/7", "DELETE")).body, "raw delete 7");
+    assert.equal((await ask(port, "/api/items/7")).body, "express get 7");
+    assert.equal((await ask(port, "/items/7", "DELETE")).status, 404);
+
+    app.uws("get", "/late", (res) => res.end("raw late"));
+    assert.equal((await ask(port, "/late")).body, "raw late");
+    await close();
+});
+
+test("an asynchronous answer is the handler's to cork and to abort, as on µWS", async () => {
+    let aborted = false;
+    const { port, close } = await serve((app) => {
+        app.uws("post", "/echo", (res) => {
+            const chunks = [];
+            res.onAborted(() => {
+                aborted = true;
+            });
+            res.onData((chunk, isLast) => {
+                // µWS neuters the chunk when the callback returns, so it is copied
+                chunks.push(Buffer.from(new Uint8Array(chunk)));
+                if (isLast) {
+                    setImmediate(() => {
+                        if (!aborted) res.cork(() => res.end("got " + Buffer.concat(chunks).toString()));
+                    });
+                }
+            });
+        });
+    });
+    const res = await fetch(`http://localhost:${port}/echo`, { method: "POST", body: "payload" });
+    assert.equal(await res.text(), "got payload");
+    assert.equal(aborted, false);
+    await close();
+});
+
+test("a call that cannot work is refused where it is written", () => {
+    const app = express();
+    assert.throws(() => app.uws("fetch", "/x", () => {}), /method must be one of/);
+    assert.throws(() => app.uws(undefined, "/x", () => {}), /method must be one of/);
+    assert.throws(() => app.uws("get", "x", () => {}), /path string starting with \//);
+    assert.throws(() => app.uws("get", /x/, () => {}), /path string/);
+    assert.throws(() => app.uws("get", "/x"), /handler function/);
+    assert.equal(
+        app.uws("GET", "/x", () => {}),
+        app
+    );
+});
+
+test("under a mount µWS cannot match it is refused at listen(), rather than never served", () => {
+    const app = express();
+    const router = express.Router();
+    router.uws("get", "/x", (res) => res.end("x"));
+    app.use(/^\/v\d+/, router);
+    assert.throws(() => app.listen(0), /sits under a mount µWS cannot match/);
+});
+
+test("the node shim serves the Express routes and leaves the µWS route unserved", async () => {
+    const app = express();
+    app.uws("get", "/raw", (res) => res.end("raw"));
+    app.get("/express", (req, res) => res.send("express"));
+    const server = http.createServer(app);
+    await new Promise((resolve) => server.listen(0, resolve));
+    const { port } = /** @type {import("node:net").AddressInfo} */ (server.address());
+    assert.equal((await ask(port, "/express")).body, "express");
+    assert.equal((await ask(port, "/raw")).status, 404);
+    await new Promise((resolve) => server.close(resolve));
+});

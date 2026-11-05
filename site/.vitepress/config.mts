@@ -109,6 +109,7 @@ export default defineConfig({
                     { text: "Performance", link: "/performance" },
                     { text: "Monitoring", link: "/monitoring" },
                     { text: "WebSockets", link: "/websockets" },
+                    { text: "Raw µWS routes", link: "/uws-routes" },
                     { text: "NestJS", link: "/nest" }
                 ]
             },
@@ -121,6 +122,7 @@ export default defineConfig({
                     { text: "Cluster on one port", link: "/examples/cluster" },
                     { text: "Pool per worker", link: "/examples/cluster-pool" },
                     { text: "WebSockets", link: "/examples/websocket" },
+                    { text: "Raw µWS route", link: "/examples/uws-route" },
                     { text: "socket.io", link: "/examples/socket-io" },
                     { text: "MCP server", link: "/examples/mcp" },
                     { text: "Pre-compressed static", link: "/examples/static-precompressed" },

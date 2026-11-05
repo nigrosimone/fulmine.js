@@ -74,7 +74,7 @@ function loadUWS() {
         if (otherRuntime) {
             throw new Error(
                 `fulmine.js: µWebSockets.js does not load on ${otherRuntime}, so WebSockets, TLS through ` +
-                    `express({ uwsOptions }) and app.uwsApp need Node. Plain HTTP works, through ${otherRuntime}'s node:http.`
+                    `express({ uwsOptions }), app.uws() and app.uwsApp need Node. Plain HTTP works, through ${otherRuntime}'s node:http.`
             );
         }
         warnOnDrift();

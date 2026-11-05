@@ -123,6 +123,7 @@ Everything Express does, plus these. Each one is a runnable file in [`examples/`
 | One process per core, one port, no primary in the path                | `express({ cluster: "auto" })`                               |
 | Native WebSockets, with an `upgrade(req, res)` hook for auth          | `app.ws("/room/:id", { open, message, close })`              |
 | socket.io                                                             | `io.attachApp(app.uwsApp)`                                   |
+| A raw µWS route, `(res, req)` with no Express layer in front          | `app.uws("get", "/health", (res) => res.end("ok"))`          |
 | Compression built in, 50% more requests per second than `compression` | `app.use(express.compression())`                             |
 | Serve the `.br` and `.gz` twins your build already wrote              | `express.static(dir, { preCompressed: true })`               |
 | Server-Timing with how the request was routed                         | `app.use(express.serverTiming())`                            |
@@ -164,6 +165,7 @@ with the reason for each: [Differences from Express](./docs/differences.md).
 - [Monitoring](./docs/monitoring.md): Sentry and other tracers, through the diagnostics channels
 - [Differences from Express](./docs/differences.md): what answers differently and why
 - [WebSockets](./docs/websockets.md): `app.ws()` and socket.io
+- [Raw µWS routes](./docs/uws-routes.md): `app.uws()`, a route with µWS's own `(res, req)` and no Express layer
 - [Compatibility](./docs/compatibility.md): the API checklist, tested middlewares, frameworks and view engines
 - [Compared with the others](./docs/compare.md): ultimate-express, hyper-express, Fastify, Bun, raw µWS
 - [Examples](./examples/README.md): one runnable file per feature

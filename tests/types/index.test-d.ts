@@ -231,6 +231,21 @@ NamedRouter().ws("/lobby", {
     }
 });
 
+// app.uws(): the handler is µWS's own, (res, req), with nothing of Express in front of it
+expectType<typeof app>(
+    app.uws("get", "/health/:id", (res, req) => {
+        expectType<uWS.HttpResponse>(res);
+        expectType<uWS.HttpRequest>(req);
+        res.writeStatus("200 OK").end(req.getParameter(0) ?? "");
+    })
+);
+app.uws("ANY", "/raw/*", (res) => {
+    res.onAborted(() => {});
+});
+NamedRouter().uws("delete", "/item/:id", (res) => res.end());
+// a method µWS has no registration for is a type error
+expectError(app.uws("fetch", "/x", (res) => res.end()));
+
 // express.isFulmine, undefined on express itself
 expectType<true>(express.isFulmine);
 
