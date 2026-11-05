@@ -63,7 +63,7 @@ const {
     headerKey,
     HEADER_NAME_BUF,
     HEADER_VALUE_BUF,
-    statusLine,
+    statusLineBytes,
     invalidChunkError
 } = require("./response-utils.js");
 
@@ -538,7 +538,7 @@ module.exports = class Response extends LazyWritable {
             }
             // a plain 200 is uWS's own head, so it is not written at all
             if (this.#status !== 200 || this.#statusText !== undefined) {
-                this._res.writeStatus(statusLine(this.#status, this.#statusText));
+                this._res.writeStatus(statusLineBytes(this.#status, this.#statusText));
             }
             this.writeHeaders(typeof chunk === "string");
         }
@@ -907,7 +907,7 @@ module.exports = class Response extends LazyWritable {
             // knows nothing of conditional requests. "unknown" for a code without a message, as
             // node writes it; a plain 200 is not written at all, uWS emits the same head itself
             if (this.#status !== 200 || this.#statusText !== undefined) {
-                this._res.writeStatus(statusLine(this.#status, this.#statusText));
+                this._res.writeStatus(statusLineBytes(this.#status, this.#statusText));
             }
             this.writeHeaders(true);
         }
@@ -1537,7 +1537,7 @@ module.exports = class Response extends LazyWritable {
             }
             // a plain 200 is uWS's own head
             if (this.#status !== 200 || this.#statusText !== undefined) {
-                this._res.writeStatus(statusLine(this.#status, this.#statusText));
+                this._res.writeStatus(statusLineBytes(this.#status, this.#statusText));
             }
             this.writeHeaders(true);
         });

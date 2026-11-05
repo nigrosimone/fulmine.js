@@ -108,6 +108,20 @@ function statusLine(code, text) {
     return `${code} ${text ?? statuses.message[code] ?? "unknown"}`.trim();
 }
 
+// The same lines as bytes for uWS, which reads a Buffer as it is, as the header maps above
+const STATUS_BYTES = /** @type {Buffer[]} */ ([]);
+/**
+ * @param {number} code
+ * @param {string|undefined} text an explicit reason phrase, which crosses as the string it is
+ * @returns {Buffer|string} what writeStatus takes
+ */
+function statusLineBytes(code, text) {
+    if (text === undefined && Number.isInteger(code) && code >= 100 && code <= 999) {
+        return STATUS_BYTES[code] ?? (STATUS_BYTES[code] = Buffer.from(statusLine(code, undefined)));
+    }
+    return statusLine(code, text);
+}
+
 /**
  * The TypeError node throws for a chunk that is not a string, a Buffer or a Uint8Array, worded as
  * node words it.
@@ -149,5 +163,6 @@ module.exports = {
     HEADER_NAME_BUF,
     HEADER_VALUE_BUF,
     statusLine,
+    statusLineBytes,
     invalidChunkError
 };

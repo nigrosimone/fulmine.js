@@ -296,8 +296,9 @@ class NodeHttpResponse {
         cb();
     }
 
-    /** @param {string} status "200 OK", as uWS takes it */
-    writeStatus(status) {
+    /** @param {string|Buffer} line "200 OK", as uWS takes it */
+    writeStatus(line) {
+        const status = typeof line === "string" ? line : line.toString("latin1");
         const space = status.indexOf(" ");
         this._nodeRes.statusCode = parseInt(space === -1 ? status : status.slice(0, space), 10);
         // node:http2 warns on a reason phrase, the protocol has none
