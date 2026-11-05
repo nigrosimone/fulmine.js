@@ -35,6 +35,20 @@ declare module "fulmine.js" {
         end(value?: string): ArrayBuffer;
     }
 
+    type UwsReadOptions = { limit?: number | string };
+
+    type UwsCompressor = {
+        /** The encoding to answer with, "" for none. Reads req, so before the handler returns. */
+        negotiate(req: uWS.HttpRequest): string;
+        send(
+            res: uWS.HttpResponse,
+            status: number,
+            headers: Record<string, string> | null | undefined,
+            body: unknown,
+            encoding: string
+        ): void;
+    };
+
     // the module itself, named outside the namespace, where express.uWS would shadow it
     type UwsModule = typeof uWS & { DeclarativeResponse: new () => DeclarativeResponse };
 
@@ -208,6 +222,34 @@ declare module "fulmine.js" {
          * ```
          */
         export const uWS: UwsModule;
+
+        /**
+         * The query, the body and the response of an `app.uws()` route, each one call away. Plain
+         * functions over µWS's own `res` and `req`, so the route stays raw and pays for what it
+         * calls. `query` and `compressor().negotiate` read `req`, so before the handler returns.
+         *
+         * ```ts
+         * const { query, readText, send } = express.uwsUtils;
+         * app.uws("post", "/sum", (res, req) => {
+         *     const { a } = query(req);
+         *     readText(res, (body) => send(res, 200, null, a + body));
+         * });
+         * ```
+         */
+        export const uwsUtils: {
+            query(req: uWS.HttpRequest): Record<string, string | string[]>;
+            guard<T extends uWS.HttpResponse>(res: T): T;
+            readBuffer(res: uWS.HttpResponse, callback: (body: Buffer) => void, options?: UwsReadOptions): void;
+            readText(res: uWS.HttpResponse, callback: (body: string) => void, options?: UwsReadOptions): void;
+            readJson(res: uWS.HttpResponse, callback: (body: any) => void, options?: UwsReadOptions): void;
+            readForm(
+                res: uWS.HttpResponse,
+                callback: (body: Record<string, string | string[]>) => void,
+                options?: UwsReadOptions
+            ): void;
+            send(res: uWS.HttpResponse, status: number, headers?: Record<string, string> | null, body?: unknown): void;
+            compressor(options?: Omit<CompressionOptions, "filter">): UwsCompressor;
+        };
 
         export import RouterOptions = e.RouterOptions;
         // Router is declared rather than re-exported, because this project's routers carry ws()

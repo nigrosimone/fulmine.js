@@ -95,6 +95,49 @@ app.uws(
 
 The compression constants of `app.ws()` behaviors (`express.uWS.SHARED_COMPRESSOR` and the rest) are there too.
 
+## Utilities: `express.uwsUtils`
+
+A raw route stays raw: `res` and `req` are µWS's own, and nothing is built for it. `express.uwsUtils` is a set of plain functions over them, so the parts every route writes the same way are one call, and a route pays only for what it calls.
+
+```js
+const { query, readJson, send } = express.uwsUtils;
+
+app.uws("post", "/users/:id", (res, req) => {
+    const id = req.getParameter(0); // read now, as every read of req
+    const { notify } = query(req);
+    readJson(res, (user) => {
+        send(res, 201, { "x-notify": String(notify === "1") }, { id, ...user });
+    });
+});
+```
+
+- **`query(req)`** is the query string as `req.query` has it. It reads `req`, so call it before the handler returns.
+- **`readText(res, callback, options)`**, **`readJson`**, **`readForm`** and **`readBuffer`** give the whole body, sent with a content-length or chunked, parsed as the name says. `options.limit` takes bytes or a string as `"1mb"`, the default is 100kb. Over the limit the client gets a 413 and the callback is not called, and invalid JSON gets a 400 in the same way. An empty body is `undefined` for `readJson`.
+- **`readBuffer`** lends the bytes, as `req` lends what it holds: a body that came in one piece is µWS's memory, good until the callback returns. Copy it with `Buffer.from(body)` to keep it.
+- **`send(res, status, headers, body)`** is the response in one call. The body is a string, bytes, a `Readable` (a file with `fs.createReadStream()`), or anything else as JSON, and it gets the content-type it implies unless `headers` has a `content-type`. Header names are lowercase, and `headers` can be `null`. It does `cork()` for you, and a stream goes out with µWS's backpressure: it stops when the client stops reading.
+- **`guard(res)`** registers the `onAborted` µWS wants before an answer written later. After an abort `send()` does nothing. The read functions and `send()` with a stream call it themselves, so a route needs it by hand only when it waits for something else, and it has to run before the handler returns:
+
+```js
+app.uws("get", "/slow", (res) => {
+    guard(res);
+    setTimeout(() => send(res, 200, null, "late"), 200);
+});
+```
+
+### Compression
+
+`compressor(options)` is `express.compression()` for a raw route: the same options, without `filter`, and the same encoders, so the same bytes. Build it once, outside the route. `negotiate(req)` reads `Accept-Encoding`, before the handler returns, and `send()` takes its answer as the last argument:
+
+```js
+const compress = express.uwsUtils.compressor({ encodings: ["br", "gzip"] });
+
+app.uws("get", "/report", (res, req) => {
+    compress.send(res, 200, null, buildReport(), compress.negotiate(req));
+});
+```
+
+As with the middleware, a body under `threshold` or with a type that does not compress goes out as it is, a compressible type carries `Vary: Accept-Encoding`, and a large body is compressed on the thread pool.
+
 ## Which route answers
 
 A raw route answers before the Express application on every path its pattern takes, whether it was written before or after the Express routes. It cannot take a place among them, since it skips the router that keeps them in order.

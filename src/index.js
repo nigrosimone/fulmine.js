@@ -52,7 +52,8 @@ try {
  *   text: Function,
  *   raw: Function,
  *   multipart: Function,
- *   uWS: typeof import("uWebSockets.js")
+ *   uWS: typeof import("uWebSockets.js"),
+ *   uwsUtils: typeof import("./uws-utils.js")
  * }}
  */
 module.exports = /** @type {any} */ (Application);
@@ -87,6 +88,8 @@ module.exports.urlencoded = bodyParser.urlencoded;
 module.exports.text = bodyParser.text;
 module.exports.raw = bodyParser.raw;
 module.exports.multipart = bodyParser.multipart;
+// the query, the body and the response of an app.uws() route, each one call away. See src/uws-utils.js
+module.exports.uwsUtils = require("./uws-utils.js");
 
 // µWebSockets.js itself, the instance this project serves with, for what an app.uws() route needs of
 // it: getParts() for a multipart body, DeclarativeResponse, the compression constants. A getter, so

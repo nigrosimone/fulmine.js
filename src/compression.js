@@ -376,33 +376,21 @@ function toBuffer(chunk, encoding) {
 }
 
 /**
- * Compresses a response body as the client asked for it.
+ * What compression() and the utilities of an app.uws() route share: the options read once, and the
+ * compressors behind them, which keep one encoder across responses.
  *
- * @param {object} [options]
- * @param {number|string} [options.threshold] the smallest body worth compressing, bytes or "1kb".
- *   Default 1024. A response whose size is not known in advance is compressed whatever its size.
- * @param {(req: Request, res: Response) => boolean} [options.filter] whether this response should be
- *   compressed at all. The default says yes to any compressible content type.
- * @param {string} [options.enforceEncoding] what to use when the request carries no
- *   Accept-Encoding at all. Default "identity", which is to say nothing is compressed.
- * @param {import("zlib").BrotliOptions} [options.brotli] brotli options, `params` included. The
- *   default quality is 4.
- * @param {import("zlib").ZstdOptions} [options.zstd] zstd options, `params` included, node's own
- *   defaults otherwise.
- * @param {string[]} [options.encodings] the encodings this middleware may answer with, out of
- *   "br", "zstd", "gzip" and "deflate". What is not named is never used, however the client ranks
- *   it. An uncompressed answer is always on offer, and enforceEncoding is outside this list. This
- *   option is fulmine's own, the compression module has no equivalent.
- * @param {number} [options.level] zlib compression level, for gzip and deflate.
- * @param {number} [options.chunkSize] zlib chunk size.
- * @param {number} [options.memLevel] zlib memory level.
- * @param {number} [options.strategy] zlib strategy.
- * @param {number} [options.windowBits] zlib window size.
- * @returns {(req: any, res: any, next: (err?: unknown) => void) => void} the middleware. The pair is
- *   loose because this is written against node's end() and write() shapes, which this project's
- *   own narrow
+ * @param {any} [options] compression()'s
+ * @returns {{
+ *   filter: (req: Request, res: Response) => boolean,
+ *   enforceEncoding: string,
+ *   threshold: number,
+ *   allowed: number,
+ *   compressWhole: (method: string, body: Buffer) => Buffer,
+ *   compressWholeAsync: (method: string, body: Buffer, done: (err: Error|null, out: Buffer) => void) => void,
+ *   compressStream: (method: string) => import("stream").Transform & import("zlib").Zlib
+ * }}
  */
-function compression(options) {
+function makeEncoders(options) {
     const opts = options || {};
     // the whole bag goes to zlib, as the compression module does
     const zlibOptions = /** @type {import("zlib").ZlibOptions} */ (opts);
@@ -510,6 +498,40 @@ function compression(options) {
         }
         return zlib.createDeflate(zlibOptions);
     }
+
+    return { filter, enforceEncoding, threshold, allowed, compressWhole, compressWholeAsync, compressStream };
+}
+
+/**
+ * Compresses a response body as the client asked for it.
+ *
+ * @param {object} [options]
+ * @param {number|string} [options.threshold] the smallest body worth compressing, bytes or "1kb".
+ *   Default 1024. A response whose size is not known in advance is compressed whatever its size.
+ * @param {(req: Request, res: Response) => boolean} [options.filter] whether this response should be
+ *   compressed at all. The default says yes to any compressible content type.
+ * @param {string} [options.enforceEncoding] what to use when the request carries no
+ *   Accept-Encoding at all. Default "identity", which is to say nothing is compressed.
+ * @param {import("zlib").BrotliOptions} [options.brotli] brotli options, `params` included. The
+ *   default quality is 4.
+ * @param {import("zlib").ZstdOptions} [options.zstd] zstd options, `params` included, node's own
+ *   defaults otherwise.
+ * @param {string[]} [options.encodings] the encodings this middleware may answer with, out of
+ *   "br", "zstd", "gzip" and "deflate". What is not named is never used, however the client ranks
+ *   it. An uncompressed answer is always on offer, and enforceEncoding is outside this list. This
+ *   option is fulmine's own, the compression module has no equivalent.
+ * @param {number} [options.level] zlib compression level, for gzip and deflate.
+ * @param {number} [options.chunkSize] zlib chunk size.
+ * @param {number} [options.memLevel] zlib memory level.
+ * @param {number} [options.strategy] zlib strategy.
+ * @param {number} [options.windowBits] zlib window size.
+ * @returns {(req: any, res: any, next: (err?: unknown) => void) => void} the middleware. The pair is
+ *   loose because this is written against node's end() and write() shapes, which this project's
+ *   own narrow
+ */
+function compression(options) {
+    const { filter, enforceEncoding, threshold, allowed, compressWhole, compressWholeAsync, compressStream } =
+        makeEncoders(options);
 
     /**
      * The compressor state and its closures are only allocated for a negotiated encoding.
@@ -761,5 +783,8 @@ function compression(options) {
 }
 
 module.exports = compression;
+module.exports._makeEncoders = makeEncoders;
+module.exports._SYNC_LIMIT = SYNC_LIMIT;
+module.exports._isCompressible = isCompressible;
 // the compression module exports its default filter too
 module.exports.filter = shouldCompress;

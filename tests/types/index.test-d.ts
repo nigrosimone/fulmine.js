@@ -442,3 +442,16 @@ app.get("/timing", (_req, res) => {
 expectError(app.publish());
 expectError(app.numSubscribers());
 expectError(app.address(1));
+
+// the utilities of a raw route take µWS's own objects
+app.uws("post", "/utils", (res, req) => {
+    const { query, readText, readJson, readBuffer, readForm, guard, send, compressor } = express.uwsUtils;
+    expectType<Record<string, string | string[]>>(query(req));
+    expectType<uWS.HttpResponse>(guard(res));
+    readText(res, (body) => expectType<string>(body), { limit: "1mb" });
+    readBuffer(res, (body) => expectType<Buffer>(body));
+    readForm(res, (body) => expectType<Record<string, string | string[]>>(body));
+    readJson(res, (body) => send(res, 200, null, body));
+    const compress = compressor({ encodings: ["br"] });
+    compress.send(res, 200, null, "text", compress.negotiate(req));
+});
