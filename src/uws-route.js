@@ -34,6 +34,12 @@ const { collectMounted, joinPaths } = require("./websocket.js");
 /** @typedef {import("./application.js").Application} Application */
 /** @typedef {import("uWebSockets.js").HttpRequest} UwsRequest */
 /** @typedef {import("uWebSockets.js").HttpResponse} UwsResponse */
+/**
+ * What µWS takes as a route: a function it calls, or the ArrayBuffer a DeclarativeResponse's end()
+ * returns, which it answers with without entering JavaScript.
+ *
+ * @typedef {((res: UwsResponse, req: UwsRequest) => void)|ArrayBuffer} UwsHandler
+ */
 
 /**
  * One app.uws() registration as the router keeps it.
@@ -42,7 +48,7 @@ const { collectMounted, joinPaths } = require("./websocket.js");
  * @property {string} method the HTTP method in capitals, or "ANY"
  * @property {string} uwsMethod the TemplatedApp method that registers it: get, del, any, ...
  * @property {string} path the pattern as written, µWS's syntax
- * @property {(res: UwsResponse, req: UwsRequest) => void} handler handed to µWS untouched
+ * @property {UwsHandler} handler handed to µWS untouched
  */
 
 // what app.uws() accepts as a method, to the TemplatedApp method that registers it
@@ -81,14 +87,16 @@ function makeUwsRoute(method, path, handler) {
     if (typeof path !== "string" || path[0] !== "/") {
         throw new TypeError("app.uws() requires a path string starting with /, in µWS's own pattern syntax");
     }
-    if (typeof handler !== "function") {
-        throw new TypeError("app.uws() requires a handler function, called by µWS as (res, req)");
+    if (typeof handler !== "function" && !(handler instanceof ArrayBuffer)) {
+        throw new TypeError(
+            "app.uws() requires a handler function, called by µWS as (res, req), or a DeclarativeResponse's end()"
+        );
     }
     return {
         method: uwsMethod === "del" ? "DELETE" : uwsMethod.toUpperCase(),
         uwsMethod,
         path,
-        handler: /** @type {(res: UwsResponse, req: UwsRequest) => void} */ (handler)
+        handler: /** @type {UwsHandler} */ (handler)
     };
 }
 

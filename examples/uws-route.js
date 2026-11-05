@@ -10,6 +10,8 @@
 //   curl -X POST localhost:3000/users -H 'content-type: application/json' -d '{"name":"a"}'
 //                                       ->  {"name":"a"}       (Express)
 //   curl localhost:3000/slow?ms=200     ->  waited 200ms       (raw, answered late)
+//   curl -F title=hi -F file=@uws-route.js localhost:3000/upload
+//                                       ->  title (2 bytes), file uws-route.js (... bytes)
 const express = require("fulmine.js"); // instead of require("express")
 
 const app = express();
@@ -52,6 +54,31 @@ app.uws("get", "/slow", (res, req) => {
             res.writeStatus("200 OK").end(`waited ${ms}ms`);
         });
     }, ms);
+});
+
+// uWS's own utilities are express.uWS, the instance this app serves with: getParts() splits a
+// multipart body the handler collected itself
+const { getParts } = express.uWS;
+app.uws("post", "/upload", (res, req) => {
+    const contentType = req.getHeader("content-type");
+    let aborted = false;
+    res.onAborted(() => {
+        aborted = true;
+    });
+    /** @type {Buffer[]} */
+    const chunks = [];
+    res.onData((chunk, isLast) => {
+        // uWS reuses the chunk's memory once this returns, so it is copied
+        chunks.push(Buffer.from(new Uint8Array(chunk)));
+        if (!isLast || aborted) return;
+        const parts = getParts(Buffer.concat(chunks), contentType) ?? [];
+        const summary = parts.map(
+            (p) => `${p.filename ? `${p.name} ${p.filename}` : p.name} (${p.data.byteLength} bytes)`
+        );
+        res.cork(() => {
+            res.end(summary.join(", ") + "\n");
+        });
+    });
 });
 
 app.listen(3000, () => {

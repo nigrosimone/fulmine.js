@@ -51,7 +51,8 @@ try {
  *   urlencoded: Function,
  *   text: Function,
  *   raw: Function,
- *   multipart: Function
+ *   multipart: Function,
+ *   uWS: typeof import("uWebSockets.js")
  * }}
  */
 module.exports = /** @type {any} */ (Application);
@@ -86,3 +87,14 @@ module.exports.urlencoded = bodyParser.urlencoded;
 module.exports.text = bodyParser.text;
 module.exports.raw = bodyParser.raw;
 module.exports.multipart = bodyParser.multipart;
+
+// µWebSockets.js itself, the instance this project serves with, for what an app.uws() route needs of
+// it: getParts() for a multipart body, DeclarativeResponse, the compression constants. A getter, so
+// requiring this file still loads no binary, and on Bun and Deno only reading it throws. Neither
+// enumerable nor a named ESM export, on purpose: node reads every name cjs-module-lexer finds at
+// import time, and anything that copies this namespace would load the binary as a side effect
+Object.defineProperty(module.exports, "uWS", {
+    configurable: true,
+    enumerable: false,
+    get: () => require("./uws.js").loadUWS()
+});

@@ -37,6 +37,11 @@ const server = app.listen(0, "127.0.0.1", async () => {
         } catch (err) {
             lines.push("uws " + /does not load on Bun/.test(err.message));
         }
+        try {
+            express.uWS.getParts;
+        } catch (err) {
+            lines.push("express.uWS " + /does not load on Bun/.test(err.message));
+        }
         app.close((err) => {
             lines.push("closed " + (err === undefined) + " " + app.address());
             lines.push("uws loaded " + Object.keys(require.cache).some((key) => key.includes("uWebSockets.js")));
@@ -58,6 +63,7 @@ test("listen() on Bun and Deno serves through node:http and never loads µWS", (
             "busy EADDRINUSE",
             "ws true",
             "uws true",
+            "express.uWS true",
             "closed true null",
             "uws loaded false"
         ].join("\n")
