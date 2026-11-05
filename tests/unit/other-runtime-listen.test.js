@@ -30,6 +30,13 @@ const server = app.listen(0, "127.0.0.1", async () => {
         } catch (err) {
             lines.push("ws " + /does not load on Bun/.test(err.message));
         }
+        const raw = express();
+        raw.uws("get", "/raw", (res) => res.end("raw"));
+        try {
+            raw.listen(0);
+        } catch (err) {
+            lines.push("uws " + /does not load on Bun/.test(err.message));
+        }
         app.close((err) => {
             lines.push("closed " + (err === undefined) + " " + app.address());
             lines.push("uws loaded " + Object.keys(require.cache).some((key) => key.includes("uWebSockets.js")));
@@ -50,6 +57,7 @@ test("listen() on Bun and Deno serves through node:http and never loads µWS", (
             '200 {"hello":"world"}',
             "busy EADDRINUSE",
             "ws true",
+            "uws true",
             "closed true null",
             "uws loaded false"
         ].join("\n")

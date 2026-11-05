@@ -203,6 +203,7 @@ declare module "fulmine.js" {
         export type FulmineApplication = Fulmine;
         export type FulmineSocket = FulmineWebSocket;
         export type FulmineWebSocketBehavior = WebSocketBehavior;
+        export type FulmineUwsHandler = UwsHandler;
         export import RequestHandler = e.RequestHandler;
         export import RequestParamHandler = e.RequestParamHandler;
         export import Response = e.Response;
@@ -242,10 +243,35 @@ declare module "fulmine.js" {
         subscription?(ws: FulmineWebSocket, topic: ArrayBuffer, newCount: number, oldCount: number): void;
     };
 
+    // what app.uws() takes as a method, µWS's TemplatedApp names plus delete and all
+    type UwsMethod =
+        | "get"
+        | "post"
+        | "put"
+        | "delete"
+        | "del"
+        | "patch"
+        | "options"
+        | "head"
+        | "connect"
+        | "trace"
+        | "any"
+        | "all"
+        | Uppercase<
+              "get" | "post" | "put" | "delete" | "patch" | "options" | "head" | "connect" | "trace" | "any" | "all"
+          >;
+
+    // The handler of an app.uws() route, called as µWS calls it: µWS's own HttpResponse and
+    // HttpRequest, nothing of Express in front. void rather than µWS's void | Promise<void>, so
+    // `(res) => res.end()` and an async handler both fit
+    type UwsHandler = (res: uWS.HttpResponse, req: uWS.HttpRequest) => void;
+
     // interfaces rather than aliases: `this` is how ws() answers the router or the app it was
     // called on, and an alias naming itself in an intersection is circular
     interface FulmineRouter extends e.Router {
         ws(path: string, behavior: WebSocketBehavior): this;
+        /** A route µWS serves with the handler as written, see the application's uws(). */
+        uws(method: UwsMethod, path: string, handler: UwsHandler): this;
     }
 
     interface Fulmine extends Omit<e.Express, "listen"> {
@@ -330,6 +356,20 @@ declare module "fulmine.js" {
         maxHeadersCount: number | null;
         maxRequestsPerSocket: number;
         ws(path: string, behavior: WebSocketBehavior): this;
+        /**
+         * A route µWS serves itself, with the handler as written: called as `(res, req)` with µWS's
+         * own HttpResponse and HttpRequest, exactly as a bare µWS app would call it. No Request, no
+         * Response, no middleware, no error handler; reading `req` before returning,
+         * `res.onAborted()` before answering late and `res.cork()` around a late write are the
+         * handler's, as on µWS. It answers before the Express routes on every path its pattern
+         * takes, wherever it was written. The path is µWS's pattern, matched byte for byte, with a
+         * mount's path in front. Served by `app.listen()` on Node only.
+         *
+         * ```ts
+         * app.uws("get", "/health", (res) => res.end("ok"));
+         * ```
+         */
+        uws(method: UwsMethod, path: string, handler: UwsHandler): this;
         publish(topic: string, message: string | ArrayBuffer | Buffer, isBinary?: boolean, compress?: boolean): boolean;
         numSubscribers(topic: string): number;
     }

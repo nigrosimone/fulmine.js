@@ -58,36 +58,26 @@ function joinPaths(prefix, path) {
 }
 
 /**
- * Every websocket route reachable from this router with the mount paths applied. A websocket
- * has no fallback, so an unmountable one is refused out loud.
+ * Every entry of one per-router list reachable from this router, with the mount path it sits
+ * under: null once a mount was a shape µWS cannot match. Shared by app.ws() and app.uws(), the two
+ * registrations µWS serves by itself and which therefore have no fallback.
  *
+ * @template T
  * @param {Router} router
- * @param {string|null} prefix the mount path so far, null once a mount was a shape µWS cannot match
- * @param {WsRoute[]} out
+ * @param {"_wsRoutes"|"_uwsRoutes"} field the list on each router
+ * @param {string|null} prefix the mount path so far
+ * @param {{entry: T, prefix: string|null}[]} out
  * @param {Set<Router>} seen the routers on the way down: a router in its own tree is a cycle, one
  * mounted twice is not
  */
-function collectRoutes(router, prefix, out, seen) {
+function collectMounted(router, field, prefix, out, seen) {
     if (seen.has(router)) {
         return;
     }
     seen.add(router);
 
-    for (const entry of router._wsRoutes ?? []) {
-        if (prefix === null) {
-            throw new Error(
-                `websocket route "${entry.path}" sits under a mount µWS cannot match. ` +
-                    "Mount the router on a literal path, or on one whose parameters are whole segments."
-            );
-        }
-        const path = joinPaths(prefix, entry.path);
-        if (!canBeOptimizedWithParams(path)) {
-            throw new Error(
-                `websocket path "${path}" is not one µWS can match. Use a literal path, or ` +
-                    "parameters that are a whole segment, as in /room/:id."
-            );
-        }
-        out.push({ path, behavior: entry.behavior, owner: entry.owner });
+    for (const entry of /** @type {T[]|null} */ (router[field]) ?? []) {
+        out.push({ entry, prefix });
     }
 
     for (const route of router._routes) {
@@ -101,11 +91,40 @@ function collectRoutes(router, prefix, out, seen) {
                     prefix === null || typeof route.path !== "string" || !canBeOptimizedWithParams(route.path)
                         ? null
                         : joinPaths(prefix, route.path);
-                collectRoutes(callback, mount, out, seen);
+                collectMounted(callback, field, mount, out, seen);
             }
         }
     }
     seen.delete(router);
+}
+
+/**
+ * Every websocket route reachable from this router with the mount paths applied. A websocket
+ * has no fallback, so an unmountable one is refused out loud.
+ *
+ * @param {Router} router
+ * @returns {WsRoute[]}
+ */
+function collectRoutes(router) {
+    /** @type {{entry: WsRoute, prefix: string|null}[]} */
+    const found = [];
+    collectMounted(router, "_wsRoutes", "", found, new Set());
+    return found.map(({ entry, prefix }) => {
+        if (prefix === null) {
+            throw new Error(
+                `websocket route "${entry.path}" sits under a mount µWS cannot match. ` +
+                    "Mount the router on a literal path, or on one whose parameters are whole segments."
+            );
+        }
+        const path = joinPaths(prefix, entry.path);
+        if (!canBeOptimizedWithParams(path)) {
+            throw new Error(
+                `websocket path "${path}" is not one µWS can match. Use a literal path, or ` +
+                    "parameters that are a whole segment, as in /room/:id."
+            );
+        }
+        return { path, behavior: entry.behavior, owner: entry.owner };
+    });
 }
 
 /**
@@ -223,9 +242,7 @@ function makeUpgradeHandler(app, path, behavior) {
  * @param {Application} app
  */
 function registerWebSocketRoutes(app) {
-    const routes = /** @type {WsRoute[]} */ ([]);
-    collectRoutes(app, "", routes, new Set());
-    for (const route of routes) {
+    for (const route of collectRoutes(app)) {
         const uwsBehavior = { ...route.behavior };
         delete uwsBehavior.upgrade;
         // bound to the owner's classes, so a mounted sub-app's request layer is the one its own
@@ -264,4 +281,4 @@ function checkBehavior(path, behavior) {
     }
 }
 
-module.exports = { registerWebSocketRoutes, checkBehavior };
+module.exports = { registerWebSocketRoutes, checkBehavior, collectMounted, joinPaths };

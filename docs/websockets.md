@@ -35,7 +35,7 @@ app.ws("/room/:id", {
 
 A WebSocket route and an ordinary route can share a path: the upgrade goes to the WebSocket route, a plain GET goes through normal routing. Runnable, with a page that opens the socket: [`examples/websocket.js`](../examples/websocket.js).
 
-If you would rather use the `ws` module's API, [Ultimate WS](https://github.com/dimdenGD/ultimate-ws) is a drop-in replacement for it written against Ultimate Express, and Fulmine still exposes the mechanism it hooks into, but that combination is not covered by this project's tests. `app.uwsApp` also remains available for anything µWS offers that this does not.
+If you would rather use the `ws` module's API, [Ultimate WS](https://github.com/dimdenGD/ultimate-ws) is a drop-in replacement for it written against Ultimate Express, and Fulmine still exposes the mechanism it hooks into, but that combination is not covered by this project's tests. `app.uwsApp` also remains available for anything µWS offers that this does not, and a plain HTTP route with µWS's own `(res, req)` is [`app.uws()`](./uws-routes.md).
 
 ## socket.io
 

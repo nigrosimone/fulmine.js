@@ -41,6 +41,7 @@ const { METHODS } = require("http");
 const { isNodeRequest, serveNodeRequest } = require("./node-shim.js");
 const { kGetSafe } = require("./usage.js");
 const { checkBehavior } = require("./websocket.js");
+const { makeUwsRoute } = require("./uws-route.js");
 const { HotSettings, settingsWriteTraps } = require("./hot-settings.js");
 const Walk = require("./walk.js");
 const { useRouterClass, optimizeRoute, compileOptimizedRoutes, registerUwsRoute } = require("./optimizer.js");
@@ -182,6 +183,12 @@ module.exports = class Router extends EventEmitter {
 
     /** Websocket routes, µWS serves them itself and listen() hands them over whole. @type {WsRoute[]|null} */
     _wsRoutes = null;
+
+    /** app.uws() routes, handed to µWS untouched at listen(). @type {import("./uws-route.js").UwsRoute[]|null} */
+    _uwsRoutes = null;
+
+    /** Whether listen() handed the app.uws() routes to µWS, after which a new one goes straight there. */
+    _uwsRoutesServed = false;
 
     /**
      * The native presets allowed to skip the header copy, so a route added after listen can take
@@ -1350,6 +1357,40 @@ module.exports = class Router extends EventEmitter {
     ws(path, behavior) {
         checkBehavior(path, behavior);
         (this._wsRoutes ??= []).push({ path, behavior, owner: this });
+        return this;
+    }
+
+    /**
+     * Registers a route µWS serves by itself, with the handler as written: it is called as
+     * `(res, req)` with µWS's own HttpResponse and HttpRequest, exactly as a bare µWS application
+     * would call it. No Request, no Response, no middleware, no error handler and no 404 of the
+     * application runs for it; what µWS requires of a handler (reading `req` before returning,
+     * `res.onAborted()` before answering asynchronously, `res.cork()` around a late write) is the
+     * handler's to do.
+     *
+     * The route answers before the Express application on every path its pattern takes, wherever
+     * it was written, and the path is µWS's: matched byte for byte, `:name` a whole segment,
+     * `*` the rest. On a mounted router the mount path goes in front.
+     *
+     * @example
+     * app.uws("get", "/health", (res) => {
+     *     res.end("ok");
+     * });
+     *
+     * @param {string} method get, post, put, delete (or del), patch, options, head, connect,
+     *   trace, or any (or all)
+     * @param {string} path a µWS pattern
+     * @param {(res: UwsResponse, req: UwsRequest) => void} handler called by µWS as it is
+     * @returns {this}
+     */
+    uws(method, path, handler) {
+        const route = makeUwsRoute(method, path, handler);
+        // the application already handed its table to µWS: this one goes straight to it, as
+        // µWS itself takes a route added after listen
+        if (this._uwsRoutesServed) {
+            /** @type {any} */ (this).uwsApp[route.uwsMethod](route.path, route.handler);
+        }
+        (this._uwsRoutes ??= []).push(route);
         return this;
     }
 

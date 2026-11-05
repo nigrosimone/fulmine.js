@@ -14,6 +14,7 @@ is documented by Express itself.
 | [One process per core on one port](./cluster)                          | `express({ cluster: "auto" })`                 |
 | [A database pool per cluster worker](./cluster-pool)                   | `app.cluster.share(40)`                        |
 | [WebSockets next to your Express routes](./websocket)                  | `app.ws("/room/:id", { open, message })`       |
+| [A raw µWS route next to your Express routes](./uws-route)             | `app.uws("get", "/health", (res, req) => ...)` |
 | [socket.io on uWebSockets.js](./socket-io)                             | `io.attachApp(app.uwsApp)`                     |
 | [An MCP server on Express](./mcp)                                      | the official SDK, Streamable HTTP              |
 | [Serve the .br and .gz files your build wrote](./static-precompressed) | `express.static(dir, { preCompressed: true })` |

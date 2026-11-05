@@ -43,6 +43,7 @@ const fs = require("fs");
 const { Worker } = require("worker_threads");
 const cluster = require("cluster");
 const { registerWebSocketRoutes } = require("./websocket.js");
+const { registerUwsRoutes } = require("./uws-route.js");
 const { addServerMembers } = require("./server-shape.js");
 const { serverObserved, serveObserved } = require("./tracing.js");
 const { workerCount, workerPlace, shareOf, forkWorkers, isSupervising, becomeSupervisor } = require("./cluster.js");
@@ -643,6 +644,9 @@ class Application extends Router {
         this._compileOptimizedRoutes();
         registerWebSocketRoutes(this);
         this._createRequestHandler();
+        // after the catch-all: on the same pattern and method µWS calls the last one registered
+        registerUwsRoutes(this);
+        this._uwsRoutesServed = true;
         // the routes are analysed, a later one loads the parser again
         acorn.release();
         // uWS runs this inside its own listen(), so everything reported to the caller is deferred
@@ -716,6 +720,8 @@ class Application extends Router {
             loadUWS();
         }
         registerWebSocketRoutes(this);
+        // the same: an app.uws() route needs µWS, and nothing here could serve it
+        registerUwsRoutes(this);
         const server = require("http").createServer(/** @type {any} */ (this));
         const adoptAddress = () => {
             const address = server.address();

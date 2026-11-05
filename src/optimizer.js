@@ -35,6 +35,7 @@ const Walk = require("./walk.js");
 const compileDeclarative = require("./declarative.js");
 const { observed } = require("./tracing.js");
 const { chainUsage } = require("./usage.js");
+const { collectUwsRoutes, uwsRouteTakes } = require("./uws-route.js");
 const {
     HAS_LETTER,
     anyGuardHits,
@@ -257,6 +258,9 @@ function compileOptimizedRoutes(root) {
     // the routers being walked into: one mounted inside its own tree stays generic, which
     // recurses as far as the path goes, as express does
     const inside = new Set([root]);
+    // app.uws() routes answer first, so a native registration µWS would prefer to one of them on
+    // some path stays off the table, see src/uws-route.js
+    const uwsRoutes = collectUwsRoutes(root);
 
     // pathPrefix and chainPrefix accumulate across nested mounts, outerGuards carries what was
     // written before them and answers only part of what is under them
@@ -322,6 +326,18 @@ function compileOptimizedRoutes(root) {
                 (!pathPrefix || !router._isFollowedByAnOverlap(route, router._routes)) &&
                 supportedUwsMethods.has(route.method)
             ) {
+                if (uwsRoutes.length > 0 && typeof route.path === "string") {
+                    const taken = uwsRouteTakes(
+                        uwsRoutes,
+                        route.method,
+                        pathPrefix + route.path,
+                        (route.owner ?? router)._strictRouting()
+                    );
+                    if (taken) {
+                        route._whyGeneric = `app.uws("${taken.uwsMethod}", "${taken.path}") answers the same paths first`;
+                        continue;
+                    }
+                }
                 // something written before the mount that could answer this path, which µWS
                 // would never give its turn
                 if (outerGuards.length > 0 && typeof route.path === "string") {
