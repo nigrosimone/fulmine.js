@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.29.0](https://github.com/nigrosimone/fulmine.js/compare/v5.28.0...v5.29.0) (2026-11-05)
+
+### Features
+
+* app.uws(), a route µWS serves with the handler as written ([81a0f55](https://github.com/nigrosimone/fulmine.js/commit/81a0f556139f02a31ae216b4f89ca62cffda3f04))
+* express.uWS, µWS's own utilities for an app.uws() route ([47e35de](https://github.com/nigrosimone/fulmine.js/commit/47e35dec3a5ad8ea9a9ac854c0d364204984418a))
+
 ## [5.28.0](https://github.com/nigrosimone/fulmine.js/compare/v5.27.0...v5.28.0) (2026-11-04)
 
 ### Features
