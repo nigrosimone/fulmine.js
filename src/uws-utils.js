@@ -527,5 +527,6 @@ module.exports = {
     readForm,
     send,
     compressor,
+    _respond: respond,
     _respondWhole: respondWhole
 };

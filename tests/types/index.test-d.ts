@@ -232,6 +232,27 @@ NamedRouter().ws("/lobby", {
 });
 
 // app.uwsLite(): (req, res) over small objects
+app.uwsLite(
+    "post",
+    "/lite-use",
+    {
+        body: "stream",
+        use: [
+            (req, res, next) => {
+                res.on("finish", () => {});
+                next();
+            },
+            (err, req, res, next) => next(err)
+        ]
+    },
+    (req, res) => {
+        res.setHeader("x-a", 1);
+        req.user = 1;
+        expectType<string | string[] | undefined>(res.getHeader("x-a"));
+        expectType<Record<string, string> | undefined>(req.headers);
+        expectType<boolean>(res.write("a"));
+    }
+);
 app.uwsLite("post", "/lite/:id", { body: "json", limit: "1mb", headers: ["x-a"], url: true }, (req, res) => {
     expectType<string>(req.params.id);
     expectType<string | undefined>(req.get("x-a"));

@@ -238,8 +238,11 @@ declare module "fulmine.js" {
          */
         /** What app.uwsLite() takes. */
         export interface LiteOptions {
-            /** The body, in req.body when the handler runs. "lent" is a Buffer good until the handler returns. */
-            body?: "text" | "json" | "form" | "buffer" | "lent";
+            /**
+             * The body, in req.body when the handler runs. "lent" is a Buffer good until the handler
+             * returns, "stream" a Readable with no limit.
+             */
+            body?: "text" | "json" | "form" | "buffer" | "lent" | "stream";
             /** Bytes or a string as "1mb", 100kb by default. */
             limit?: number | string;
             /** What express.compression() takes. */
@@ -248,18 +251,24 @@ declare module "fulmine.js" {
             headers?: string[];
             /** Whether req.url and req.path are read after the handler returned or with a body. */
             url?: boolean;
+            /** Middleware of this route, after the body is read. A route without it pays nothing. */
+            use?: LiteMiddleware[];
         }
 
         /** The req of app.uwsLite(). */
         export interface LiteRequest {
             readonly query: Record<string, any>;
             readonly params: Record<string, string>;
-            readonly body: any;
+            body: any;
+            /** All of them on a route with middleware, the ones in { headers } otherwise. */
+            readonly headers: Record<string, string> | undefined;
             readonly method: string | undefined;
             readonly path: string;
             readonly url: string;
             get(name: string): string | undefined;
             header(name: string): string | undefined;
+            /** What middleware sets for the handler. */
+            [key: string]: any;
         }
 
         /** The res of app.uwsLite(). */
@@ -278,9 +287,25 @@ declare module "fulmine.js" {
             json(body: unknown): this;
             end(body?: string | Uint8Array): this;
             sendStatus(code: number): this;
+            setHeader(name: string, value: string | number | string[]): this;
+            getHeader(name: string): string | string[] | undefined;
+            hasHeader(name: string): boolean;
+            removeHeader(name: string): void;
+            /** Chunked, for stream.pipe(res). */
+            write(chunk: string | Uint8Array, encoding?: any, callback?: any): boolean;
+            /** "finish" and "close" tell a middleware the answer is out, as on a node response. */
+            on(name: string, listener: (...args: any[]) => void): this;
+            once(name: string, listener: (...args: any[]) => void): this;
+            off(name: string, listener: (...args: any[]) => void): this;
+            removeListener(name: string, listener: (...args: any[]) => void): this;
+            emit(name: string, ...args: any[]): boolean;
+            listenerCount(name: string): number;
         }
 
         export type LiteHandler = (req: LiteRequest, res: LiteResponse) => unknown;
+
+        /** (req, res, next), or (err, req, res, next) for an error. Express middleware works if it needs only this surface. */
+        export type LiteMiddleware = (a: any, b: any, c: any, d?: any) => unknown;
 
         export const uwsUtils: {
             query(req: uWS.HttpRequest): Record<string, string | string[]>;

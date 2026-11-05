@@ -21,12 +21,14 @@ limitations under the License.
 // and the functions µWS calls are bound to them.
 
 const { Buffer } = require("buffer");
+const { EventEmitter } = require("events");
+const { PassThrough, Readable } = require("stream");
 const bytes = require("bytes");
 const bodyParser = require("./body-parser.js");
 const compression = require("./compression.js");
 const parseQuery = require("./parse-query.js");
 const { HEADER_VALUE_BUF, statusLine } = require("./response-utils.js");
-const { compressor, _respondWhole } = require("./uws-utils.js");
+const { compressor, _respond, _respondWhole } = require("./uws-utils.js");
 const {
     contentTypeFor,
     contentTypeSet,
@@ -37,11 +39,12 @@ const {
 
 /**
  * @typedef {{
- *   body?: "text"|"json"|"form"|"buffer"|"lent",
+ *   body?: "text"|"json"|"form"|"buffer"|"lent"|"stream",
  *   limit?: number|string,
  *   compress?: any,
  *   headers?: string[],
- *   url?: boolean
+ *   url?: boolean,
+ *   use?: Function[]
  * }} LiteOptions
  */
 
@@ -89,6 +92,11 @@ class LiteRequest {
         return (this._query ??= parseQuery(this._rawQuery));
     }
 
+    /** @returns {Record<string, string>|undefined} all of them on a route with middleware */
+    get headers() {
+        return this._kept?.headers;
+    }
+
     /** @returns {string|undefined} */
     get method() {
         return this._route.method ?? this._kept?.method;
@@ -118,7 +126,8 @@ class LiteRequest {
             return this._req.getHeader(key) || undefined;
         }
         const headers = this._kept?.headers;
-        if (headers === undefined || !this._route.keptHeader.has(key)) {
+        const kept = this._route.keptHeader;
+        if (headers === undefined || (kept !== null && !kept.has(key))) {
             throw new TypeError(`req.get("${key}") after the handler returned needs it in { headers } on the route`);
         }
         return headers[key] || undefined;
@@ -149,6 +158,8 @@ class LiteResponse {
         this._headers = null;
         this.statusCode = 200;
         this._flags = 0;
+        /** @type {any} made on the first listener or write, most answers need neither */
+        this._bus = null;
     }
 
     /** @returns {boolean} */
@@ -191,6 +202,10 @@ class LiteResponse {
             this._type = type;
             return this;
         }
+        if (name === "content-length") {
+            // µWS writes its own, or goes chunked
+            return this;
+        }
         validateHeaderName(field);
         const out = Array.isArray(value) ? value.map(String) : String(value);
         validateHeaderValue(field, out);
@@ -214,6 +229,41 @@ class LiteResponse {
     get(field) {
         const name = field.toLowerCase();
         return name === "content-type" ? (this._type ?? undefined) : this._headers?.[name];
+    }
+
+    /**
+     * @param {string} name
+     * @param {string|number|string[]} value
+     * @returns {this}
+     */
+    setHeader(name, value) {
+        return this.set(name, /** @type {any} */ (value));
+    }
+
+    /**
+     * @param {string} name
+     * @returns {string|string[]|undefined}
+     */
+    getHeader(name) {
+        return this.get(name);
+    }
+
+    /**
+     * @param {string} name
+     * @returns {boolean}
+     */
+    hasHeader(name) {
+        return this.get(name) !== undefined;
+    }
+
+    /** @param {string} name */
+    removeHeader(name) {
+        const key = name.toLowerCase();
+        if (key === "content-type") {
+            this._type = null;
+        } else if (this._headers !== null) {
+            delete this._headers[key];
+        }
     }
 
     /**
@@ -260,7 +310,118 @@ class LiteResponse {
      * @returns {this}
      */
     end(body) {
+        if (this._bus !== null && this._bus.out !== null) {
+            this._bus.out.end(body);
+            return this;
+        }
         return this._finish(this._type, body ?? "");
+    }
+
+    /**
+     * Chunked, for stream.pipe(res). What it writes goes through a PassThrough, so compression,
+     * backpressure and an abort are the ones of a Readable answered with uwsUtils.
+     *
+     * @param {string|Uint8Array} chunk
+     * @param {any} [encoding]
+     * @param {any} [callback]
+     * @returns {boolean}
+     */
+    write(chunk, encoding, callback) {
+        const bus = this._emitter();
+        if (bus.out === null) {
+            this._open(bus);
+        }
+        return bus.out.write(chunk, encoding, callback);
+    }
+
+    /** @param {any} bus */
+    _open(bus) {
+        const flags = this._flags;
+        if ((flags & ANSWERED) !== 0) {
+            throw new Error("Cannot set headers after they are sent to the client");
+        }
+        this._flags = flags | ANSWERED;
+        const out = new PassThrough();
+        bus.out = out;
+        out.on("drain", () => bus.emit("drain"));
+        out.on("close", () => streamClosed(this, out));
+        if ((flags & ABORTED) !== 0) {
+            out.destroy();
+            return;
+        }
+        const type = this._type;
+        const compress = this.req._route.compress;
+        if (compress !== null && type !== null && compression._isCompressible(type)) {
+            compress._deliver(this._res, this.statusCode, this._headers, type, out, this._encoding);
+        } else {
+            const bytes = type === null ? null : HEADER_VALUE_BUF[type] || /** @type {any} */ (type);
+            _respond(this._res, this.statusCode, this._headers, bytes, null, false, out);
+        }
+    }
+
+    /** @returns {any} */
+    _emitter() {
+        if (this._bus === null) {
+            this._bus = new EventEmitter();
+            this._bus.out = null;
+        }
+        return this._bus;
+    }
+
+    /**
+     * @param {string} name
+     * @param {(...args: any[]) => void} listener
+     * @returns {this}
+     */
+    on(name, listener) {
+        this._emitter().on(name, listener);
+        return this;
+    }
+
+    /**
+     * @param {string} name
+     * @param {(...args: any[]) => void} listener
+     * @returns {this}
+     */
+    once(name, listener) {
+        this._emitter().once(name, listener);
+        return this;
+    }
+
+    /**
+     * @param {string} name
+     * @param {(...args: any[]) => void} listener
+     * @returns {this}
+     */
+    removeListener(name, listener) {
+        this._bus?.removeListener(name, listener);
+        return this;
+    }
+
+    /**
+     * @param {string} name
+     * @param {(...args: any[]) => void} listener
+     * @returns {this}
+     */
+    off(name, listener) {
+        return this.removeListener(name, listener);
+    }
+
+    /**
+     * @param {string} name
+     * @param {any[]} args
+     * @returns {boolean}
+     */
+    emit(name, ...args) {
+        return this._bus !== null && this._bus.emit(name, ...args);
+    }
+
+    /**
+     * @param {string} name
+     * @returns {number}
+     */
+    listenerCount(name) {
+        return this._bus === null ? 0 : this._bus.listenerCount(name);
     }
 
     /**
@@ -297,6 +458,9 @@ class LiteResponse {
         } else {
             _respondWhole(res, status, this._headers, type, body, (flags & LATE) === 0);
         }
+        if (this._bus !== null) {
+            process.nextTick(finished, this._bus);
+        }
         return this;
     }
 
@@ -318,6 +482,44 @@ class LiteResponse {
  */
 function onAborted() {
     this._flags |= ABORTED;
+    dropBody(this.req);
+    this._bus?.emit("close");
+}
+
+/**
+ * The client left, so a body as a stream will not end.
+ *
+ * @param {LiteRequest} request
+ */
+function dropBody(request) {
+    if (request._route.body === "stream") {
+        const body = request.body;
+        // as node, an error only for who listens
+        body.destroy(
+            body.listenerCount("error") > 0 ? Object.assign(new Error("aborted"), { code: "ECONNRESET" }) : undefined
+        );
+    }
+}
+
+/** @param {any} bus */
+function finished(bus) {
+    bus.emit("finish");
+    bus.emit("close");
+}
+
+/**
+ * @param {LiteResponse} response
+ * @param {any} out
+ */
+function streamClosed(response, out) {
+    if (out.writableFinished && out.readableEnded) {
+        finished(response._bus);
+        return;
+    }
+    // the client left, or the handler failed after the first write
+    response._flags |= ABORTED;
+    dropBody(response.req);
+    response._bus.emit("close");
 }
 
 /** While the body arrives: nothing to do on an abort, collectBody just never calls back. */
@@ -331,10 +533,13 @@ function fail(error) {
     if (process.env.NODE_ENV !== "test") {
         console.error(error);
     }
+    this._bus?.out?.destroy(/** @type {Error} */ (error));
     if ((this._flags & ANSWERED) === 0) {
         this._headers = null;
         this._type = null;
-        this._refuse(500);
+        // what next(err) and http-errors say, as Express's final handler
+        const status = /** @type {any} */ (error)?.status ?? /** @type {any} */ (error)?.statusCode;
+        this._refuse(Number.isInteger(status) && status >= 400 && status < 600 ? status : 500);
     }
 }
 
@@ -359,6 +564,114 @@ function run(res, request, response) {
     if (result !== null && typeof result === "object" && typeof result.then === "function") {
         result.then(undefined, fail.bind(response));
     }
+}
+
+/**
+ * The middleware of the route and then the handler. A chain that calls next before returning stays
+ * on µWS's stack. Errors go to the middleware with four parameters, then to fail().
+ *
+ * @param {any} res
+ * @param {LiteRequest} request
+ * @param {LiteResponse} response
+ */
+function chain(res, request, response) {
+    const use = request._route.use;
+    let index = 0;
+    res.onAborted(onAborted.bind(response));
+    /** @param {unknown} [error] */
+    const next = (error) => {
+        if ((response._flags & (ANSWERED | ABORTED)) !== 0) {
+            return;
+        }
+        const failing = Boolean(error);
+        while (index < use.length) {
+            const middleware = use[index++];
+            if ((middleware.length === 4) !== failing) {
+                continue;
+            }
+            let result;
+            try {
+                result = failing ? middleware(error, request, response, next) : middleware(request, response, next);
+            } catch (thrown) {
+                next(thrown);
+                return;
+            }
+            if (result !== null && typeof result === "object" && typeof result.then === "function") {
+                result.then(undefined, next);
+            }
+            return;
+        }
+        if (failing) {
+            fail.call(response, error);
+        } else {
+            run(res, request, response);
+        }
+    };
+    next();
+    response._flags |= LATE;
+    request._req = null;
+}
+
+/**
+ * @param {any} res
+ * @param {LiteRequest} request
+ * @param {LiteResponse} response
+ */
+function start(res, request, response) {
+    if (request._route.use === null) {
+        run(res, request, response);
+    } else {
+        chain(res, request, response);
+    }
+}
+
+/**
+ * The body as a Readable, with µWS's backpressure.
+ *
+ * @param {any} res
+ * @param {LiteResponse} response
+ * @returns {Readable}
+ */
+function bodyStream(res, response) {
+    let paused = false;
+    const stream = new Readable({
+        read() {
+            if (paused && !gone(response)) {
+                paused = false;
+                res.resume();
+            }
+        }
+    });
+    res.onData((/** @type {ArrayBuffer} */ chunk, /** @type {boolean} */ isLast) => {
+        // copied, µWS neuters it on return
+        const accepted = stream.push(Buffer.from(new Uint8Array(chunk)));
+        if (!accepted && !isLast && !gone(response)) {
+            paused = true;
+            res.pause();
+        }
+        if (isLast) {
+            stream.push(null);
+        }
+    });
+    return stream;
+}
+
+/**
+ * Whether µWS's res is over: the client left or the whole answer is out.
+ *
+ * @param {LiteResponse} response
+ * @returns {boolean}
+ */
+function gone(response) {
+    const flags = response._flags;
+    if ((flags & ABORTED) !== 0) {
+        return true;
+    }
+    if ((flags & ANSWERED) === 0) {
+        return false;
+    }
+    const out = response._bus?.out;
+    return out === null || out === undefined || out.destroyed;
 }
 
 /**
@@ -402,7 +715,7 @@ function onBody(body) {
         }
         request.body = parsed;
     }
-    run(response._res, request, response);
+    start(response._res, request, response);
 }
 
 /**
@@ -433,6 +746,22 @@ function readParams(req, names) {
 }
 
 /**
+ * Middleware reads headers before and after an await, and µWS's req does not last.
+ *
+ * @param {any} req
+ * @returns {Record<string, string>}
+ */
+function allHeaders(req) {
+    /** @type {any} */
+    const headers = { __proto__: null };
+    req.forEach((/** @type {string} */ name, /** @type {string} */ value) => {
+        const seen = headers[name];
+        headers[name] = seen === undefined ? value : `${seen}${name === "cookie" ? "; " : ", "}${value}`;
+    });
+    return headers;
+}
+
+/**
  * What the route declared it reads after req is gone.
  *
  * @param {any} route
@@ -448,7 +777,9 @@ function keep(route, req) {
     if (route.method === null) {
         kept.method = req.getCaseSensitiveMethod();
     }
-    if (route.keepHeaders !== null) {
+    if (route.use !== null) {
+        kept.headers = allHeaders(req);
+    } else if (route.keepHeaders !== null) {
         /** @type {Record<string, string>} */
         const headers = {};
         for (const name of route.keepHeaders) {
@@ -476,10 +807,20 @@ function makeLiteRoute(method, path, options, handler) {
     const lower = String(method).toLowerCase();
     const any = lower === "any" || lower === "all";
     const format = options.body;
-    if (format !== undefined && !["text", "json", "form", "buffer", "lent"].includes(format)) {
+    if (format !== undefined && !["text", "json", "form", "buffer", "lent", "stream"].includes(format)) {
         throw new TypeError(
-            `app.uwsLite() option body must be text, json, form, buffer or lent, got ${String(format)}`
+            `app.uwsLite() option body must be text, json, form, buffer, lent or stream, got ${String(format)}`
         );
+    }
+    if (format === "stream" && options.limit !== undefined) {
+        throw new TypeError('app.uwsLite() takes no limit with body: "stream", the handler reads it as it arrives');
+    }
+    const use = options.use ?? [];
+    if (!Array.isArray(use) || use.some((middleware) => typeof middleware !== "function")) {
+        throw new TypeError("app.uwsLite() option use must be an array of functions");
+    }
+    if (use.length !== 0 && format === "lent") {
+        throw new TypeError('app.uwsLite() takes no use with body: "lent", middleware can outlive the lent memory');
     }
     const limit = options.limit === undefined ? DEFAULT_LIMIT : bytes.parse(options.limit);
     if (limit === null) {
@@ -496,12 +837,15 @@ function makeLiteRoute(method, path, options, handler) {
         body: format ?? null,
         compress,
         method: any ? null : lower === "del" ? "DELETE" : lower.toUpperCase(),
-        keepUrl: options.url === true,
+        use: use.length === 0 ? null : use,
+        keepUrl: options.url === true || use.length !== 0,
         keepHeaders: headers,
-        keptHeader: new Set(headers)
+        // null: all of them are kept
+        keptHeader: use.length === 0 ? new Set(headers) : null
     };
     const hasParams = names.length !== 0;
     const keeps = any || route.keepUrl || headers !== null;
+    const streamed = format === "stream";
 
     /** @type {(res: any, req: any) => void} */
     const uws = (res, req) => {
@@ -513,7 +857,10 @@ function makeLiteRoute(method, path, options, handler) {
         if (params === null) {
             response._refuse(400);
         } else if (format === undefined) {
-            run(res, request, response);
+            start(res, request, response);
+        } else if (streamed) {
+            request.body = bodyStream(res, response);
+            start(res, request, response);
         } else {
             request._req = null;
             res.onAborted(bodyAborted);
@@ -527,7 +874,12 @@ function makeLiteRoute(method, path, options, handler) {
     if (options.compress !== undefined) {
         before.push(compression(options.compress));
     }
-    if (format !== undefined) {
+    if (streamed) {
+        before.push((/** @type {any} */ req, /** @type {any} */ _res, /** @type {any} */ next) => {
+            req.body = req;
+            next();
+        });
+    } else if (format !== undefined) {
         const parsers = {
             text: bodyParser.text,
             json: bodyParser.json,
@@ -537,7 +889,7 @@ function makeLiteRoute(method, path, options, handler) {
         };
         before.push(parsers[format]({ type: () => true, limit }));
     }
-    return { uws, express: [...before, handler], verb: any ? "all" : lower === "del" ? "delete" : lower };
+    return { uws, express: [...before, ...use, handler], verb: any ? "all" : lower === "del" ? "delete" : lower };
 }
 
 module.exports = { makeLiteRoute };

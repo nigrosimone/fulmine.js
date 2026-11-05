@@ -6,6 +6,7 @@ const test = require("node:test");
 const assert = require("node:assert");
 const http = require("node:http");
 const net = require("node:net");
+const { Readable } = require("node:stream");
 const zlib = require("node:zlib");
 
 const express = require("../../src/index.js");
@@ -486,4 +487,624 @@ test("a bad registration throws where it is written", () => {
     assert.throws(() => app.uwsLite("get", "/a", { body: "xml" }, handler), /option body/);
     assert.throws(() => app.uwsLite("get", "/a", { limit: "lots" }, handler), /limit/);
     assert.throws(() => app.uwsLite("nope", "/a", handler));
+});
+
+// middleware: the chain runs on µWS's route and on the Express route it registers
+
+/** Two ways to reach one route: µWS, and the Express route over HTTP/1.1 on createServer. */
+async function bothWays(setup, check) {
+    const lite = await serve(setup);
+    try {
+        await check(lite.port);
+    } finally {
+        await lite.close();
+    }
+    const app = express();
+    setup(app);
+    const server = http.createServer(app);
+    await new Promise((resolve) => server.listen(0, resolve));
+    try {
+        await check(server.address().port);
+    } finally {
+        await new Promise((resolve) => server.close(resolve));
+    }
+}
+
+/** Connects, writes, and leaves after a moment. */
+function leave(port, text) {
+    return new Promise((resolve) => {
+        const socket = net.connect(port, "127.0.0.1", () => {
+            socket.write(text);
+            setTimeout(() => {
+                socket.destroy();
+                resolve();
+            }, 30);
+        });
+    });
+}
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+test("middleware runs in order, sees the body and hands values to the handler", async () => {
+    const use = [
+        (req, res, next) => {
+            req.seen = [req.body.a];
+            next();
+        },
+        async (req, res, next) => {
+            await wait(5);
+            req.seen.push(req.get("x-one"), req.headers["x-one"], req.method, req.path);
+            next();
+        }
+    ];
+    await bothWays(
+        (app) => app.uwsLite("post", "/m", { body: "json", use }, (req, res) => res.json(req.seen)),
+        async (port) => {
+            const answer = await call(port, "/m", {
+                method: "POST",
+                headers: { "content-type": "application/json", "x-one": "1" },
+                body: '{"a":7}'
+            });
+            assert.strictEqual(answer.body, '[7,"1","1","POST","/m"]');
+        }
+    );
+});
+
+test("middleware that answers stops the chain", async () => {
+    let handled = 0;
+    const use = [(req, res) => res.status(403).send("no")];
+    await bothWays(
+        (app) => app.uwsLite("get", "/m", { use }, (req, res) => res.send(String(++handled))),
+        async (port) => {
+            const answer = await call(port, "/m");
+            assert.strictEqual(answer.status, 403);
+            assert.strictEqual(answer.body, "no");
+        }
+    );
+    assert.strictEqual(handled, 0);
+});
+
+test("an error skips to the middleware with four parameters", async () => {
+    for (const fail of [
+        (req, res, next) => next(new Error("x")),
+        () => {
+            throw new Error("x");
+        },
+        async () => {
+            throw new Error("x");
+        }
+    ]) {
+        const skipped = (req, res, next) => {
+            res.set("x-skipped", "1");
+            next();
+        };
+        const use = [fail, skipped, (err, req, res, next) => res.status(418).send(err.message)];
+        await bothWays(
+            (app) => app.uwsLite("get", "/m", { use }, (req, res) => res.send("no")),
+            async (port) => {
+                const res = await fetch(`http://127.0.0.1:${port}/m`);
+                assert.strictEqual(res.status, 418);
+                assert.strictEqual(res.headers.get("x-skipped"), null);
+                assert.strictEqual(await res.text(), "x");
+            }
+        );
+    }
+});
+
+test("an error nobody handles answers its status, and 500 without one", async () => {
+    const status = (code) => (req, res, next) => next(Object.assign(new Error("x"), { status: code }));
+    await bothWays(
+        (app) => {
+            app.uwsLite("get", "/401", { use: [status(401)] }, (req, res) => res.send("no"));
+            app.uwsLite("get", "/200", { use: [status(200)] }, (req, res) => res.send("no"));
+            app.uwsLite("get", "/plain", { use: [(req, res, next) => next(new Error("x"))] }, (req, res) =>
+                res.send("no")
+            );
+            app.uwsLite("get", "/handler", () => {
+                throw Object.assign(new Error("x"), { statusCode: 404 });
+            });
+        },
+        async (port) => {
+            assert.strictEqual((await call(port, "/401")).status, 401);
+            assert.strictEqual((await call(port, "/200")).status, 500);
+            assert.strictEqual((await call(port, "/plain")).status, 500);
+            assert.strictEqual((await call(port, "/handler")).status, 404);
+        }
+    );
+});
+
+test("helmet and cors write what they write on an Express route", async () => {
+    const helmet = require("helmet");
+    const cors = require("cors");
+    const server = await serve((app) => {
+        const use = [helmet(), cors({ origin: "http://a.test", credentials: true })];
+        app.get("/plain", ...use, (req, res) => res.json({ a: 1 }));
+        app.uwsLite("get", "/lite", { use }, (req, res) => res.json({ a: 1 }));
+    });
+    try {
+        const headers = { origin: "http://a.test" };
+        const [plain, lite] = await Promise.all(
+            ["/plain", "/lite"].map((path) => fetch(`http://127.0.0.1:${server.port}${path}`, { headers }))
+        );
+        const names = [...plain.headers.keys()].filter(
+            (name) => !["date", "etag", "x-powered-by", "connection", "keep-alive", "uwebsockets"].includes(name)
+        );
+        assert.ok(names.includes("content-security-policy"));
+        assert.ok(names.includes("access-control-allow-origin"));
+        for (const name of names) {
+            assert.strictEqual(lite.headers.get(name), plain.headers.get(name), name);
+        }
+    } finally {
+        await server.close();
+    }
+});
+
+test("a cors preflight ends in the middleware, with no body headers", async () => {
+    const cors = require("cors");
+    const server = await serve((app) => {
+        app.uwsLite("any", "/lite", { use: [cors()] }, (req, res) => res.send("no"));
+    });
+    try {
+        const out = await raw(
+            server.port,
+            "OPTIONS /lite HTTP/1.1\r\nHost: x\r\nOrigin: http://a.test\r\nAccess-Control-Request-Method: PUT\r\nConnection: close\r\n\r\n"
+        );
+        assert.match(out, /^HTTP\/1\.1 204/);
+        assert.match(out, /access-control-allow-methods/i);
+        assert.doesNotMatch(out, /content-length: 0\r\n[\s\S]*content-length/i);
+    } finally {
+        await server.close();
+    }
+});
+
+test("res.set of a content-length leaves it to µWS", async () => {
+    const server = await serve((app) => {
+        app.uwsLite("get", "/lite", (req, res) => res.set("Content-Length", "2").send("hello"));
+    });
+    try {
+        const out = await raw(server.port, "GET /lite HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
+        assert.strictEqual(out.match(/content-length/gi).length, 1);
+        assert.match(out, /hello$/);
+    } finally {
+        await server.close();
+    }
+});
+
+test("the same request header twice is joined, cookies with a semicolon", async () => {
+    const server = await serve((app) => {
+        const use = [(req, res, next) => next()];
+        app.uwsLite("get", "/lite", { use }, (req, res) => res.json(req.headers));
+    });
+    try {
+        const out = await raw(
+            server.port,
+            "GET /lite HTTP/1.1\r\nHost: x\r\nX-A: 1\r\nX-A: 2\r\nCookie: a=1\r\nCookie: b=2\r\nConnection: close\r\n\r\n"
+        );
+        assert.match(out, /"x-a":"1, 2"/);
+        assert.match(out, /"cookie":"a=1; b=2"/);
+    } finally {
+        await server.close();
+    }
+});
+
+test("finish tells a middleware the answer is out, once, with the status", async () => {
+    for (const handler of [
+        (req, res) => res.status(201).send("hi"),
+        async (req, res) => {
+            await wait(5);
+            res.status(201).send("hi");
+        },
+        (req, res) => {
+            res.status(201);
+            Readable.from(["h", "i"]).pipe(res);
+        }
+    ]) {
+        const events = [];
+        const use = [
+            (req, res, next) => {
+                res.on("finish", () => events.push(`finish ${res.statusCode}`));
+                res.once("close", () => events.push("close"));
+                next();
+            }
+        ];
+        const server = await serve((app) => app.uwsLite("get", "/m", { use }, handler));
+        try {
+            const answer = await call(server.port, "/m");
+            assert.strictEqual(answer.body, "hi");
+            await wait(20);
+            assert.deepStrictEqual(events, ["finish 201", "close"]);
+        } finally {
+            await server.close();
+        }
+    }
+});
+
+test("a client gone during async middleware reaches no handler and breaks nothing", async () => {
+    let handled = 0;
+    let release;
+    const waited = new Promise((resolve) => (release = resolve));
+    const closed = [];
+    const use = [
+        async (req, res, next) => {
+            res.on("close", () => closed.push("close"));
+            await waited;
+            next();
+        }
+    ];
+    const server = await serve((app) => app.uwsLite("get", "/m", { use }, () => handled++));
+    try {
+        await leave(server.port, "GET /m HTTP/1.1\r\nHost: x\r\n\r\n");
+        await wait(30);
+        release();
+        await wait(20);
+        assert.strictEqual(handled, 0);
+        assert.deepStrictEqual(closed, ["close"]);
+    } finally {
+        await server.close();
+    }
+});
+
+test("a route without middleware keeps no headers and pays no listener", async () => {
+    let seen;
+    const server = await serve((app) => {
+        app.uwsLite("get", "/lite", (req, res) => {
+            seen = [req.headers, res.listenerCount("finish"), res.emit("finish")];
+            res.send("ok");
+        });
+    });
+    try {
+        await call(server.port, "/lite");
+        assert.deepStrictEqual(seen, [undefined, 0, false]);
+    } finally {
+        await server.close();
+    }
+});
+
+// streams: a body and an answer as a Readable, with the same handler on the Express route
+
+test("stream.pipe(res) answers chunked with the status and the type", async () => {
+    await bothWays(
+        (app) =>
+            app.uwsLite("get", "/s", (req, res) => {
+                res.status(202).type("text/csv");
+                Readable.from(["a,", "b"]).pipe(res);
+            }),
+        async (port) => {
+            const answer = await call(port, "/s");
+            assert.strictEqual(answer.status, 202);
+            assert.match(answer.type, /^text\/csv/);
+            assert.strictEqual(answer.body, "a,b");
+        }
+    );
+});
+
+test("res.write and res.end, later than the handler too", async () => {
+    await bothWays(
+        (app) =>
+            app.uwsLite("get", "/s", (req, res) => {
+                res.write("a");
+                setTimeout(() => {
+                    res.write("b");
+                    res.end("c");
+                }, 5);
+            }),
+        async (port) => assert.strictEqual((await call(port, "/s")).body, "abc")
+    );
+});
+
+test("a write after a whole answer is refused, and send after a write", async () => {
+    const seen = [];
+    const server = await serve((app) => {
+        app.uwsLite("get", "/whole", (req, res) => {
+            res.send("ok");
+            assert.throws(() => res.write("x"), /after they are sent/);
+            seen.push("whole");
+        });
+        app.uwsLite("get", "/open", (req, res) => {
+            res.write("ok");
+            assert.throws(() => res.send("x"), /after they are sent/);
+            res.end();
+            seen.push("open");
+        });
+    });
+    try {
+        assert.strictEqual((await call(server.port, "/whole")).body, "ok");
+        assert.strictEqual((await call(server.port, "/open")).body, "ok");
+        assert.deepStrictEqual(seen, ["whole", "open"]);
+    } finally {
+        await server.close();
+    }
+});
+
+test("a piped answer is compressed by the route when its type is", async () => {
+    const text = "hello world ".repeat(1000);
+    const server = await serve((app) => {
+        app.uwsLite("get", "/s", { compress: {} }, (req, res) => {
+            res.type("text/plain");
+            Readable.from([text.slice(0, 5000), text.slice(5000)]).pipe(res);
+        });
+        app.uwsLite("get", "/bin", { compress: {} }, (req, res) => {
+            res.type("image/png");
+            Readable.from([Buffer.from(text)]).pipe(res);
+        });
+    });
+    try {
+        const out = await new Promise((resolve) => {
+            http.get({ port: server.port, path: "/s", headers: { "accept-encoding": "gzip" } }, resolve);
+        });
+        assert.strictEqual(out.headers["content-encoding"], "gzip");
+        const chunks = [];
+        for await (const chunk of out) {
+            chunks.push(chunk);
+        }
+        assert.strictEqual(zlib.gunzipSync(Buffer.concat(chunks)).toString(), text);
+        const bin = await new Promise((resolve) => {
+            http.get({ port: server.port, path: "/bin", headers: { "accept-encoding": "gzip" } }, resolve);
+        });
+        assert.strictEqual(bin.headers["content-encoding"], undefined);
+        bin.resume();
+    } finally {
+        await server.close();
+    }
+});
+
+test("a big piped answer to a slow reader arrives whole", async () => {
+    const chunk = Buffer.alloc(64 * 1024, 97);
+    const count = 200;
+    const server = await serve((app) => {
+        app.uwsLite("get", "/s", (req, res) => {
+            function* chunks() {
+                for (let i = 0; i < count; i++) {
+                    yield chunk;
+                }
+            }
+            Readable.from(chunks()).pipe(res);
+        });
+    });
+    try {
+        const out = await new Promise((resolve) => http.get({ port: server.port, path: "/s" }, resolve));
+        let total = 0;
+        out.pause();
+        await wait(50);
+        for await (const part of out) {
+            total += part.length;
+        }
+        assert.strictEqual(total, chunk.length * count);
+    } finally {
+        await server.close();
+    }
+});
+
+test("a handler that throws after the first write breaks the response", async () => {
+    const server = await serve((app) => {
+        app.uwsLite("get", "/t", (req, res) => {
+            res.write("a");
+            throw new Error("x");
+        });
+    });
+    try {
+        await assert.rejects(call(server.port, "/t"));
+    } finally {
+        await server.close();
+    }
+});
+
+test('body: "stream" is a Readable on both ways, chunked or with a length', async () => {
+    await bothWays(
+        (app) =>
+            app.uwsLite("post", "/s", { body: "stream" }, (req, res) => {
+                res.type("text/plain");
+                req.body.pipe(res);
+            }),
+        async (port) => {
+            assert.strictEqual((await call(port, "/s", { method: "POST", body: "hello" })).body, "hello");
+            const out = await raw(
+                port,
+                "POST /s HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n3\r\nabc\r\n2\r\nde\r\n0\r\n\r\n"
+            );
+            assert.match(out, /abc[\s\S]*de/);
+        }
+    );
+});
+
+test('body: "stream" holds a big body until the handler reads it', async () => {
+    const big = Buffer.alloc(8 * 1024 * 1024, 98);
+    let total = 0;
+    const server = await serve((app) => {
+        app.uwsLite("post", "/s", { body: "stream" }, async (req, res) => {
+            await wait(50);
+            for await (const chunk of req.body) {
+                total += chunk.length;
+            }
+            res.send("done");
+        });
+    });
+    try {
+        assert.strictEqual((await call(server.port, "/s", { method: "POST", body: big })).body, "done");
+        assert.strictEqual(total, big.length);
+    } finally {
+        await server.close();
+    }
+});
+
+test('a client gone during body: "stream" destroys the body, with an error for who listens', async () => {
+    const seen = [];
+    const server = await serve((app) => {
+        app.uwsLite("post", "/listens", { body: "stream" }, (req) => {
+            req.body.on("error", (error) => seen.push(error.code));
+            req.body.resume();
+        });
+        app.uwsLite("post", "/not", { body: "stream" }, (req) => {
+            req.body.on("close", () => seen.push("closed"));
+            req.body.resume();
+        });
+    });
+    try {
+        for (const path of ["/listens", "/not"]) {
+            await leave(server.port, `POST ${path} HTTP/1.1\r\nHost: x\r\nContent-Length: 100\r\n\r\nabc`);
+        }
+        await wait(30);
+        assert.deepStrictEqual(seen, ["ECONNRESET", "closed"]);
+    } finally {
+        await server.close();
+    }
+});
+
+test("a client gone during a piped answer stops the source and closes without finish", async () => {
+    const events = [];
+    let destroyed;
+    const destroyedSeen = new Promise((resolve) => (destroyed = resolve));
+    const server = await serve((app) => {
+        app.uwsLite("get", "/s", (req, res) => {
+            res.on("finish", () => events.push("finish"));
+            res.on("close", () => events.push("close"));
+            const source = new Readable({
+                read() {
+                    this.push(Buffer.alloc(64 * 1024));
+                }
+            });
+            source.on("close", destroyed);
+            source.pipe(res);
+            res.on("close", () => source.destroy());
+        });
+    });
+    try {
+        await leave(server.port, "GET /s HTTP/1.1\r\nHost: x\r\n\r\n");
+        await destroyedSeen;
+        assert.deepStrictEqual(events, ["close"]);
+    } finally {
+        await server.close();
+    }
+});
+
+test("use and stream options are checked at registration", () => {
+    const app = express();
+    const noop = () => {};
+    assert.throws(() => app.uwsLite("get", "/a", { use: noop }, noop), /must be an array/);
+    assert.throws(() => app.uwsLite("get", "/a", { use: [1] }, noop), /must be an array/);
+    assert.throws(() => app.uwsLite("post", "/a", { use: [noop], body: "lent" }, noop), /no use with body/);
+    assert.throws(() => app.uwsLite("post", "/a", { body: "stream", limit: 1 }, noop), /no limit/);
+});
+
+test("next() after an answer reaches no handler", async () => {
+    let handled = 0;
+    const use = [
+        (req, res, next) => {
+            res.status(403).send("no");
+            next();
+        }
+    ];
+    const server = await serve((app) => app.uwsLite("get", "/m", { use }, () => handled++));
+    try {
+        assert.strictEqual((await call(server.port, "/m")).status, 403);
+        assert.strictEqual(handled, 0);
+    } finally {
+        await server.close();
+    }
+});
+
+test("a write after the client left does nothing", async () => {
+    const seen = [];
+    const server = await serve((app) => {
+        app.uwsLite("get", "/s", async (req, res) => {
+            await wait(60);
+            seen.push(res.write("x"));
+            res.end();
+            seen.push("ended");
+        });
+    });
+    try {
+        await leave(server.port, "GET /s HTTP/1.1\r\nHost: x\r\n\r\n");
+        await wait(60);
+        assert.deepStrictEqual(seen, [false, "ended"]);
+    } finally {
+        await server.close();
+    }
+});
+
+test("cork: async middleware that answers asks for one", () => {
+    const calls = [];
+    const res = {
+        cork(write) {
+            calls.push("cork");
+            write();
+        },
+        onAborted() {},
+        writeHeader() {
+            return this;
+        },
+        end() {
+            calls.push("end");
+        }
+    };
+    const req = { getQuery: () => "", getUrl: () => "/", getHeader: () => "", forEach() {} };
+    const { makeLiteRoute } = require("../../src/uws-lite.js");
+    let later;
+    const use = [
+        (r, response) => {
+            later = response;
+        }
+    ];
+    makeLiteRoute("get", "/", { use }, () => {}).uws(res, req);
+    later.send("x");
+    assert.deepStrictEqual(calls, ["cork", "end"]);
+});
+
+test('body: "stream" pauses µWS when the buffer is full, and only while the response lives', () => {
+    const big = new ArrayBuffer(64 * 1024);
+    const { makeLiteRoute } = require("../../src/uws-lite.js");
+    const req = { getQuery: () => "", getUrl: () => "/", getHeader: () => "" };
+    const start = (handler) => {
+        const calls = [];
+        const res = {
+            onAborted() {},
+            cork(write) {
+                write();
+            },
+            writeHeader() {
+                return this;
+            },
+            end() {},
+            write: () => true,
+            onData(feed) {
+                res.feed = feed;
+            },
+            pause: () => calls.push("pause"),
+            resume: () => calls.push("resume")
+        };
+        makeLiteRoute("post", "/", { body: "stream" }, handler).uws(res, req);
+        return { res, calls };
+    };
+
+    let body;
+    const open = start((r) => {
+        body = r.body;
+    });
+    open.res.feed(big, false);
+    assert.deepStrictEqual(open.calls, ["pause"]);
+    body.read();
+    assert.deepStrictEqual(open.calls, ["pause", "resume"]);
+
+    // a whole answer ended res: no µWS call on it after that
+    let answered;
+    const whole = start((r, res) => {
+        answered = [r.body, res];
+    });
+    whole.res.feed(big, false);
+    assert.deepStrictEqual(whole.calls, ["pause"]);
+    answered[1].send("x");
+    answered[0].read();
+    whole.res.feed(big, false);
+    assert.deepStrictEqual(whole.calls, ["pause"]);
+
+    // the same when the answer was a stream that is over
+    let piped;
+    const streamed = start((r, res) => {
+        piped = [r.body, res];
+    });
+    streamed.res.feed(big, false);
+    piped[1].write("a");
+    piped[1]._bus.out.destroy();
+    piped[0].read();
+    assert.deepStrictEqual(streamed.calls, ["pause"]);
 });

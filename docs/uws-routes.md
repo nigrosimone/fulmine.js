@@ -154,9 +154,9 @@ app.uwsLite("post", "/users/:id", { body: "json", limit: "1mb" }, (req, res) => 
 
 The body is ready when the handler runs. The same handler works on an ordinary Express route, and `app.uwsLite()` registers one for you, so what µWS does not answer still reaches it: HTTP/2, `http.createServer(app)`, a `HEAD`, a trailing slash, another case.
 
-- **`req`** has `query`, `params` (decoded), `body`, `method`, `path`, `url`, `get(name)` and `header(name)`.
-- **`res`** has `req`, `statusCode`, `headersSent`, `status()`, `set()`, `header()`, `get()`, `type()`, `send()`, `json()`, `end()` and `sendStatus()`, and answers as Express: the same type, charset and status. A header with an invalid name or value throws. Over µWS it writes no `ETag` and no `X-Powered-By`.
-- **Options:** `body` is `"text"`, `"json"`, `"form"`, `"buffer"` or `"lent"`, and `limit` is bytes or a string as `"1mb"`, 100kb by default. The route accepts any content-type. Over the limit is a 413, invalid JSON a 400, and the handler does not run. `compress` takes the options of `express.compression()`.
+- **`req`** has `query`, `params` (decoded), `body`, `method`, `path`, `url`, `get(name)` and `header(name)`. On a route with middleware it has `headers` too.
+- **`res`** has `req`, `statusCode`, `headersSent`, `status()`, `set()`, `header()`, `get()`, `type()`, `send()`, `json()`, `end()`, `sendStatus()`, `write()`, `setHeader()`, `getHeader()`, `hasHeader()`, `removeHeader()` and the listeners (`on()`, `once()`, `off()`), and answers as Express: the same type, charset and status. A header with an invalid name or value throws. Over µWS it writes no `ETag` and no `X-Powered-By`.
+- **Options:** `body` is `"text"`, `"json"`, `"form"`, `"buffer"`, `"lent"` or `"stream"`, and `limit` is bytes or a string as `"1mb"`, 100kb by default. The route accepts any content-type. Over the limit is a 413, invalid JSON a 400, and the handler does not run. `compress` takes the options of `express.compression()`.
 - **`"lent"`** is a `Buffer` on µWS's memory, without a copy, good until the handler returns. For a route that answers at once, use `"buffer"` to keep it or to answer later.
 - **`headers` and `url`:** `req` of µWS is gone when the handler returns, and it is gone before the handler runs on a route with a body. `query`, `params` and `body` stay. What else you read then has to be declared, and an undeclared read throws:
 
@@ -167,7 +167,40 @@ app.uwsLite("post", "/orders", { body: "json", headers: ["authorization"], url: 
 });
 ```
 
-What it does not have: no `app.use()` middleware runs, no `app.param()`, no error handler. A handler that throws or rejects answers 500 and logs the error. Settings such as `etag`, `json spaces` or `trust proxy` have no effect over µWS. The path is as in `app.uws()`, without `*`. For anything else use an Express route: it is the same handler.
+**Middleware** goes on the route, in `use`, and a route without it pays nothing:
+
+```js
+const common = [helmet(), cors(), auth];
+
+app.uwsLite("get", "/orders/:id", { use: common }, (req, res) => {
+    res.json(load(req.user, req.params.id));
+});
+```
+
+- It is `(req, res, next)`, sync or async. It can answer and stop the chain, and put values on `req` for the handler.
+- `(err, req, res, next)` receives what the earlier ones threw or passed to `next()`. An error nobody takes answers its `status`, or 500.
+- It runs after the body is read, as `express.json()` at the top of an app. To run after the handler, use `res.on("finish", fn)`.
+- All the headers are kept, so `req.headers` and `req.get()` work after an await. That is the cost of a route with `use`.
+- It takes no `"lent"` body, because middleware can outlive it.
+- An Express middleware works if it needs only what is here. `helmet` and `cors` are tested. One that reads `req.ip`, `req.socket` or `res.locals` does not, and `next("route")` is an error.
+
+**Streams** work as on an Express route, so the handler is the same on both:
+
+```js
+app.uwsLite("get", "/report", { compress: {} }, (req, res) => {
+    res.type("text/csv");
+    fs.createReadStream("report.csv").pipe(res);
+});
+
+app.uwsLite("post", "/upload", { body: "stream" }, async (req, res) => {
+    await pipeline(req.body, fs.createWriteStream(target()));
+    res.sendStatus(201);
+});
+```
+
+`res.write()` and `stream.pipe(res)` answer chunked with backpressure, and compressed if the route has `compress` and the type is compressible. `body: "stream"` makes `req.body` a `Readable`, with backpressure and no `limit`, you count what you read.
+
+What it does not have: no `app.use()` middleware runs, no `app.param()`. A handler that throws or rejects answers the `status` of the error, or 500, and logs the error. Settings such as `etag`, `json spaces` or `trust proxy` have no effect over µWS. The path is as in `app.uws()`, without `*`. For anything else use an Express route: it is the same handler.
 
 ## Which route answers
 
