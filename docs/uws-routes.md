@@ -1,5 +1,5 @@
 ---
-description: Register a raw uWebSockets.js route in a Fulmine.js app with app.uws(): the handler gets µWS's own HttpResponse and HttpRequest, with no Express layer in front.
+description: "Register a raw uWebSockets.js route in a Fulmine.js app with app.uws(): the handler gets µWS's own HttpResponse and HttpRequest, with no Express layer in front."
 ---
 
 # Raw µWS routes
