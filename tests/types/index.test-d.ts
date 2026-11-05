@@ -231,6 +231,16 @@ NamedRouter().ws("/lobby", {
     }
 });
 
+// app.uws and app.uwsLite by verb, as app.get()
+expectType<typeof app>(app.uws.get("/verb", (res, req) => res.end(req.getUrl())));
+expectType<typeof app>(app.uws.delete("/verb", (res) => res.end()));
+expectType<typeof app>(app.uwsLite.get("/verb", (req, res) => res.send(req.query.a)));
+expectType<typeof app>(app.uwsLite.post("/verb", { body: "json" }, (req, res) => res.json(req.body)));
+expectType<typeof app>(app.uwsLite.all("/verb", { use: [] }, (req, res) => res.end()));
+expectType<ReturnType<typeof NamedRouter>>(NamedRouter().uws.get("/verb", (res) => res.end()));
+// @ts-expect-error a verb takes no method
+app.uws.get("get", "/verb", (res) => res.end());
+
 // app.uwsLite(): (req, res) over small objects
 app.uwsLite(
     "post",

@@ -268,3 +268,53 @@ test("the node shim serves the Express routes and leaves the µWS route unserved
     assert.equal((await ask(port, "/raw")).status, 404);
     await new Promise((resolve) => server.close(resolve));
 });
+
+test("each method has its verb, as app.get(), and the call with the method stays", async () => {
+    const server = await serve((app) => {
+        const answer = (name) => (res) => res.end(name);
+        const back = app.uws.get("/verb", answer("get"));
+        assert.strictEqual(back, app);
+        app.uws
+            .post("/verb", answer("post"))
+            .uws.put("/verb", answer("put"))
+            .uws.patch("/verb", answer("patch"))
+            .uws.delete("/verb", answer("delete"))
+            .uws.del("/del", answer("del"))
+            .uws.options("/verb", answer("options"))
+            .uws.any("/any", answer("any"))
+            .uws.all("/all", answer("all"));
+        app.uws("get", "/called", answer("called"));
+        const router = express.Router();
+        router.uws.get("/ping", answer("router"));
+        app.use("/api", router);
+    });
+    try {
+        for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]) {
+            assert.strictEqual((await ask(server.port, "/verb", method)).body, method.toLowerCase());
+        }
+        assert.strictEqual((await ask(server.port, "/del", "DELETE")).body, "del");
+        assert.strictEqual((await ask(server.port, "/any", "PUT")).body, "any");
+        assert.strictEqual((await ask(server.port, "/all", "PUT")).body, "all");
+        assert.strictEqual((await ask(server.port, "/called")).body, "called");
+        assert.strictEqual((await ask(server.port, "/api/ping")).body, "router");
+    } finally {
+        await server.close();
+    }
+});
+
+test("a verb after listen goes straight to µWS, as the call with the method", async () => {
+    const server = await serve(() => {});
+    try {
+        server.app.uws.get("/late", (res) => res.end("late"));
+        assert.strictEqual((await ask(server.port, "/late")).body, "late");
+    } finally {
+        await server.close();
+    }
+});
+
+test("a verb checks its arguments as the call with the method does", () => {
+    const app = express();
+    assert.throws(() => app.uws.get("no-slash", () => {}), /path string starting with \//);
+    assert.throws(() => app.uws.get("/x"), /requires a handler function/);
+    assert.strictEqual(app.uws.bind, Function.prototype.bind);
+});

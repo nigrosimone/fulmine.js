@@ -230,7 +230,7 @@ declare module "fulmine.js" {
          *
          * ```ts
          * const { query, readText, send } = express.uwsUtils;
-         * app.uws("post", "/sum", (res, req) => {
+         * app.uws.post("/sum", (res, req) => {
          *     const { a } = query(req);
          *     readText(res, (body) => send(res, 200, null, a + body));
          * });
@@ -405,6 +405,25 @@ declare module "fulmine.js" {
               "get" | "post" | "put" | "delete" | "patch" | "options" | "head" | "connect" | "trace" | "any" | "all"
           >;
 
+    type UwsVerb =
+        "get" | "post" | "put" | "delete" | "del" | "patch" | "options" | "head" | "connect" | "trace" | "any" | "all";
+
+    // app.uws: called by verb as app.get(), or with the method
+    type UwsRoutes<T> = ((method: UwsMethod, path: string, handler: UwsHandler) => T) & {
+        [verb in UwsVerb]: (path: string, handler: UwsHandler) => T;
+    };
+
+    // app.uwsLite, the same with its options
+    interface UwsLiteVerb<T> {
+        (path: string, handler: express.LiteHandler): T;
+        (path: string, options: express.LiteOptions, handler: express.LiteHandler): T;
+    }
+    interface UwsLiteCall<T> {
+        (method: UwsMethod, path: string, handler: express.LiteHandler): T;
+        (method: UwsMethod, path: string, options: express.LiteOptions, handler: express.LiteHandler): T;
+    }
+    type UwsLiteRoutes<T> = UwsLiteCall<T> & { [verb in UwsVerb]: UwsLiteVerb<T> };
+
     // The handler of an app.uws() route, called as µWS calls it: µWS's own HttpResponse and
     // HttpRequest, nothing of Express in front. void rather than µWS's void | Promise<void>, so
     // `(res) => res.end()` and an async handler both fit. Or, as µWS takes it, the ArrayBuffer a
@@ -416,10 +435,9 @@ declare module "fulmine.js" {
     interface FulmineRouter extends e.Router {
         ws(path: string, behavior: WebSocketBehavior): this;
         /** A route µWS serves with the handler as written, see the application's uws(). */
-        uws(method: UwsMethod, path: string, handler: UwsHandler): this;
+        uws: UwsRoutes<this>;
         /** A route µWS serves with an (req, res) handler, see docs/uws-routes.md. */
-        uwsLite(method: UwsMethod, path: string, handler: express.LiteHandler): this;
-        uwsLite(method: UwsMethod, path: string, options: express.LiteOptions, handler: express.LiteHandler): this;
+        uwsLite: UwsLiteRoutes<this>;
     }
 
     interface Fulmine extends Omit<e.Express, "listen"> {
@@ -514,13 +532,12 @@ declare module "fulmine.js" {
          * mount's path in front. Served by `app.listen()` on Node only.
          *
          * ```ts
-         * app.uws("get", "/health", (res) => res.end("ok"));
+         * app.uws.get("/health", (res) => res.end("ok"));
          * ```
          */
-        uws(method: UwsMethod, path: string, handler: UwsHandler): this;
+        uws: UwsRoutes<this>;
         /** A route µWS serves with an (req, res) handler, see docs/uws-routes.md. */
-        uwsLite(method: UwsMethod, path: string, handler: express.LiteHandler): this;
-        uwsLite(method: UwsMethod, path: string, options: express.LiteOptions, handler: express.LiteHandler): this;
+        uwsLite: UwsLiteRoutes<this>;
         publish(topic: string, message: string | ArrayBuffer | Buffer, isBinary?: boolean, compress?: boolean): boolean;
         numSubscribers(topic: string): number;
     }

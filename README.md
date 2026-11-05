@@ -123,7 +123,7 @@ Everything Express does, plus these. Each one is a runnable file in [`examples/`
 | One process per core, one port, no primary in the path                | `express({ cluster: "auto" })`                               |
 | Native WebSockets, with an `upgrade(req, res)` hook for auth          | `app.ws("/room/:id", { open, message, close })`              |
 | socket.io                                                             | `io.attachApp(app.uwsApp)`                                   |
-| A raw µWS route, `(res, req)` with no Express layer in front          | `app.uws("get", "/health", (res) => res.end("ok"))`          |
+| A raw µWS route, `(res, req)` with no Express layer in front          | `app.uws.get("/health", (res) => res.end("ok"))`             |
 | Compression built in, 50% more requests per second than `compression` | `app.use(express.compression())`                             |
 | Serve the `.br` and `.gz` twins your build already wrote              | `express.static(dir, { preCompressed: true })`               |
 | Server-Timing with how the request was routed                         | `app.use(express.serverTiming())`                            |

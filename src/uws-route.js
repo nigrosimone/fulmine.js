@@ -69,6 +69,23 @@ const UWS_METHODS = {
 };
 
 /**
+ * app.uws and app.uwsLite as they read: called with the method, or by verb as app.get(). Made on each
+ * read, so the cost stays on the line that registers and the app has no field more.
+ *
+ * @param {object} router
+ * @param {(...args: any[]) => any} register the method of the router
+ * @returns {any}
+ */
+function withVerbs(router, register) {
+    /** @type {any} */
+    const registrar = (/** @type {any[]} */ ...args) => register.apply(router, args);
+    for (const verb of Object.keys(UWS_METHODS)) {
+        registrar[verb] = (/** @type {any[]} */ ...args) => register.call(router, verb, ...args);
+    }
+    return registrar;
+}
+
+/**
  * Checks one app.uws() call where it is written, rather than at listen() where the line that made
  * the mistake is long gone, and returns the entry to keep.
  *
@@ -177,4 +194,4 @@ function registerUwsRoutes(app, routes = collectUwsRoutes(app)) {
     }
 }
 
-module.exports = { makeUwsRoute, collectUwsRoutes, uwsRouteTakes, registerUwsRoutes };
+module.exports = { makeUwsRoute, withVerbs, collectUwsRoutes, uwsRouteTakes, registerUwsRoutes };

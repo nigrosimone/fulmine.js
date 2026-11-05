@@ -41,7 +41,7 @@ const { METHODS } = require("http");
 const { isNodeRequest, serveNodeRequest } = require("./node-shim.js");
 const { kGetSafe } = require("./usage.js");
 const { checkBehavior } = require("./websocket.js");
-const { makeUwsRoute } = require("./uws-route.js");
+const { makeUwsRoute, withVerbs } = require("./uws-route.js");
 const { HotSettings, settingsWriteTraps } = require("./hot-settings.js");
 const Walk = require("./walk.js");
 const { useRouterClass, optimizeRoute, compileOptimizedRoutes, registerUwsRoute } = require("./optimizer.js");
@@ -1374,18 +1374,25 @@ module.exports = class Router extends EventEmitter {
      * `getParts()` for a multipart body among them, are `express.uWS`.
      *
      * @example
-     * app.uws("get", "/health", (res) => {
+     * app.uws.get("/health", (res) => {
      *     res.end("ok");
      * });
      *
-     * @param {string} method get, post, put, delete (or del), patch, options, head, connect,
-     *   trace, or any (or all)
+     * @returns {any} called as uws.get(path, handler), or as uws(method, path, handler) with the
+     *   method get, post, put, delete (or del), patch, options, head, connect, trace, or any (or all)
+     */
+    get uws() {
+        return withVerbs(this, this._uws);
+    }
+
+    /**
+     * @param {string} method as the getter above
      * @param {string} path a µWS pattern
      * @param {import("./uws-route.js").UwsHandler} handler called by µWS as it is, or what
      *   `new express.uWS.DeclarativeResponse()...end()` returns, which µWS answers with by itself
      * @returns {this}
      */
-    uws(method, path, handler) {
+    _uws(method, path, handler) {
         const route = makeUwsRoute(method, path, handler);
         // the application already handed its table to µWS: this one goes straight to it, as
         // µWS itself takes a route added after listen
@@ -1402,24 +1409,31 @@ module.exports = class Router extends EventEmitter {
      * what µWS is not in front of: HTTP/2, createServer, a HEAD. See docs/uws-routes.md.
      *
      * @example
-     * app.uwsLite("post", "/users/:id", { body: "json" }, (req, res) => {
+     * app.uwsLite.post("/users/:id", { body: "json" }, (req, res) => {
      *     res.status(201).json({ id: req.params.id, ...req.body });
      * });
      *
-     * @param {string} method as app.uws()
+     * @returns {any} called as uws is, by verb or with the method
+     */
+    get uwsLite() {
+        return withVerbs(this, this._uwsLite);
+    }
+
+    /**
+     * @param {string} method as app.uws
      * @param {string} path a µWS pattern, without `*`
      * @param {import("./uws-lite.js").LiteOptions | ((req: any, res: any) => unknown)} options
      * @param {(req: any, res: any) => unknown} [handler]
      * @returns {this}
      */
-    uwsLite(method, path, options, handler) {
+    _uwsLite(method, path, options, handler) {
         const { makeLiteRoute } = require("./uws-lite.js");
         const route =
             typeof options === "function"
                 ? makeLiteRoute(method, path, {}, options)
                 : makeLiteRoute(method, path, options, /** @type {any} */ (handler));
         /** @type {any} */ (this)[route.verb](path, ...route.express);
-        return this.uws(method, path, route.uws);
+        return this._uws(method, path, route.uws);
     }
 
     /**

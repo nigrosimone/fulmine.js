@@ -1108,3 +1108,39 @@ test('body: "stream" pauses µWS when the buffer is full, and only while the res
     piped[0].read();
     assert.deepStrictEqual(streamed.calls, ["pause"]);
 });
+
+test("each method has its verb, with or without options, and the call with the method stays", async () => {
+    const server = await serve((app) => {
+        const back = app.uwsLite.get("/verb/:id", (req, res) => res.send(req.params.id));
+        assert.strictEqual(back, app);
+        app.uwsLite
+            .post("/verb", { body: "json" }, (req, res) => res.json(req.body))
+            .uwsLite.delete("/verb", (req, res) => res.sendStatus(204))
+            .uwsLite.all("/all", (req, res) => res.send(req.method));
+        app.uwsLite("get", "/called", (req, res) => res.send("called"));
+    });
+    try {
+        assert.strictEqual((await call(server.port, "/verb/7")).body, "7");
+        const posted = await call(server.port, "/verb", { method: "POST", body: '{"a":1}' });
+        assert.strictEqual(posted.body, '{"a":1}');
+        assert.strictEqual((await call(server.port, "/verb", { method: "DELETE" })).status, 204);
+        assert.strictEqual((await call(server.port, "/all", { method: "PUT" })).body, "PUT");
+        assert.strictEqual((await call(server.port, "/called")).body, "called");
+    } finally {
+        await server.close();
+    }
+});
+
+test("a verb registers the Express route too, for what µWS does not answer", async () => {
+    const app = express();
+    app.uwsLite.get("/verb", (req, res) => res.send("express"));
+    const server = http.createServer(app);
+    await new Promise((resolve) => server.listen(0, resolve));
+    try {
+        const answer = await fetch(`http://127.0.0.1:${server.address().port}/verb`);
+        assert.strictEqual(await answer.text(), "express");
+    } finally {
+        server.closeAllConnections();
+        await new Promise((resolve) => server.close(resolve));
+    }
+});

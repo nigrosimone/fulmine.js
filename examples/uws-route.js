@@ -23,12 +23,12 @@ app.use((req, res, next) => {
 });
 
 // the whole answer in one call, as on uWS
-app.uws("get", "/health", (res) => {
+app.uws.get("/health", (res) => {
     res.end("ok");
 });
 
 // a parameter is uWS's: read by index, or by name, off uWS's request
-app.uws("get", "/users/:id", (res, req) => {
+app.uws.get("/users/:id", (res, req) => {
     const id = req.getParameter(0) ?? "";
     res.writeStatus("200 OK").writeHeader("content-type", "application/json").end(JSON.stringify({ id }));
 });
@@ -42,7 +42,7 @@ app.post("/users", express.json(), (req, res) => res.status(201).json(req.body))
 
 // answering after the handler returns is the handler's business, as on uWS: read the request
 // now, register onAborted, cork the late write
-app.uws("get", "/slow", (res, req) => {
+app.uws.get("/slow", (res, req) => {
     const ms = Math.min(Number(req.getQuery("ms")) || 100, 2000);
     let aborted = false;
     res.onAborted(() => {
@@ -59,7 +59,7 @@ app.uws("get", "/slow", (res, req) => {
 // uWS's own utilities are express.uWS, the instance this app serves with: getParts() splits a
 // multipart body the handler collected itself
 const { getParts } = express.uWS;
-app.uws("post", "/upload", (res, req) => {
+app.uws.post("/upload", (res, req) => {
     const contentType = req.getHeader("content-type");
     let aborted = false;
     res.onAborted(() => {

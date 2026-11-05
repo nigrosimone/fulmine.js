@@ -4,17 +4,17 @@ description: "Register a raw uWebSockets.js route in a Fulmine.js app with app.u
 
 # Raw µWS routes
 
-`app.uws()` registers a route that µWS serves by itself, with the handler exactly as you wrote it. It is called as `(res, req)` with µWS's own `HttpResponse` and `HttpRequest`, the way a bare µWebSockets.js application would call it: nothing of Express runs in front of it, and nothing is built for it.
+`app.uws.get()` and the other verbs register a route that µWS serves by itself, with the handler exactly as you wrote it. It is called as `(res, req)` with µWS's own `HttpResponse` and `HttpRequest`, the way a bare µWebSockets.js application would call it: nothing of Express runs in front of it, and nothing is built for it.
 
 ```js
 const express = require("fulmine.js");
 const app = express();
 
-app.uws("get", "/health", (res) => {
+app.uws.get("/health", (res) => {
     res.end("ok");
 });
 
-app.uws("get", "/users/:id", (res, req) => {
+app.uws.get("/users/:id", (res, req) => {
     res.writeStatus("200 OK")
         .writeHeader("content-type", "application/json")
         .end(`{"id":"${req.getParameter(0)}"}`);
@@ -31,12 +31,13 @@ It is for the few routes where every microsecond is worth more than the Express 
 
 ## What it is, and what it is not
 
+- **The verbs** are `get`, `post`, `put`, `delete` (or `del`), `patch`, `options`, `head`, `connect`, `trace` and `any` (or `all`). `app.uwsLite` has the same ones. The method can be a string too, `app.uws("get", path, handler)`, for when it is in a variable.
 - **The handler is µWS's**, a function, or a `DeclarativeResponse` (see below). `res` and `req` are the objects µWS hands over, with their whole API: `writeStatus`, `writeHeader`, `end`, `tryEnd`, `cork`, `onAborted`, `onData`, `getHeader`, `getParameter`, `getQuery`, `getUrl`, `getMethod`, and the rest. The [µWS documentation](https://github.com/uNetworking/uWebSockets.js) is the reference.
 - **No Express at all.** There is no `Request` and no `Response`, so no `req.body`, `req.params`, `req.query`, `res.send` or `res.json`. No `app.use()` middleware runs, neither does `app.param()`, an error handler or the application's 404. Settings such as `trust proxy`, `etag`, `x-powered-by` or `json spaces` have no effect on it.
 - **µWS's rules are yours.** `req` can only be read before the handler returns, so read what you need first. An answer written after the handler returns needs `res.onAborted()` registered before returning, and `res.cork()` around the writes, exactly as on a bare µWS app:
 
     ```js
-    app.uws("get", "/slow", (res, req) => {
+    app.uws.get("/slow", (res, req) => {
         const id = req.getQuery("id"); // read now, req is gone after this function returns
         let aborted = false;
         res.onAborted(() => {
@@ -61,7 +62,7 @@ It is for the few routes where every microsecond is worth more than the Express 
 ```js
 const { getParts } = express.uWS;
 
-app.uws("post", "/upload", (res, req) => {
+app.uws.post("/upload", (res, req) => {
     const contentType = req.getHeader("content-type"); // before returning
     let aborted = false;
     res.onAborted(() => {
@@ -102,7 +103,7 @@ A raw route stays raw: `res` and `req` are µWS's own, and nothing is built for 
 ```js
 const { query, readJson, send } = express.uwsUtils;
 
-app.uws("post", "/users/:id", (res, req) => {
+app.uws.post("/users/:id", (res, req) => {
     const id = req.getParameter(0); // read now, as every read of req
     const { notify } = query(req);
     readJson(res, (user) => {
@@ -118,7 +119,7 @@ app.uws("post", "/users/:id", (res, req) => {
 - **`guard(res)`** registers the `onAborted` µWS wants before an answer written later. After an abort `send()` does nothing. The read functions and `send()` with a stream call it themselves, so a route needs it by hand only when it waits for something else, and it has to run before the handler returns:
 
 ```js
-app.uws("get", "/slow", (res) => {
+app.uws.get("/slow", (res) => {
     guard(res);
     setTimeout(() => send(res, 200, null, "late"), 200);
 });
@@ -131,23 +132,23 @@ app.uws("get", "/slow", (res) => {
 ```js
 const compress = express.uwsUtils.compressor({ encodings: ["br", "gzip"] });
 
-app.uws("get", "/report", (res, req) => {
+app.uws.get("/report", (res, req) => {
     compress.send(res, 200, null, buildReport(), compress.negotiate(req));
 });
 ```
 
 As with the middleware, a body under `threshold` or with a type that does not compress goes out as it is, a compressible type carries `Vary: Accept-Encoding`, and a large body is compressed on the thread pool.
 
-## Lite routes: `app.uwsLite()`
+## Lite routes: `app.uwsLite`
 
-`app.uws()` hands you µWS's own objects. `app.uwsLite()` is the same route served by µWS, with a handler `(req, res)` and the part of Express most routes use, over two small objects:
+`app.uws` hands you µWS's own objects. `app.uwsLite` is the same route served by µWS, with a handler `(req, res)` and the part of Express most routes use, over two small objects:
 
 ```js
-app.uwsLite("get", "/users/:id", (req, res) => {
+app.uwsLite.get("/users/:id", (req, res) => {
     res.json({ id: req.params.id, full: req.query.full === "1" });
 });
 
-app.uwsLite("post", "/users/:id", { body: "json", limit: "1mb" }, (req, res) => {
+app.uwsLite.post("/users/:id", { body: "json", limit: "1mb" }, (req, res) => {
     res.status(201).json({ id: req.params.id, ...req.body });
 });
 ```
@@ -161,7 +162,7 @@ The body is ready when the handler runs. The same handler works on an ordinary E
 - **`headers` and `url`:** `req` of µWS is gone when the handler returns, and it is gone before the handler runs on a route with a body. `query`, `params` and `body` stay. What else you read then has to be declared, and an undeclared read throws:
 
 ```js
-app.uwsLite("post", "/orders", { body: "json", headers: ["authorization"], url: true }, async (req, res) => {
+app.uwsLite.post("/orders", { body: "json", headers: ["authorization"], url: true }, async (req, res) => {
     const user = await check(req.get("authorization"));
     res.json(await save(user, req.body, req.path));
 });
@@ -172,7 +173,7 @@ app.uwsLite("post", "/orders", { body: "json", headers: ["authorization"], url: 
 ```js
 const common = [helmet(), cors(), auth];
 
-app.uwsLite("get", "/orders/:id", { use: common }, (req, res) => {
+app.uwsLite.get("/orders/:id", { use: common }, (req, res) => {
     res.json(load(req.user, req.params.id));
 });
 ```
@@ -187,12 +188,12 @@ app.uwsLite("get", "/orders/:id", { use: common }, (req, res) => {
 **Streams** work as on an Express route, so the handler is the same on both:
 
 ```js
-app.uwsLite("get", "/report", { compress: {} }, (req, res) => {
+app.uwsLite.get("/report", { compress: {} }, (req, res) => {
     res.type("text/csv");
     fs.createReadStream("report.csv").pipe(res);
 });
 
-app.uwsLite("post", "/upload", { body: "stream" }, async (req, res) => {
+app.uwsLite.post("/upload", { body: "stream" }, async (req, res) => {
     await pipeline(req.body, fs.createWriteStream(target()));
     res.sendStatus(201);
 });
@@ -208,7 +209,7 @@ A raw route answers before the Express application on every path its pattern tak
 
 ```js
 app.get("/users/me", (req, res) => res.send("from Express"));
-app.uws("get", "/users/:id", (res, req) => res.end("raw " + req.getParameter(0)));
+app.uws.get("/users/:id", (res, req) => res.end("raw " + req.getParameter(0)));
 
 // GET  /users/me     -> "raw me"        the raw pattern takes it
 // GET  /users/42     -> "raw 42"
@@ -221,7 +222,7 @@ To keep that true whatever the patterns are, an Express route that a raw route c
 
 ## Routers and `listen()`
 
-- **Routers work.** `router.uws("get", "/ping", handler)` mounted with `app.use("/api", router)` serves `/api/ping`. The mount path has to be one µWS can match, a literal or one whose parameters are whole segments; a raw route under any other mount throws at `listen()`, since nothing could fall back to it. The pattern µWS matches is the whole path, so the parameters of a mount such as `/t/:tenant` come first by index: read them by name, `req.getParameter("id")`, and the mount does not shift them.
+- **Routers work.** `router.uws.get("/ping", handler)` mounted with `app.use("/api", router)` serves `/api/ping`. The mount path has to be one µWS can match, a literal or one whose parameters are whole segments; a raw route under any other mount throws at `listen()`, since nothing could fall back to it. The pattern µWS matches is the whole path, so the parameters of a mount such as `/t/:tenant` come first by index: read them by name, `req.getParameter("id")`, and the mount does not shift them.
 - **After `listen()`**, a raw route added on the application goes straight to µWS, as µWS itself allows. The Express routes already handed to µWS are not reconsidered, so on a path both could take µWS's own precedence decides.
 - **Node only, through `app.listen()`.** On Bun and Deno, where µWS does not load, `listen()` throws for an application with a raw route. Under `http.createServer(app)` and supertest there is no µWS to hand it to, and requests go to the Express routes: test a raw route against a real `app.listen()`.
 - **`app.close()`** stops the listening socket as usual, but it does not wait for a raw route's pending answers: it knows nothing about them.
