@@ -236,6 +236,52 @@ declare module "fulmine.js" {
          * });
          * ```
          */
+        /** What app.uwsLite() takes. */
+        export interface LiteOptions {
+            /** The body, in req.body when the handler runs. "lent" is a Buffer good until the handler returns. */
+            body?: "text" | "json" | "form" | "buffer" | "lent";
+            /** Bytes or a string as "1mb", 100kb by default. */
+            limit?: number | string;
+            /** What express.compression() takes. */
+            compress?: Record<string, unknown>;
+            /** Headers req.get() reads after the handler returned or with a body. */
+            headers?: string[];
+            /** Whether req.url and req.path are read after the handler returned or with a body. */
+            url?: boolean;
+        }
+
+        /** The req of app.uwsLite(). */
+        export interface LiteRequest {
+            readonly query: Record<string, any>;
+            readonly params: Record<string, string>;
+            readonly body: any;
+            readonly method: string | undefined;
+            readonly path: string;
+            readonly url: string;
+            get(name: string): string | undefined;
+            header(name: string): string | undefined;
+        }
+
+        /** The res of app.uwsLite(). */
+        export interface LiteResponse {
+            readonly req: LiteRequest;
+            readonly headersSent: boolean;
+            statusCode: number;
+            status(code: number): this;
+            set(field: string, value: string | string[]): this;
+            set(field: Record<string, string | string[]>): this;
+            header(field: string, value: string | string[]): this;
+            header(field: Record<string, string | string[]>): this;
+            get(field: string): string | string[] | undefined;
+            type(type: string): this;
+            send(body?: unknown): this;
+            json(body: unknown): this;
+            end(body?: string | Uint8Array): this;
+            sendStatus(code: number): this;
+        }
+
+        export type LiteHandler = (req: LiteRequest, res: LiteResponse) => unknown;
+
         export const uwsUtils: {
             query(req: uWS.HttpRequest): Record<string, string | string[]>;
             guard<T extends uWS.HttpResponse>(res: T): T;
@@ -346,6 +392,9 @@ declare module "fulmine.js" {
         ws(path: string, behavior: WebSocketBehavior): this;
         /** A route µWS serves with the handler as written, see the application's uws(). */
         uws(method: UwsMethod, path: string, handler: UwsHandler): this;
+        /** A route µWS serves with an (req, res) handler, see docs/uws-routes.md. */
+        uwsLite(method: UwsMethod, path: string, handler: express.LiteHandler): this;
+        uwsLite(method: UwsMethod, path: string, options: express.LiteOptions, handler: express.LiteHandler): this;
     }
 
     interface Fulmine extends Omit<e.Express, "listen"> {
@@ -444,6 +493,9 @@ declare module "fulmine.js" {
          * ```
          */
         uws(method: UwsMethod, path: string, handler: UwsHandler): this;
+        /** A route µWS serves with an (req, res) handler, see docs/uws-routes.md. */
+        uwsLite(method: UwsMethod, path: string, handler: express.LiteHandler): this;
+        uwsLite(method: UwsMethod, path: string, options: express.LiteOptions, handler: express.LiteHandler): this;
         publish(topic: string, message: string | ArrayBuffer | Buffer, isBinary?: boolean, compress?: boolean): boolean;
         numSubscribers(topic: string): number;
     }

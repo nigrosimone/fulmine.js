@@ -1,0 +1,489 @@
+// app.uwsLite(): the same handler on a plain route and on a lite route has to answer the same, ETag and
+// X-Powered-By apart, which a lite route does not write. Then what is only a lite route's: the Express
+// route it registers for what µWS does not serve, what req keeps after the handler returned, an abort.
+
+const test = require("node:test");
+const assert = require("node:assert");
+const http = require("node:http");
+const net = require("node:net");
+const zlib = require("node:zlib");
+
+const express = require("../../src/index.js");
+
+/**
+ * @param {(app: any) => void} setup
+ * @returns {Promise<{port: number, close: () => Promise<void>}>}
+ */
+function serve(setup) {
+    return new Promise((resolve) => {
+        const app = express();
+        setup(app);
+        app.listen(0, () => {
+            resolve({ port: app.address().port, close: () => new Promise((done) => app.close(() => done())) });
+        });
+    });
+}
+
+/**
+ * @param {number} port
+ * @param {string} path
+ * @param {RequestInit} [init]
+ * @returns {Promise<{status: number, type: string|null, length: string|null, cookies: string[], body: string}>}
+ */
+async function call(port, path, init) {
+    const res = await fetch(`http://127.0.0.1:${port}${path}`, init);
+    return {
+        status: res.status,
+        type: res.headers.get("content-type"),
+        length: res.headers.get("content-length"),
+        cookies: res.headers.getSetCookie(),
+        body: await res.text()
+    };
+}
+
+/** Raw bytes in, raw bytes out, until the server closes or the wait runs out. */
+function raw(port, text, wait = 300) {
+    return new Promise((resolve) => {
+        const socket = net.connect(port, "127.0.0.1", () => socket.write(text));
+        let out = "";
+        socket.on("data", (chunk) => (out += chunk));
+        socket.on("error", () => {});
+        const timer = setTimeout(() => socket.destroy(), wait);
+        socket.on("close", () => {
+            clearTimeout(timer);
+            resolve(out);
+        });
+    });
+}
+
+const POST = (body, type = "text/plain") => ({ method: "POST", body, headers: { "content-type": type } });
+
+const CASES = [
+    ["a string is html", {}, (req, res) => res.send("hi"), "/r"],
+    ["res.type with a name", {}, (req, res) => res.type("txt").send("hi"), "/r"],
+    ["res.type with a mime type", {}, (req, res) => res.type("text/plain").send("hi"), "/r"],
+    ["res.set of the content-type", {}, (req, res) => res.set("Content-Type", "text/plain").send("hi"), "/r"],
+    ["res.set of an extension", {}, (req, res) => res.set("Content-Type", "html").send("hi"), "/r"],
+    ["a charset is replaced", {}, (req, res) => res.set("content-type", "text/plain; charset=latin1").send("hi"), "/r"],
+    ["res.json", {}, (req, res) => res.json({ a: 1 }), "/r"],
+    ["res.json of a string", {}, (req, res) => res.json("x"), "/r"],
+    ["res.json keeps a type", {}, (req, res) => res.type("application/vnd.x+json").json({ a: 1 }), "/r"],
+    ["an object", {}, (req, res) => res.send({ a: [1, 2] }), "/r"],
+    ["a number", {}, (req, res) => res.send(7), "/r"],
+    ["a boolean", {}, (req, res) => res.send(false), "/r"],
+    ["null", {}, (req, res) => res.send(null), "/r"],
+    ["nothing", {}, (req, res) => res.send(), "/r"],
+    ["a Buffer", {}, (req, res) => res.send(Buffer.from("bytes")), "/r"],
+    ["a Buffer with a type", {}, (req, res) => res.type("png").send(Buffer.from("bytes")), "/r"],
+    ["res.end", {}, (req, res) => res.end("x"), "/r"],
+    ["res.end empty", {}, (req, res) => res.end(), "/r"],
+    ["a status", {}, (req, res) => res.status(201).send("x"), "/r"],
+    ["204", {}, (req, res) => res.status(204).send("gone"), "/r"],
+    ["sendStatus", {}, (req, res) => res.sendStatus(404), "/r"],
+    ["sendStatus 204", {}, (req, res) => res.sendStatus(204), "/r"],
+    ["cookies", {}, (req, res) => res.set("Set-Cookie", ["a=1", "b=2"]).send("x"), "/r"],
+    ["an object of headers", {}, (req, res) => res.set({ "Content-Type": "text/plain" }).send("x"), "/r"],
+    ["res.get", {}, (req, res) => res.set("x-a", "1").send(String(res.get("X-A"))), "/r"],
+    [
+        "res.headersSent",
+        {},
+        (req, res) => {
+            const before = res.headersSent;
+            res.send(String(before));
+        },
+        "/r"
+    ],
+    ["a query", {}, (req, res) => res.json(req.query), "/r?a=1&a=2&b=x%20y&c=+"],
+    ["req.path and req.url", {}, (req, res) => res.json([req.path, req.url, req.method]), "/r?a=1"],
+    ["a header", {}, (req, res) => res.send(String(req.get("X-Test"))), "/r", { headers: { "x-test": "v" } }],
+    ["no such header", {}, (req, res) => res.send(String(req.get("x-none"))), "/r"],
+    ["a text body", { body: "text" }, (req, res) => res.json(req.body), "/r", POST("héllo")],
+    ["a BOM", { body: "text" }, (req, res) => res.json(req.body), "/r", POST("﻿x")],
+    ["a json body", { body: "json" }, (req, res) => res.json(req.body), "/r", POST('{"a":1}')],
+    ["a form", { body: "form" }, (req, res) => res.json(req.body), "/r", POST("a=1&b=2&a=3")],
+    ["bytes", { body: "buffer" }, (req, res) => res.send(req.body), "/r", POST("abc")],
+    ["limit as a string", { body: "text", limit: "1kb" }, (req, res) => res.send(req.body), "/r", POST("abc")],
+    ["empty json", { body: "json" }, (req, res) => res.json(req.body), "/r", POST("")],
+    ["empty text", { body: "text" }, (req, res) => res.json(req.body), "/r", POST("")]
+];
+
+for (const [name, options, handler, url, init] of CASES) {
+    test(`as Express: ${name}`, async () => {
+        const verb = init?.method === "POST" ? "post" : "get";
+        const parsers = { text: express.text, json: express.json, form: express.urlencoded, buffer: express.raw };
+        const plain = await serve((app) => {
+            app.set("etag", false);
+            const before =
+                options.body === undefined ? [] : [parsers[options.body]({ type: () => true, limit: options.limit })];
+            app[verb]("/r", ...before, handler);
+        });
+        const lite = await serve((app) => app.uwsLite(verb, "/r", options, handler));
+        const expected = await call(plain.port, url, init);
+        const actual = await call(lite.port, url, init);
+        await plain.close();
+        await lite.close();
+        assert.deepStrictEqual(actual, expected);
+    });
+}
+
+test("a parameter is decoded and has the name of the path", async () => {
+    const app = await serve((a) => {
+        a.uwsLite("get", "/u/:id/p/:page", (req, res) => res.json(req.params));
+    });
+    assert.deepStrictEqual(JSON.parse((await call(app.port, "/u/a%20b/p/2")).body), { id: "a b", page: "2" });
+    assert.strictEqual((await call(app.port, "/u/%zz/p/2")).status, 400);
+    await app.close();
+});
+
+test("a mount with a parameter does not shift the route's own", async () => {
+    const app = await serve((a) => {
+        const router = express.Router();
+        router.uwsLite("get", "/:id", (req, res) => res.json(req.params));
+        a.use("/t/:tenant", router);
+    });
+    assert.deepStrictEqual(JSON.parse((await call(app.port, "/t/acme/7")).body), { id: "7" });
+    await app.close();
+});
+
+test("invalid JSON and strict JSON are a 400 and the handler does not run", async () => {
+    let ran = 0;
+    const app = await serve((a) => {
+        a.uwsLite("post", "/j", { body: "json" }, (req, res) => {
+            ran++;
+            res.end();
+        });
+    });
+    assert.strictEqual((await call(app.port, "/j", POST("{nope"))).status, 400);
+    assert.strictEqual((await call(app.port, "/j", POST("20"))).status, 400);
+    assert.strictEqual((await call(app.port, "/j", POST("null"))).status, 400);
+    assert.strictEqual(ran, 0);
+    await app.close();
+});
+
+test("over the limit is a 413, the handler does not run and the connection goes on", async () => {
+    let ran = 0;
+    const app = await serve((a) => {
+        a.uwsLite("post", "/l", { body: "text", limit: 2 }, (req, res) => {
+            ran++;
+            res.end();
+        });
+    });
+    assert.strictEqual((await call(app.port, "/l", POST("abc"))).status, 413);
+    assert.strictEqual((await call(app.port, "/l", POST("ab"))).status, 200);
+    assert.strictEqual(ran, 1);
+    await app.close();
+});
+
+test("a body in chunks, and in more than one read", async () => {
+    const app = await serve((a) => {
+        a.uwsLite("post", "/e", { body: "text" }, (req, res) => res.send(req.body));
+    });
+    const chunked = await raw(
+        app.port,
+        "POST /e HTTP/1.1\r\nHost: x\r\nConnection: close\r\nTransfer-Encoding: chunked\r\n\r\n3\r\nabc\r\n2\r\nde\r\n0\r\n\r\n"
+    );
+    assert.match(chunked, /abcde$/);
+
+    const socket = net.connect(app.port, "127.0.0.1");
+    let out = "";
+    socket.on("data", (chunk) => (out += chunk));
+    socket.write("POST /e HTTP/1.1\r\nHost: x\r\nContent-Length: 6\r\nConnection: close\r\n\r\nabc");
+    await new Promise((done) => setTimeout(done, 30));
+    socket.write("def");
+    await new Promise((done) => socket.on("close", done));
+    assert.match(out, /abcdef$/);
+    await app.close();
+});
+
+test("the Express route serves what µWS does not: a HEAD, a trailing slash, createServer", async () => {
+    const setup = (a) => {
+        a.uwsLite("get", "/r", (req, res) => res.type("txt").send("hello"));
+        a.uwsLite("post", "/p", { body: "json" }, (req, res) => res.json(req.body));
+    };
+    const app = await serve(setup);
+    const head = await fetch(`http://127.0.0.1:${app.port}/r`, { method: "HEAD" });
+    assert.strictEqual(head.status, 200);
+    assert.strictEqual(head.headers.get("content-length"), "5");
+    assert.strictEqual((await call(app.port, "/r/")).body, "hello");
+    await app.close();
+
+    const shimmed = express();
+    setup(shimmed);
+    const server = http.createServer(shimmed);
+    await new Promise((done) => server.listen(0, done));
+    const port = server.address().port;
+    assert.strictEqual((await call(port, "/r")).body, "hello");
+    assert.strictEqual((await call(port, "/p", POST('{"a":1}', "application/json"))).body, '{"a":1}');
+    await new Promise((done) => server.close(done));
+});
+
+test("an async handler answers later, with the query and the params it had", async () => {
+    const app = await serve((a) => {
+        a.uwsLite("get", "/late/:id", async (req, res) => {
+            await new Promise((done) => setTimeout(done, 5));
+            res.status(201).json({ id: req.params.id, q: req.query.q });
+        });
+        a.uwsLite("post", "/late", { body: "text" }, async (req, res) => {
+            await new Promise((done) => setTimeout(done, 5));
+            res.send(req.body);
+        });
+    });
+    const answer = await call(app.port, "/late/7?q=1");
+    assert.strictEqual(answer.status, 201);
+    assert.deepStrictEqual(JSON.parse(answer.body), { id: "7", q: "1" });
+    assert.strictEqual((await call(app.port, "/late", POST("body"))).body, "body");
+    await app.close();
+});
+
+test("req after the handler returned: declared it answers, not declared it says so", async () => {
+    /** @type {any[]} */
+    const seen = [];
+    const later = async (req, res) => {
+        await new Promise((done) => setTimeout(done, 5));
+        for (const read of [() => req.get("x-kept"), () => req.path, () => req.url, () => req.get("x-other")]) {
+            try {
+                seen.push(read());
+            } catch (error) {
+                seen.push(error.constructor.name);
+            }
+        }
+        res.end();
+    };
+    const app = await serve((a) => {
+        a.uwsLite("get", "/kept", { headers: ["X-Kept"], url: true }, later);
+        a.uwsLite("get", "/not", later);
+    });
+    await call(app.port, "/kept?a=1", { headers: { "x-kept": "yes", "x-other": "no" } });
+    assert.deepStrictEqual(seen, ["yes", "/kept", "/kept?a=1", "TypeError"]);
+    seen.length = 0;
+    await call(app.port, "/not", { headers: { "x-kept": "yes" } });
+    assert.deepStrictEqual(seen, ["TypeError", "TypeError", "TypeError", "TypeError"]);
+    await app.close();
+});
+
+test("a route on any method says which one", async () => {
+    const app = await serve((a) => {
+        a.uwsLite("any", "/m", (req, res) => res.send(req.method));
+    });
+    assert.strictEqual((await call(app.port, "/m", { method: "PUT" })).body, "PUT");
+    assert.strictEqual((await call(app.port, "/m")).body, "GET");
+    await app.close();
+});
+
+test("a throw and a rejection are a 500, and one after the answer leaves it alone", async () => {
+    const before = process.env.NODE_ENV;
+    process.env.NODE_ENV = "test";
+    const app = await serve((a) => {
+        a.uwsLite("get", "/throw", (req, res) => {
+            res.set("x-a", "1");
+            throw new Error("boom");
+        });
+        a.uwsLite("get", "/reject", async () => {
+            await null;
+            throw new Error("boom");
+        });
+        a.uwsLite("get", "/after", (req, res) => {
+            res.send("ok");
+            throw new Error("boom");
+        });
+    });
+    const thrown = await fetch(`http://127.0.0.1:${app.port}/throw`);
+    assert.strictEqual(thrown.status, 500);
+    assert.strictEqual(thrown.headers.get("x-a"), null);
+    assert.strictEqual((await call(app.port, "/reject")).status, 500);
+    assert.strictEqual((await call(app.port, "/after")).body, "ok");
+    process.env.NODE_ENV = before;
+    await app.close();
+});
+
+test("a header with a line break is refused and not written", async () => {
+    const before = process.env.NODE_ENV;
+    process.env.NODE_ENV = "test";
+    const app = await serve((a) => {
+        a.uwsLite("get", "/h", (req, res) => res.set("x-a", "1\r\nx-b: 2").send("x"));
+        a.uwsLite("get", "/n", (req, res) => res.set("x a", "1").send("x"));
+        a.uwsLite("get", "/t", (req, res) => res.set("content-type", "text/plain\r\nx-b: 2").send("x"));
+        a.uwsLite("get", "/e", (req, res) => res.set("content-type", "a/b\r\nx-b: 2").end("x"));
+        a.uwsLite("get", "/b", (req, res) => res.type("a/b\r\nx-b: 2").send(Buffer.from("x")));
+    });
+    for (const path of ["/h", "/n", "/t", "/e", "/b"]) {
+        const answer = await raw(app.port, `GET ${path} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n`);
+        assert.match(answer, /^HTTP\/1\.1 500 /);
+        assert.doesNotMatch(answer, /x-b/);
+    }
+    process.env.NODE_ENV = before;
+    await app.close();
+});
+
+test("a second answer throws, as Express", async () => {
+    /** @type {unknown} */
+    let second;
+    const app = await serve((a) => {
+        a.uwsLite("get", "/two", (req, res) => {
+            res.send("one");
+            try {
+                res.send("two");
+            } catch (error) {
+                second = error;
+            }
+        });
+    });
+    assert.strictEqual((await call(app.port, "/two")).body, "one");
+    assert.match(String(second), /Cannot set headers after they are sent/);
+    await app.close();
+});
+
+test("a client gone during the wait: the late answer does nothing and the server goes on", async () => {
+    /** @type {() => void} */
+    let finished;
+    const done = new Promise((resolve) => (finished = resolve));
+    const app = await serve((a) => {
+        a.uwsLite("get", "/gone", async (req, res) => {
+            await new Promise((wake) => setTimeout(wake, 60));
+            res.send("nobody");
+            finished();
+        });
+        a.uwsLite("get", "/next", (req, res) => res.send("alive"));
+    });
+    const socket = net.connect(app.port, "127.0.0.1", () => socket.write("GET /gone HTTP/1.1\r\nHost: x\r\n\r\n"));
+    socket.on("error", () => {});
+    await new Promise((wake) => setTimeout(wake, 15));
+    socket.destroy();
+    await done;
+    assert.strictEqual((await call(app.port, "/next")).body, "alive");
+    await app.close();
+});
+
+test("a client gone in the middle of the body: no handler, and the server goes on", async () => {
+    let ran = 0;
+    const app = await serve((a) => {
+        a.uwsLite("post", "/b", { body: "text" }, (req, res) => {
+            ran++;
+            res.end();
+        });
+        a.uwsLite("get", "/next", (req, res) => res.send("alive"));
+    });
+    const socket = net.connect(app.port, "127.0.0.1", () => {
+        socket.write("POST /b HTTP/1.1\r\nHost: x\r\nContent-Length: 100\r\n\r\nabc");
+    });
+    socket.on("error", () => {});
+    await new Promise((wake) => setTimeout(wake, 15));
+    socket.destroy();
+    await new Promise((wake) => setTimeout(wake, 15));
+    assert.strictEqual(ran, 0);
+    assert.strictEqual((await call(app.port, "/next")).body, "alive");
+    await app.close();
+});
+
+test("a lent body is the bytes while the handler runs", async () => {
+    const app = await serve((a) => {
+        a.uwsLite("post", "/l", { body: "lent" }, (req, res) => res.send(req.body));
+    });
+    assert.strictEqual((await call(app.port, "/l", POST("abc"))).body, "abc");
+    await app.close();
+});
+
+test("a Buffer body can be kept past the handler", async () => {
+    /** @type {Buffer[]} */
+    const kept = [];
+    const app = await serve((a) => {
+        a.uwsLite("post", "/k", { body: "buffer" }, (req, res) => {
+            kept.push(req.body);
+            res.end();
+        });
+    });
+    await call(app.port, "/k", POST("abc"));
+    await call(app.port, "/k", POST("xyz"));
+    assert.strictEqual(kept[0].toString(), "abc");
+    await app.close();
+});
+
+test("compress: the bytes express.compression() writes", async () => {
+    const big = "x".repeat(4096);
+    const options = { encodings: ["gzip"] };
+    const plain = await serve((a) => {
+        a.set("etag", false);
+        a.get("/c", express.compression(options), (req, res) => res.type("txt").send(big));
+    });
+    const lite = await serve((a) => {
+        a.uwsLite("get", "/c", { compress: options }, (req, res) => res.type("txt").send(big));
+        a.uwsLite("get", "/small", { compress: options }, (req, res) => res.send("x"));
+        a.uwsLite("get", "/image", { compress: options }, (req, res) => res.type("png").send(Buffer.alloc(4096)));
+    });
+    const fetchRaw = (port, path) =>
+        new Promise((resolve) => {
+            http.get({ port, path, headers: { "accept-encoding": "gzip" } }, (res) => {
+                /** @type {Buffer[]} */
+                const chunks = [];
+                res.on("data", (chunk) => chunks.push(chunk));
+                res.on("end", () => resolve({ headers: res.headers, body: Buffer.concat(chunks) }));
+            });
+        });
+    const expected = /** @type {any} */ (await fetchRaw(plain.port, "/c"));
+    const actual = /** @type {any} */ (await fetchRaw(lite.port, "/c"));
+    assert.strictEqual(actual.headers["content-encoding"], "gzip");
+    assert.strictEqual(actual.headers.vary, expected.headers.vary);
+    assert.strictEqual(actual.headers["content-type"], expected.headers["content-type"]);
+    assert.strictEqual(zlib.gunzipSync(actual.body).toString(), big);
+    assert.deepStrictEqual(actual.body, expected.body);
+    const small = /** @type {any} */ (await fetchRaw(lite.port, "/small"));
+    assert.strictEqual(small.headers["content-encoding"], undefined);
+    const image = /** @type {any} */ (await fetchRaw(lite.port, "/image"));
+    assert.strictEqual(image.headers["content-encoding"], undefined);
+    await plain.close();
+    await lite.close();
+});
+
+test("cork: left to µWS while it holds one, asked for after the handler returned", async () => {
+    /** @type {string[]} */
+    const calls = [];
+    const fakeRes = () => ({
+        cork(write) {
+            calls.push("cork");
+            write();
+        },
+        onAborted() {},
+        writeHeader() {
+            return this;
+        },
+        end() {
+            calls.push("end");
+        }
+    });
+    const fakeReq = { getQuery: () => "", getUrl: () => "/", getHeader: () => "" };
+    const { makeLiteRoute } = require("../../src/uws-lite.js");
+
+    makeLiteRoute("get", "/", {}, (req, res) => res.send("x")).uws(fakeRes(), fakeReq);
+    assert.deepStrictEqual(calls, ["end"]);
+
+    calls.length = 0;
+    /** @type {any} */
+    let later;
+    makeLiteRoute("get", "/", {}, (req, res) => {
+        later = res;
+    }).uws(fakeRes(), fakeReq);
+    later.send("x");
+    assert.deepStrictEqual(calls, ["cork", "end"]);
+
+    calls.length = 0;
+    /** @type {any} */
+    const res = fakeRes();
+    /** @type {any} */
+    let collected;
+    res.collectBody = (limit, done) => {
+        collected = done;
+    };
+    makeLiteRoute("post", "/", { body: "text" }, (req, r) => r.send("x")).uws(res, fakeReq);
+    collected(new ArrayBuffer(1));
+    assert.deepStrictEqual(calls, ["end"]);
+});
+
+test("a bad registration throws where it is written", () => {
+    const app = express();
+    const handler = () => {};
+    assert.throws(() => app.uwsLite("get", "/a/*", handler), /takes no \*/);
+    assert.throws(() => app.uwsLite("get", "/a", {}), /handler/);
+    assert.throws(() => app.uwsLite("get", "/a", { body: "xml" }, handler), /option body/);
+    assert.throws(() => app.uwsLite("get", "/a", { limit: "lots" }, handler), /limit/);
+    assert.throws(() => app.uwsLite("nope", "/a", handler));
+});

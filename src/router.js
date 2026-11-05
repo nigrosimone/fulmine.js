@@ -1397,6 +1397,32 @@ module.exports = class Router extends EventEmitter {
     }
 
     /**
+     * A route µWS serves with an `(req, res)` handler: the part of Express most routes use, over two
+     * small objects, with no middleware. The same handler is registered as an Express route too, for
+     * what µWS is not in front of: HTTP/2, createServer, a HEAD. See docs/uws-routes.md.
+     *
+     * @example
+     * app.uwsLite("post", "/users/:id", { body: "json" }, (req, res) => {
+     *     res.status(201).json({ id: req.params.id, ...req.body });
+     * });
+     *
+     * @param {string} method as app.uws()
+     * @param {string} path a µWS pattern, without `*`
+     * @param {import("./uws-lite.js").LiteOptions | ((req: any, res: any) => unknown)} options
+     * @param {(req: any, res: any) => unknown} [handler]
+     * @returns {this}
+     */
+    uwsLite(method, path, options, handler) {
+        const { makeLiteRoute } = require("./uws-lite.js");
+        const route =
+            typeof options === "function"
+                ? makeLiteRoute(method, path, {}, options)
+                : makeLiteRoute(method, path, options, /** @type {any} */ (handler));
+        /** @type {any} */ (this)[route.verb](path, ...route.express);
+        return this.uws(method, path, route.uws);
+    }
+
+    /**
      * A builder for one path, so the path is written once and the verbs chain off it.
      *
      * @example

@@ -138,6 +138,37 @@ app.uws("get", "/report", (res, req) => {
 
 As with the middleware, a body under `threshold` or with a type that does not compress goes out as it is, a compressible type carries `Vary: Accept-Encoding`, and a large body is compressed on the thread pool.
 
+## Lite routes: `app.uwsLite()`
+
+`app.uws()` hands you µWS's own objects. `app.uwsLite()` is the same route served by µWS, with a handler `(req, res)` and the part of Express most routes use, over two small objects:
+
+```js
+app.uwsLite("get", "/users/:id", (req, res) => {
+    res.json({ id: req.params.id, full: req.query.full === "1" });
+});
+
+app.uwsLite("post", "/users/:id", { body: "json", limit: "1mb" }, (req, res) => {
+    res.status(201).json({ id: req.params.id, ...req.body });
+});
+```
+
+The body is ready when the handler runs. The same handler works on an ordinary Express route, and `app.uwsLite()` registers one for you, so what µWS does not answer still reaches it: HTTP/2, `http.createServer(app)`, a `HEAD`, a trailing slash, another case.
+
+- **`req`** has `query`, `params` (decoded), `body`, `method`, `path`, `url`, `get(name)` and `header(name)`.
+- **`res`** has `req`, `statusCode`, `headersSent`, `status()`, `set()`, `header()`, `get()`, `type()`, `send()`, `json()`, `end()` and `sendStatus()`, and answers as Express: the same type, charset and status. A header with an invalid name or value throws. Over µWS it writes no `ETag` and no `X-Powered-By`.
+- **Options:** `body` is `"text"`, `"json"`, `"form"`, `"buffer"` or `"lent"`, and `limit` is bytes or a string as `"1mb"`, 100kb by default. The route accepts any content-type. Over the limit is a 413, invalid JSON a 400, and the handler does not run. `compress` takes the options of `express.compression()`.
+- **`"lent"`** is a `Buffer` on µWS's memory, without a copy, good until the handler returns. For a route that answers at once, use `"buffer"` to keep it or to answer later.
+- **`headers` and `url`:** `req` of µWS is gone when the handler returns, and it is gone before the handler runs on a route with a body. `query`, `params` and `body` stay. What else you read then has to be declared, and an undeclared read throws:
+
+```js
+app.uwsLite("post", "/orders", { body: "json", headers: ["authorization"], url: true }, async (req, res) => {
+    const user = await check(req.get("authorization"));
+    res.json(await save(user, req.body, req.path));
+});
+```
+
+What it does not have: no `app.use()` middleware runs, no `app.param()`, no error handler. A handler that throws or rejects answers 500 and logs the error. Settings such as `etag`, `json spaces` or `trust proxy` have no effect over µWS. The path is as in `app.uws()`, without `*`. For anything else use an Express route: it is the same handler.
+
 ## Which route answers
 
 A raw route answers before the Express application on every path its pattern takes, whether it was written before or after the Express routes. It cannot take a place among them, since it skips the router that keeps them in order.

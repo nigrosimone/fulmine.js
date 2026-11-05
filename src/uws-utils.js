@@ -207,7 +207,7 @@ function readForm(res, callback, options) {
 let outRes;
 /** @type {number} */
 let outStatus;
-/** @type {Record<string, string>|null|undefined} */
+/** @type {Record<string, string|string[]>|null|undefined} */
 let outHeaders;
 /** @type {Buffer|null} */
 let outType;
@@ -226,7 +226,13 @@ function writeHead() {
     if (outHeaders !== null && outHeaders !== undefined) {
         for (const name in outHeaders) {
             const value = outHeaders[name];
-            outRes.writeHeader(HEADER_NAME_BUF[name] || name, HEADER_VALUE_BUF[value] || value);
+            if (typeof value === "string") {
+                outRes.writeHeader(HEADER_NAME_BUF[name] || name, HEADER_VALUE_BUF[value] || value);
+            } else {
+                for (const one of value) {
+                    outRes.writeHeader(name, one);
+                }
+            }
         }
     }
     if (outType !== null) {
@@ -243,7 +249,11 @@ function writeHead() {
 /** A whole answer, what respond() corks. */
 function writeWhole() {
     writeHead();
-    outRes.end(outBody);
+    if (outBody === undefined) {
+        outRes.endWithoutBody();
+    } else {
+        outRes.end(outBody);
+    }
 }
 
 /**
@@ -251,7 +261,7 @@ function writeWhole() {
  *
  * @param {GuardedResponse} res
  * @param {number} status
- * @param {Record<string, string>|null|undefined} headers
+ * @param {Record<string, string|string[]>|null|undefined} headers
  * @param {Buffer|null} type the content-type to add, null when headers carries it
  * @param {Buffer|null} encoding the content-encoding to add
  * @param {boolean} vary whether to add Vary: Accept-Encoding
@@ -270,6 +280,33 @@ function respond(res, status, headers, type, encoding, vary, body) {
     }
     outBody = body;
     res.cork(writeWhole);
+    outBody = null;
+}
+
+/**
+ * A whole answer of app.uwsLite(), where the handler may still be under µWS's own cork. The type is
+ * text, an undefined body is no body at all.
+ *
+ * @param {GuardedResponse} res
+ * @param {number} status
+ * @param {Record<string, string|string[]>|null} headers
+ * @param {string|null} type
+ * @param {string|Uint8Array|undefined} body
+ * @param {boolean} corked
+ */
+function respondWhole(res, status, headers, type, body, corked) {
+    outRes = res;
+    outStatus = status;
+    outHeaders = headers;
+    outType = type === null ? null : HEADER_VALUE_BUF[type] || /** @type {any} */ (type);
+    outEncoding = null;
+    outVary = false;
+    outBody = body;
+    if (corked) {
+        writeWhole();
+    } else {
+        res.cork(writeWhole);
+    }
     outBody = null;
 }
 
@@ -396,7 +433,8 @@ function sendStream(res, stream) {
  * @param {any} [options]
  * @returns {{
  *   negotiate: (req: UwsRequest) => string,
- *   send: (res: GuardedResponse, status: number, headers: Record<string, string>|null|undefined, body: unknown, encoding: string) => void
+ *   send: (res: GuardedResponse, status: number, headers: Record<string, string>|null|undefined, body: unknown, encoding: string) => void,
+ *   _deliver: (res: GuardedResponse, status: number, headers: Record<string, string|string[]>|null|undefined, type: string, body: string|Uint8Array, encoding: string) => void
  * }}
  */
 function compressor(options) {
@@ -423,46 +461,71 @@ function compressor(options) {
                 send(res, status, headers, body);
                 return;
             }
-            /** @type {any} */
             const payload = implied === JSON_TYPE ? JSON.stringify(body) : body;
-            const type = own === undefined ? HEADER_VALUE_BUF[implied] : null;
-            if (encoding === "") {
-                respond(res, status, headers, type, null, true, payload);
-                return;
-            }
-            const encodingBytes = HEADER_VALUE_BUF[encoding];
-            if (typeof payload.pipe === "function") {
-                const encoder = compressStream(encoding);
-                pipeline(payload, encoder, noop);
-                respond(res, status, headers, type, encodingBytes, true, encoder);
-                return;
-            }
-            const input = typeof payload === "string" ? Buffer.from(payload) : payload;
-            if (input.length < threshold) {
-                respond(res, status, headers, type, null, true, input);
-                return;
-            }
-            if (input.length <= compression._SYNC_LIMIT) {
-                respond(res, status, headers, type, encodingBytes, true, compressWhole(encoding, input));
-                return;
-            }
-            // the pool answers after the handler returned
-            guard(res);
-            compressWholeAsync(encoding, input, (error, compressed) => {
-                if (res.aborted === true) {
-                    return;
-                }
-                if (error) {
-                    refuse(res, 500);
-                    return;
-                }
-                respond(res, status, headers, type, encodingBytes, true, compressed);
-            });
+            deliver(res, status, headers, own === undefined ? HEADER_VALUE_BUF[implied] : null, payload, encoding);
+        },
+        _deliver(res, status, headers, type, body, encoding) {
+            deliver(res, status, headers, HEADER_VALUE_BUF[type] || /** @type {any} */ (type), body, encoding);
         }
     };
+
+    /**
+     * A body of a compressible type, already a string, bytes or a Readable.
+     *
+     * @param {GuardedResponse} res
+     * @param {number} status
+     * @param {Record<string, string|string[]>|null|undefined} headers
+     * @param {Buffer|null} type
+     * @param {any} payload
+     * @param {string} encoding
+     */
+    function deliver(res, status, headers, type, payload, encoding) {
+        if (encoding === "") {
+            respond(res, status, headers, type, null, true, payload);
+            return;
+        }
+        const encodingBytes = HEADER_VALUE_BUF[encoding];
+        if (typeof payload.pipe === "function") {
+            const encoder = compressStream(encoding);
+            pipeline(payload, encoder, noop);
+            respond(res, status, headers, type, encodingBytes, true, encoder);
+            return;
+        }
+        const input = typeof payload === "string" ? Buffer.from(payload) : payload;
+        if (input.length < threshold) {
+            respond(res, status, headers, type, null, true, input);
+            return;
+        }
+        if (input.length <= compression._SYNC_LIMIT) {
+            respond(res, status, headers, type, encodingBytes, true, compressWhole(encoding, input));
+            return;
+        }
+        // the pool answers after the handler returned
+        guard(res);
+        compressWholeAsync(encoding, input, (error, compressed) => {
+            if (res.aborted === true) {
+                return;
+            }
+            if (error) {
+                refuse(res, 500);
+                return;
+            }
+            respond(res, status, headers, type, encodingBytes, true, compressed);
+        });
+    }
 }
 
 /** What pipeline() wants, the stream's own error listener does the answering. */
 function noop() {}
 
-module.exports = { query, guard, readBuffer, readText, readJson, readForm, send, compressor };
+module.exports = {
+    query,
+    guard,
+    readBuffer,
+    readText,
+    readJson,
+    readForm,
+    send,
+    compressor,
+    _respondWhole: respondWhole
+};

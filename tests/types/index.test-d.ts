@@ -231,6 +231,14 @@ NamedRouter().ws("/lobby", {
     }
 });
 
+// app.uwsLite(): (req, res) over small objects
+app.uwsLite("post", "/lite/:id", { body: "json", limit: "1mb", headers: ["x-a"], url: true }, (req, res) => {
+    expectType<string>(req.params.id);
+    expectType<string | undefined>(req.get("x-a"));
+    res.status(201).set("x-b", "1").type("json").json(req.body);
+});
+app.uwsLite("get", "/lite", (req, res) => res.send(req.query.a));
+
 // app.uws(): the handler is µWS's own, (res, req), with nothing of Express in front of it
 expectType<typeof app>(
     app.uws("get", "/health/:id", (res, req) => {
