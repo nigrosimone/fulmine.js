@@ -182,6 +182,59 @@ test("an asynchronous answer is the handler's to cork and to abort, as on µWS",
     await close();
 });
 
+test("express.uWS is the µWS this project serves with, and getParts() splits a body in a route", async () => {
+    // the same instance, not a second copy of the binary
+    assert.equal(express.uWS, require("uWebSockets.js"));
+    // not enumerable, so copying the namespace does not load it, and not a named ESM export
+    assert.equal(Object.keys(express).includes("uWS"), false);
+
+    const { getParts } = express.uWS;
+    const { port, close } = await serve((app) => {
+        app.uws("post", "/upload", (res, req) => {
+            // read before returning: µWS's request is gone afterwards
+            const contentType = req.getHeader("content-type");
+            let aborted = false;
+            res.onAborted(() => {
+                aborted = true;
+            });
+            const chunks = [];
+            res.onData((chunk, isLast) => {
+                chunks.push(Buffer.from(new Uint8Array(chunk)));
+                if (!isLast || aborted) return;
+                const parts = getParts(Buffer.concat(chunks), contentType) ?? [];
+                const seen = parts.map((p) => `${p.name}=${p.filename ?? ""}:${p.type ?? ""}:${Buffer.from(p.data)}`);
+                res.cork(() => res.end(seen.join("|")));
+            });
+        });
+    });
+
+    const form = new FormData();
+    form.append("title", "hello");
+    form.append("file", new Blob(["file body"], { type: "text/plain" }), "a.txt");
+    const res = await fetch(`http://localhost:${port}/upload`, { method: "POST", body: form });
+    assert.equal(await res.text(), "title=::hello|file=a.txt:text/plain:file body");
+    await close();
+});
+
+test("a DeclarativeResponse is a route of its own, as µWS takes it", async () => {
+    const { port, close } = await serve((app) => {
+        app.uws(
+            "get",
+            "/compiled/:id",
+            new express.uWS.DeclarativeResponse()
+                .writeStatus("200 OK")
+                .writeHeader("x-compiled", "yes")
+                .write("id ")
+                .writeParameterValue("id")
+                .end("")
+        );
+    });
+    const res = await ask(port, "/compiled/9");
+    assert.equal(res.body, "id 9");
+    assert.equal(res.headers.get("x-compiled"), "yes");
+    await close();
+});
+
 test("a call that cannot work is refused where it is written", () => {
     const app = express();
     assert.throws(() => app.uws("fetch", "/x", () => {}), /method must be one of/);
@@ -189,6 +242,7 @@ test("a call that cannot work is refused where it is written", () => {
     assert.throws(() => app.uws("get", "x", () => {}), /path string starting with \//);
     assert.throws(() => app.uws("get", /x/, () => {}), /path string/);
     assert.throws(() => app.uws("get", "/x"), /handler function/);
+    assert.throws(() => app.uws("get", "/x", "hello"), /handler function/);
     assert.equal(
         app.uws("GET", "/x", () => {}),
         app

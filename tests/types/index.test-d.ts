@@ -243,6 +243,11 @@ app.uws("ANY", "/raw/*", (res) => {
     res.onAborted(() => {});
 });
 NamedRouter().uws("delete", "/item/:id", (res) => res.end());
+// µWS itself, for what such a route needs of it
+const parts = express.uWS.getParts(new ArrayBuffer(0), "multipart/form-data; boundary=x");
+expectType<uWS.MultipartField[] | undefined>(parts);
+// a response compiled by µWS is a route of its own, as µWS takes it
+app.uws("get", "/static", new express.uWS.DeclarativeResponse().end("hi"));
 // a method µWS has no registration for is a type error
 expectError(app.uws("fetch", "/x", (res) => res.end()));
 

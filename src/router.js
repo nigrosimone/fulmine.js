@@ -1370,7 +1370,8 @@ module.exports = class Router extends EventEmitter {
      *
      * The route answers before the Express application on every path its pattern takes, wherever
      * it was written, and the path is µWS's: matched byte for byte, `:name` a whole segment,
-     * `*` the rest. On a mounted router the mount path goes in front.
+     * `*` the rest. On a mounted router the mount path goes in front. µWS's own utilities,
+     * `getParts()` for a multipart body among them, are `express.uWS`.
      *
      * @example
      * app.uws("get", "/health", (res) => {
@@ -1380,7 +1381,8 @@ module.exports = class Router extends EventEmitter {
      * @param {string} method get, post, put, delete (or del), patch, options, head, connect,
      *   trace, or any (or all)
      * @param {string} path a µWS pattern
-     * @param {(res: UwsResponse, req: UwsRequest) => void} handler called by µWS as it is
+     * @param {import("./uws-route.js").UwsHandler} handler called by µWS as it is, or what
+     *   `new express.uWS.DeclarativeResponse()...end()` returns, which µWS answers with by itself
      * @returns {this}
      */
     uws(method, path, handler) {

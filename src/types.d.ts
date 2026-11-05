@@ -20,6 +20,24 @@ declare module "fulmine.js" {
     import { ZlibOptions, BrotliOptions } from "zlib";
     import serveStatic = require("serve-static");
 
+    // µWS's DeclarativeResponse, which its .d.ts does not declare: a response written once,
+    // which µWS answers with by itself. end() hands back what app.uws() takes as a route
+    interface DeclarativeResponse {
+        writeStatus(status: string): this;
+        writeHeader(key: string, value: string): this;
+        // the value of a request header, a query key or a route parameter, copied in per request
+        writeHeaderValue(key: string): this;
+        writeQueryValue(key: string): this;
+        writeParameterValue(key: string): this;
+        // the request body, copied back
+        writeBody(): this;
+        write(value: string): this;
+        end(value?: string): ArrayBuffer;
+    }
+
+    // the module itself, named outside the namespace, where express.uWS would shadow it
+    type UwsModule = typeof uWS & { DeclarativeResponse: new () => DeclarativeResponse };
+
     type Settings = {
         uwsOptions?: uWS.AppOptions;
         threads?: number;
@@ -178,6 +196,19 @@ declare module "fulmine.js" {
 
         export import urlencoded = e.urlencoded;
 
+        /**
+         * µWebSockets.js itself, the instance this project serves with, for what an `app.uws()`
+         * route needs of it: `getParts()` to split a multipart body, `DeclarativeResponse`, the
+         * compression constants. Loaded on first read, and reading it on Bun or Deno throws, since
+         * µWS does not load there. Not a named ESM export: `import express from "fulmine.js"`, then
+         * `express.uWS`.
+         *
+         * ```ts
+         * const { getParts } = express.uWS;
+         * ```
+         */
+        export const uWS: UwsModule;
+
         export import RouterOptions = e.RouterOptions;
         // Router is declared rather than re-exported, because this project's routers carry ws()
         export function Router(options?: e.RouterOptions): FulmineRouter;
@@ -263,8 +294,9 @@ declare module "fulmine.js" {
 
     // The handler of an app.uws() route, called as µWS calls it: µWS's own HttpResponse and
     // HttpRequest, nothing of Express in front. void rather than µWS's void | Promise<void>, so
-    // `(res) => res.end()` and an async handler both fit
-    type UwsHandler = (res: uWS.HttpResponse, req: uWS.HttpRequest) => void;
+    // `(res) => res.end()` and an async handler both fit. Or, as µWS takes it, the ArrayBuffer a
+    // DeclarativeResponse's end() returns, answered without entering JavaScript
+    type UwsHandler = ((res: uWS.HttpResponse, req: uWS.HttpRequest) => void) | ArrayBuffer;
 
     // interfaces rather than aliases: `this` is how ws() answers the router or the app it was
     // called on, and an alias naming itself in an intersection is circular

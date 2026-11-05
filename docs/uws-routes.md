@@ -31,7 +31,7 @@ It is for the few routes where every microsecond is worth more than the Express 
 
 ## What it is, and what it is not
 
-- **The handler is µWS's.** `res` and `req` are the objects µWS hands over, with their whole API: `writeStatus`, `writeHeader`, `end`, `tryEnd`, `cork`, `onAborted`, `onData`, `getHeader`, `getParameter`, `getQuery`, `getUrl`, `getMethod`, and the rest. The [µWS documentation](https://github.com/uNetworking/uWebSockets.js) is the reference.
+- **The handler is µWS's**, a function, or a `DeclarativeResponse` (see below). `res` and `req` are the objects µWS hands over, with their whole API: `writeStatus`, `writeHeader`, `end`, `tryEnd`, `cork`, `onAborted`, `onData`, `getHeader`, `getParameter`, `getQuery`, `getUrl`, `getMethod`, and the rest. The [µWS documentation](https://github.com/uNetworking/uWebSockets.js) is the reference.
 - **No Express at all.** There is no `Request` and no `Response`, so no `req.body`, `req.params`, `req.query`, `res.send` or `res.json`. No `app.use()` middleware runs, neither does `app.param()`, an error handler or the application's 404. Settings such as `trust proxy`, `etag`, `x-powered-by` or `json spaces` have no effect on it.
 - **µWS's rules are yours.** `req` can only be read before the handler returns, so read what you need first. An answer written after the handler returns needs `res.onAborted()` registered before returning, and `res.cork()` around the writes, exactly as on a bare µWS app:
 
@@ -51,6 +51,49 @@ It is for the few routes where every microsecond is worth more than the Express 
 
 - **The method** is one of `get`, `post`, `put`, `delete` (or µWS's `del`), `patch`, `options`, `head`, `connect`, `trace`, or `any` (or `all`), in either case. A `get` route does not answer `HEAD`, as on µWS: the `HEAD` goes on to the Express routes.
 - **The path is a µWS pattern**: literal, `:name` for a whole segment (read back with `req.getParameter(0)` or `req.getParameter("name")`), `*` for the rest of the path. It is matched byte for byte, so case-insensitive routing does not apply: `/Health` is not `/health`, and goes on to the Express routes.
+
+## µWS's own utilities: `express.uWS`
+
+`express.uWS` is µWebSockets.js itself, the same instance the application serves with, so a raw route can use everything the module offers without requiring the binary a second time (under pnpm it is not even reachable from your project). It is loaded on the first read, not when `fulmine.js` is required, and reading it on Bun or Deno throws. It is not a named ESM export: `import express from "fulmine.js"`, then `express.uWS`.
+
+`getParts()` splits a `multipart/form-data` body. Collecting the body is the handler's, as on µWS:
+
+```js
+const { getParts } = express.uWS;
+
+app.uws("post", "/upload", (res, req) => {
+    const contentType = req.getHeader("content-type"); // before returning
+    let aborted = false;
+    res.onAborted(() => {
+        aborted = true;
+    });
+    const chunks = [];
+    res.onData((chunk, isLast) => {
+        // µWS reuses the chunk's memory once this returns, so it is copied
+        chunks.push(Buffer.from(new Uint8Array(chunk)));
+        if (!isLast || aborted) return;
+        const parts = getParts(Buffer.concat(chunks), contentType) ?? [];
+        // each part: { name, data: ArrayBuffer, filename?, type? }
+        res.cork(() => res.end(parts.map((p) => p.name).join(",")));
+    });
+});
+```
+
+`DeclarativeResponse` writes a response once, at startup, and µWS answers with it without entering JavaScript at all. What its `end()` returns is a route of its own, as µWS takes it:
+
+```js
+app.uws(
+    "get",
+    "/hello/:name",
+    new express.uWS.DeclarativeResponse()
+        .writeHeader("content-type", "text/plain")
+        .write("hello ")
+        .writeParameterValue("name")
+        .end("")
+);
+```
+
+The compression constants of `app.ws()` behaviors (`express.uWS.SHARED_COMPRESSOR` and the rest) are there too.
 
 ## Which route answers
 
