@@ -1,5 +1,15 @@
 # Changelog
 
+## [5.30.0](https://github.com/nigrosimone/fulmine.js/compare/v5.29.0...v5.30.0) (2026-11-05)
+
+### Features
+
+* express.uwsUtils, the query, body, response and compression of an app.uws() route ([acea268](https://github.com/nigrosimone/fulmine.js/commit/acea268a6811a5f5a75fab5cc4e607c9faaf06cc))
+
+### Performance Improvements
+
+* **response:** status lines cross to uWS as cached Buffers, as the recurring headers do ([0859271](https://github.com/nigrosimone/fulmine.js/commit/08592714e3f549b9a188de09d1aef2fbff75e4a5))
+
 ## [5.29.0](https://github.com/nigrosimone/fulmine.js/compare/v5.28.0...v5.29.0) (2026-11-05)
 
 ### Features
