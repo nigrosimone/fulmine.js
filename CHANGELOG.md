@@ -1,5 +1,22 @@
 # Changelog
 
+## [5.31.0](https://github.com/nigrosimone/fulmine.js/compare/v5.30.0...v5.31.0) (2026-11-06)
+
+### Features
+
+* app.uwsLite, an (req, res) route served by uWS over two small objects ([8152725](https://github.com/nigrosimone/fulmine.js/commit/8152725531ecb8dee21ad1fc5c884f695572ff4b))
+* app.uws.get() and app.uwsLite.get(), each method as a verb as in Express ([65f9890](https://github.com/nigrosimone/fulmine.js/commit/65f989020569b246ca82e5e4b6a5ac1e38ab8fc4))
+* **uws-lite:** middleware with use, res as a writable and body as a stream ([33a0d91](https://github.com/nigrosimone/fulmine.js/commit/33a0d91421b5c7884a0fe126083b3df4f375e299))
+* **uws-lite:** headers: true keeps all the headers of a route ([4e60fbf](https://github.com/nigrosimone/fulmine.js/commit/4e60fbfea4a714bf3165a035dea6f25c9b893686))
+
+### Bug Fixes
+
+* **uws-lite:** compress: false turned compression on, it takes true or false now ([4d8a844](https://github.com/nigrosimone/fulmine.js/commit/4d8a844915f8efaebf238949b75e235ab50a4a12))
+
+### Performance Improvements
+
+* **uws-lite:** the headers of a route that keeps them all stay flat until read, -19% with use ([474b284](https://github.com/nigrosimone/fulmine.js/commit/474b2840ae61b2ff10ba204df12cab65a51715de))
+
 ## [5.30.0](https://github.com/nigrosimone/fulmine.js/compare/v5.29.0...v5.30.0) (2026-11-05)
 
 ### Features
