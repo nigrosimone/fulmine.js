@@ -245,8 +245,8 @@ declare module "fulmine.js" {
             body?: "text" | "json" | "form" | "buffer" | "lent" | "stream";
             /** Bytes or a string as "1mb", 100kb by default. */
             limit?: number | string;
-            /** What express.compression() takes. */
-            compress?: Record<string, unknown>;
+            /** true for the defaults, or what express.compression() takes. Off by default. */
+            compress?: boolean | Record<string, unknown>;
             /** Headers req.get() reads after the handler returned or with a body. */
             headers?: string[];
             /** Whether req.url and req.path are read after the handler returned or with a body. */

@@ -157,7 +157,7 @@ The body is ready when the handler runs. The same handler works on an ordinary E
 
 - **`req`** has `query`, `params` (decoded), `body`, `method`, `path`, `url`, `get(name)` and `header(name)`. On a route with middleware it has `headers` too.
 - **`res`** has `req`, `statusCode`, `headersSent`, `status()`, `set()`, `header()`, `get()`, `type()`, `send()`, `json()`, `end()`, `sendStatus()`, `write()`, `setHeader()`, `getHeader()`, `hasHeader()`, `removeHeader()` and the listeners (`on()`, `once()`, `off()`), and answers as Express: the same type, charset and status. A header with an invalid name or value throws. Over µWS it writes no `ETag` and no `X-Powered-By`.
-- **Options:** `body` is `"text"`, `"json"`, `"form"`, `"buffer"`, `"lent"` or `"stream"`, and `limit` is bytes or a string as `"1mb"`, 100kb by default. The route accepts any content-type. Over the limit is a 413, invalid JSON a 400, and the handler does not run. `compress` takes the options of `express.compression()`.
+- **Options:** `body` is `"text"`, `"json"`, `"form"`, `"buffer"`, `"lent"` or `"stream"`, and `limit` is bytes or a string as `"1mb"`, 100kb by default. The route accepts any content-type. Over the limit is a 413, invalid JSON a 400, and the handler does not run. `compress` is `true`, or the options of `express.compression()`, and it is off without it.
 - **`"lent"`** is a `Buffer` on µWS's memory, without a copy, good until the handler returns. For a route that answers at once, use `"buffer"` to keep it or to answer later.
 - **`headers` and `url`:** `req` of µWS is gone when the handler returns, and it is gone before the handler runs on a route with a body. `query`, `params` and `body` stay. What else you read then has to be declared, and an undeclared read throws:
 
@@ -188,7 +188,7 @@ app.uwsLite.get("/orders/:id", { use: common }, (req, res) => {
 **Streams** work as on an Express route, so the handler is the same on both:
 
 ```js
-app.uwsLite.get("/report", { compress: {} }, (req, res) => {
+app.uwsLite.get("/report", { compress: true }, (req, res) => {
     res.type("text/csv");
     fs.createReadStream("report.csv").pipe(res);
 });

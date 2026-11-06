@@ -1144,3 +1144,46 @@ test("a verb registers the Express route too, for what µWS does not answer", as
         await new Promise((resolve) => server.close(resolve));
     }
 });
+
+test("compress: true is the defaults, false and nothing are off, on µWS and on the Express route", async () => {
+    const big = "x".repeat(5000);
+    const routes = (app) => {
+        const answer = (req, res) => res.type("txt").send(big);
+        app.uwsLite.get("/on", { compress: true }, answer);
+        app.uwsLite.get("/off", { compress: false }, answer);
+        app.uwsLite.get("/empty", { compress: {} }, answer);
+        app.uwsLite.get("/none", answer);
+    };
+    const encodings = async (port) => {
+        const seen = [];
+        for (const path of ["/on", "/off", "/empty", "/none"]) {
+            const res = await fetch(`http://127.0.0.1:${port}${path}`, { headers: { "accept-encoding": "gzip" } });
+            assert.strictEqual(await res.text(), big);
+            seen.push(res.headers.get("content-encoding"));
+        }
+        return seen;
+    };
+    const server = await serve(routes);
+    try {
+        assert.deepStrictEqual(await encodings(server.port), ["gzip", null, "gzip", null]);
+    } finally {
+        await server.close();
+    }
+    const app = express();
+    routes(app);
+    const node = http.createServer(app);
+    await new Promise((resolve) => node.listen(0, resolve));
+    try {
+        assert.deepStrictEqual(await encodings(node.address().port), ["gzip", null, "gzip", null]);
+    } finally {
+        node.closeAllConnections();
+        await new Promise((resolve) => node.close(resolve));
+    }
+});
+
+test("compress takes a boolean or an object, the rest is refused where it is written", () => {
+    const app = express();
+    for (const wrong of [null, "gzip", 1]) {
+        assert.throws(() => app.uwsLite.get("/x", { compress: wrong }, () => {}), /option compress must be/);
+    }
+});

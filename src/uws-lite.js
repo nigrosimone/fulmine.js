@@ -41,7 +41,7 @@ const {
  * @typedef {{
  *   body?: "text"|"json"|"form"|"buffer"|"lent"|"stream",
  *   limit?: number|string,
- *   compress?: any,
+ *   compress?: boolean | Record<string, unknown>,
  *   headers?: string[],
  *   url?: boolean,
  *   use?: Function[]
@@ -831,7 +831,13 @@ function makeLiteRoute(method, path, options, handler) {
         .filter((segment) => segment.startsWith(":"))
         .map((segment) => segment.slice(1));
     const headers = options.headers?.map((name) => name.toLowerCase()) ?? null;
-    const compress = options.compress === undefined ? null : compressor(options.compress);
+    // true is the defaults, false or nothing is off
+    const wanted = options.compress === undefined ? false : options.compress;
+    if (typeof wanted !== "boolean" && (typeof wanted !== "object" || wanted === null)) {
+        throw new TypeError("app.uwsLite() option compress must be true, false or what express.compression() takes");
+    }
+    const settings = wanted === true ? {} : wanted;
+    const compress = settings === false ? null : compressor(settings);
     const route = {
         handler,
         body: format ?? null,
@@ -871,8 +877,8 @@ function makeLiteRoute(method, path, options, handler) {
     // the same handler where µWS is not in front: HTTP/2, createServer, a HEAD, a path µWS's exact
     // match let through
     const before = [];
-    if (options.compress !== undefined) {
-        before.push(compression(options.compress));
+    if (settings !== false) {
+        before.push(compression(settings));
     }
     if (streamed) {
         before.push((/** @type {any} */ req, /** @type {any} */ _res, /** @type {any} */ next) => {
