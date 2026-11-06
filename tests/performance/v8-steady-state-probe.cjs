@@ -17,7 +17,17 @@ const PATHS = [
     "/err",
     "/thrown",
     "/nowhere",
-    "POST /json"
+    "POST /json",
+    "/lite/7?a=1",
+    "POST /lite",
+    "/lite-use/7",
+    "/lite-async",
+    "/lite-stream",
+    "/utils?a=1",
+    "/utils?a=2",
+    "/utils?a=3",
+    "/utils?a=4",
+    "POST /utils"
 ];
 
 if (mode === "server") {
@@ -70,6 +80,31 @@ if (mode === "server") {
     });
     app.use((err, req, res, next) => res.status(500).send(err.message));
 
+    // app.uwsLite and express.uwsUtils. Their classes are not exported, so the prototype comes from
+    // a live request
+    let liteResponse = null;
+    app.uwsLite.get("/lite/:id", (req, res) => {
+        liteResponse ??= Object.getPrototypeOf(res);
+        res.json({ id: req.params.id, a: req.query.a });
+    });
+    app.uwsLite.post("/lite", { body: "json" }, (req, res) => res.status(201).json(req.body));
+    const who = (req, res, next) => {
+        req.who = req.get("host");
+        next();
+    };
+    app.uwsLite.get("/lite-use/:id", { use: [who] }, (req, res) => res.json({ who: req.who, id: req.params.id }));
+    app.uwsLite.get("/lite-async", { headers: ["host"] }, async (req, res) => {
+        await null;
+        res.send(req.get("host"));
+    });
+    app.uwsLite.get("/lite-stream", (req, res) => {
+        res.write("a");
+        res.end("b");
+    });
+    const utils = express.uwsUtils;
+    app.uws.get("/utils", (res, req) => utils.send(res, 200, null, utils.query(req)));
+    app.uws.post("/utils", (res) => utils.readJson(res, (body) => utils.send(res, 200, null, body)));
+
     // runRoute is left out: it is inlined into dispatch and has no optimized code of its own
     const hot = {
         "Walk#dispatch": Walk.prototype.dispatch,
@@ -85,6 +120,12 @@ if (mode === "server") {
             process.send({ type: "steady" });
         } else if (msg.type === "report") {
             v8.setFlagsFromString("--no-trace-deopt");
+            // json, send and the utilities are inlined into these and have no optimized code of their own
+            const route = (path) => app._uwsRoutes.find((entry) => entry.path === path).handler;
+            hot["LiteResponse#_finish"] = liteResponse._finish;
+            hot["uwsLite route"] = route("/lite/:id");
+            hot["uwsLite route with use"] = route("/lite-use/:id");
+            hot["app.uws route with uwsUtils"] = route("/utils");
             const optimized = {};
             for (const [name, fn] of Object.entries(hot)) optimized[name] = (status(fn) & turbofanBit) !== 0;
             fs.rmSync(dir, { recursive: true, force: true });
@@ -153,10 +194,10 @@ if (mode === "server") {
         });
     (async () => {
         const { port } = await next("ready");
-        await load(port, 30000);
+        await load(port, 60000);
         server.send({ type: "steady" });
         await next("steady");
-        await load(port, 30000);
+        await load(port, 60000);
         server.send({ type: "report" });
         const report = await next("report");
         await new Promise((resolve) => server.once("exit", resolve));

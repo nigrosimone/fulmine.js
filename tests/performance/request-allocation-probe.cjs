@@ -134,14 +134,28 @@ if (mode === "server") {
         res.type("application/octet-stream").send(Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0));
     });
 
+    // app.uwsLite and express.uwsUtils
+    const lite = express();
+    lite.uwsLite.get("/hello", (req, res) => res.send("hello"));
+    lite.uwsLite.get("/users/:id", (req, res) => res.json({ id: req.params.id, q: req.query.q }));
+    lite.uwsLite.post("/echo", { body: "lent" }, (req, res) => res.send(req.body));
+    const kept = (req, res, next) => {
+        req.who = req.get("user-agent");
+        next();
+    };
+    lite.uwsLite.get("/use", { use: [kept] }, (req, res) => res.send(req.who));
+    const utils = express.uwsUtils;
+    lite.uws.get("/utils", (res, req) => utils.send(res, 200, null, utils.query(req)));
+
     const ports = {};
     for (const [name, target] of [
         ["app", app],
-        ["arena", arena]
+        ["arena", arena],
+        ["lite", lite]
     ]) {
         const server = target.listen(0, "127.0.0.1", () => {
             ports[name] = server.address().port;
-            if (Object.keys(ports).length === 2) process.send({ type: "ready", ports });
+            if (Object.keys(ports).length === 3) process.send({ type: "ready", ports });
         });
     }
     process.on("message", (msg) => {
@@ -205,7 +219,17 @@ if (mode === "server") {
         "arena POST /baseline11": ["arena", 200, "POST /baseline11?a=1&b=2 HTTP/1.1\r\nContent-Length: 2\r\n\r\n20"],
         // ~13 KB a request, a thousand of them do not fit in the young generation
         "arena GET /json/:count br": ["arena", 200, "GET /json/25?m=3 HTTP/1.1\r\nAccept-Encoding: gzip, br", 250],
-        "arena POST /echo": ["arena", 200, `POST /echo HTTP/1.1\r\nContent-Length: 1024\r\n\r\n${"x".repeat(1024)}`]
+        "arena POST /echo": ["arena", 200, `POST /echo HTTP/1.1\r\nContent-Length: 1024\r\n\r\n${"x".repeat(1024)}`],
+        "lite GET /hello": ["lite", 200, "GET /hello HTTP/1.1"],
+        "lite GET /users/:id?q": ["lite", 200, "GET /users/42?q=x HTTP/1.1"],
+        "lite POST /echo lent": ["lite", 200, `POST /echo HTTP/1.1\r\nContent-Length: 1024\r\n\r\n${"x".repeat(1024)}`],
+        // ten headers, the copy a route with use pays
+        "lite GET /use": [
+            "lite",
+            200,
+            `GET /use HTTP/1.1\r\nUser-Agent: probe${Array.from({ length: 8 }, (_, i) => `\r\nX-Header-${i}: value-${i}`).join("")}`
+        ],
+        "uws GET /utils": ["lite", 200, "GET /utils?a=1 HTTP/1.1"]
     };
     const which = cases[label];
     assert.ok(which, `unknown case ${label}`);
