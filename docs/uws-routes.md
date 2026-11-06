@@ -155,11 +155,11 @@ app.uwsLite.post("/users/:id", { body: "json", limit: "1mb" }, (req, res) => {
 
 The body is ready when the handler runs. The same handler works on an ordinary Express route, and `app.uwsLite()` registers one for you, so what µWS does not answer still reaches it: HTTP/2, `http.createServer(app)`, a `HEAD`, a trailing slash, another case.
 
-- **`req`** has `query`, `params` (decoded), `body`, `method`, `path`, `url`, `get(name)` and `header(name)`. On a route with middleware it has `headers` too.
+- **`req`** has `query`, `params` (decoded), `body`, `method`, `path`, `url`, `get(name)` and `header(name)`. With `headers: true` or middleware it has `headers` too.
 - **`res`** has `req`, `statusCode`, `headersSent`, `status()`, `set()`, `header()`, `get()`, `type()`, `send()`, `json()`, `end()`, `sendStatus()`, `write()`, `setHeader()`, `getHeader()`, `hasHeader()`, `removeHeader()` and the listeners (`on()`, `once()`, `off()`), and answers as Express: the same type, charset and status. A header with an invalid name or value throws. Over µWS it writes no `ETag` and no `X-Powered-By`.
 - **Options:** `body` is `"text"`, `"json"`, `"form"`, `"buffer"`, `"lent"` or `"stream"`, and `limit` is bytes or a string as `"1mb"`, 100kb by default. The route accepts any content-type. Over the limit is a 413, invalid JSON a 400, and the handler does not run. `compress` is `true`, or the options of `express.compression()`, and it is off without it.
 - **`"lent"`** is a `Buffer` on µWS's memory, without a copy, good until the handler returns. For a route that answers at once, use `"buffer"` to keep it or to answer later.
-- **`headers` and `url`:** `req` of µWS is gone when the handler returns, and it is gone before the handler runs on a route with a body. `query`, `params` and `body` stay. What else you read then has to be declared, and an undeclared read throws:
+- **`headers` and `url`:** `req` of µWS is gone when the handler returns, and it is gone before the handler runs on a route with a body. `query`, `params` and `body` stay. What else you read then has to be declared, with the names or `headers: true` for all of them, and an undeclared read throws:
 
 ```js
 app.uwsLite.post("/orders", { body: "json", headers: ["authorization"], url: true }, async (req, res) => {

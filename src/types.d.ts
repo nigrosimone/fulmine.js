@@ -247,8 +247,8 @@ declare module "fulmine.js" {
             limit?: number | string;
             /** true for the defaults, or what express.compression() takes. Off by default. */
             compress?: boolean | Record<string, unknown>;
-            /** Headers req.get() reads after the handler returned or with a body. */
-            headers?: string[];
+            /** Headers req.get() reads after the handler returned or with a body, true for all of them. */
+            headers?: boolean | string[];
             /** Whether req.url and req.path are read after the handler returned or with a body. */
             url?: boolean;
             /** Middleware of this route, after the body is read. A route without it pays nothing. */
@@ -260,7 +260,7 @@ declare module "fulmine.js" {
             readonly query: Record<string, any>;
             readonly params: Record<string, string>;
             body: any;
-            /** All of them on a route with middleware, the ones in { headers } otherwise. */
+            /** All of them with { headers: true } or middleware, the ones in { headers } otherwise. */
             readonly headers: Record<string, string> | undefined;
             readonly method: string | undefined;
             readonly path: string;

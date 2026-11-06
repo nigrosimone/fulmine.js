@@ -1187,3 +1187,40 @@ test("compress takes a boolean or an object, the rest is refused where it is wri
         assert.throws(() => app.uwsLite.get("/x", { compress: wrong }, () => {}), /option compress must be/);
     }
 });
+
+test("headers: true keeps all of them, after an await and with a body", async () => {
+    const seen = [];
+    const server = await serve((app) => {
+        app.uwsLite.get("/h", { headers: true }, async (req, res) => {
+            await wait(5);
+            seen.push(req.get("x-a"), req.get("x-b"), req.headers["x-b"]);
+            res.end();
+        });
+        app.uwsLite.post("/b", { body: "text", headers: true }, (req, res) => res.send(req.get("x-a") + req.body));
+        app.uwsLite.get("/n", { headers: false }, async (req, res) => {
+            await wait(5);
+            try {
+                req.get("x-a");
+                res.send("read");
+            } catch {
+                res.send("refused");
+            }
+        });
+    });
+    try {
+        await call(server.port, "/h", { headers: { "x-a": "1", "x-b": "2" } });
+        assert.deepStrictEqual(seen, ["1", "2", "2"]);
+        const posted = await call(server.port, "/b", { method: "POST", headers: { "x-a": "1" }, body: "z" });
+        assert.strictEqual(posted.body, "1z");
+        assert.strictEqual((await call(server.port, "/n", { headers: { "x-a": "1" } })).body, "refused");
+    } finally {
+        await server.close();
+    }
+});
+
+test("headers takes names, true or false, the rest is refused where it is written", () => {
+    const app = express();
+    for (const wrong of [null, "x-a", 1]) {
+        assert.throws(() => app.uwsLite.get("/x", { headers: wrong }, () => {}), /option headers must be/);
+    }
+});

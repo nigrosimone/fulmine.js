@@ -42,7 +42,7 @@ const {
  *   body?: "text"|"json"|"form"|"buffer"|"lent"|"stream",
  *   limit?: number|string,
  *   compress?: boolean | Record<string, unknown>,
- *   headers?: string[],
+ *   headers?: boolean | string[],
  *   url?: boolean,
  *   use?: Function[]
  * }} LiteOptions
@@ -92,7 +92,7 @@ class LiteRequest {
         return (this._query ??= parseQuery(this._rawQuery));
     }
 
-    /** @returns {Record<string, string>|undefined} all of them on a route with middleware */
+    /** @returns {Record<string, string>|undefined} what the route keeps, see keep() */
     get headers() {
         return this._kept?.headers;
     }
@@ -777,7 +777,7 @@ function keep(route, req) {
     if (route.method === null) {
         kept.method = req.getCaseSensitiveMethod();
     }
-    if (route.use !== null) {
+    if (route.keepAll) {
         kept.headers = allHeaders(req);
     } else if (route.keepHeaders !== null) {
         /** @type {Record<string, string>} */
@@ -830,7 +830,12 @@ function makeLiteRoute(method, path, options, handler) {
         .split("/")
         .filter((segment) => segment.startsWith(":"))
         .map((segment) => segment.slice(1));
-    const headers = options.headers?.map((name) => name.toLowerCase()) ?? null;
+    const wantedHeaders = options.headers === undefined ? false : options.headers;
+    if (typeof wantedHeaders !== "boolean" && !Array.isArray(wantedHeaders)) {
+        throw new TypeError("app.uwsLite() option headers must be an array of names, true for all of them, or false");
+    }
+    const headers = Array.isArray(wantedHeaders) ? wantedHeaders.map((name) => name.toLowerCase()) : null;
+    const keepAll = wantedHeaders === true || use.length !== 0;
     // true is the defaults, false or nothing is off
     const wanted = options.compress === undefined ? false : options.compress;
     if (typeof wanted !== "boolean" && (typeof wanted !== "object" || wanted === null)) {
@@ -845,12 +850,13 @@ function makeLiteRoute(method, path, options, handler) {
         method: any ? null : lower === "del" ? "DELETE" : lower.toUpperCase(),
         use: use.length === 0 ? null : use,
         keepUrl: options.url === true || use.length !== 0,
+        keepAll,
         keepHeaders: headers,
         // null: all of them are kept
-        keptHeader: use.length === 0 ? new Set(headers) : null
+        keptHeader: keepAll ? null : new Set(headers)
     };
     const hasParams = names.length !== 0;
-    const keeps = any || route.keepUrl || headers !== null;
+    const keeps = any || route.keepUrl || keepAll || headers !== null;
     const streamed = format === "stream";
 
     /** @type {(res: any, req: any) => void} */

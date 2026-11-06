@@ -237,7 +237,7 @@ expectType<typeof app>(app.uws.delete("/verb", (res) => res.end()));
 expectType<typeof app>(app.uwsLite.get("/verb", (req, res) => res.send(req.query.a)));
 expectType<typeof app>(app.uwsLite.post("/verb", { body: "json" }, (req, res) => res.json(req.body)));
 expectType<typeof app>(app.uwsLite.all("/verb", { use: [] }, (req, res) => res.end()));
-app.uwsLite.get("/on", { compress: true }, (req, res) => res.end());
+app.uwsLite.get("/on", { compress: true, headers: true }, (req, res) => res.end());
 app.uwsLite.get("/off", { compress: false }, (req, res) => res.end());
 app.uwsLite.get("/options", { compress: { threshold: "2kb" } }, (req, res) => res.end());
 // @ts-expect-error compress is a boolean or an object
