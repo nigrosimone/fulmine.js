@@ -19,6 +19,7 @@ node websocket.js
 | [cluster-pool.js](./cluster-pool.js)                 | `app.cluster.share()`: a database pool split across the workers, never over the total                           |
 | [websocket.js](./websocket.js)                       | `app.ws()`, with the upgrade deciding whether the socket opens                                                  |
 | [uws-route.js](./uws-route.js)                       | `app.uws()`: a raw uWS route, `(res, req)` with nothing of Express in front                                     |
+| [uws-lite.js](./uws-lite.js)                         | `app.uwsLite`: an `(req, res)` route served by uWS, with body, middleware and streams                           |
 | [socket-io.js](./socket-io.js)                       | socket.io through `io.attachApp(app.uwsApp)`, since the upgrade never reaches node                              |
 | [mcp.js](./mcp.js)                                   | an MCP server on the official SDK, a session per client, and what a held-open stream needs here                 |
 | [static-precompressed.js](./static-precompressed.js) | `express.static(dir, { preCompressed: true })`: the `.br` and `.gz` twins on disk                               |

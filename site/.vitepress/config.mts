@@ -123,6 +123,7 @@ export default defineConfig({
                     { text: "Pool per worker", link: "/examples/cluster-pool" },
                     { text: "WebSockets", link: "/examples/websocket" },
                     { text: "Raw µWS route", link: "/examples/uws-route" },
+                    { text: "Lite route", link: "/examples/uws-lite" },
                     { text: "socket.io", link: "/examples/socket-io" },
                     { text: "MCP server", link: "/examples/mcp" },
                     { text: "Pre-compressed static", link: "/examples/static-precompressed" },
