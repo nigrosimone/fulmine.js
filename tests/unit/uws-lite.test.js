@@ -1224,3 +1224,40 @@ test("headers takes names, true or false, the rest is refused where it is writte
         assert.throws(() => app.uwsLite.get("/x", { headers: wrong }, () => {}), /option headers must be/);
     }
 });
+
+test("the headers kept for one request are not those of the next one", async () => {
+    const server = await serve((app) => {
+        app.uwsLite.get("/h", { headers: true }, async (req, res) => {
+            await wait(40);
+            res.send(`${req.get("x-a")} ${req.get("x-b")}`);
+        });
+    });
+    try {
+        const first = call(server.port, "/h", { headers: { "x-a": "1", "x-b": "2" } });
+        await wait(10);
+        const second = call(server.port, "/h", { headers: { "x-a": "3" } });
+        assert.strictEqual((await first).body, "1 2");
+        assert.strictEqual((await second).body, "3 undefined");
+    } finally {
+        await server.close();
+    }
+});
+
+test("req.headers is one object, what middleware writes on it is there for the handler", async () => {
+    const add = async (req, res, next) => {
+        await wait(5);
+        req.headers["x-user"] = "ann";
+        next();
+    };
+    const server = await serve((app) => {
+        app.uwsLite.get("/h", { use: [add] }, async (req, res) => {
+            await wait(5);
+            res.send(`${req.headers["x-user"]} ${req.get("x-user")}`);
+        });
+    });
+    try {
+        assert.strictEqual((await call(server.port, "/h")).body, "ann ann");
+    } finally {
+        await server.close();
+    }
+});

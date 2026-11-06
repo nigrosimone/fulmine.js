@@ -73,7 +73,7 @@ class LiteRequest {
      * @param {any} route
      * @param {string} rawQuery
      * @param {Record<string, string>} params
-     * @param {{url?: string, method?: string, headers?: Record<string, string>}|null} kept
+     * @param {{url?: string, method?: string, headers?: Record<string, string>, entries?: string[]}|null} kept
      */
     constructor(req, route, rawQuery, params, kept) {
         this._req = req;
@@ -94,7 +94,11 @@ class LiteRequest {
 
     /** @returns {Record<string, string>|undefined} what the route keeps, see keep() */
     get headers() {
-        return this._kept?.headers;
+        const kept = this._kept;
+        if (kept?.entries !== undefined && kept.headers === undefined) {
+            kept.headers = foldHeaders(kept.entries);
+        }
+        return kept?.headers;
     }
 
     /** @returns {string|undefined} */
@@ -125,7 +129,7 @@ class LiteRequest {
         if (this._req !== null) {
             return this._req.getHeader(key) || undefined;
         }
-        const headers = this._kept?.headers;
+        const headers = this.headers;
         const kept = this._route.keptHeader;
         if (headers === undefined || (kept !== null && !kept.has(key))) {
             throw new TypeError(`req.get("${key}") after the handler returned needs it in { headers } on the route`);
@@ -745,19 +749,47 @@ function readParams(req, names) {
     return params;
 }
 
+// where collectHeader writes: forEach is synchronous, so one function and one array serve every
+// request, as in Request
+/** @type {string[]} */
+const collected = [];
+let collectedCount = 0;
+
 /**
- * Middleware reads headers before and after an await, and µWS's req does not last.
+ * @param {string} name
+ * @param {string} value
+ */
+const collectHeader = (name, value) => {
+    collected[collectedCount++] = name;
+    collected[collectedCount++] = value;
+};
+
+/**
+ * Middleware reads headers before and after an await, and µWS's req does not last. Flat, the object
+ * is made only if someone reads it after that.
  *
  * @param {any} req
- * @returns {Record<string, string>}
+ * @returns {string[]} name, value, name, value
  */
 function allHeaders(req) {
+    collectedCount = 0;
+    req.forEach(collectHeader);
+    return collected.slice(0, collectedCount);
+}
+
+/**
+ * @param {string[]} entries what allHeaders() kept
+ * @returns {Record<string, string>}
+ */
+function foldHeaders(entries) {
     /** @type {any} */
     const headers = { __proto__: null };
-    req.forEach((/** @type {string} */ name, /** @type {string} */ value) => {
+    for (let i = 0; i < entries.length; i += 2) {
+        const name = entries[i];
         const seen = headers[name];
-        headers[name] = seen === undefined ? value : `${seen}${name === "cookie" ? "; " : ", "}${value}`;
-    });
+        headers[name] =
+            seen === undefined ? entries[i + 1] : `${seen}${name === "cookie" ? "; " : ", "}${entries[i + 1]}`;
+    }
     return headers;
 }
 
@@ -766,10 +798,10 @@ function allHeaders(req) {
  *
  * @param {any} route
  * @param {any} req
- * @returns {{url?: string, method?: string, headers?: Record<string, string>}}
+ * @returns {{url?: string, method?: string, headers?: Record<string, string>, entries?: string[]}}
  */
 function keep(route, req) {
-    /** @type {{url?: string, method?: string, headers?: Record<string, string>}} */
+    /** @type {{url?: string, method?: string, headers?: Record<string, string>, entries?: string[]}} */
     const kept = {};
     if (route.keepUrl) {
         kept.url = req.getUrl();
@@ -778,7 +810,7 @@ function keep(route, req) {
         kept.method = req.getCaseSensitiveMethod();
     }
     if (route.keepAll) {
-        kept.headers = allHeaders(req);
+        kept.entries = allHeaders(req);
     } else if (route.keepHeaders !== null) {
         /** @type {Record<string, string>} */
         const headers = {};
