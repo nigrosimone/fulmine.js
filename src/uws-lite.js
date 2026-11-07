@@ -561,8 +561,8 @@ function run(res, request, response) {
     }
     response._flags |= LATE;
     request._req = null;
-    if ((response._flags & ANSWERED) === 0) {
-        // answers later: this is still before the return µWS wants onAborted by
+    // answers later: this is still before the return µWS wants onAborted by. chain() has its own
+    if (request._route.use === null && (response._flags & ANSWERED) === 0) {
         res.onAborted(onAborted.bind(response));
     }
     if (result !== null && typeof result === "object" && typeof result.then === "function") {
@@ -581,7 +581,6 @@ function run(res, request, response) {
 function chain(res, request, response) {
     const use = request._route.use;
     let index = 0;
-    res.onAborted(onAborted.bind(response));
     /** @param {unknown} [error] */
     const next = (error) => {
         if ((response._flags & (ANSWERED | ABORTED)) !== 0) {
@@ -612,6 +611,10 @@ function chain(res, request, response) {
         }
     };
     next();
+    // an abort can only arrive after this returns, so a chain that answered never needs it
+    if ((response._flags & ANSWERED) === 0) {
+        res.onAborted(onAborted.bind(response));
+    }
     response._flags |= LATE;
     request._req = null;
 }

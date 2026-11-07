@@ -1050,6 +1050,39 @@ test("cork: async middleware that answers asks for one", () => {
     assert.deepStrictEqual(calls, ["cork", "end"]);
 });
 
+test("use: onAborted once, and not at all for a chain that answered before returning", async () => {
+    let armed = 0;
+    const res = {
+        cork: (write) => write(),
+        onAborted() {
+            armed++;
+        },
+        writeHeader() {
+            return this;
+        },
+        end() {}
+    };
+    const req = { getQuery: () => "", getUrl: () => "/", getHeader: () => "", forEach() {} };
+    const { makeLiteRoute } = require("../../src/uws-lite.js");
+    const pass = (r, response, next) => next();
+    const later = async (r, response, next) => {
+        await null;
+        next();
+    };
+    const count = async (use, handler) => {
+        armed = 0;
+        makeLiteRoute("get", "/", { use }, handler).uws(res, req);
+        await new Promise((resolve) => setImmediate(resolve));
+        return armed;
+    };
+
+    assert.strictEqual(await count([pass], (r, response) => response.send("x")), 0);
+    assert.strictEqual(await count([(r, response) => response.send("x")], () => {}), 0);
+    assert.strictEqual(await count([pass], () => {}), 1);
+    assert.strictEqual(await count([later], () => {}), 1);
+    assert.strictEqual(await count([later], (r, response) => response.send("x")), 1);
+});
+
 test('body: "stream" pauses µWS when the buffer is full, and only while the response lives', () => {
     const big = new ArrayBuffer(64 * 1024);
     const { makeLiteRoute } = require("../../src/uws-lite.js");
