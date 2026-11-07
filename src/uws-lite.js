@@ -197,14 +197,7 @@ class LiteResponse {
         }
         const name = field.toLowerCase();
         if (name === "content-type") {
-            // the one nearly every response sets, and no map for it
-            const type = contentTypeSet(String(value)) || "false";
-            // the known ones are already bytes, and end() and a Buffer write it as it is
-            if (HEADER_VALUE_BUF[type] === undefined) {
-                validateHeaderValue(field, type);
-            }
-            this._type = type;
-            return this;
+            return this._setType(field, value);
         }
         if (name === "content-length") {
             // µWS writes its own, or goes chunked
@@ -275,7 +268,25 @@ class LiteResponse {
      * @returns {this}
      */
     type(type) {
-        return this.set("content-type", type.indexOf("/") === -1 ? contentTypeFor(type) : type);
+        // not through set(): no toLowerCase of a name known here, on nearly every response
+        return this._setType("content-type", type.indexOf("/") === -1 ? contentTypeFor(type) : type);
+    }
+
+    /**
+     * The one header nearly every response sets, and no map for it.
+     *
+     * @param {string} field the name as written, for the error
+     * @param {unknown} value
+     * @returns {this}
+     */
+    _setType(field, value) {
+        const type = contentTypeSet(String(value)) || "false";
+        // the known ones are already bytes, and end() and a Buffer write it as it is
+        if (HEADER_VALUE_BUF[type] === undefined) {
+            validateHeaderValue(field, type);
+        }
+        this._type = type;
+        return this;
     }
 
     /**
@@ -285,7 +296,10 @@ class LiteResponse {
     send(body) {
         if (typeof body === "string") {
             const type = this._type;
-            return this._finish(type === null ? HTML : type === JSON_UTF8 ? type : withUtf8Charset(type), body);
+            return this._finish(
+                type === null ? HTML : type === JSON_UTF8 || type === TEXT ? type : withUtf8Charset(type),
+                body
+            );
         }
         if (body === undefined || body === null) {
             return this._finish(this._type, "");

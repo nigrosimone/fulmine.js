@@ -1050,6 +1050,26 @@ test("cork: async middleware that answers asks for one", () => {
     assert.deepStrictEqual(calls, ["cork", "end"]);
 });
 
+test("res.type does not go through res.set, which lowercases the name on every response", () => {
+    const res = { cork: (write) => write(), onAborted() {}, writeHeader: () => res, end() {} };
+    const req = { getQuery: () => "", getUrl: () => "/", getHeader: () => "" };
+    const { makeLiteRoute } = require("../../src/uws-lite.js");
+    let type;
+    makeLiteRoute("get", "/", {}, (r, response) => {
+        const proto = Object.getPrototypeOf(response);
+        const set = proto.set;
+        proto.set = () => assert.fail("res.set was called");
+        try {
+            response.type("text/plain");
+            type = response.get("content-type");
+        } finally {
+            proto.set = set;
+        }
+        response.end();
+    }).uws(res, req);
+    assert.strictEqual(type, "text/plain; charset=utf-8");
+});
+
 test("use: onAborted once, and not at all for a chain that answered before returning", async () => {
     let armed = 0;
     const res = {
