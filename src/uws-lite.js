@@ -472,7 +472,7 @@ class LiteResponse {
             // no body and no header describing one, as Express
             _respondWhole(res, status, this._headers, null, undefined, (flags & LATE) === 0);
         } else if (compress !== null && type !== null && compression._isCompressible(type)) {
-            compress._deliver(res, status, this._headers, type, body, this._encoding);
+            compress._deliver(res, status, this._headers, type, body, this._encoding, (flags & LATE) === 0);
         } else {
             _respondWhole(res, status, this._headers, type, body, (flags & LATE) === 0);
         }

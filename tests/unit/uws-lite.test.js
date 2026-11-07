@@ -479,6 +479,121 @@ test("cork: left to µWS while it holds one, asked for after the handler returne
     assert.deepStrictEqual(calls, ["end"]);
 });
 
+/** Records the wire writes, rejecting any made outside the native or an explicit cork. */
+function compressedCorkProbe(accept) {
+    const state = { native: true, depth: 0, corks: 0, headers: {}, chunks: [], collected: null };
+    let finish;
+    const done = new Promise((resolve) => (finish = resolve));
+    const check = () => assert(state.native || state.depth > 0, "write outside a cork");
+    const res = {
+        cork(write) {
+            state.corks++;
+            state.depth++;
+            try {
+                write();
+            } finally {
+                state.depth--;
+            }
+        },
+        onAborted() {},
+        collectBody(limit, callback) {
+            state.collected = callback;
+        },
+        writeHeader(name, value) {
+            check();
+            state.headers[String(name)] = String(value);
+            return this;
+        },
+        write(chunk) {
+            check();
+            state.chunks.push(Buffer.from(chunk));
+            return true;
+        },
+        end(chunk) {
+            check();
+            if (chunk !== undefined) state.chunks.push(Buffer.from(chunk));
+            finish();
+        }
+    };
+    const req = { getQuery: () => "", getUrl: () => "/", getHeader: () => accept, forEach() {} };
+    return { state, res, req, done };
+}
+
+for (const [name, accept, body, encoding] of [
+    ["identity", "", "x".repeat(4096), undefined],
+    ["below threshold", "gzip", "small", undefined],
+    ["gzip", "gzip", "x".repeat(4096), "gzip"],
+    ["brotli", "br", "x".repeat(4096), "br"]
+]) {
+    test(`cork: compression ${name} keeps the native cork only for a synchronous answer`, async () => {
+        const { makeLiteRoute } = require("../../src/uws-lite.js");
+        for (const mode of ["sync", "later", "body", "middleware"]) {
+            const probe = compressedCorkProbe(accept);
+            const options = { compress: { encodings: ["gzip", "br"] } };
+            if (mode === "body") options.body = "text";
+            if (mode === "middleware") {
+                options.use = [
+                    async (req, res, next) => {
+                        await Promise.resolve();
+                        next();
+                    }
+                ];
+            }
+            const handler = (req, res) => {
+                if (mode === "later") return Promise.resolve().then(() => res.type("txt").send(body));
+                res.type("txt").send(body);
+            };
+            makeLiteRoute(mode === "body" ? "post" : "get", "/", options, handler).uws(probe.res, probe.req);
+            // collectBody invokes the handler under µWS's cork too, after the request callback.
+            if (mode === "body") probe.state.collected(new ArrayBuffer(0));
+            probe.state.native = false;
+            await probe.done;
+            assert.strictEqual(probe.state.corks, mode === "sync" || mode === "body" ? 0 : 1, mode);
+            assert.strictEqual(probe.state.headers.vary, "Accept-Encoding", mode);
+            assert.strictEqual(probe.state.headers["content-type"], "text/plain; charset=utf-8", mode);
+            assert.strictEqual(probe.state.headers["content-encoding"], encoding, mode);
+            const output = Buffer.concat(probe.state.chunks);
+            const decoded =
+                encoding === "gzip"
+                    ? zlib.gunzipSync(output)
+                    : encoding === "br"
+                      ? zlib.brotliDecompressSync(output)
+                      : output;
+            assert.strictEqual(decoded.toString(), body, mode);
+        }
+    });
+}
+
+test("cork: asynchronous compression and streams still cork their writes", async () => {
+    const { makeLiteRoute } = require("../../src/uws-lite.js");
+    for (const mode of ["pool", "stream", "identity stream"]) {
+        const probe = compressedCorkProbe(mode === "identity stream" ? "" : "gzip");
+        const body = "x".repeat(mode === "pool" ? 32 * 1024 : 4096);
+        const handler = (req, res) => {
+            res.type("txt");
+            if (mode === "pool") res.send(body);
+            else Readable.from([body.slice(0, 2048), body.slice(2048)]).pipe(res);
+        };
+        makeLiteRoute("get", "/", { compress: { encodings: ["gzip"] } }, handler).uws(probe.res, probe.req);
+        probe.state.native = false;
+        await probe.done;
+        assert(probe.state.corks > 0, mode);
+        assert.strictEqual(probe.state.headers.vary, "Accept-Encoding", mode);
+        const output = Buffer.concat(probe.state.chunks);
+        const decoded = mode === "identity stream" ? output : zlib.gunzipSync(output);
+        assert.strictEqual(decoded.toString(), body, mode);
+    }
+
+    // Raw utility callers have no implicit cork guarantee to pass on.
+    const { compressor } = require("../../src/uws-utils.js");
+    const probe = compressedCorkProbe("");
+    probe.state.native = false;
+    compressor().send(probe.res, 200, null, "raw", "");
+    await probe.done;
+    assert.strictEqual(probe.state.corks, 1);
+    assert.strictEqual(Buffer.concat(probe.state.chunks).toString(), "raw");
+});
+
 test("a bad registration throws where it is written", () => {
     const app = express();
     const handler = () => {};

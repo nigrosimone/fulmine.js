@@ -156,6 +156,32 @@ The settings are `benchmark/server.js`'s, the same ones `run.js` measures under:
 `x-powered-by` and the declarative compiler are off on both arms, so what is measured is the
 framework doing the work rather than what a default application would pay.
 
+## Lite JSON responses
+
+The `lite-json-*` scenarios register `app.uwsLite` routes on Fulmine and the same handler on
+Express, with compression middleware where enabled. They reuse `json-list`'s dataset and build
+the response objects on every request. These are HTTP scenarios, without TLS or clustering.
+
+| Scenario             | Payload  | Compression                                                 |
+| -------------------- | -------- | ----------------------------------------------------------- |
+| `lite-json-plain`    | One item | Disabled; control for the response path without compression |
+| `lite-json-identity` | One item | Enabled, with no Accept-Encoding header                     |
+| `lite-json-gzip`     | 25 items | gzip, default options                                       |
+| `lite-json-brotli`   | 25 items | Brotli, default options                                     |
+
+The 25-item responses are above the compression threshold and below the synchronous compression
+limit. Compare revisions on each scenario; the rows have different payloads and are not a comparison
+of encodings. For example:
+
+```bash
+node benchmark/ab.js --against HEAD --scenario lite-json-identity --rounds 15
+node benchmark/ab.js --against HEAD --scenario lite-json-gzip --rounds 15
+```
+
+Each command runs its null control first. Run them one at a time, with no other load. These rows
+exercise the lite response path; the `arena-baseline-*` and `json-list-*` scenarios use ordinary
+Express-style routes.
+
 ## HttpArena workloads
 
 `arena-baseline-get` and `arena-baseline-post` isolate the GET and Content-Length POST

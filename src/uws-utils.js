@@ -266,8 +266,9 @@ function writeWhole() {
  * @param {Buffer|null} encoding the content-encoding to add
  * @param {boolean} vary whether to add Vary: Accept-Encoding
  * @param {any} body
+ * @param {boolean} [corked] whether a whole answer is still under the native callback's cork
  */
-function respond(res, status, headers, type, encoding, vary, body) {
+function respond(res, status, headers, type, encoding, vary, body, corked = false) {
     outRes = res;
     outStatus = status;
     outHeaders = headers;
@@ -279,7 +280,11 @@ function respond(res, status, headers, type, encoding, vary, body) {
         return;
     }
     outBody = body;
-    res.cork(writeWhole);
+    if (corked) {
+        writeWhole();
+    } else {
+        res.cork(writeWhole);
+    }
     outBody = null;
 }
 
@@ -434,7 +439,7 @@ function sendStream(res, stream) {
  * @returns {{
  *   negotiate: (req: UwsRequest) => string,
  *   send: (res: GuardedResponse, status: number, headers: Record<string, string>|null|undefined, body: unknown, encoding: string) => void,
- *   _deliver: (res: GuardedResponse, status: number, headers: Record<string, string|string[]>|null|undefined, type: string, body: string|Uint8Array, encoding: string) => void
+ *   _deliver: (res: GuardedResponse, status: number, headers: Record<string, string|string[]>|null|undefined, type: string, body: string|Uint8Array, encoding: string, corked?: boolean) => void
  * }}
  */
 function compressor(options) {
@@ -464,8 +469,8 @@ function compressor(options) {
             const payload = implied === JSON_TYPE ? JSON.stringify(body) : body;
             deliver(res, status, headers, own === undefined ? HEADER_VALUE_BUF[implied] : null, payload, encoding);
         },
-        _deliver(res, status, headers, type, body, encoding) {
-            deliver(res, status, headers, HEADER_VALUE_BUF[type] || /** @type {any} */ (type), body, encoding);
+        _deliver(res, status, headers, type, body, encoding, corked) {
+            deliver(res, status, headers, HEADER_VALUE_BUF[type] || /** @type {any} */ (type), body, encoding, corked);
         }
     };
 
@@ -478,10 +483,11 @@ function compressor(options) {
      * @param {Buffer|null} type
      * @param {any} payload
      * @param {string} encoding
+     * @param {boolean} [corked] valid only while delivery stays synchronous
      */
-    function deliver(res, status, headers, type, payload, encoding) {
+    function deliver(res, status, headers, type, payload, encoding, corked = false) {
         if (encoding === "") {
-            respond(res, status, headers, type, null, true, payload);
+            respond(res, status, headers, type, null, true, payload, corked);
             return;
         }
         const encodingBytes = HEADER_VALUE_BUF[encoding];
@@ -493,11 +499,11 @@ function compressor(options) {
         }
         const input = typeof payload === "string" ? Buffer.from(payload) : payload;
         if (input.length < threshold) {
-            respond(res, status, headers, type, null, true, input);
+            respond(res, status, headers, type, null, true, input, corked);
             return;
         }
         if (input.length <= compression._SYNC_LIMIT) {
-            respond(res, status, headers, type, encodingBytes, true, compressWhole(encoding, input));
+            respond(res, status, headers, type, encodingBytes, true, compressWhole(encoding, input), corked);
             return;
         }
         // the pool answers after the handler returned

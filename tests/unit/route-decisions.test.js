@@ -27,6 +27,11 @@ const DECIDED = {
     "json-list-gzip": [1, 1, 0, 0],
     "json-list-identity": [1, 1, 0, 0],
     "json-list": [1, 1, 1, 0],
+    // The report counts the Express fallbacks, shadowed by the direct uwsLite registrations.
+    "lite-json-brotli": [1, 0, 0, 0],
+    "lite-json-gzip": [1, 0, 0, 0],
+    "lite-json-identity": [1, 0, 0, 0],
+    "lite-json-plain": [1, 0, 0, 0],
     "middlewares-100": [1, 1, 0, 0],
     "nested-routers-3": [1, 1, 1, 1],
     "post-urlencoded": [1, 1, 0, 0],
