@@ -23,6 +23,7 @@ const budgets = {
     "lite GET /hello": 304,
     "lite GET /users/:id?q": 704,
     "lite GET /json/:count br": 10896,
+    "lite GET /json/:count small-br": 1328,
     "lite POST /echo lent": 568,
     "lite GET /use": 1480,
     "uws GET /utils": 208

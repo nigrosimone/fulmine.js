@@ -225,6 +225,7 @@ if (mode === "server") {
         "lite GET /hello": ["lite", 200, "GET /hello HTTP/1.1"],
         "lite GET /users/:id?q": ["lite", 200, "GET /users/42?q=x HTTP/1.1"],
         "lite GET /json/:count br": ["lite", 200, "GET /json/25?m=3 HTTP/1.1\r\nAccept-Encoding: gzip, br", 250],
+        "lite GET /json/:count small-br": ["lite", 200, "GET /json/1?m=3 HTTP/1.1\r\nAccept-Encoding: gzip, br"],
         "lite POST /echo lent": ["lite", 200, `POST /echo HTTP/1.1\r\nContent-Length: 1024\r\n\r\n${"x".repeat(1024)}`],
         // ten headers, the copy a route with use pays
         "lite GET /use": [

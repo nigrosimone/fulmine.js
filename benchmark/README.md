@@ -166,8 +166,13 @@ the response objects on every request. These are HTTP scenarios, without TLS or 
 | -------------------- | -------- | ----------------------------------------------------------- |
 | `lite-json-plain`    | One item | Disabled; control for the response path without compression |
 | `lite-json-identity` | One item | Enabled, with no Accept-Encoding header                     |
+| `lite-json-small`    | One item | Brotli negotiated; below the default compression threshold  |
 | `lite-json-gzip`     | 25 items | gzip, default options                                       |
 | `lite-json-brotli`   | 25 items | Brotli, default options                                     |
+
+`lite-text-unicode` sends a fixed string of 768 UTF-16 code units but 1216 UTF-8 bytes with
+Brotli requested. It isolates the byte-length check: the response crosses the 1024-byte
+compression threshold even though its JavaScript string length does not.
 
 The 25-item responses are above the compression threshold and below the synchronous compression
 limit. Compare revisions on each scenario; the rows have different payloads and are not a comparison

@@ -32,6 +32,8 @@ const DECIDED = {
     "lite-json-gzip": [1, 0, 0, 0],
     "lite-json-identity": [1, 0, 0, 0],
     "lite-json-plain": [1, 0, 0, 0],
+    "lite-json-small": [1, 0, 0, 0],
+    "lite-text-unicode": [1, 0, 0, 0],
     "middlewares-100": [1, 1, 0, 0],
     "nested-routers-3": [1, 1, 1, 1],
     "post-urlencoded": [1, 1, 0, 0],

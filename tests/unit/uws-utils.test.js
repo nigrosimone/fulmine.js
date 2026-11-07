@@ -6,6 +6,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert");
+const http = require("node:http");
 const net = require("node:net");
 const zlib = require("node:zlib");
 const { Readable } = require("node:stream");
@@ -325,6 +326,95 @@ test("compressor() leaves alone what is small or not compressible, still naming 
     const image = await request("/image");
     assert.doesNotMatch(image, /content-encoding|vary/i);
     await close();
+});
+
+test("compressor() and lite use UTF-8 bytes at the compression threshold, as Express does", async () => {
+    const reference = require("express")();
+    const referenceCompression = require("compression");
+    reference.set("etag", false);
+    const cases = [];
+    for (const [name, prefix] of [
+        ["ASCII", "aaaaaa"],
+        ["NUL", "a\0aa\0a"],
+        ["Latin-1", "\u00e9\u00e9\u00e9"],
+        ["BMP", "\u20ac\u20ac"],
+        ["astral", "\ud83d\ude00aa"],
+        ["lone high surrogates", "\ud800\ud800"],
+        ["lone low surrogates", "\udc00\udc00"]
+    ]) {
+        for (const length of [7, 8, 9]) {
+            const body = prefix + "x".repeat(length - 6);
+            assert.equal(Buffer.byteLength(body), length);
+            cases.push({ name: `${name} ${length} bytes`, body, threshold: 8 });
+        }
+    }
+    for (const length of [7, 8, 9]) {
+        cases.push({ name: `Buffer ${length} bytes`, body: Buffer.alloc(length, 0x61), threshold: 8 });
+    }
+    cases.push({ name: "empty string below threshold", body: "", threshold: 8 });
+    cases.push({ name: "below fractional threshold", body: "\u00e9".repeat(4), threshold: 8.5 });
+    cases.push({ name: "above fractional threshold", body: "\u20ac".repeat(3), threshold: 8.5 });
+    for (const body of ["", "x", Buffer.alloc(0)]) {
+        cases.push({ name: `${typeof body} with threshold zero`, body, threshold: 0 });
+    }
+
+    const { port, close } = await serve((app) => {
+        for (const [i, { body, threshold }] of cases.entries()) {
+            const options = { threshold };
+            const compress = compressor(options);
+            app.uws("get", `/raw/${i}`, (res, req) => {
+                compress.send(res, 200, { "content-type": "text/plain; charset=utf-8" }, body, compress.negotiate(req));
+            });
+            const answer = (req, res) => res.type("text/plain").send(body);
+            app.uwsLite.get(`/lite/${i}`, { compress: options }, answer);
+            reference.get(`/reference/${i}`, referenceCompression(options), answer);
+        }
+    });
+    const referenceServer = reference.listen(0);
+    await new Promise((resolve) => referenceServer.once("listening", resolve));
+    const referencePort = referenceServer.address().port;
+    const request = (port, path, encoding) =>
+        new Promise((resolve, reject) => {
+            http.get({ port, path, headers: { "accept-encoding": encoding }, agent: false }, (res) => {
+                const chunks = [];
+                res.on("data", (chunk) => chunks.push(chunk));
+                res.on("error", reject);
+                res.on("end", () =>
+                    resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) })
+                );
+            }).on("error", reject);
+        });
+    try {
+        for (const encoding of ["gzip", "br"]) {
+            for (const [i, { name, body, threshold }] of cases.entries()) {
+                const expected = await request(referencePort, `/reference/${i}`, encoding);
+                const compressed = Buffer.byteLength(body) >= threshold;
+                assert.equal(expected.headers["content-encoding"], compressed ? encoding : undefined, name);
+                for (const route of ["raw", "lite"]) {
+                    const actual = await request(port, `/${route}/${i}`, encoding);
+                    const label = `${route} ${encoding} ${name}`;
+                    assert.equal(actual.status, expected.status, label);
+                    for (const header of ["content-type", "content-encoding", "vary"]) {
+                        assert.equal(actual.headers[header], expected.headers[header], `${label} ${header}`);
+                    }
+                    if (!compressed) {
+                        assert.equal(actual.headers["content-length"], expected.headers["content-length"], label);
+                        assert.equal(Number(actual.headers["content-length"]), Buffer.byteLength(body), label);
+                    }
+                    assert.deepStrictEqual(actual.body, expected.body, label);
+                    const decoded = !compressed
+                        ? actual.body
+                        : encoding === "gzip"
+                          ? zlib.gunzipSync(actual.body)
+                          : zlib.brotliDecompressSync(actual.body);
+                    assert.deepStrictEqual(decoded, Buffer.from(body), label);
+                }
+            }
+        }
+    } finally {
+        await close();
+        await new Promise((resolve) => referenceServer.close(resolve));
+    }
 });
 
 test("compressor() over the sync limit goes through the pool, and a stream through the encoder", async () => {

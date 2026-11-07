@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+/// <reference lib="es2024.string" />
+
 "use strict";
 
 // express.uwsUtils: the query, the body and the response of an app.uws() route, each one call away.
@@ -495,6 +497,18 @@ function compressor(options) {
             const encoder = compressStream(encoding);
             pipeline(payload, encoder, noop);
             respond(res, status, headers, type, encodingBytes, true, encoder);
+            return;
+        }
+        // Short strings can go straight to uWS. The UTF-16 length rules out long strings
+        // without scanning their UTF-8 bytes before Buffer.from does it again.
+        // Lone surrogates still need Buffer.from's replacement bytes, which uWS does not write.
+        if (
+            typeof payload === "string" &&
+            payload.length < threshold &&
+            Buffer.byteLength(payload) < threshold &&
+            payload.isWellFormed()
+        ) {
+            respond(res, status, headers, type, null, true, payload, corked);
             return;
         }
         const input = typeof payload === "string" ? Buffer.from(payload) : payload;
