@@ -277,8 +277,8 @@ function reusableBrotli(create, oneShot) {
 
     /** @param {Buffer} body */
     const compress = (body) => {
-        /** @type {Buffer[]} */
-        const chunks = [];
+        /** @type {Buffer[]|null} */
+        let chunks = null;
         let inOffset = 0;
         let inLength = body.length;
         let size = body.length < 512 ? 256 : body.length >> 1;
@@ -286,16 +286,18 @@ function reusableBrotli(create, oneShot) {
             const out = Buffer.allocUnsafe(size);
             handle.writeSync(finish, body, inOffset, inLength, out, 0, size);
             const produced = size - state[0];
-            chunks.push(produced === size ? out : out.subarray(0, produced));
+            if (state[0] !== 0) {
+                handle.reset();
+                const tail = out.subarray(0, produced);
+                if (chunks === null) return tail;
+                chunks.push(tail);
+                return Buffer.concat(chunks);
+            }
+            (chunks ??= []).push(out);
             inOffset += inLength - state[1];
             inLength = state[1];
-            if (state[0] !== 0) {
-                break;
-            }
             size *= 2;
         }
-        handle.reset();
-        return chunks.length === 1 ? chunks[0] : Buffer.concat(chunks);
     };
 
     /** @param {Buffer} body */

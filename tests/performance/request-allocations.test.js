@@ -18,10 +18,11 @@ const budgets = {
     "POST /echo json": 3488,
     "arena GET /baseline11": 1512,
     "arena POST /baseline11": 2584,
-    "arena GET /json/:count br": 14288,
+    "arena GET /json/:count br": 14000,
     "arena POST /echo": 2536,
     "lite GET /hello": 304,
     "lite GET /users/:id?q": 704,
+    "lite GET /json/:count br": 10896,
     "lite POST /echo lent": 568,
     "lite GET /use": 1480,
     "uws GET /utils": 208

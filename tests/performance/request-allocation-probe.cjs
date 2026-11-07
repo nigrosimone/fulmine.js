@@ -116,11 +116,11 @@ if (mode === "server") {
         tags: ["fast", "new"],
         rating: { score: 4.5, count: 100 + i }
     }));
-    const compress = express.compression({
+    const compressOptions = {
         encodings: ["br"],
         brotli: { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 3 } }
-    });
-    arena.get("/json/:count", compress, (req, res) => {
+    };
+    const jsonHandler = (req, res) => {
         const count = Math.min(Math.max(parseInt(req.params.count, 10) || 0, 0), dataset.length);
         const m = parseInt(req.query.m, 10) || 1;
         const items = new Array(count);
@@ -129,7 +129,8 @@ if (mode === "server") {
             items[i] = { ...d, total: d.price * d.quantity * m };
         }
         res.json({ items, count });
-    });
+    };
+    arena.get("/json/:count", express.compression(compressOptions), jsonHandler);
     arena.post("/echo", express.raw({ type: () => true, limit: "1mb" }), (req, res) => {
         res.type("application/octet-stream").send(Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0));
     });
@@ -138,6 +139,7 @@ if (mode === "server") {
     const lite = express();
     lite.uwsLite.get("/hello", (req, res) => res.send("hello"));
     lite.uwsLite.get("/users/:id", (req, res) => res.json({ id: req.params.id, q: req.query.q }));
+    lite.uwsLite.get("/json/:count", { compress: compressOptions }, jsonHandler);
     lite.uwsLite.post("/echo", { body: "lent" }, (req, res) => res.send(req.body));
     const kept = (req, res, next) => {
         req.who = req.get("user-agent");
@@ -222,6 +224,7 @@ if (mode === "server") {
         "arena POST /echo": ["arena", 200, `POST /echo HTTP/1.1\r\nContent-Length: 1024\r\n\r\n${"x".repeat(1024)}`],
         "lite GET /hello": ["lite", 200, "GET /hello HTTP/1.1"],
         "lite GET /users/:id?q": ["lite", 200, "GET /users/42?q=x HTTP/1.1"],
+        "lite GET /json/:count br": ["lite", 200, "GET /json/25?m=3 HTTP/1.1\r\nAccept-Encoding: gzip, br", 250],
         "lite POST /echo lent": ["lite", 200, `POST /echo HTTP/1.1\r\nContent-Length: 1024\r\n\r\n${"x".repeat(1024)}`],
         // ten headers, the copy a route with use pays
         "lite GET /use": [

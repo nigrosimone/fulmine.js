@@ -9,11 +9,27 @@ const http = require("node:http");
 const zlib = require("node:zlib");
 const express = require("../../src/index.js");
 
+/** Deterministic bytes that need more than Brotli's first output buffer, below the sync limit. */
+function incompressibleBody() {
+    const body = Buffer.alloc(4096);
+    let state = 0x12345678;
+    for (let i = 0; i < body.length; i++) {
+        state ^= state << 13;
+        state ^= state >>> 17;
+        state ^= state << 5;
+        body[i] = state >>> 24;
+    }
+    return body;
+}
+
+const INCOMPRESSIBLE = incompressibleBody();
 const BODIES = [
     Buffer.from(JSON.stringify({ items: [], count: 0 })),
     Buffer.from(JSON.stringify({ items: Array.from({ length: 40 }, (item, i) => ({ id: i, name: `item-${i}` })) })),
     Buffer.alloc(2048, 0x7a),
-    Buffer.from("{}".repeat(3000))
+    Buffer.from("{}".repeat(3000)),
+    INCOMPRESSIBLE,
+    Buffer.alloc(0)
 ];
 
 /**
@@ -135,6 +151,12 @@ test("brotli answers the bytes brotliCompressSync would, on every response", asy
                 `br quality ${quality} differs on response ${n}`
             );
             assert.deepStrictEqual(zlib.brotliDecompressSync(answer), body);
+            if (body === INCOMPRESSIBLE) {
+                assert(
+                    answer.length > body.length / 2,
+                    `br quality ${quality} must overflow the first output buffer on response ${n}`
+                );
+            }
         });
     }
 });
@@ -169,8 +191,9 @@ test(
         };
         const app = express();
         app.set("etag", false);
+        let nextBody = 0;
         app.get("/b", express.compression({ encodings: ["br"], threshold: 0 }), (req, res) => {
-            res.type("application/json").send(BODIES[1]);
+            res.type("application/json").send(BODIES[nextBody++ % BODIES.length]);
         });
         const server = app.listen(0);
         const port = app.address().port;
@@ -184,13 +207,14 @@ test(
         try {
             await ask();
             const afterFirst = calls;
-            for (let i = 0; i < 11; i++) {
+            const subsequent = BODIES.length * 3 - 1;
+            for (let i = 0; i < subsequent; i++) {
                 await ask();
             }
             assert.strictEqual(
                 calls,
                 afterFirst,
-                `brotliCompressSync ran ${calls - afterFirst} more times over 11 responses`
+                `brotliCompressSync ran ${calls - afterFirst} more times over ${subsequent} responses`
             );
         } finally {
             zlib.brotliCompressSync = real;
