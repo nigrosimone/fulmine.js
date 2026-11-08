@@ -31,4 +31,17 @@ function nestAdapter() {
     return new ExpressAdapter();
 }
 
-module.exports = { arm, express, nestAdapter };
+/**
+ * The Ts.ED platform for this arm: `@tsed/platform-fulmine` on the Fulmine arm, which is the thing
+ * being tested, and Ts.ED's own Express platform on the other. Ts.ED is ESM only, hence the import.
+ *
+ * @returns {Promise<any>} the platform class, with `bootstrap(Server, settings)`
+ */
+async function tsedPlatform() {
+    if (arm === "fulmine") {
+        return (await import("@tsed/platform-fulmine")).PlatformFulmine;
+    }
+    return (await import("@tsed/platform-express")).PlatformExpress;
+}
+
+module.exports = { arm, express, nestAdapter, tsedPlatform };

@@ -33,8 +33,9 @@ cd integrations && node build.js --force  # rebuild the applications from scratc
 | [react-router.js](./cases/react-router.js) | React Router v8 through `@react-router/express`                                                    |
 | [next.js](./cases/next.js)                 | Next.js as a custom server, `next().getRequestHandler()`                                           |
 | [tsoa.js](./cases/tsoa.js)                 | the routes tsoa generates from a decorated controller, `RegisterRoutes(app)`, validation included  |
+| [tsed.js](./cases/tsed.js)                 | a Ts.ED controller on `@tsed/platform-fulmine`: params, validation, errors, parsers, statics       |
 
-The first six are libraries: a case requires them and runs. The other five compile an application
+The first six are libraries: a case requires them and runs. The other six compile an application
 first, so each keeps a small one in [`apps/`](./apps) and [`build.js`](./build.js) builds it before
 the case runs. tsoa is the odd one: what it compiles is not a page but the Express routes themselves,
 generated from a controller written with decorators, so the case is the generated code calling into
@@ -66,9 +67,9 @@ Four rules, and the first three are the comparison suite's:
   a stack in the error body outside production; React Router logs one when no route matches; Next
   prints how long its config took to load. Each case here shows what silences its own.
 
-Nest is the one case that also picks its adapter from `arm.js`: the Express arm uses Nest's own
+Nest and Ts.ED also pick their adapter from `arm.js`. For Nest the Express arm uses Nest's own
 `ExpressAdapter` and the Fulmine arm uses [`fulmine.js/nest`](../src/nest.js), which is the thing
-being tested.
+being tested. For Ts.ED it is `@tsed/platform-express` against `@tsed/platform-fulmine`.
 
 ## Adding an application
 
