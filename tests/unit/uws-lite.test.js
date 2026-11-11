@@ -59,6 +59,16 @@ function raw(port, text, wait = 300) {
 
 const POST = (body, type = "text/plain") => ({ method: "POST", body, headers: { "content-type": type } });
 
+const FORM =
+    '--b\r\nContent-Disposition: form-data; name="a"\r\n\r\n1\r\n' +
+    '--b\r\nContent-Disposition: form-data; name="f"; filename="x.txt"\r\nContent-Type: text/plain\r\n\r\nhello\r\n' +
+    "--b--\r\n";
+const uploads = (req, res) =>
+    res.json({
+        body: req.body ?? null,
+        files: req.files?.map((f) => [f.fieldname, f.originalname, f.mimetype, f.size, f.buffer.toString()]) ?? null
+    });
+
 const CASES = [
     ["a string is html", {}, (req, res) => res.send("hi"), "/r"],
     ["res.type with a name", {}, (req, res) => res.type("txt").send("hi"), "/r"],
@@ -105,7 +115,9 @@ const CASES = [
     ["bytes", { body: "buffer" }, (req, res) => res.send(req.body), "/r", POST("abc")],
     ["limit as a string", { body: "text", limit: "1kb" }, (req, res) => res.send(req.body), "/r", POST("abc")],
     ["empty json", { body: "json" }, (req, res) => res.json(req.body), "/r", POST("")],
-    ["empty text", { body: "text" }, (req, res) => res.json(req.body), "/r", POST("")]
+    ["empty text", { body: "text" }, (req, res) => res.json(req.body), "/r", POST("")],
+    ["multipart", { body: "multipart" }, uploads, "/r", POST(FORM, "multipart/form-data; boundary=b")],
+    ["multipart of another type", { body: "multipart" }, uploads, "/r", POST(FORM, "text/plain")]
 ];
 
 for (const [name, options, handler, url, init] of CASES) {
@@ -115,7 +127,11 @@ for (const [name, options, handler, url, init] of CASES) {
         const plain = await serve((app) => {
             app.set("etag", false);
             const before =
-                options.body === undefined ? [] : [parsers[options.body]({ type: () => true, limit: options.limit })];
+                options.body === undefined
+                    ? []
+                    : options.body === "multipart"
+                      ? [express.multipart()]
+                      : [parsers[options.body]({ type: () => true, limit: options.limit })];
             app[verb]("/r", ...before, handler);
         });
         const lite = await serve((app) => app.uwsLite(verb, "/r", options, handler));
@@ -157,6 +173,22 @@ test("invalid JSON and strict JSON are a 400 and the handler does not run", asyn
     assert.strictEqual((await call(app.port, "/j", POST("{nope"))).status, 400);
     assert.strictEqual((await call(app.port, "/j", POST("20"))).status, 400);
     assert.strictEqual((await call(app.port, "/j", POST("null"))).status, 400);
+    assert.strictEqual(ran, 0);
+    await app.close();
+});
+
+test("a malformed multipart body is a 400 and the handler does not run", async () => {
+    let ran = 0;
+    const app = await serve((a) => {
+        a.uwsLite("post", "/m", { body: "multipart" }, (req, res) => {
+            ran++;
+            res.end();
+        });
+    });
+    const type = "multipart/form-data; boundary=b";
+    assert.strictEqual((await call(app.port, "/m", POST("--b\r\nnope", type))).status, 400);
+    assert.strictEqual((await call(app.port, "/m", POST("", type))).status, 400);
+    assert.strictEqual((await call(app.port, "/m", POST(FORM, "multipart/form-data"))).status, 400);
     assert.strictEqual(ran, 0);
     await app.close();
 });

@@ -240,9 +240,10 @@ declare module "fulmine.js" {
         export interface LiteOptions {
             /**
              * The body, in req.body when the handler runs. "lent" is a Buffer good until the handler
-             * returns, "stream" a Readable with no limit.
+             * returns, "stream" a Readable with no limit. "multipart" reads only multipart/form-data,
+             * as express.multipart(), with the files in req.files.
              */
-            body?: "text" | "json" | "form" | "buffer" | "lent" | "stream";
+            body?: "text" | "json" | "form" | "multipart" | "buffer" | "lent" | "stream";
             /** Bytes or a string as "1mb", 100kb by default. */
             limit?: number | string;
             /** true for the defaults, or what express.compression() takes. Off by default. */
@@ -260,6 +261,8 @@ declare module "fulmine.js" {
             readonly query: Record<string, any>;
             readonly params: Record<string, string>;
             body: any;
+            /** The uploads of a { body: "multipart" } route. */
+            files: any[] | undefined;
             /** All of them with { headers: true } or middleware, the ones in { headers } otherwise. */
             readonly headers: Record<string, string> | undefined;
             readonly method: string | undefined;

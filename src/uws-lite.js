@@ -26,9 +26,11 @@ const { PassThrough, Readable } = require("stream");
 const bytes = require("bytes");
 const bodyParser = require("./body-parser.js");
 const compression = require("./compression.js");
+const { lazyRequire } = require("./lazy-require.js");
 const parseQuery = require("./parse-query.js");
 const { HEADER_VALUE_BUF, statusLine } = require("./response-utils.js");
 const { compressor, _respond, _respondWhole } = require("./uws-utils.js");
+const parseMultipart = /** @type {() => typeof import("./multipart.js")} */ (lazyRequire("./multipart.js"));
 const {
     contentTypeFor,
     contentTypeSet,
@@ -39,7 +41,7 @@ const {
 
 /**
  * @typedef {{
- *   body?: "text"|"json"|"form"|"buffer"|"lent"|"stream",
+ *   body?: "text"|"json"|"form"|"multipart"|"buffer"|"lent"|"stream",
  *   limit?: number|string,
  *   compress?: boolean | Record<string, unknown>,
  *   headers?: boolean | string[],
@@ -85,6 +87,8 @@ class LiteRequest {
         this.params = params;
         /** @type {any} */
         this.body = undefined;
+        /** @type {any[]|undefined} what a multipart body uploads, as express.multipart() */
+        this.files = undefined;
     }
 
     /** @returns {Record<string, any>} parsed on the first read */
@@ -719,6 +723,18 @@ function onBody(body) {
         request.body = Buffer.from(body);
     } else if (format === "form") {
         request.body = parseQuery(UTF8.decode(body));
+    } else if (format === "multipart") {
+        // copied, the files are views on it and µWS neuters it on return
+        const parsed = parseMultipart()(
+            Buffer.from(new Uint8Array(body)),
+            /** @type {string} */ (request.get("content-type"))
+        );
+        if (parsed === null) {
+            response._refuse(400);
+            return;
+        }
+        request.body = parsed.fields;
+        request.files = parsed.files;
     } else if (body.byteLength === 0) {
         request.body = {};
     } else {
@@ -737,6 +753,20 @@ function onBody(body) {
         request.body = parsed;
     }
     start(response._res, request, response);
+}
+
+/**
+ * Whether express.multipart() takes the body: the media type is multipart/form-data.
+ *
+ * @param {string|undefined} type
+ * @returns {boolean}
+ */
+function isMultipart(type) {
+    if (type === undefined) {
+        return false;
+    }
+    const semi = type.indexOf(";");
+    return (semi === -1 ? type : type.slice(0, semi)).trim().toLowerCase() === "multipart/form-data";
 }
 
 /**
@@ -856,9 +886,9 @@ function makeLiteRoute(method, path, options, handler) {
     const lower = String(method).toLowerCase();
     const any = lower === "any" || lower === "all";
     const format = options.body;
-    if (format !== undefined && !["text", "json", "form", "buffer", "lent", "stream"].includes(format)) {
+    if (format !== undefined && !["text", "json", "form", "multipart", "buffer", "lent", "stream"].includes(format)) {
         throw new TypeError(
-            `app.uwsLite() option body must be text, json, form, buffer, lent or stream, got ${String(format)}`
+            `app.uwsLite() option body must be text, json, form, multipart, buffer, lent or stream, got ${String(format)}`
         );
     }
     if (format === "stream" && options.limit !== undefined) {
@@ -883,8 +913,13 @@ function makeLiteRoute(method, path, options, handler) {
     if (typeof wantedHeaders !== "boolean" && !Array.isArray(wantedHeaders)) {
         throw new TypeError("app.uwsLite() option headers must be an array of names, true for all of them, or false");
     }
-    const headers = Array.isArray(wantedHeaders) ? wantedHeaders.map((name) => name.toLowerCase()) : null;
+    let headers = Array.isArray(wantedHeaders) ? wantedHeaders.map((name) => name.toLowerCase()) : null;
     const keepAll = wantedHeaders === true || use.length !== 0;
+    const multipart = format === "multipart";
+    // the boundary is in the content-type, read after req is gone
+    if (multipart && !keepAll && !headers?.includes("content-type")) {
+        headers = [...(headers ?? []), "content-type"];
+    }
     // true is the defaults, false or nothing is off
     const wanted = options.compress === undefined ? false : options.compress;
     if (typeof wanted !== "boolean" && (typeof wanted !== "object" || wanted === null)) {
@@ -922,6 +957,9 @@ function makeLiteRoute(method, path, options, handler) {
         } else if (streamed) {
             request.body = bodyStream(res, response);
             start(res, request, response);
+        } else if (multipart && !isMultipart(request.get("content-type"))) {
+            // as express.multipart(): another type is not read, and req.body stays undefined
+            start(res, request, response);
         } else {
             request._req = null;
             res.onAborted(bodyAborted);
@@ -948,7 +986,7 @@ function makeLiteRoute(method, path, options, handler) {
             buffer: bodyParser.raw,
             lent: bodyParser.raw
         };
-        before.push(parsers[format]({ type: () => true, limit }));
+        before.push(multipart ? bodyParser.multipart({ limit }) : parsers[format]({ type: () => true, limit }));
     }
     return { uws, express: [...before, ...use, handler], verb: any ? "all" : lower === "del" ? "delete" : lower };
 }
