@@ -34,8 +34,9 @@ cd integrations && node build.js --force  # rebuild the applications from scratc
 | [next.js](./cases/next.js)                 | Next.js as a custom server, `next().getRequestHandler()`                                           |
 | [tsoa.js](./cases/tsoa.js)                 | the routes tsoa generates from a decorated controller, `RegisterRoutes(app)`, validation included  |
 | [tsed.js](./cases/tsed.js)                 | a Ts.ED controller on `@tsed/platform-fulmine`: params, validation, errors, parsers, statics       |
+| [inversify.js](./cases/inversify.js)       | an Inversify controller through `@inversifyjs/http-express`, the arm's app passed as `customApp`   |
 
-The first six are libraries: a case requires them and runs. The other six compile an application
+The first six and Inversify are libraries: a case requires them and runs. The other six compile an application
 first, so each keeps a small one in [`apps/`](./apps) and [`build.js`](./build.js) builds it before
 the case runs. tsoa is the odd one: what it compiles is not a page but the Express routes themselves,
 generated from a controller written with decorators, so the case is the generated code calling into

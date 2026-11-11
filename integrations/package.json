@@ -12,6 +12,8 @@
     "dependencies": {
         "@apollo/server": "^5.0.0",
         "@as-integrations/express5": "^1.1.2",
+        "@inversifyjs/http-core": "^5.10.0",
+        "@inversifyjs/http-express": "^5.10.0",
         "@modelcontextprotocol/sdk": "^1.30.0",
         "@nestjs/common": "^11.1.6",
         "@nestjs/core": "^11.1.6",
@@ -38,9 +40,10 @@
         "@tsed/platform-params": "^8.46.1",
         "@tsed/schema": "^8.46.1",
         "ajv": "^8.20.0",
-        "express": "^5",
+        "express": "^5.3.0",
         "fulmine.js": "file:..",
         "graphql": "^16.11.0",
+        "inversify": "^8.3.0",
         "reflect-metadata": "^0.2.2",
         "rxjs": "^7.8.2",
         "zod": "^4.6.1"
