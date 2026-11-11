@@ -1,5 +1,19 @@
 # Changelog
 
+## [5.32.0](https://github.com/nigrosimone/fulmine.js/compare/v5.31.0...v5.32.0) (2026-11-11)
+
+### Features
+
+* **uws-lite:** body: "multipart", the fields in req.body and the files in req.files ([9067a3b](https://github.com/nigrosimone/fulmine.js/commit/9067a3bb57e71d5ebbe5b4b90fd923ac67ad6ef1))
+
+### Performance Improvements
+
+* **compression:** allocate Brotli chunks only on overflow ([4926ecc](https://github.com/nigrosimone/fulmine.js/commit/4926ecc5a15c84ec44f6a5f8ee625da3492c5e31))
+* **uws-lite:** a chain that answers before returning needs no onAborted, -5.7% with use ([7cbf91a](https://github.com/nigrosimone/fulmine.js/commit/7cbf91a91c41984e233e842f6c9db3f5b73e8ba5))
+* **uws-lite:** avoid redundant cork calls in synchronous responses ([a995d16](https://github.com/nigrosimone/fulmine.js/commit/a995d16cf493d2ddf0354d9072b8bd442c47aea5))
+* **uws-lite:** res.type skips res.set and its toLowerCase, -1.7% on the arena mix ([e7e1231](https://github.com/nigrosimone/fulmine.js/commit/e7e12312d07b989606c88bd911f85943d136790e))
+* **uws-utils:** avoid buffering strings below compression threshold ([d3fe8f2](https://github.com/nigrosimone/fulmine.js/commit/d3fe8f2301278c9cf849c9dc00cba1e67dfad639))
+
 ## [5.31.0](https://github.com/nigrosimone/fulmine.js/compare/v5.30.0...v5.31.0) (2026-11-06)
 
 ### Features
