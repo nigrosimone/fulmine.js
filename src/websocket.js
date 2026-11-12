@@ -18,7 +18,7 @@ limitations under the License.
 
 // the global Buffer is a getter, a call on every read
 const { Buffer } = require("buffer");
-const { canBeOptimizedWithParams, decodeParam, NullObject } = require("./utils.js");
+const { canBeOptimizedWithParams, decodeParam, internalized, NullObject } = require("./utils.js");
 const { regExParam } = require("./router-utils.js");
 
 // the handshake's names as bytes, uWS reads a Buffer name without converting it (see request.js)
@@ -138,7 +138,7 @@ function collectRoutes(router) {
  */
 function makeUpgradeHandler(app, path, behavior) {
     // the parameter names in the order µWS numbers them, by the name rule a route reads
-    const paramNames = [...path.matchAll(regExParam)].map((match) => match[1]);
+    const paramNames = [...path.matchAll(regExParam)].map((match) => internalized(match[1]));
     // a function, checked by checkBehavior where it was registered
     const userUpgrade = /** @type {((req: Request, res: Response) => void|Promise<void>)|undefined} */ (
         behavior.upgrade

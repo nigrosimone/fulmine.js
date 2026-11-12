@@ -36,7 +36,8 @@ const {
     contentTypeSet,
     validateHeaderName,
     validateHeaderValue,
-    withUtf8Charset
+    withUtf8Charset,
+    internalized
 } = require("./utils.js");
 
 /**
@@ -908,7 +909,7 @@ function makeLiteRoute(method, path, options, handler) {
     const names = path
         .split("/")
         .filter((segment) => segment.startsWith(":"))
-        .map((segment) => segment.slice(1));
+        .map((segment) => internalized(segment.slice(1)));
     const wantedHeaders = options.headers === undefined ? false : options.headers;
     if (typeof wantedHeaders !== "boolean" && !Array.isArray(wantedHeaders)) {
         throw new TypeError("app.uwsLite() option headers must be an array of names, true for all of them, or false");

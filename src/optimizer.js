@@ -29,7 +29,8 @@ const {
     canBeOptimized,
     canBeOptimizedWithParams,
     pathsCanOverlap,
-    uwsPrefersEarlier
+    uwsPrefersEarlier,
+    internalized
 } = require("./utils.js");
 const Walk = require("./walk.js");
 const compileDeclarative = require("./declarative.js");
@@ -426,7 +427,7 @@ function registerUwsRoute(router, route, optimizedPath) {
         method = "del";
     }
     if (route.path.includes(":")) {
-        route.optimizedParams = route.path.match(regExParam).map((/** @type {string} */ p) => p.slice(1));
+        route.optimizedParams = route.path.match(regExParam).map((/** @type {string} */ p) => internalized(p.slice(1)));
     }
     // see _optimizeRoute; matched insensitively, that is the folding the guard exists for
     const caseGuards = route._caseGuards
