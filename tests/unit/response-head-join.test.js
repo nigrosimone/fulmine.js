@@ -123,9 +123,32 @@ const PAIR = { connection: "keep-alive", "keep-alive": "timeout=10" };
 
 test("one or two lines keep a crossing each, the seeded pair counting as one", () => {
     assert.strictEqual(compare({ ...PAIR }).crossings, 1);
-    assert.strictEqual(compare({ ...PAIR, "content-type": "text/html; charset=utf-8" }).crossings, 2);
+    assert.strictEqual(compare({ ...PAIR, "content-type": "text/css; charset=utf-8" }).crossings, 2);
     assert.strictEqual(compare({ "content-type": "text/plain" }).crossings, 1);
     assert.strictEqual(compare({ "x-a": "1", "x-b": "2" }).crossings, 2);
+});
+
+test("the seeded pair and a common content-type cross once", () => {
+    for (const type of [
+        "text/html; charset=utf-8",
+        "text/plain; charset=utf-8",
+        "application/json; charset=utf-8",
+        "application/octet-stream"
+    ]) {
+        assert.strictEqual(compare({ ...PAIR, "content-type": type }).crossings, 1, type);
+        // the length is not a line, uWS takes it through end()
+        assert.strictEqual(compare({ ...PAIR, "content-type": type, "content-length": "2" }).crossings, 1, type);
+    }
+    // only behind the seeded pair, and only as the second line
+    assert.strictEqual(compare({ "x-a": "1", "content-type": "text/html; charset=utf-8" }).crossings, 2);
+    assert.strictEqual(
+        compare({ connection: "keep-alive", "keep-alive": "timeout=5", "content-type": "text/html; charset=utf-8" })
+            .crossings,
+        1,
+        "three lines, joined as before"
+    );
+    assert.strictEqual(compare({ connection: "close", "content-type": "text/html; charset=utf-8" }).crossings, 2);
+    assert.strictEqual(compare({ ...PAIR, "content-type": false }).crossings, 2);
 });
 
 test("three lines or more cross once", () => {

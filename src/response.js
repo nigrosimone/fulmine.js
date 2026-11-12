@@ -85,6 +85,12 @@ const SEEDED_KEEP_ALIVE = "timeout=10";
 // 572ns to 438 per head with a content-type, on node 26
 const SEEDED_PAIR = "keep-alive\r\nkeep-alive: " + SEEDED_KEEP_ALIVE;
 const SEEDED_PAIR_BUF = Buffer.from(SEEDED_PAIR);
+// the seeded pair and a common content-type in one value, one writeHeader instead of two
+/** @type {Record<string, Buffer>} */
+const SEEDED_PAIR_AND_TYPE_BUF = /** @type {any} */ ({ __proto__: null });
+for (const type of ["text/html; charset=utf-8", "text/plain; charset=utf-8", JSON_UTF8, "application/octet-stream"]) {
+    SEEDED_PAIR_AND_TYPE_BUF[type] = Buffer.from(SEEDED_PAIR + "\r\ncontent-type: " + type);
+}
 // res.type()'s argument to the Content-Type it stored, bounded as the header name caches
 /** @type {Map<string, string>} */
 const TYPE_VALUES = new Map();
@@ -648,7 +654,8 @@ module.exports = class Response extends LazyWritable {
      *
      * From the third line on the head goes in one writeHeader, joined in the first value, as uWS
      * writes `name: value\r\n` without reading it. Per head on node 26: helmet's set 3953ns to 1327,
-     * five lines 1013 to 531. One or two lines keep a call each, the join costs what it saves (issue #11).
+     * five lines 1013 to 531. One or two lines keep a call each, the join costs what it saves (issue #11),
+     * except the seeded pair with a common content-type, see SEEDED_PAIR_AND_TYPE_BUF.
      *
      * @param {boolean} utf8 unused, kept because node's equivalent takes it and the two callers
      *   differ on what they know about the body
@@ -783,6 +790,13 @@ module.exports = class Response extends LazyWritable {
         if (lines > 2) {
             res.writeHeader(name, joined);
             return;
+        }
+        if (lines === 2 && pair && secondName === "content-type") {
+            const both = SEEDED_PAIR_AND_TYPE_BUF[secondValue];
+            if (both !== undefined) {
+                res.writeHeader(name, both);
+                return;
+            }
         }
         res.writeHeader(name, pair ? SEEDED_PAIR_BUF : HEADER_VALUE_BUF[firstValue] || firstValue);
         if (lines === 2) {
