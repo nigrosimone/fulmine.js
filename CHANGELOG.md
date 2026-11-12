@@ -1,5 +1,17 @@
 # Changelog
 
+## [5.33.0](https://github.com/nigrosimone/fulmine.js/compare/v5.32.0...v5.33.0) (2026-11-12)
+
+### Features
+
+* **optimizer:** an added res method keeps the header skip where it is not called, a replaced one may opt in ([18940c1](https://github.com/nigrosimone/fulmine.js/commit/18940c17d4784f8cb711fb12bbf1e0c6e5209d5b))
+
+### Performance Improvements
+
+* **body-parser:** no own cork for a body collected natively ([dcd05ff](https://github.com/nigrosimone/fulmine.js/commit/dcd05ff8e2f0a2c5d75c7c18ffe38143f8d5936a))
+* **response:** seeded pair and content-type in one writeHeader ([28818f3](https://github.com/nigrosimone/fulmine.js/commit/28818f343ec0a4c026544591f3ef1e3bccef3d48))
+* **router:** internalize param names, req.params writes 12x cheaper ([625b399](https://github.com/nigrosimone/fulmine.js/commit/625b3995a0121b7477cf54070edf6595e12aa3e3))
+
 ## [5.32.0](https://github.com/nigrosimone/fulmine.js/compare/v5.31.0...v5.32.0) (2026-11-11)
 
 ### Features
