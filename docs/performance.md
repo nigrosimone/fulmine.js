@@ -155,6 +155,13 @@ Worth changing, if these are routes that carry traffic
 
 It loads the application with `listen()` replaced by the half that compiles the routes, so nothing binds a port and the listen callback does not run: profiling a running service does not start a second copy of it. There is no score, on purpose. A percentage of routes is not a percentage of traffic, and an application with a thousand cold routes and one hot one that fell back would score well and serve badly.
 
+"Copies no request headers" is decided by reading the handlers, not the response methods they call. A method you add to `app.response`, `res.ok()` say, costs that only on the routes whose handler calls it. A method you replace, `res.json` or `res.send`, costs it on every route, since any of them may run it. A library that replaces one and reads nothing of the request, apart from `If-None-Match` and `If-Modified-Since`, can say so on the function, and then the routes keep it:
+
+```js
+app.response.json = myJson;
+myJson[Symbol.for("fulmine.readsNoRequest")] = true;
+```
+
 The same verdicts are readable from a test, which is where they belong for the routes that carry the traffic. A route stays on the fast path only while it stays eligible, and nothing complains when it stops: the answer is still correct, only slower, and the commit that did it is found weeks later.
 
 ```js

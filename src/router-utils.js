@@ -139,27 +139,53 @@ const ownResponse = new Map(
     ])
 );
 
+// Set to true on a replacement method by the library that wrote it: the method reads nothing of the
+// request that usage.js refuses, the conditional pair aside, which the skip branch keeps
+const READS_NO_REQUEST = Symbol.for("fulmine.readsNoRequest");
+
+/**
+ * Whether the property is a function that declares READS_NO_REQUEST.
+ *
+ * @param {object} level
+ * @param {string} name
+ * @returns {boolean}
+ */
+function declaredSafe(level, name) {
+    const value = Object.getOwnPropertyDescriptor(level, name)?.value;
+    return typeof value === "function" && value[READS_NO_REQUEST] === true;
+}
+
 /**
  * Whether a method of this response prototype is not ours: it may read the request in ways
- * usage.js never saw, so the header and query skips cannot be granted.
+ * usage.js never saw, so the header and query skips cannot be granted. Only a replaced name
+ * counts. An added one is reached by a handler that names it, and usage.js refuses that handler
+ * already, so `app.response.ok = ...` costs the skip of the routes calling it, not of every route.
  *
  * @param {object} proto an application's response prototype
  * @returns {boolean}
  */
 function responsePatched(proto) {
     for (let level = proto; level !== null && level !== Response.prototype; level = Object.getPrototypeOf(level)) {
-        if (Object.getOwnPropertyNames(level).some((name) => name !== "constructor")) {
+        for (const name of Object.getOwnPropertyNames(level)) {
+            if (name !== "constructor" && name in Response.prototype && !declaredSafe(level, name)) {
+                return true;
+            }
+        }
+    }
+    const inherited = Object.getPrototypeOf(Response.prototype);
+    for (const name of Object.getOwnPropertyNames(Response.prototype)) {
+        const now = Object.getOwnPropertyDescriptor(Response.prototype, name);
+        const was = ownResponse.get(name);
+        const replaced = was
+            ? now?.value !== was.value || now?.get !== was.get || now?.set !== was.set
+            : name in inherited;
+        if (replaced && !declaredSafe(Response.prototype, name)) {
             return true;
         }
     }
-    const names = Object.getOwnPropertyNames(Response.prototype);
-    if (names.length !== ownResponse.size) {
-        return true;
-    }
-    for (const name of names) {
-        const now = Object.getOwnPropertyDescriptor(Response.prototype, name);
-        const was = ownResponse.get(name);
-        if (!was || now?.value !== was.value || now?.get !== was.get || now?.set !== was.set) {
+    // a deleted method falls through to the base class, which is not what usage.js knows either
+    for (const name of ownResponse.keys()) {
+        if (!Object.prototype.hasOwnProperty.call(Response.prototype, name)) {
             return true;
         }
     }

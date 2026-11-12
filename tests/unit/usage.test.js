@@ -389,3 +389,92 @@ test("the app grants skips whatever the etag setting, and takes them back on lat
     assert.equal(params.granted, 3);
     params.close();
 });
+
+test("a method put on app.response costs the skip only where it can be reached", () => {
+    const { routeReport } = require("../../src/testing.js");
+    const Response = require("../../src/response.js");
+    const skips = (setup) => {
+        const app = express();
+        setup(app);
+        app.get("/plain", (req, res) => res.json({ a: 1 }));
+        return Object.fromEntries(routeReport(app).map((entry) => [entry.path, entry.skipHeaders]));
+    };
+
+    // added: only a handler naming it reaches it, and usage.js refuses that handler
+    const added = skips((app) => {
+        app.response.ok = function (body) {
+            return this.json({ ok: body, auth: this.req.get("authorization") });
+        };
+        app.get("/ok", (req, res) => res.ok(1));
+    });
+    assert.deepEqual(added, { "/plain": true, "/ok": false });
+
+    // replaced: every route may run it through res.json
+    const replaced = skips((app) => {
+        const json = app.response.json;
+        app.response.json = function (body) {
+            return json.call(this, { ...body, auth: this.req.get("authorization") });
+        };
+    });
+    assert.deepEqual(replaced, { "/plain": false });
+
+    // replaced, by a library that declares the method reads nothing of the request
+    const declared = skips((app) => {
+        const json = app.response.json;
+        app.response.json = function (body) {
+            return json.call(this, body);
+        };
+        app.response.json[Symbol.for("fulmine.readsNoRequest")] = true;
+    });
+    assert.deepEqual(declared, { "/plain": true });
+
+    // a declaration on one method does not cover another
+    const partly = skips((app) => {
+        const json = app.response.json;
+        app.response.json = Object.assign(
+            function (body) {
+                return json.call(this, body);
+            },
+            { [Symbol.for("fulmine.readsNoRequest")]: true }
+        );
+        const send = app.response.send;
+        app.response.send = function (body) {
+            return send.call(this, body);
+        };
+    });
+    assert.deepEqual(partly, { "/plain": false });
+
+    // on the shared prototype, replacing counts and adding does not
+    const json = Response.prototype.json;
+    try {
+        Response.prototype.json = function (body) {
+            return json.call(this, body);
+        };
+        assert.deepEqual(
+            skips(() => {}),
+            { "/plain": false }
+        );
+    } finally {
+        Response.prototype.json = json;
+    }
+    try {
+        Response.prototype.ok = function () {};
+        assert.deepEqual(
+            skips(() => {}),
+            { "/plain": true }
+        );
+    } finally {
+        delete Response.prototype.ok;
+    }
+    // shadowing what the base class gives counts as replacing
+    assert.ok(!Object.prototype.hasOwnProperty.call(Response.prototype, "setDefaultEncoding"));
+    try {
+        Response.prototype.setDefaultEncoding = function () {};
+        assert.deepEqual(
+            skips(() => {}),
+            { "/plain": false }
+        );
+    } finally {
+        delete Response.prototype.setDefaultEncoding;
+    }
+});
