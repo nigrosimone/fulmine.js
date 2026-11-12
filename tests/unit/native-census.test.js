@@ -54,9 +54,9 @@ const BUDGET = {
     "GET /ip, trust proxy": { end: 1, forEach: 1, getQuery: 1, getRemoteAddress: 1, writeHeader: 1 },
     "GET /ua": { end: 1, forEach: 1, getQuery: 1, writeHeader: 1 },
     "GET /socket": { end: 1, forEach: 1, getQuery: 1, writeHeader: 1 },
-    "POST /echo": { collectBody: 1, cork: 1, end: 1, forEach: 1, getQuery: 1, onAborted: 1, writeHeader: 1 },
-    "POST /form": { collectBody: 1, cork: 1, end: 1, forEach: 1, getQuery: 1, onAborted: 1, writeHeader: 1 },
-    "POST /text": { collectBody: 1, cork: 1, end: 1, forEach: 1, getQuery: 1, onAborted: 1, writeHeader: 1 },
+    "POST /echo": { collectBody: 1, end: 1, forEach: 1, getQuery: 1, onAborted: 1, writeHeader: 1 },
+    "POST /form": { collectBody: 1, end: 1, forEach: 1, getQuery: 1, onAborted: 1, writeHeader: 1 },
+    "POST /text": { collectBody: 1, end: 1, forEach: 1, getQuery: 1, onAborted: 1, writeHeader: 1 },
     "POST /small, over the limit": {
         cork: 1,
         end: 1,

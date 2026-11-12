@@ -498,33 +498,40 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
             req.complete = true;
             req.readable = false;
             req._res.collectBody(limit, (/** @type {ArrayBuffer|Buffer|null} */ body) => {
-                if (body === null) {
-                    // over maxSize: uWS refused it natively
-                    return next(
-                        bodyError("request entity too large", 413, "entity.too.large", {
-                            limit: limit,
-                            received: limit
-                        })
-                    );
+                // called from uWS's data event, already corked as the route handler: no cork of
+                // our own until this returns, 4.2% of the profile on arena-baseline-post
+                res._corkNeeded = false;
+                try {
+                    if (body === null) {
+                        // over maxSize: uWS refused it natively
+                        return next(
+                            bodyError("request entity too large", 413, "entity.too.large", {
+                                limit: limit,
+                                received: limit
+                            })
+                        );
+                    }
+                    if (declaresLength && body.byteLength !== declared) {
+                        return next(
+                            bodyError("request size did not match content length", 400, "request.size.invalid", {
+                                expected: declared,
+                                length: declared,
+                                received: body.byteLength
+                            })
+                        );
+                    }
+                    // a Buffer is node:http's, through the shim, and Buffer.from() would copy it
+                    let buf = Buffer.isBuffer(body) ? body : Buffer.from(body);
+                    if (copyBody) {
+                        buf = Buffer.from(buf);
+                    }
+                    if (!runVerify(req, res, next, options, buf, encoding)) {
+                        return;
+                    }
+                    beforeReturn(req, res, next, options, buf, encoding);
+                } finally {
+                    res._corkNeeded = true;
                 }
-                if (declaresLength && body.byteLength !== declared) {
-                    return next(
-                        bodyError("request size did not match content length", 400, "request.size.invalid", {
-                            expected: declared,
-                            length: declared,
-                            received: body.byteLength
-                        })
-                    );
-                }
-                // a Buffer is node:http's, through the shim, and Buffer.from() would copy it
-                let buf = Buffer.isBuffer(body) ? body : Buffer.from(body);
-                if (copyBody) {
-                    buf = Buffer.from(buf);
-                }
-                if (!runVerify(req, res, next, options, buf, encoding)) {
-                    return;
-                }
-                beforeReturn(req, res, next, options, buf, encoding);
             });
         }
 
