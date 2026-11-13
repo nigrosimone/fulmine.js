@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.33.1](https://github.com/nigrosimone/fulmine.js/compare/v5.33.0...v5.33.1) (2026-11-13)
+
+### Bug Fixes
+
+* **declarative:** res.send of a bigint or regex literal is left to the ordinary path ([c6792aa](https://github.com/nigrosimone/fulmine.js/commit/c6792aab8154654c2d2fad38562db0ebae1600f1))
+* **router:** a real Express app mounted with app.use is served as Express mounts it ([c5abfd0](https://github.com/nigrosimone/fulmine.js/commit/c5abfd032a4db088a47f3a0d736a68049afbbbc2))
+
 ## [5.33.0](https://github.com/nigrosimone/fulmine.js/compare/v5.32.0...v5.33.0) (2026-11-12)
 
 ### Features
