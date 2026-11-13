@@ -12,6 +12,8 @@
     "dependencies": {
         "@apollo/server": "^5.0.0",
         "@as-integrations/express5": "^1.1.2",
+        "@bull-board/api": "^9.13.1",
+        "@bull-board/express": "^9.13.1",
         "@inversifyjs/http-core": "^5.10.0",
         "@inversifyjs/http-express": "^5.10.0",
         "@modelcontextprotocol/sdk": "^1.30.0",

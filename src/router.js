@@ -91,6 +91,55 @@ let routeGroups = 0;
 
 let routeKey = 0;
 
+/**
+ * An application this fulmine did not build, a real Express app most of all: Express's own test,
+ * asked only of what is not a Router.
+ *
+ * @param {any} fn
+ * @returns {boolean}
+ */
+function isForeignApp(fn) {
+    return typeof fn.handle === "function" && typeof fn.set === "function";
+}
+
+/**
+ * Mounts a foreign app the way Express's app.use does: 'mount' chains its request and response onto
+ * ours, and its handle() moves req and res onto them, so they are put back when it calls next.
+ * req.app and res.app are own fields here and would hide the app its prototypes carry, so they are
+ * set too, and the app gets the few fields our request and response read from theirs.
+ *
+ * @param {any} parent
+ * @param {any} app
+ * @param {string|RegExp|Array<string|RegExp>} path
+ * @returns {Function}
+ */
+function mountForeignApp(parent, app, path) {
+    app.mountpath = path === "" ? "/" : path;
+    app.parent = parent;
+    const resolveHot = parent._hot;
+    app._settings = app.settings;
+    app._hotSettings = new HotSettings();
+    // resolved on every read: its set() does not move our settings epoch
+    app._hot = function () {
+        this._hotSettings.epoch = -1;
+        return resolveHot.call(this);
+    };
+    Object.defineProperty(app, "ssl", { configurable: true, get: () => parent.ssl });
+    Object.defineProperty(app, "_listenHost", { configurable: true, get: () => parent._listenHost });
+    const mounted_app = (/** @type {any} */ req, /** @type {any} */ res, /** @type {Function} */ next) => {
+        const orig = req.app;
+        req.app = res.app = app;
+        app.handle(req, res, (/** @type {unknown} */ err) => {
+            Object.setPrototypeOf(req, orig.request);
+            Object.setPrototypeOf(res, orig.response);
+            req.app = res.app = orig;
+            next(err);
+        });
+    };
+    app.emit("mount", parent);
+    return mounted_app;
+}
+
 module.exports = class Router extends EventEmitter {
     /**
      * The router or application this one is mounted on, undefined until it is.
@@ -1318,7 +1367,8 @@ module.exports = class Router extends EventEmitter {
         callbacks = callbacks.flat(Infinity);
         checkHandlers(callbacks, this._isApplication ? "app.use() requires a middleware function" : undefined);
 
-        for (const callback of callbacks) {
+        for (let i = 0; i < callbacks.length; i++) {
+            const callback = callbacks[i];
             // only app.use() mounts an app: handed to a Router it is a function to express, with its
             // own settings, no parent and "/" as mountpath
             if (callback instanceof Router && (!callback._isApplication || this._isApplication)) {
@@ -1328,6 +1378,8 @@ module.exports = class Router extends EventEmitter {
                 callback.emit("mount", this);
                 // what the child resolves through its parent just changed
                 settingsEpoch.n++;
+            } else if (this._isApplication && isForeignApp(callback)) {
+                callbacks[i] = mountForeignApp(this, callback, /** @type {string|RegExp|(string|RegExp)[]} */ (path));
             }
         }
         this.createRoute("USE", /** @type {string|RegExp|(string|RegExp)[]} */ (path), this, ...callbacks);
