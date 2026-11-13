@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.33.3](https://github.com/nigrosimone/fulmine.js/compare/v5.33.2...v5.33.3) (2026-11-13)
+
+### Bug Fixes
+
+* **response:** res.set with one argument reads it as an object of headers, as Express does ([9f398e4](https://github.com/nigrosimone/fulmine.js/commit/9f398e405117afb60532040bc24aeb70fd0ab75f))
+
 ## [5.33.2](https://github.com/nigrosimone/fulmine.js/compare/v5.33.1...v5.33.2) (2026-11-13)
 
 ### Bug Fixes
