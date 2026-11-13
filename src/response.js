@@ -1735,7 +1735,7 @@ module.exports = class Response extends LazyWritable {
      * @returns {this}
      */
     header(field, value) {
-        return this.set(field, value);
+        return arguments.length < 2 ? this.set(field) : this.set(field, value);
     }
 
     /**
@@ -1745,7 +1745,8 @@ module.exports = class Response extends LazyWritable {
      * @returns {this}
      */
     set(field, value) {
-        if (typeof field === "object") {
+        // one argument is read as an object of headers, as Express does: res.set(undefined) sets nothing
+        if (arguments.length < 2 || typeof field === "object") {
             const fields = /** @type {Record<string, string|string[]>} */ (field);
             for (const header in fields) {
                 this.set(header, fields[header]);
