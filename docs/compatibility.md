@@ -262,6 +262,16 @@ built first by that suite, so what is compared is what their own build produces.
   Runnable: [`examples/mcp.js`](../examples/mcp.js)
 - ✅ [tsoa](https://tsoa-project.github.io/docs/): the routes `tsoa spec-and-routes` generates from a decorated
   controller, registered with `RegisterRoutes(app)`, validation errors included
+- ✅ [Ts.ED](https://tsed.dev) through
+  [`@tsed/platform-fulmine`](https://tsed.dev/docs/configuration/fulmine.html): params, validation,
+  errors, body parsers and statics
+- ✅ [Inversify](https://inversify.io) through `@inversifyjs/http-express`, the app passed as
+  `customApp`
+- ✅ [Bull Board](https://github.com/felixmosh/bull-board) through `@bull-board/express`, whose router
+  is a real Express application [mounted with `app.use`](./frameworks.md#bull-board)
+
+[Parse Server and Keystone](./frameworks.md) were run by hand rather than in the suite, because each
+needs a database to start.
 
 [Angular SSR](./migrating.md#angular-ssr) works too but is not in that suite: it is an ordinary Express
 `server.ts` plus one line of build configuration.

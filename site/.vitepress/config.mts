@@ -110,7 +110,8 @@ export default defineConfig({
                     { text: "Monitoring", link: "/monitoring" },
                     { text: "WebSockets", link: "/websockets" },
                     { text: "Raw µWS routes", link: "/uws-routes" },
-                    { text: "NestJS", link: "/nest" }
+                    { text: "NestJS", link: "/nest" },
+                    { text: "Bull Board, Parse, Keystone", link: "/frameworks" }
                 ]
             },
             {
