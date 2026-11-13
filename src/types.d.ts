@@ -505,6 +505,10 @@ declare module "fulmine.js" {
         listen(port: number | string, callback?: (error?: Error) => void): FulmineServer;
         listen(port: number | string, host: string, callback?: (error?: Error) => void): FulmineServer;
         listen(port: number | string, host: string, backlog: number, callback?: (error?: Error) => void): FulmineServer;
+        listen(
+            options: { port?: number | string; host?: string; path?: string },
+            callback?: (error?: Error) => void
+        ): FulmineServer;
         /**
          * What listen() hands back is the app itself, and it answers as an `http.Server` so a
          * shutdown wrapper or a library testing what it was given recognises it. These are the

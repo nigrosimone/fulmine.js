@@ -606,7 +606,8 @@ class Application extends Router {
      * Binds and starts accepting. Returns the app, which answers as an `http.Server`; socket.io
      * wants `app.uwsApp`. A path instead of a port is a unix socket.
      *
-     * @param {number|string} [port] port, or a unix socket path; 0 picks a free port
+     * @param {number|string|{port?: number|string, host?: string, path?: string}} [port] port, or a
+     *   unix socket path; 0 picks a free port. Or node's options object
      * @param {string} [host] interface to bind; every interface when omitted
      * @param {number} [backlog] accepted for node's signature; uWS sizes its own queue
      * @param {(err?: Error) => void} [callback] called once bound, or with the bind error
@@ -621,6 +622,14 @@ class Application extends Router {
                 this._clusterHandle = forkWorkers(this._clusterWorkers);
             }
             return this;
+        }
+        // node's listen(options, cb), as Express hands its arguments to node
+        if (port !== null && typeof port === "object") {
+            if (typeof host === "function") {
+                callback = host;
+            }
+            host = port.host;
+            port = port.path ?? port.port;
         }
         // node's shapes: (cb), (port, cb), (port, host, cb), (port, host, backlog, cb)
         if (typeof port === "function") {

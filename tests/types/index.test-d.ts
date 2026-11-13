@@ -164,6 +164,7 @@ expectAssignable<Server>(configured.listen(3000, "127.0.0.1"));
 expectAssignable<Server>(configured.listen((_error) => {}));
 // what process.env.PORT gives you, which is what every generated server.ts passes
 expectAssignable<Server>(configured.listen(process.env.PORT || 4000, (_error) => {}));
+expectAssignable<Server>(configured.listen({ port: 3000, host: "127.0.0.1" }, (_error) => {}));
 // and node's fourth shape, which the runtime has always accepted
 expectAssignable<Server>(configured.listen(3000, "127.0.0.1", 511, () => {}));
 
