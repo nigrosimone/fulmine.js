@@ -377,7 +377,8 @@ function readBody(callExprs, headers, body, app, queries, params) {
             }
             if (arg) {
                 if (arg.type === "Literal") {
-                    if (typeof arg.value === "number") {
+                    // a bigint throws in Express and a regex is sent as JSON, left to the ordinary path
+                    if (typeof arg.value === "number" || typeof arg.value === "bigint" || "regex" in arg) {
                         return null;
                     }
                     // node takes a string or null; true throws and false writes nothing
