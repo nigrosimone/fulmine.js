@@ -269,6 +269,8 @@ built first by that suite, so what is compared is what their own build produces.
   `customApp`
 - ✅ [Bull Board](https://github.com/felixmosh/bull-board) through `@bull-board/express`, whose router
   is a real Express application [mounted with `app.use`](./frameworks.md#bull-board)
+- ✅ [express-zod-api](https://ez.robintail.cz) through `attachRouting()`, with the app passed in its
+  config: validation, thrown http errors, CORS and its 404 (5.33.3 or later)
 
 [Parse Server and Keystone](./frameworks.md) were run by hand rather than in the suite, because each
 needs a database to start.
