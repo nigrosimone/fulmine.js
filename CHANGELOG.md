@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.33.2](https://github.com/nigrosimone/fulmine.js/compare/v5.33.1...v5.33.2) (2026-11-13)
+
+### Bug Fixes
+
+* **application:** listen takes node's options object, as Express passes it through ([e8457ef](https://github.com/nigrosimone/fulmine.js/commit/e8457ef7877bc4a79ef079d18e8a439ee8610e81))
+
 ## [5.33.1](https://github.com/nigrosimone/fulmine.js/compare/v5.33.0...v5.33.1) (2026-11-13)
 
 ### Bug Fixes
