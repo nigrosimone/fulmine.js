@@ -34,7 +34,8 @@ app.listen(3000);
 
 The router is a real Express application, so Express stays installed as Bull Board's dependency.
 Fulmine mounts it the way Express mounts a sub-app. That needs Fulmine 5.33.1 or later: before it,
-the first request to a mounted Express application crashed the process.
+the first request to a mounted Express application crashed the process. The Bull Board docs say the
+same in their [Express adapter page](https://felixmosh.github.io/bull-board/server-adapters/express).
 
 ## Parse Server
 
