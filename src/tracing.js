@@ -90,21 +90,6 @@ function report(ctx, err) {
 }
 
 /**
- * The error a handler raised, recorded on the request as the untraced path does, and the walk on.
- *
- * @param {Walk} walk
- * @param {unknown} err
- */
-function fail(walk, err) {
-    const req = walk.req;
-    const route = /** @type {NonNullable<Walk["route"]>} */ (walk.route);
-    req._error = err;
-    req._errorKey = route.routeKey;
-    req._errorGroup = route.group;
-    walk.step(undefined);
-}
-
-/**
  * The asyncStart and asyncEnd of a handler whose promise settled.
  *
  * @param {TraceContext} ctx
@@ -126,6 +111,7 @@ function traceHandler(walk, callback) {
     const channel = /** @type {dc.TracingChannel<any, any>} */ (requestChannel);
     const req = walk.req;
     const res = walk.res;
+    const route = /** @type {NonNullable<Walk["route"]>} */ (walk.route);
     /** @type {TraceContext} */
     const ctx = { req, res, layer: layerOf(callback) };
     const walkNext = walk.next;
@@ -140,7 +126,7 @@ function traceHandler(walk, callback) {
             out = callback(req, res, next);
         } catch (err) {
             report(ctx, err);
-            fail(walk, err);
+            walk.forward(route, err);
             channel.end.publish(ctx);
             return;
         }
@@ -151,7 +137,7 @@ function traceHandler(walk, callback) {
                 (err) => {
                     const error = err || new Error("Rejected promise");
                     report(ctx, error);
-                    fail(walk, error);
+                    walk.forward(route, error);
                     settled(ctx);
                 }
             );
@@ -170,6 +156,7 @@ function traceErrorHandler(walk, callback) {
     const channel = /** @type {dc.TracingChannel<any, any>} */ (requestChannel);
     const req = walk.req;
     const res = walk.res;
+    const route = /** @type {NonNullable<Walk["route"]>} */ (walk.route);
     const err = req._error;
     /** @type {TraceContext} */
     const ctx = { req, res, error: err, layer: layerOf(callback), errorHandler: true };
@@ -187,8 +174,7 @@ function traceErrorHandler(walk, callback) {
             out = callback(err, req, res, next);
         } catch (thrown) {
             report(ctx, thrown);
-            req._error = thrown;
-            req.next(thrown);
+            walk.forward(route, thrown);
             channel.end.publish(ctx);
             return;
         }
@@ -199,7 +185,7 @@ function traceErrorHandler(walk, callback) {
                 (rejected) => {
                     const error = rejected || new Error("Rejected promise");
                     report(ctx, error);
-                    fail(walk, error);
+                    walk.forward(route, error);
                     settled(ctx);
                 }
             );

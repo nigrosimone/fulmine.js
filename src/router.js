@@ -1005,8 +1005,8 @@ module.exports = class Router extends EventEmitter {
             try {
                 return handler(err, request, response, next);
             } catch (thrown) {
-                request._error = thrown;
-                return request.next(thrown);
+                // next(thrown), so a thrown "route" leaves the route as next("route")
+                return next(thrown);
             }
         }
         logError(this, err);

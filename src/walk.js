@@ -187,6 +187,24 @@ class Walk {
     }
 
     /**
+     * What a throw or a rejection does: next(err), as router 2 forwards it. "route" and "router"
+     * are not errors, and replace the one in flight as express's next() does.
+     *
+     * @param {RouteEntry} route the route that threw
+     * @param {unknown} err
+     */
+    forward(route, err) {
+        const req = this.req;
+        if (err === "route" || err === "router") {
+            req._error = undefined;
+            req._errorKey = undefined;
+            return this.step(err);
+        }
+        raise(req, route, err);
+        return this.step(undefined);
+    }
+
+    /**
      * Finds the next matching route and runs it; next() comes back here for the one after.
      *
      * @param {number} startIndex where to resume the scan
@@ -411,10 +429,7 @@ class Walk {
             const out = this.router._handleError(req._error, callback, req, this.res);
             if (out instanceof Promise) {
                 // a rejection moves on to the next error handler, a bare one with express's error
-                out.catch((err) => {
-                    raise(req, route, err || new Error("Rejected promise"));
-                    return this.step(undefined);
-                });
+                out.catch((err) => this.forward(route, err || new Error("Rejected promise")));
             }
             return;
         }
@@ -631,14 +646,10 @@ class Walk {
                 const out = callback(req, res, this.next);
                 if (out instanceof Promise) {
                     // Express 5 forwards a rejected handler promise itself, a bare one with this error
-                    out.catch((err) => {
-                        raise(req, route, err || new Error("Rejected promise"));
-                        return this.step(undefined);
-                    });
+                    out.catch((err) => this.forward(route, err || new Error("Rejected promise")));
                 }
             } catch (err) {
-                raise(req, route, err);
-                return this.step(undefined);
+                return this.forward(route, err);
             }
         }
     }
