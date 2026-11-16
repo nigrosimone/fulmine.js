@@ -7,7 +7,7 @@ description: Attach Sentry, OpenTelemetry and other tracers to Fulmine.js, on µ
 Fulmine publishes what Express and Node.js publish for tracers, on `node:diagnostics_channel`, whether `app.listen()` serves the app on µWS or `http.createServer(app)` serves it through node:
 
 - `http.server.request.start`, `http.server.response.created` and `http.server.response.finish`, node:http's own. On µWS the server in them is the app `listen()` returns, and every request goes through its `emit("request")`, as node sends it.
-- `express.router.request`, the TracingChannel for every middleware, route handler and error handler that [pillarjs/router#196](https://github.com/pillarjs/router/pull/196) adds to Express's router, merged and out with the next router release.
+- `express.router.request`, the TracingChannel for every middleware, route handler, error handler and `app.param()` callback that Express's router publishes from 2.3.0, with the same context: `route` is the matched pattern, `result` or `error` at `end` means nothing async follows.
 
 A tracer that wraps `http.Server.prototype.emit` instead, as OpenTelemetry's HTTP instrumentation does, gets the requests on µWS too: they go through that wrapper as on node.
 

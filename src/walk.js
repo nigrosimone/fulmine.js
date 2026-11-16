@@ -28,7 +28,7 @@ const {
     CALLBACK_ERROR,
     CALLBACK_ROUTER
 } = require("./router-utils.js");
-const { tracing, report, traceHandler, traceErrorHandler, traceMount } = require("./tracing.js");
+const { tracing, traceHandler, traceErrorHandler, traceMount } = require("./tracing.js");
 
 /** @typedef {import("./request.js")} Request */
 /** @typedef {import("./response.js")} Response */
@@ -495,10 +495,9 @@ class Walk {
      * Runs a mounted router or app, and the walk goes on when it hands back.
      *
      * @param {any} callback the router or app
-     * @param {import("./tracing.js").TraceContext|null} traceCtx its layer's context when traced
      * @returns {void}
      */
-    enterMount(callback, traceCtx) {
+    enterMount(callback) {
         const req = this.req;
         const res = this.res;
         const route = /** @type {RouteEntry} */ (this.route);
@@ -544,10 +543,6 @@ class Walk {
                 if (req._error) {
                     req._errorKey = route.routeKey;
                     req._errorGroup = route.group;
-                    // what the mount hands back: express's router layer reports it, unless a layer inside did
-                    if (traceCtx !== null) {
-                        report(traceCtx, req._error);
-                    }
                 }
                 if (routed) {
                     if (parentMethods !== null) {
@@ -619,7 +614,7 @@ class Walk {
             if (this.trace) {
                 return traceMount(this, callback);
             }
-            return this.enterMount(callback, null);
+            return this.enterMount(callback);
         } else {
             // out of line, its size pushed step past the inlining threshold
             if (req._error || kind === CALLBACK_ERROR) {

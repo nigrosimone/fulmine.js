@@ -28,19 +28,8 @@ const byRequest = (text) =>
 
 // A known difference, not of the tracing: express hands an error out of a mounted router at once
 // when it runs out of layers while matching, fulmine a microtask later, so the same events come
-// out in another order there, and the router's end has not seen the error yet
+// out in another order there
 const ORDER_DIFFERS = new Set(["GET /mounted/param/%E0%A4%A 500"]);
-
-/**
- * The events of a block in any order, a start or end without the error it carried.
- *
- * @param {string[]} block
- * @returns {string[]}
- */
-const unordered = (block) =>
-    block
-        .map((line) => (/^ {2}(start|end) /.test(line) ? line.replace(/ error=.*?(?= route=| \w+$)/, "") : line))
-        .sort();
 
 for (const transport of ["uws", "node-http"]) {
     test(`the events are express's, ${transport}`, () => {
@@ -54,7 +43,7 @@ for (const transport of ["uws", "node-http"]) {
         );
         for (let i = 0; i < wanted.length; i++) {
             if (ORDER_DIFFERS.has(wanted[i][0])) {
-                assert.deepStrictEqual(unordered(actual[i]), unordered(wanted[i]), wanted[i][0]);
+                assert.deepStrictEqual([...actual[i]].sort(), [...wanted[i]].sort(), wanted[i][0]);
             } else {
                 assert.deepStrictEqual(actual[i], wanted[i], wanted[i][0]);
             }

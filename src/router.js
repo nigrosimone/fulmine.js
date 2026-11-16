@@ -44,6 +44,7 @@ const { checkBehavior } = require("./websocket.js");
 const { makeUwsRoute, withVerbs } = require("./uws-route.js");
 const { HotSettings, settingsWriteTraps } = require("./hot-settings.js");
 const Walk = require("./walk.js");
+const { traceParam } = require("./tracing.js");
 const { useRouterClass, optimizeRoute, compileOptimizedRoutes, registerUwsRoute } = require("./optimizer.js");
 const {
     layerFor,
@@ -91,6 +92,21 @@ const {
 let routeGroups = 0;
 
 let routeKey = 0;
+
+/**
+ * The layer express hands a tracer with an app.param() callback: the route's, or the use's own,
+ * the same objects router.stack shows.
+ *
+ * @param {RouteEntry} route
+ * @returns {Layer}
+ */
+function paramLayer(route) {
+    if (!route.use) {
+        return (route._routeLayer ??= routeLayer(route));
+    }
+    const callback = route.callbacks[0];
+    return (route._layers ??= new Map()).get(callback) ?? layerFor(route, callback);
+}
 
 /**
  * An application this fulmine did not build, a real Express app most of all: Express's own test,
@@ -783,6 +799,8 @@ module.exports = class Router extends EventEmitter {
         const paths = Array.isArray(path) ? path : [path];
         const routes = [];
         for (let path of paths) {
+            // as written, what a tracer reads as the route; a pathless use is express's "/"
+            const rawPath = method === "USE" && path === "" ? "/" : path;
             // a mount always drops it: express registers its use layers with strict off
             if (
                 (method === "USE" || !this._strictRouting()) &&
@@ -803,6 +821,7 @@ module.exports = class Router extends EventEmitter {
             const route = {
                 method: method === "USE" ? "ALL" : method,
                 path,
+                rawPath,
                 pattern,
                 // folded once, null for a compiled pattern
                 patternLower: typeof pattern === "string" ? pattern.toLowerCase() : null,
@@ -1267,6 +1286,16 @@ module.exports = class Router extends EventEmitter {
                 return nextParam(undefined);
             }
             req.next = nextCallback;
+            if (walk.trace) {
+                const layer = paramLayer(route);
+                return traceParam(
+                    { req, res, layer, handler: fn, route: route.rawPath, param: name },
+                    fn,
+                    value,
+                    name,
+                    nextCallback
+                );
+            }
             try {
                 settle(fn(req, res, nextCallback, value, name), nextCallback);
             } catch (thrown) {

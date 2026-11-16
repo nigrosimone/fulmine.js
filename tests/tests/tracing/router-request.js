@@ -1,10 +1,10 @@
 // The express.router.request TracingChannel against express itself: start, end, asyncStart,
 // INSPECT
 // asyncEnd and error for every middleware, route handler and error handler, request by request
-// OFF: express 5.3.0 resolves router 2.2.0, which publishes nothing; on once a router release has pillarjs/router#196
+// OFF: express 5.3.0 resolves router 2.2.0, which publishes nothing; on once router 2.3.0 is out
 //
-// Until then tests/unit/tracing-router-request.test.js holds the same app against the sequence express
-// printed with router at that commit. Left out here: an error a mounted router raises while matching,
+// Until then tests/unit/tracing-router-request.test.js holds this app, and more, against the sequence
+// express printed with router at pillarjs/router#223. Left out here: an error a mounted router raises while matching,
 // which express hands out at once and fulmine a microtask later, the one known difference
 
 const dc = require("node:diagnostics_channel");
@@ -13,14 +13,21 @@ const { fetchTest, sequential } = require("../../helpers.js");
 
 /** @type {string[]} */
 let events = [];
+const message = (err) => (err && typeof err === "object" ? err.message : String(err));
 const describe = (phase, ctx) =>
     [
         phase,
         ctx.layer?.name,
+        ctx.handler && ctx.handler !== ctx.layer?.handle ? `handler=${ctx.handler.name}` : "",
+        ctx.param ? `param=${ctx.param}` : "",
         ctx.errorHandler ? "errorHandler" : "",
-        ctx.error ? `error=${ctx.error.message ?? ctx.error}` : "",
-        ctx.req?.route ? `route=${ctx.req.route.path}` : "",
-        typeof ctx.layer?.handle
+        "incomingError" in ctx ? `incoming=${message(ctx.incomingError)}` : "",
+        "error" in ctx ? `error=${message(ctx.error)}` : "",
+        "result" in ctx ? `result=${typeof ctx.result === "object" ? typeof ctx.result : ctx.result}` : "",
+        `route=${ctx.route}`,
+        ctx.req?.route ? `req.route=${ctx.req.route.path}` : "",
+        typeof ctx.layer?.handle,
+        typeof ctx.handler
     ]
         .filter(Boolean)
         .join(" ");

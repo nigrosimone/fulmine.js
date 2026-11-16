@@ -14,9 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Express's router publishes every middleware, route handler and error handler it runs on the
-// express.router.request TracingChannel (pillarjs/router#196). The same name and the same context
-// here, so a tracer written for express sees fulmine too, on uWS and through node:http alike.
+// Express's router publishes every middleware, route handler, error handler and app.param()
+// callback it runs on the express.router.request TracingChannel. The same name and the same context
+// as router 2.3 here, so a tracer written for express sees fulmine too, on uWS and through node:http.
 
 const dc = require("node:diagnostics_channel");
 
@@ -24,10 +24,11 @@ const dc = require("node:diagnostics_channel");
 
 /**
  * What a subscriber gets: express's own fields. `layer` stands in for express's Layer, with the
- * fields tracers read.
+ * fields tracers read. `error` and `result` are there only once set: a tracer reads `in` on them.
  *
- * @typedef {{req: any, res: any, layer: Layer, error?: unknown, errorHandler?: true}} TraceContext
- * @typedef {{handle: unknown, name: string, keys: string[], params: undefined, path: undefined}} Layer
+ * @typedef {{req: any, res: any, layer: Layer, handler: Function, route: unknown, param?: string,
+ *   errorHandler?: true, incomingError?: unknown, error?: unknown, result?: unknown}} TraceContext
+ * @typedef {{handle: unknown, name: string}} Layer
  */
 
 // tracingChannel is missing on runtimes that do not have it, and then nothing is traced
@@ -59,158 +60,298 @@ function tracing() {
 function layerOf(handle, name) {
     let layer = layers.get(handle);
     if (layer === undefined) {
-        layer = { handle, name: name ?? (handle.name || "<anonymous>"), keys: [], params: undefined, path: undefined };
+        layer = { handle, name: name ?? (handle.name || "<anonymous>") };
         layers.set(handle, layer);
     }
     return layer;
 }
 
 /**
- * Publishes an error once, on the layer it comes from: not "route" or "router", which are not
- * errors, and not again as it goes up through the outer layers.
+ * Remembers an error on the request, and says whether it is new: not "route" or "router", which
+ * are not errors, and not one seen already, upstream or by another copy of the router.
  *
- * @param {TraceContext} ctx
+ * @param {any} req
  * @param {unknown} err
+ * @returns {boolean}
  */
-function report(ctx, err) {
+function remember(req, err) {
     if (!err || err === "route" || err === "router") {
-        return;
+        return false;
     }
-    const req = ctx.req;
     /** @type {Set<unknown>|undefined} */
     let seen = req[publishedErrors];
     if (seen === undefined) {
         seen = req[publishedErrors] = new Set();
     } else if (seen.has(err)) {
-        return;
+        return false;
     }
     seen.add(err);
-    ctx.error = err;
-    /** @type {dc.TracingChannel<any, any>} */ (requestChannel).error.publish(ctx);
+    return true;
 }
 
 /**
- * The asyncStart and asyncEnd of a handler whose promise settled.
+ * Publishes an error once, on the layer it comes from, as it is handed to next().
+ *
+ * @param {TraceContext} ctx
+ * @param {unknown} err
+ */
+function report(ctx, err) {
+    if (remember(ctx.req, err)) {
+        ctx.error = err;
+        /** @type {dc.TracingChannel<any, any>} */ (requestChannel).error.publish(ctx);
+    }
+}
+
+/**
+ * A throw or rejection on the context, published already or not: the terminal event carries it.
+ * A thrown routing signal is not an error, it ends the call as next("route") would.
+ *
+ * @param {TraceContext} ctx
+ * @param {unknown} err
+ * @param {boolean} sync
+ */
+function recordThrown(ctx, err, sync) {
+    if (err === "route" || err === "router") {
+        if (sync) {
+            ctx.result = undefined;
+        }
+        return;
+    }
+    if (!("error" in ctx)) {
+        ctx.error = err;
+    }
+}
+
+/**
+ * The end event. `result` or `error` there means nothing follows, so an error reported before a
+ * promise came back is hidden while it publishes.
+ *
+ * @param {TraceContext} ctx
+ * @param {boolean} async
+ */
+function publishEnd(ctx, async) {
+    const channel = /** @type {dc.TracingChannel<any, any>} */ (requestChannel);
+    if (!async || !("error" in ctx)) {
+        channel.end.publish(ctx);
+        return;
+    }
+    const error = ctx.error;
+    delete ctx.error;
+    channel.end.publish(ctx);
+    ctx.error = error;
+}
+
+/**
+ * The asyncEnd of a call whose promise settled, inside the stores asyncStart binds.
+ *
+ * @param {TraceContext} ctx
+ */
+function publishAsyncEnd(ctx) {
+    /** @type {dc.TracingChannel<any, any>} */ (requestChannel).asyncEnd.publish(ctx);
+}
+
+/**
+ * asyncStart, then asyncEnd inside its stores.
  *
  * @param {TraceContext} ctx
  */
 function settled(ctx) {
-    const channel = /** @type {dc.TracingChannel<any, any>} */ (requestChannel);
-    channel.asyncStart.publish(ctx);
-    channel.asyncEnd.publish(ctx);
+    /** @type {dc.TracingChannel<any, any>} */ (requestChannel).asyncStart.runStores(ctx, publishAsyncEnd, null, ctx);
 }
 
 /**
- * A middleware or route handler, traced: the same call and the same error handling as Walk#step,
- * inside start and end, with its next() reporting the error it is given.
+ * Whether a call returned a thenable, as router 2's is-promise reads it.
+ *
+ * @param {unknown} ret
+ * @returns {ret is PromiseLike<unknown>}
+ */
+function isThenable(ret) {
+    return (
+        ret !== null &&
+        (typeof ret === "object" || typeof ret === "function") &&
+        typeof (/** @type {any} */ (ret).then) === "function"
+    );
+}
+
+/**
+ * The trace of a call that may return a promise: start and end around it, then asyncStart and
+ * asyncEnd once it settles, with `result` or `error` as tracePromise sets them.
+ *
+ * @param {TraceContext} ctx
+ * @param {() => unknown} call
+ * @param {(err: unknown) => void} thrown what a throw or a rejection is handed to, as the untraced path
+ * @param {boolean} thenables any thenable is a promise, as app.param() reads it; a handler's must be native
+ */
+function traceCall(ctx, call, thrown, thenables) {
+    let done = false;
+    /** @param {unknown} err */
+    const rejected = (err) => {
+        // routing gets every outcome, the trace only the first
+        thrown(err);
+        if (done) {
+            return;
+        }
+        done = true;
+        recordThrown(ctx, err, false);
+        settled(ctx);
+    };
+    /** @param {unknown} value */
+    const resolved = (value) => {
+        if (done) {
+            return;
+        }
+        done = true;
+        ctx.result = value;
+        settled(ctx);
+    };
+    /** @type {dc.TracingChannel<any, any>} */ (requestChannel).start.runStores(ctx, () => {
+        let out;
+        try {
+            out = call();
+        } catch (err) {
+            // forwarded verbatim, a falsy value routes on as the untraced path does
+            thrown(err);
+            recordThrown(ctx, err, true);
+            publishEnd(ctx, false);
+            return;
+        }
+        const async = thenables ? isThenable(out) : out instanceof Promise;
+        if (!async) {
+            ctx.result = out;
+        }
+        publishEnd(ctx, async);
+        if (async) {
+            try {
+                /** @type {PromiseLike<unknown>} */ (out).then(resolved, (err) =>
+                    rejected(err || new Error("Rejected promise"))
+                );
+            } catch (err) {
+                // a then that throws is a rejection, forwarded verbatim
+                rejected(err);
+            }
+        }
+    });
+}
+
+/**
+ * A middleware or route handler, traced: the same call and the same error handling as Walk#step.
  *
  * @param {Walk} walk
  * @param {Function} callback
  */
 function traceHandler(walk, callback) {
-    const channel = /** @type {dc.TracingChannel<any, any>} */ (requestChannel);
     const req = walk.req;
     const res = walk.res;
     const route = /** @type {NonNullable<Walk["route"]>} */ (walk.route);
     /** @type {TraceContext} */
-    const ctx = { req, res, layer: layerOf(callback) };
+    const ctx = { req, res, layer: layerOf(callback), handler: callback, route: route.rawPath };
     const walkNext = walk.next;
     /** @param {unknown} [err] */
     const next = (err) => {
         report(ctx, err);
         walkNext(err);
     };
-    channel.start.runStores(ctx, () => {
-        let out;
-        try {
-            out = callback(req, res, next);
-        } catch (err) {
+    traceCall(
+        ctx,
+        () => callback(req, res, next),
+        (err) => {
             report(ctx, err);
             walk.forward(route, err);
-            channel.end.publish(ctx);
-            return;
-        }
-        channel.end.publish(ctx);
-        if (out instanceof Promise) {
-            out.then(
-                () => settled(ctx),
-                (err) => {
-                    const error = err || new Error("Rejected promise");
-                    report(ctx, error);
-                    walk.forward(route, error);
-                    settled(ctx);
-                }
-            );
-        }
-    });
+        },
+        false
+    );
 }
 
 /**
- * An error handler, traced: Router#_handleError's call and Walk#errorHop's promise handling,
- * with the error it was given in the context.
+ * An error handler, traced: Router#_handleError's call and Walk#errorHop's promise handling. The
+ * error it was given is `incomingError`, `error` is only what it raises itself.
  *
  * @param {Walk} walk
  * @param {Function} callback a four-argument handler
  */
 function traceErrorHandler(walk, callback) {
-    const channel = /** @type {dc.TracingChannel<any, any>} */ (requestChannel);
     const req = walk.req;
     const res = walk.res;
     const route = /** @type {NonNullable<Walk["route"]>} */ (walk.route);
     const err = req._error;
     /** @type {TraceContext} */
-    const ctx = { req, res, error: err, layer: layerOf(callback), errorHandler: true };
+    const ctx = {
+        req,
+        res,
+        layer: layerOf(callback),
+        handler: callback,
+        route: route.rawPath,
+        errorHandler: true,
+        incomingError: err
+    };
+    // it did not come from here, even when nothing traced where it did
+    remember(req, err);
+    /** @param {unknown} pass */
+    const passed = (pass) => {
+        // recovered or replaced: the same object raised later is a new failure
+        if (pass !== err) {
+            /** @type {Set<unknown>|undefined} */ (/** @type {any} */ (req)[publishedErrors])?.delete(err);
+        }
+        report(ctx, pass);
+    };
     /** @param {unknown} [pass] */
     const next = (pass) => {
-        report(ctx, pass);
+        passed(pass);
         // as _handleError: cleared, not deleted
         req._error = undefined;
         req._errorKey = undefined;
         return req.next(pass);
     };
-    channel.start.runStores(ctx, () => {
-        let out;
-        try {
-            out = callback(err, req, res, next);
-        } catch (thrown) {
-            report(ctx, thrown);
+    traceCall(
+        ctx,
+        () => callback(err, req, res, next),
+        (thrown) => {
+            passed(thrown);
             walk.forward(route, thrown);
-            channel.end.publish(ctx);
-            return;
-        }
-        channel.end.publish(ctx);
-        if (out instanceof Promise) {
-            out.then(
-                () => settled(ctx),
-                (rejected) => {
-                    const error = rejected || new Error("Rejected promise");
-                    report(ctx, error);
-                    walk.forward(route, error);
-                    settled(ctx);
-                }
-            );
-        }
-    });
+        },
+        false
+    );
+}
+
+/**
+ * An app.param() callback, traced, with the route's layer and the parameter's name.
+ *
+ * @param {TraceContext} ctx
+ * @param {Function} fn
+ * @param {unknown} value
+ * @param {string} name
+ * @param {(err?: unknown) => void} next
+ */
+function traceParam(ctx, fn, value, name, next) {
+    /** @param {unknown} [err] */
+    const traced = (err) => {
+        report(ctx, err);
+        next(err);
+    };
+    traceCall(ctx, () => fn(ctx.req, ctx.res, traced, value, name), traced, true);
 }
 
 /**
  * A mounted router or app, traced as express traces the layer it mounts: start and end around
- * the synchronous part, and the error it hands back reported if nothing inside it was.
+ * the synchronous part. What it hands back was reported inside, if anywhere.
  *
  * @param {Walk} walk
  * @param {any} callback the router or app
  */
 function traceMount(walk, callback) {
-    const channel = /** @type {dc.TracingChannel<any, any>} */ (requestChannel);
     /** @type {TraceContext} */
     const ctx = {
         req: walk.req,
         res: walk.res,
-        layer: layerOf(callback, callback._isApplication ? "mounted_app" : "router")
+        layer: layerOf(callback, callback._isApplication ? "mounted_app" : "router"),
+        handler: callback,
+        route: /** @type {NonNullable<Walk["route"]>} */ (walk.route).rawPath
     };
-    channel.start.runStores(ctx, () => {
-        walk.enterMount(callback, ctx);
-        channel.end.publish(ctx);
+    /** @type {dc.TracingChannel<any, any>} */ (requestChannel).start.runStores(ctx, () => {
+        walk.enterMount(callback);
+        // express's router function returns nothing
+        ctx.result = undefined;
+        publishEnd(ctx, false);
     });
 }
 
@@ -299,8 +440,8 @@ module.exports = {
     observed,
     serverObserved,
     serveObserved,
-    report,
     traceHandler,
     traceErrorHandler,
+    traceParam,
     traceMount
 };

@@ -1,146 +1,272 @@
 GET /plain 200
-  start logger function
-  start <anonymous> function
-  start getPlain route=/plain function
-  end getPlain route=/plain function
-  end <anonymous> route=/plain function
-  end logger route=/plain function
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start getPlain route=/plain req.route=/plain function function
+  end getPlain result=undefined route=/plain req.route=/plain function function
+  end <anonymous> result=undefined route=/ req.route=/plain function function
+  end logger result=undefined route=/ req.route=/plain function function
 GET /users/7 200
-  start logger function
-  start <anonymous> function
-  start loadUser route=/users/:id function
-  start sendUser route=/users/:id function
-  end sendUser route=/users/:id function
-  end loadUser route=/users/:id function
-  end <anonymous> route=/users/:id function
-  end logger route=/users/:id function
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start handle handler=loadId param=id route=/users/:id req.route=/users/:id function function
+  start loadUser route=/users/:id req.route=/users/:id function function
+  start sendUser route=/users/:id req.route=/users/:id function function
+  end sendUser result=undefined route=/users/:id req.route=/users/:id function function
+  end loadUser result=undefined route=/users/:id req.route=/users/:id function function
+  end handle handler=loadId param=id result=undefined route=/users/:id req.route=/users/:id function function
+  end <anonymous> result=undefined route=/ req.route=/users/:id function function
+  end logger result=undefined route=/ req.route=/users/:id function function
+GET /slow/1 200
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start handle handler=slowParam param=slow route=/slow/:slow req.route=/slow/:slow function function
+  end handle handler=slowParam param=slow route=/slow/:slow req.route=/slow/:slow function function
+  end <anonymous> result=undefined route=/ req.route=/slow/:slow function function
+  end logger result=undefined route=/ req.route=/slow/:slow function function
+  start afterSlow route=/slow/:slow req.route=/slow/:slow function function
+  end afterSlow result=undefined route=/slow/:slow req.route=/slow/:slow function function
+  asyncStart handle handler=slowParam param=slow result=undefined route=/slow/:slow req.route=/slow/:slow function function
+  asyncEnd handle handler=slowParam param=slow result=undefined route=/slow/:slow req.route=/slow/:slow function function
+GET /bad/1 500
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start handle handler=throwingParam param=bad route=/bad/:bad req.route=/bad/:bad function function
+  error handle handler=throwingParam param=bad error=param boom route=/bad/:bad req.route=/bad/:bad function function
+  start finalErrorHandler errorHandler incoming=param boom route=/ req.route=/bad/:bad function function
+  end finalErrorHandler errorHandler incoming=param boom result=undefined route=/ req.route=/bad/:bad function function
+  end handle handler=throwingParam param=bad error=param boom route=/bad/:bad req.route=/bad/:bad function function
+  end <anonymous> result=undefined route=/ req.route=/bad/:bad function function
+  end logger result=undefined route=/ req.route=/bad/:bad function function
+GET /rej/1 500
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start handle handler=rejectingParam param=rej route=/rej/:rej req.route=/rej/:rej function function
+  end handle handler=rejectingParam param=rej route=/rej/:rej req.route=/rej/:rej function function
+  end <anonymous> result=undefined route=/ req.route=/rej/:rej function function
+  end logger result=undefined route=/ req.route=/rej/:rej function function
+  error handle handler=rejectingParam param=rej error=param reject route=/rej/:rej req.route=/rej/:rej function function
+  start finalErrorHandler errorHandler incoming=param reject route=/ req.route=/rej/:rej function function
+  end finalErrorHandler errorHandler incoming=param reject result=undefined route=/ req.route=/rej/:rej function function
+  asyncStart handle handler=rejectingParam param=rej error=param reject route=/rej/:rej req.route=/rej/:rej function function
+  asyncEnd handle handler=rejectingParam param=rej error=param reject route=/rej/:rej req.route=/rej/:rej function function
+GET /returns 200
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start returning route=/returns req.route=/returns function function
+  end returning result=42 route=/returns req.route=/returns function function
+  end <anonymous> result=undefined route=/ req.route=/returns function function
+  end logger result=undefined route=/ req.route=/returns function function
+GET /async-value 200
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start asyncValue route=/async-value req.route=/async-value function function
+  end asyncValue route=/async-value req.route=/async-value function function
+  end <anonymous> result=undefined route=/ req.route=/async-value function function
+  end logger result=undefined route=/ req.route=/async-value function function
+  asyncStart asyncValue result=done route=/async-value req.route=/async-value function function
+  asyncEnd asyncValue result=done route=/async-value req.route=/async-value function function
+GET /throw-route 200
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start throwRoute route=/throw-route req.route=/throw-route function function
+  start afterThrowRoute route=/throw-route req.route=/throw-route function function
+  end afterThrowRoute result=undefined route=/throw-route req.route=/throw-route function function
+  end throwRoute result=undefined route=/throw-route req.route=/throw-route function function
+  end <anonymous> result=undefined route=/ req.route=/throw-route function function
+  end logger result=undefined route=/ req.route=/throw-route function function
+GET /next-then-promise 500
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start nextThenPromise route=/next-then-promise req.route=/next-then-promise function function
+  error nextThenPromise error=early route=/next-then-promise req.route=/next-then-promise function function
+  start finalErrorHandler errorHandler incoming=early route=/ req.route=/next-then-promise function function
+  end finalErrorHandler errorHandler incoming=early result=undefined route=/ req.route=/next-then-promise function function
+  end nextThenPromise route=/next-then-promise req.route=/next-then-promise function function
+  end <anonymous> result=undefined route=/ req.route=/next-then-promise function function
+  end logger result=undefined route=/ req.route=/next-then-promise function function
+  asyncStart nextThenPromise error=early result=undefined route=/next-then-promise req.route=/next-then-promise function function
+  asyncEnd nextThenPromise error=early result=undefined route=/next-then-promise req.route=/next-then-promise function function
+GET /handler-throws 500
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start failingFirst route=/handler-throws req.route=/handler-throws function function
+  error failingFirst error=first route=/handler-throws req.route=/handler-throws function function
+  start brokenHandler errorHandler incoming=first route=/handler-throws req.route=/handler-throws function function
+  error brokenHandler errorHandler incoming=first error=render failed route=/handler-throws req.route=/handler-throws function function
+  start finalErrorHandler errorHandler incoming=render failed route=/ req.route=/handler-throws function function
+  end finalErrorHandler errorHandler incoming=render failed result=undefined route=/ req.route=/handler-throws function function
+  end brokenHandler errorHandler incoming=first error=render failed route=/handler-throws req.route=/handler-throws function function
+  end failingFirst error=first result=undefined route=/handler-throws req.route=/handler-throws function function
+  end <anonymous> result=undefined route=/ req.route=/handler-throws function function
+  end logger result=undefined route=/ req.route=/handler-throws function function
+GET /handler-rejects 500
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start failingSecond route=/handler-rejects req.route=/handler-rejects function function
+  error failingSecond error=second route=/handler-rejects req.route=/handler-rejects function function
+  start rejectingHandler errorHandler incoming=second route=/handler-rejects req.route=/handler-rejects function function
+  end rejectingHandler errorHandler incoming=second route=/handler-rejects req.route=/handler-rejects function function
+  end failingSecond error=second result=undefined route=/handler-rejects req.route=/handler-rejects function function
+  end <anonymous> result=undefined route=/ req.route=/handler-rejects function function
+  end logger result=undefined route=/ req.route=/handler-rejects function function
+  start finalErrorHandler errorHandler incoming=second route=/ req.route=/handler-rejects function function
+  end finalErrorHandler errorHandler incoming=second result=undefined route=/ req.route=/handler-rejects function function
+  asyncStart rejectingHandler errorHandler incoming=second error=second route=/handler-rejects req.route=/handler-rejects function function
+  asyncEnd rejectingHandler errorHandler incoming=second error=second route=/handler-rejects req.route=/handler-rejects function function
+GET /again 500
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start raiseShared route=/again req.route=/again function function
+  error raiseShared error=again route=/again req.route=/again function function
+  start recoverShared errorHandler incoming=again route=/again req.route=/again function function
+  start raiseSharedAgain route=/again req.route=/again function function
+  error raiseSharedAgain error=again route=/again req.route=/again function function
+  start finalErrorHandler errorHandler incoming=again route=/ req.route=/again function function
+  end finalErrorHandler errorHandler incoming=again result=undefined route=/ req.route=/again function function
+  end raiseSharedAgain error=again result=undefined route=/again req.route=/again function function
+  end recoverShared errorHandler incoming=again result=undefined route=/again req.route=/again function function
+  end raiseShared error=again result=undefined route=/again req.route=/again function function
+  end <anonymous> result=undefined route=/ req.route=/again function function
+  end logger result=undefined route=/ req.route=/again function function
 GET /async 200
-  start logger function
-  start <anonymous> function
-  start asyncHandler route=/async function
-  end asyncHandler route=/async function
-  end <anonymous> route=/async function
-  end logger route=/async function
-  asyncStart asyncHandler route=/async function
-  asyncEnd asyncHandler route=/async function
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start asyncHandler route=/async req.route=/async function function
+  end asyncHandler route=/async req.route=/async function function
+  end <anonymous> result=undefined route=/ req.route=/async function function
+  end logger result=undefined route=/ req.route=/async function function
+  asyncStart asyncHandler result=undefined route=/async req.route=/async function function
+  asyncEnd asyncHandler result=undefined route=/async req.route=/async function function
 GET /next-error 500
-  start logger function
-  start <anonymous> function
-  start failing route=/next-error function
-  error failing error=boom route=/next-error function
-  start finalErrorHandler errorHandler error=boom route=/next-error function
-  end finalErrorHandler errorHandler error=boom route=/next-error function
-  end failing error=boom route=/next-error function
-  end <anonymous> route=/next-error function
-  end logger route=/next-error function
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start failing route=/next-error req.route=/next-error function function
+  error failing error=boom route=/next-error req.route=/next-error function function
+  start finalErrorHandler errorHandler incoming=boom route=/ req.route=/next-error function function
+  end finalErrorHandler errorHandler incoming=boom result=undefined route=/ req.route=/next-error function function
+  end failing error=boom result=undefined route=/next-error req.route=/next-error function function
+  end <anonymous> result=undefined route=/ req.route=/next-error function function
+  end logger result=undefined route=/ req.route=/next-error function function
 GET /throw 500
-  start logger function
-  start <anonymous> function
-  start throwing route=/throw function
-  error throwing error=sync boom route=/throw function
-  start finalErrorHandler errorHandler error=sync boom route=/throw function
-  end finalErrorHandler errorHandler error=sync boom route=/throw function
-  end throwing error=sync boom route=/throw function
-  end <anonymous> route=/throw function
-  end logger route=/throw function
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start throwing route=/throw req.route=/throw function function
+  error throwing error=sync boom route=/throw req.route=/throw function function
+  start finalErrorHandler errorHandler incoming=sync boom route=/ req.route=/throw function function
+  end finalErrorHandler errorHandler incoming=sync boom result=undefined route=/ req.route=/throw function function
+  end throwing error=sync boom route=/throw req.route=/throw function function
+  end <anonymous> result=undefined route=/ req.route=/throw function function
+  end logger result=undefined route=/ req.route=/throw function function
 GET /reject 500
-  start logger function
-  start <anonymous> function
-  start rejecting route=/reject function
-  end rejecting route=/reject function
-  end <anonymous> route=/reject function
-  end logger route=/reject function
-  error rejecting error=async boom route=/reject function
-  start finalErrorHandler errorHandler error=async boom route=/reject function
-  end finalErrorHandler errorHandler error=async boom route=/reject function
-  asyncStart rejecting error=async boom route=/reject function
-  asyncEnd rejecting error=async boom route=/reject function
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start rejecting route=/reject req.route=/reject function function
+  end rejecting route=/reject req.route=/reject function function
+  end <anonymous> result=undefined route=/ req.route=/reject function function
+  end logger result=undefined route=/ req.route=/reject function function
+  error rejecting error=async boom route=/reject req.route=/reject function function
+  start finalErrorHandler errorHandler incoming=async boom route=/ req.route=/reject function function
+  end finalErrorHandler errorHandler incoming=async boom result=undefined route=/ req.route=/reject function function
+  asyncStart rejecting error=async boom route=/reject req.route=/reject function function
+  asyncEnd rejecting error=async boom route=/reject req.route=/reject function function
 GET /recovered 200
-  start logger function
-  start <anonymous> function
-  start failingAgain route=/recovered function
-  error failingAgain error=recover me route=/recovered function
-  start recoverInRoute errorHandler error=recover me route=/recovered function
-  end recoverInRoute errorHandler error=recover me route=/recovered function
-  end failingAgain error=recover me route=/recovered function
-  end <anonymous> route=/recovered function
-  end logger route=/recovered function
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start failingAgain route=/recovered req.route=/recovered function function
+  error failingAgain error=recover me route=/recovered req.route=/recovered function function
+  start recoverInRoute errorHandler incoming=recover me route=/recovered req.route=/recovered function function
+  end recoverInRoute errorHandler incoming=recover me result=undefined route=/recovered req.route=/recovered function function
+  end failingAgain error=recover me result=undefined route=/recovered req.route=/recovered function function
+  end <anonymous> result=undefined route=/ req.route=/recovered function function
+  end logger result=undefined route=/ req.route=/recovered function function
 GET /skip 200
-  start logger function
-  start <anonymous> function
-  start skipper route=/skip function
-  start afterSkip route=/skip function
-  end afterSkip route=/skip function
-  end skipper route=/skip function
-  end <anonymous> route=/skip function
-  end logger route=/skip function
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start skipper route=/skip req.route=/skip function function
+  start afterSkip route=/skip req.route=/skip function function
+  end afterSkip result=undefined route=/skip req.route=/skip function function
+  end skipper result=undefined route=/skip req.route=/skip function function
+  end <anonymous> result=undefined route=/ req.route=/skip function function
+  end logger result=undefined route=/ req.route=/skip function function
 POST /json 200
-  start logger function
-  start <anonymous> function
-  start jsonParser route=/json function
-  end jsonParser route=/json function
-  end <anonymous> route=/json function
-  end logger route=/json function
-  start echo route=/json function
-  end echo route=/json function
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start jsonParser route=/json req.route=/json function function
+  end jsonParser result=undefined route=/json req.route=/json function function
+  end <anonymous> result=undefined route=/ req.route=/json function function
+  end logger result=undefined route=/ req.route=/json function function
+  start echo route=/json req.route=/json function function
+  end echo result=undefined route=/json req.route=/json function function
 GET /json 404
-  start logger function
-  start <anonymous> function
-  end <anonymous> function
-  end logger function
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  end <anonymous> result=undefined route=/ function function
+  end logger result=undefined route=/ function function
 GET /parsed 200
-  start logger function
-  start <anonymous> function
-  start jsonParser function
-  start parsed route=/parsed function
-  end parsed route=/parsed function
-  end jsonParser route=/parsed function
-  end <anonymous> route=/parsed function
-  end logger route=/parsed function
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start jsonParser route=/parsed function function
+  start parsed route=/parsed req.route=/parsed function function
+  end parsed result=undefined route=/parsed req.route=/parsed function function
+  end jsonParser result=undefined route=/parsed req.route=/parsed function function
+  end <anonymous> result=undefined route=/ req.route=/parsed function function
+  end logger result=undefined route=/ req.route=/parsed function function
 GET /mounted/inner 500
-  start logger function
-  start <anonymous> function
-  start router function
-  start routerMiddleware function
-  start innerHandler route=/inner function
-  error innerHandler error=inner boom route=/inner function
-  end innerHandler error=inner boom route=/inner function
-  end routerMiddleware route=/inner function
-  end router route=/inner function
-  end <anonymous> route=/inner function
-  end logger route=/inner function
-  start finalErrorHandler errorHandler error=inner boom route=/inner function
-  end finalErrorHandler errorHandler error=inner boom route=/inner function
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start router route=/mounted function function
+  start routerMiddleware route=/ function function
+  start innerHandler route=/inner req.route=/inner function function
+  error innerHandler error=inner boom route=/inner req.route=/inner function function
+  end innerHandler error=inner boom result=undefined route=/inner req.route=/inner function function
+  end routerMiddleware result=undefined route=/ req.route=/inner function function
+  end router result=undefined route=/mounted req.route=/inner function function
+  end <anonymous> result=undefined route=/ req.route=/inner function function
+  end logger result=undefined route=/ req.route=/inner function function
+  start finalErrorHandler errorHandler incoming=inner boom route=/ req.route=/inner function function
+  end finalErrorHandler errorHandler incoming=inner boom result=undefined route=/ req.route=/inner function function
+GET /mounted/param/ok 200
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start router route=/mounted function function
+  start routerMiddleware route=/ function function
+  start handle handler=valueParam param=value route=/param/:value req.route=/param/:value function function
+  start paramHandler route=/param/:value req.route=/param/:value function function
+  end paramHandler result=undefined route=/param/:value req.route=/param/:value function function
+  end handle handler=valueParam param=value result=undefined route=/param/:value req.route=/param/:value function function
+  end routerMiddleware result=undefined route=/ req.route=/param/:value function function
+  end router result=undefined route=/mounted req.route=/param/:value function function
+  end <anonymous> result=undefined route=/ req.route=/param/:value function function
+  end logger result=undefined route=/ req.route=/param/:value function function
 GET /mounted/param/%E0%A4%A 500
-  start logger function
-  start <anonymous> function
-  start router function
-  start routerMiddleware function
-  error router error=Failed to decode param '%E0%A4%A' function
-  start finalErrorHandler errorHandler error=Failed to decode param '%E0%A4%A' function
-  end finalErrorHandler errorHandler error=Failed to decode param '%E0%A4%A' function
-  end routerMiddleware function
-  end router error=Failed to decode param '%E0%A4%A' function
-  end <anonymous> function
-  end logger function
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start router route=/mounted function function
+  start routerMiddleware route=/ function function
+  start finalErrorHandler errorHandler incoming=Failed to decode param '%E0%A4%A' route=/ function function
+  end finalErrorHandler errorHandler incoming=Failed to decode param '%E0%A4%A' result=undefined route=/ function function
+  end routerMiddleware result=undefined route=/ function function
+  end router result=undefined route=/mounted function function
+  end <anonymous> result=undefined route=/ function function
+  end logger result=undefined route=/ function function
 GET /files/tracing-router-request.expected.txt 200
-  start logger function
-  start <anonymous> function
-  start serveStatic function
-  end serveStatic function
-  end <anonymous> function
-  end logger function
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start serveStatic route=/files function function
+  end serveStatic result=undefined route=/files function function
+  end <anonymous> result=undefined route=/ function function
+  end logger result=undefined route=/ function function
 GET /sub/hello 200
-  start logger function
-  start <anonymous> function
-  start mounted_app function
-  start subHandler route=/hello function
-  end subHandler route=/hello function
-  end mounted_app route=/hello function
-  end <anonymous> route=/hello function
-  end logger route=/hello function
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  start mounted_app route=/sub function function
+  start subHandler route=/hello req.route=/hello function function
+  end subHandler result=undefined route=/hello req.route=/hello function function
+  end mounted_app result=undefined route=/sub req.route=/hello function function
+  end <anonymous> result=undefined route=/ req.route=/hello function function
+  end logger result=undefined route=/ req.route=/hello function function
 GET /missing 404
-  start logger function
-  start <anonymous> function
-  end <anonymous> function
-  end logger function
+  start logger route=/ function function
+  start <anonymous> route=/ function function
+  end <anonymous> result=undefined route=/ function function
+  end logger result=undefined route=/ function function
