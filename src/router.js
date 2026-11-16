@@ -65,6 +65,7 @@ const {
     CALLBACK_ERROR,
     CALLBACK_ROUTER,
     raiseDecodeFailure,
+    settle,
     raise,
     stepsOver,
     useApp,
@@ -1105,9 +1106,10 @@ module.exports = class Router extends EventEmitter {
      * @param {Request} req
      * @param {Response} res
      * @param {RouteEntry} route
-     * @returns {Promise<true|"route">|true|"route"} a promise only when a param callback is involved
+     * @param {Walk} walk
+     * @returns {true|"route"|undefined} undefined when param callbacks run, they resume the walk
      */
-    _preprocessRequest(req, res, route) {
+    _preprocessRequest(req, res, route, walk) {
         // both: the route flag says it was registered natively, the values that this request came that way
         const names = route.optimizedParams;
         const values = req.optimizedParams;
@@ -1157,7 +1159,7 @@ module.exports = class Router extends EventEmitter {
         // express runs no app.param() there, though it still decodes the layer
         const paramCallbacks = route.paramCallbacks;
         if (paramCallbacks.size > 0 && !(req._isOptions && !route.all && route.method !== "OPTIONS")) {
-            return this._runParamCallbacks(req, res, route, paramCallbacks);
+            return this._runParamCallbacks(req, res, route, paramCallbacks, walk);
         }
         return true;
     }
@@ -1183,18 +1185,19 @@ module.exports = class Router extends EventEmitter {
     }
 
     /**
-     * Runs the app.param() callbacks for the parameters this route matched, and says whether the
-     * route may run. Once per value, as in express: a value already seen restores what that call
-     * left in req.params, deferral or error included, without running again.
+     * Runs the app.param() callbacks for the parameters this route matched. Once per value, as in
+     * express: a value already seen restores what that call left in req.params, deferral or error
+     * included, without running again. As router 2, the route runs inside the last next().
      *
      * @param {Request} req
      * @param {Response} res
      * @param {RouteEntry} route
      * @param {Map<string, Function[]>} paramCallbacks the owning router's, which is also the key of
      *   its own cache: two routers that declare the same parameter each call their own
-     * @returns {Promise<true|"route">|true}
+     * @param {Walk} walk resumed with true to run the route, "route" to skip it
+     * @returns {true|undefined} true when no callback applies, the walk is not resumed then
      */
-    _runParamCallbacks(req, res, route, paramCallbacks) {
+    _runParamCallbacks(req, res, route, paramCallbacks, walk) {
         // the names this route captured itself, see ownParamNames
         let names;
         const own = ownParamNames(route);
@@ -1213,67 +1216,66 @@ module.exports = class Router extends EventEmitter {
             perRouter.set(paramCallbacks, (called = new Map()));
         }
 
-        return new Promise((resolve) => {
-            let index = 0;
-            let name = "";
-            /** @type {unknown} */
-            let value;
-            /** @type {ParamCall} */
-            let entry;
-            /** @type {Function[]} */
-            let fns = [];
-            let fnIndex = 0;
+        let index = 0;
+        let name = "";
+        /** @type {unknown} */
+        let value;
+        /** @type {ParamCall} */
+        let entry;
+        /** @type {Function[]} */
+        let fns = [];
+        let fnIndex = 0;
 
-            // one parameter after the other, err being what the last one's callbacks ended with
-            /** @param {unknown} [err] */
-            const nextParam = (err) => {
-                if (err) {
-                    // an error already in flight stays, as express's next(layerError || err)
-                    if (err !== "route" && !req._error) {
-                        raise(req, route, err);
-                    }
-                    return resolve("route");
+        // one parameter after the other, err being what the last one's callbacks ended with
+        /** @param {unknown} [err] */
+        const nextParam = (err) => {
+            if (err) {
+                // an error already in flight stays, as express's next(layerError || err)
+                if (err !== "route" && !req._error) {
+                    raise(req, route, err);
                 }
-                if (index >= names.length) {
-                    return resolve(true);
-                }
-                name = names[index++];
-                value = req.params[name];
-                const earlier = called.get(name);
-                if (earlier && (earlier.match === value || (earlier.error && earlier.error !== "route"))) {
-                    req.params[name] = earlier.value;
-                    return nextParam(earlier.error);
-                }
-                entry = { error: null, match: value, value };
-                called.set(name, entry);
-                fns = /** @type {Function[]} */ (paramCallbacks.get(name));
-                fnIndex = 0;
-                nextCallback(undefined);
-            };
+                return walk.resumeRoute("route");
+            }
+            if (index >= names.length) {
+                return walk.resumeRoute(true);
+            }
+            name = names[index++];
+            value = req.params[name];
+            const earlier = called.get(name);
+            if (earlier && (earlier.match === value || (earlier.error && earlier.error !== "route"))) {
+                req.params[name] = earlier.value;
+                return nextParam(earlier.error);
+            }
+            entry = { error: null, match: value, value };
+            called.set(name, entry);
+            fns = /** @type {Function[]} */ (paramCallbacks.get(name));
+            fnIndex = 0;
+            nextCallback(undefined);
+        };
 
-            // and one callback of the current parameter after the other
-            /** @param {unknown} [err] */
-            const nextCallback = (err) => {
-                const fn = fns[fnIndex++];
-                // a callback rewriting req.params[name] hands that value to every later route
-                entry.value = req.params[name];
-                if (err) {
-                    entry.error = err;
-                    return nextParam(err);
-                }
-                if (!fn) {
-                    return nextParam(undefined);
-                }
-                req.next = nextCallback;
-                try {
-                    fn(req, res, nextCallback, value, name);
-                } catch (thrown) {
-                    nextCallback(thrown);
-                }
-            };
+        // and one callback of the current parameter after the other
+        /** @param {unknown} [err] */
+        const nextCallback = (err) => {
+            const fn = fns[fnIndex++];
+            // a callback rewriting req.params[name] hands that value to every later route
+            entry.value = req.params[name];
+            if (err) {
+                entry.error = err;
+                return nextParam(err);
+            }
+            if (!fn) {
+                return nextParam(undefined);
+            }
+            req.next = nextCallback;
+            try {
+                settle(fn(req, res, nextCallback, value, name), nextCallback);
+            } catch (thrown) {
+                nextCallback(thrown);
+            }
+        };
 
-            nextParam(undefined);
-        });
+        nextParam(undefined);
+        return undefined;
     }
 
     /**

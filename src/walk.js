@@ -248,10 +248,26 @@ class Walk {
         this.route = route;
         this.callbackIndex = 0;
 
-        // a promise only when param callbacks really run; a microtask every 300 routes keeps a
-        // long chain off the stack
-        const continueRoute = router._preprocessRequest(req, this.res, route);
-        if (continueRoute instanceof Promise || req.routeCount % 300 === 0) {
+        // undefined when param callbacks run, they come back through resumeRoute
+        const continueRoute = router._preprocessRequest(req, this.res, route, this);
+        if (continueRoute === undefined) {
+            return;
+        }
+        // a microtask every 300 routes keeps a long chain off the stack
+        if (req.routeCount % 300 === 0) {
+            return this.resumeRoute(continueRoute);
+        }
+        return this.runRoute(continueRoute);
+    }
+
+    /**
+     * Runs the route once its param callbacks are done, from inside their next() as express does.
+     * A throw rejects the walk, it is not the callback's error.
+     *
+     * @param {true|"route"} continueRoute
+     */
+    resumeRoute(continueRoute) {
+        if (this.req.routeCount % 300 === 0) {
             // .catch, so a throw inside runRoute rejects the walk; wrapped, the native pair keeps
             // the walk as receiver
             Promise.resolve(continueRoute)
@@ -259,7 +275,11 @@ class Walk {
                 .catch((/** @type {unknown} */ err) => this.reject(err));
             return;
         }
-        return this.runRoute(continueRoute);
+        try {
+            this.runRoute(continueRoute);
+        } catch (err) {
+            this.reject(err);
+        }
     }
 
     /**

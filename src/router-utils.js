@@ -1184,6 +1184,7 @@ module.exports = {
     CALLBACK_ERROR,
     CALLBACK_ROUTER,
     raiseDecodeFailure,
+    settle,
     raise,
     stepsOver,
     couldAnswer,
