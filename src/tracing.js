@@ -47,7 +47,22 @@ const layers = new WeakMap();
  * @returns {boolean}
  */
 function tracing() {
-    return requestChannel !== null && requestChannel.hasSubscribers === true;
+    if (requestChannel === null) {
+        return false;
+    }
+    const all = requestChannel.hasSubscribers;
+    // Bun has no TracingChannel#hasSubscribers, router 2 asks each channel there
+    if (all !== undefined) {
+        return all;
+    }
+    const channel = /** @type {dc.TracingChannel<any, any>} */ (requestChannel);
+    return (
+        channel.start.hasSubscribers ||
+        channel.end.hasSubscribers ||
+        channel.asyncStart.hasSubscribers ||
+        channel.asyncEnd.hasSubscribers ||
+        channel.error.hasSubscribers
+    );
 }
 
 /**
