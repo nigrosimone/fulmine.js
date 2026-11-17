@@ -23,6 +23,28 @@ const { NullObject } = require("./utils.js");
 const SYNC_LIMIT = 100;
 
 /**
+ * Route#_methods of router 2.3, on a methods map.
+ *
+ * @param {Record<string, boolean>} map
+ * @param {boolean} [includeAll] "*" for all()
+ * @returns {string[]}
+ */
+function routeMethods(map, includeAll) {
+    const methods = [];
+    for (const method of Object.keys(map)) {
+        if (method !== "_all") {
+            methods.push(method.toUpperCase());
+        } else if (includeAll) {
+            methods.push("*");
+        }
+    }
+    if (map.get && !map.head) {
+        methods.push("HEAD");
+    }
+    return methods;
+}
+
+/**
  * The handlers registered for one path, and the walk over them.
  *
  * Express exports this, and code that builds a route by hand uses it: `new Route(path)`, a handler
@@ -72,16 +94,14 @@ class Route {
     }
 
     /**
-     * The verbs this route answers, in upper case, HEAD included when GET is there.
+     * The verbs this route answers, in upper case, HEAD included when GET is there. As router 2.3,
+     * all() is not a verb: "*" when asked for, else left out.
      *
+     * @param {boolean} [includeAll]
      * @returns {string[]}
      */
-    _methods() {
-        const methods = Object.keys(this.methods);
-        if (this.methods.get && !this.methods.head) {
-            methods.push("head");
-        }
-        return methods.map((method) => method.toUpperCase());
+    _methods(includeAll) {
+        return routeMethods(this.methods, includeAll);
     }
 
     /**

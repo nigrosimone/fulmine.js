@@ -40,7 +40,7 @@ In general, basically all features and options are supported. Use the [Express 5
 - ✅ app.listen(unix_socket[, callback])
 - ✅ app.METHOD() (app.get, app.post, etc.)
 - ✅ app.route()
-- ✅ app.router, and its `stack` of layers
+- ✅ app.router, its `stack` of layers as router 2.3 makes them (`rawPath`, `match()` returning the match), and `listRoutes()`
 - ✅ app.all()
 - ✅ app.use()
 - ✅ app.mountpath

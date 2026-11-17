@@ -377,7 +377,7 @@ class Walk {
             }
             const taken = mountPrefixLength(route, req);
             // negative when the mount consumed the whole path: express invents the "/" below it,
-            // see leaveHop and issue #17
+            // see leaveHop
             (req._stack ??= []).push(
                 taken !== 0 && req._consumed + taken === req._originalPath.length ? -taken : taken
             );
@@ -457,8 +457,8 @@ class Walk {
                 req._consumed -= taken;
                 setMountedPath(req);
             } else {
-                if (pushed < 0 && req._originalPath.length > req._consumed) {
-                    // a rewrite below left a remainder: express strips its first character, issue #17
+                if (pushed < 0 && req._originalPath.length === req._consumed + 1 && req._originalPath.endsWith("/")) {
+                    // a rewrite below to the root: router 2.3 takes back the "/" it invented (#206)
                     const original = req._originalPath;
                     const consumed = req._consumed;
                     req._originalPath = original.slice(0, consumed) + original.slice(consumed + 1);

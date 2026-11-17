@@ -724,6 +724,38 @@ module.exports = class Router extends EventEmitter {
     }
 
     /**
+     * The routes and the mounted routers, as router 2.3 lists them: one entry per path, a route
+     * with its verbs ("*" for all()), a router for the caller to recurse into. A mounted app is
+     * not a router there.
+     *
+     * @returns {{path: unknown, methods: string[]|undefined, router: Router|undefined}[]}
+     */
+    listRoutes() {
+        const list = [];
+        // an app.route() chain is one route to express, here a route per verb
+        const listed = new Set();
+        for (const route of this._routes) {
+            if (route.use) {
+                for (const callback of route.callbacks) {
+                    if (callback instanceof Router && !callback._isApplication) {
+                        list.push({ path: route.rawPath, methods: undefined, router: callback });
+                    }
+                }
+                continue;
+            }
+            if (route.group !== undefined) {
+                const key = `${route.group} ${String(route.rawPath)}`;
+                if (listed.has(key)) {
+                    continue;
+                }
+                listed.add(key);
+            }
+            list.push({ path: route.rawPath, methods: Route.prototype._methods.call(route, true), router: undefined });
+        }
+        return list;
+    }
+
+    /**
      * The layers in Express's own shape, one per middleware and per route with the handlers under
      * `route.stack`: endpoint listers walk it, LibreChat pulls a middleware out of it by name. A
      * view rebuilt on every read, so pushing or splicing moves nothing; the layer objects are kept,

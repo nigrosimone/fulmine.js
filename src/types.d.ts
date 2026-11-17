@@ -492,6 +492,12 @@ declare module "fulmine.js" {
         readonly stack: any[];
 
         /**
+         * The routes and mounted routers, as router 2.3's `listRoutes()`: one entry per path, a
+         * route's verbs (`"*"` for `all()`), a mounted router to recurse into. Also on `app.router`.
+         */
+        listRoutes(): { path: string | RegExp; methods: string[] | undefined; router: any }[];
+
+        /**
          * Binds, and calls back the way Express 5 does: with nothing when the socket is listening,
          * and with the error when the bind failed, since Express registers the listen callback on
          * 'error' as well as on 'listening'. `this` inside it is the app, which is what listen

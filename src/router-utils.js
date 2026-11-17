@@ -62,6 +62,10 @@ const { callbackUsage } = require("./usage.js");
  * @typedef {{path: string, params: Record<string, unknown>}|false} LayerMatch
  */
 /**
+ * What Layer#match answers, as router 2.3: the values of this match, nothing kept on the layer.
+ * @typedef {{params: Record<string, unknown>, path: string, keys: string[], pattern: unknown}|false} LayerResult
+ */
+/**
  * A websocket registration, kept until listen() hands it to µWS.
  * @typedef {{path: string, behavior: Record<string, unknown>, owner: Router}} WsRoute
  */
@@ -196,55 +200,48 @@ function responsePatched(proto) {
 const ROUTE_STACK_PATH = /^\/\/?$/;
 
 /**
- * A layer as router 2 makes it, for app.router.stack, router.stack and route.stack: its fields
+ * A layer as router 2.3 makes it, for app.router.stack, router.stack and route.stack: its fields
  * and methods, for the route listers that read matchers and the code that runs a layer by hand.
  */
 class Layer {
+    /** the path of this route when rawPath is a list, what match() answers as pattern */
+    #pattern;
+
     /**
      * @param {Function} handle
      * @param {string} name
+     * @param {unknown} rawPath the path as written, a list flattened
+     * @param {unknown} pattern the piece of it this layer matches
      * @param {boolean} slash a use with no path, which matches every path
      * @param {(path: string) => LayerMatch} matcher
      */
-    constructor(handle, name, slash, matcher) {
+    constructor(handle, name, rawPath, pattern, slash, matcher) {
         this.handle = handle;
-        /** @type {string[]} */
-        this.keys = [];
         this.name = name;
-        /** @type {Record<string, unknown>|undefined} */
-        this.params = undefined;
-        /** @type {string|undefined} */
-        this.path = undefined;
+        this.rawPath = rawPath;
         this.slash = slash;
         this.matchers = [matcher];
+        this.#pattern = pattern;
     }
 
     /**
-     * Whether the layer answers the path, filling params, path and keys as express does.
+     * What the layer matches of the path, or false, as router 2.3 answers it.
      *
      * @param {string|null|undefined} path
-     * @returns {boolean}
+     * @returns {LayerResult}
      */
     match(path) {
-        /** @type {LayerMatch} */
-        let match = false;
-        if (path != null) {
-            if (this.slash) {
-                this.params = {};
-                this.path = "";
-                return true;
-            }
-            match = this.matchers[0](path);
-        }
-        if (!match) {
-            this.params = undefined;
-            this.path = undefined;
+        if (path == null) {
             return false;
         }
-        this.params = match.params;
-        this.path = match.path;
-        this.keys = Object.keys(match.params);
-        return true;
+        if (this.slash) {
+            return { params: {}, path: "", keys: [], pattern: this.rawPath };
+        }
+        const match = this.matchers[0](path);
+        if (!match) {
+            return false;
+        }
+        return { params: match.params, path: match.path, keys: Object.keys(match.params), pattern: this.#pattern };
     }
 
     /**
@@ -306,6 +303,17 @@ function settle(ret, next) {
 }
 
 /**
+ * A layer's rawPath: the path as written, a list flattened, a pathless use "/".
+ *
+ * @param {RouteEntry} route
+ * @returns {unknown}
+ */
+function writtenPath(route) {
+    const written = route.exposed.path;
+    return Array.isArray(written) ? written.flat(Infinity) : route.rawPath;
+}
+
+/**
  * The layer Express makes for one mounted handler, with the name a caller matches on.
  *
  * @param {RouteEntry} route
@@ -321,7 +329,7 @@ function layerFor(route, callback) {
             : "router"
         : callback.name || "<anonymous>";
     const layer = /** @type {Layer & {route: undefined}} */ (
-        new Layer(callback, name, route.pattern === EMPTY_REGEX, matcherFor(route))
+        new Layer(callback, name, writtenPath(route), route.rawPath, route.pattern === EMPTY_REGEX, matcherFor(route))
     );
     layer.route = undefined;
     route._layers.set(callback, layer);
@@ -360,7 +368,9 @@ function routeLayer(route) {
         };
         step();
     };
-    const layer = /** @type {Layer & {route: unknown}} */ (new Layer(handle, "handle", false, matcherFor(route)));
+    const layer = /** @type {Layer & {route: unknown}} */ (
+        new Layer(handle, "handle", writtenPath(route), route.rawPath, false, matcherFor(route))
+    );
     layer.route = route.exposed;
     return layer;
 }
@@ -374,8 +384,8 @@ function routeLayer(route) {
  */
 function routeStackLayer(handle, method) {
     const layer = /** @type {Layer & {method: string|undefined}} */ (
-        new Layer(handle, handle.name || "<anonymous>", false, (path) =>
-            ROUTE_STACK_PATH.test(String(path)) ? { path: String(path), params: {} } : false
+        new Layer(handle, handle.name || "<anonymous>", "/", "/", false, (path) =>
+            ROUTE_STACK_PATH.test(String(path)) ? { path: String(path), params: Object.create(null) } : false
         )
     );
     layer.method = method;
@@ -392,7 +402,7 @@ function routeStackLayer(handle, method) {
 function matcherFor(route) {
     // a pathless use: router 2's matcher takes "/" alone, match() answers every path through slash
     if (route.pattern === EMPTY_REGEX) {
-        return (path) => (String(path) === "/" ? { path: "/", params: {} } : false);
+        return (path) => (String(path) === "/" ? { path: "/", params: Object.create(null) } : false);
     }
     // an application's own RegExp is matched by router 2 itself, which answers params first
     const ownRegExp = typeof route.pattern !== "string" && getPatternMeta(route.pattern) === undefined;
@@ -402,7 +412,11 @@ function matcherFor(route) {
         if (!owner._pathMatches(route, req)) {
             return false;
         }
-        const params = typeof route.pattern === "string" ? {} : { ...owner._extractParams(route.pattern, req._opPath) };
+        // path-to-regexp's params have no prototype, router 2's own RegExp matcher fills a plain object
+        const params = ownRegExp ? {} : Object.create(null);
+        if (typeof route.pattern !== "string") {
+            Object.assign(params, owner._extractParams(route.pattern, req._opPath));
+        }
         const matched = route.use ? req._opPath.slice(0, mountPrefixLength(route, req)) : req._opPath;
         return ownRegExp ? { params, path: matched } : { path: matched, params };
     };

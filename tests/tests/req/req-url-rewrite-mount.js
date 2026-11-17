@@ -21,8 +21,8 @@ app.use("/gone", (req, res, next) => {
     next();
 });
 
-// the whole path consumed: express strips the first character of the assigned url and rejoins,
-// so "/found" + "target" lands here
+// the whole path consumed: router 2.3 rejoins the assigned url as it is (#206), so "/found/target"
+// answers above; router 2.2 stripped its first character and landed here
 app.get("/foundtarget", (req, res) => {
     res.json({ mangled: true, query: req.query, url: req.url });
 });
@@ -49,8 +49,8 @@ inner.get("/target", (req, res) => {
 });
 app.use("/mounted", inner);
 
-// nothing inside the router matches the rewrite, so the walk falls back out: express rejoins
-// with the first character stripped, and "/fall" + "nowhere" lands on the outer route
+// nothing inside the router matches the rewrite, so the walk falls back out: rejoined as it is,
+// "/fall/nowhere" matches nothing outside either
 const fallout = express.Router();
 fallout.use((req, res, next) => {
     req.url = "/nowhere?x=5";
@@ -70,6 +70,27 @@ lost.use((req, res, next) => {
 });
 app.use("/lost", lost);
 
+// a rewrite to the root of a mount that took the whole path: the invented "/" goes again, so the
+// rest of the routing sees "/root?x=7"
+app.use("/root", (req, res, next) => {
+    req.url = "/?x=7";
+    next();
+});
+app.get("/root", (req, res) => {
+    res.json({ root: true, query: req.query, url: req.url });
+});
+
+// the same from inside a mounted router
+const toRoot = express.Router();
+toRoot.use((req, res, next) => {
+    req.url = "/";
+    next();
+});
+app.use("/inner-root", toRoot);
+app.get("/inner-root", (req, res) => {
+    res.json({ innerRoot: true, url: req.url });
+});
+
 app.listen(13763, async () => {
     console.log("Server is running on port 13763");
 
@@ -80,7 +101,9 @@ app.listen(13763, async () => {
         () => fetchTest("http://localhost:13763/clean/sub").then((res) => res.text()),
         () => fetchTest("http://localhost:13763/mounted").then((res) => res.text()),
         () => fetchTest("http://localhost:13763/fall").then((res) => res.text()),
-        () => fetchTest("http://localhost:13763/lost").then((res) => res.text())
+        () => fetchTest("http://localhost:13763/lost").then((res) => res.text()),
+        () => fetchTest("http://localhost:13763/root").then((res) => res.text()),
+        () => fetchTest("http://localhost:13763/inner-root").then((res) => res.text())
     ]);
 
     console.log(responses);

@@ -1045,9 +1045,9 @@ module.exports = class Request extends LazyReadable {
         let prefix;
         if (oldPath === "/" && !this._originalPath.endsWith("/")) {
             prefix = this._originalPath;
-            // express's slashAdded restore on the way out of a mount that consumed the whole path:
-            // the "/" was invented, and the rejoin strips the first assigned character
-            if (leavingMount === true) {
+            // router 2.3's slashAdded restore on the way out of a mount that consumed the whole
+            // path: the invented "/" goes again, only when the rewrite is to the root (#206)
+            if (leavingMount === true && (newUrl === "/" || newUrl.startsWith("/?"))) {
                 newUrl = newUrl.slice(1);
             }
         } else {

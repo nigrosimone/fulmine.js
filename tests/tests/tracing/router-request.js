@@ -1,10 +1,8 @@
 // The express.router.request TracingChannel against express itself: start, end, asyncStart,
 // INSPECT
 // asyncEnd and error for every middleware, route handler and error handler, request by request
-// OFF: express 5.3.0 resolves router 2.2.0, which publishes nothing; on once router 2.3.0 is out
 //
-// Until then tests/unit/tracing-router-request.test.js holds this app, and more, against the sequence
-// express printed with router at pillarjs/router#223. Left out here: an error a mounted router raises while matching,
+// tests/unit/tracing-router-request.test.js holds this app and more, against what express printed Left out here: an error a mounted router raises while matching,
 // which express hands out at once and fulmine a microtask later, the one known difference
 
 const dc = require("node:diagnostics_channel");
