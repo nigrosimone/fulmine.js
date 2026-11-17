@@ -1,5 +1,18 @@
 # Changelog
 
+## [5.34.0](https://github.com/nigrosimone/fulmine.js/compare/v5.33.3...v5.34.0) (2026-11-17)
+
+### Features
+
+* **router:** router 2.3.0: listRoutes(), layers that keep no match, Route#_methods, a rewrite under a mount kept ([d1ee3dc](https://github.com/nigrosimone/fulmine.js/commit/d1ee3dcc15f0604b23965ef940e8d2eb7f6524cb)), references [Route#_methods](https://github.com/nigrosimone/fulmine.js/issues/_methods)
+* **tracing:** the express.router.request context of router 2.3, param callbacks traced, result and incomingError ([f91e5c7](https://github.com/nigrosimone/fulmine.js/commit/f91e5c7041c7b3f1d506b2629ab2d5240f5aa9d7))
+
+### Bug Fixes
+
+* **router:** a thrown or rejected "route" or "router" is next("route") or next("router"), as router 2 forwards it ([61ddc78](https://github.com/nigrosimone/fulmine.js/commit/61ddc785197b309724d48223771cea3ecd37d545))
+* **router:** app.param() as router 2 runs it, a rejected promise to the error handlers, the route inside next() ([de5591e](https://github.com/nigrosimone/fulmine.js/commit/de5591e5540514e04b999051b1bf3ac1742fffa2))
+* **tracing:** on Bun, which has no TracingChannel[#has](https://github.com/nigrosimone/fulmine.js/issues/has)Subscribers, ask each channel as router 2 does ([d425574](https://github.com/nigrosimone/fulmine.js/commit/d425574d8de2d1ac0130ffa1f3ec13416802de15)), references [TracingChannel#hasSubscribers](https://github.com/nigrosimone/fulmine.js/issues/hasSubscribers)
+
 ## [5.33.3](https://github.com/nigrosimone/fulmine.js/compare/v5.33.2...v5.33.3) (2026-11-13)
 
 ### Bug Fixes
