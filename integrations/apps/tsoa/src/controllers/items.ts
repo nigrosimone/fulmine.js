@@ -1,7 +1,7 @@
 // The controller the tsoa case serves. Small on purpose: a list with a query, a path parameter
 // that can miss, a body tsoa validates, and a status set by hand.
 
-import { Body, Controller, Get, Header, Path, Post, Query, Route, SuccessResponse } from "tsoa";
+import { Body, Controller, Get, Header, Path, Post, QueryParam, Route, SuccessResponse } from "tsoa";
 
 interface Item {
     id: number;
@@ -25,7 +25,7 @@ class NotFound extends Error {
 @Route("items")
 export class ItemsController extends Controller {
     @Get()
-    public list(@Query() prefix?: string): Item[] {
+    public list(@QueryParam() prefix?: string): Item[] {
         return [...items]
             .filter(([, name]) => prefix === undefined || name.startsWith(prefix))
             .map(([id, name]) => ({ id, name }));
