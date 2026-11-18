@@ -33,11 +33,15 @@ app.listen(13333, async () => {
             ["/number", big],
             ["/number", small]
         ].map(([path, body]) => async () => {
-            const res = await fetchTest("http://localhost:13333" + path, {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body
-            });
+            const res = await fetchTest(
+                "http://localhost:13333" + path,
+                {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body
+                },
+                { refusedForSize: body === big }
+            );
             console.log(path, body.length, await res.text());
         })
     );

@@ -57,22 +57,30 @@ app.listen(13333, async () => {
         cases.map(([path, body, type]) => async () => {
             const headers = { "content-type": type };
             if (path === "/encoding") headers["content-encoding"] = "brrr";
-            const response = await fetchTest("http://localhost:13333" + path, { method: "POST", headers, body });
+            const response = await fetchTest(
+                "http://localhost:13333" + path,
+                { method: "POST", headers, body },
+                { refusedForSize: path.endsWith("-limit") }
+            );
             console.log(path, await response.text());
         })
     );
     // too large without a length: the limit is found while reading
-    const chunked = await fetchTest("http://localhost:13333/json-limit", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: new ReadableStream({
-            start(controller) {
-                controller.enqueue(new TextEncoder().encode(big));
-                controller.close();
-            }
-        }),
-        duplex: "half"
-    });
+    const chunked = await fetchTest(
+        "http://localhost:13333/json-limit",
+        {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: new ReadableStream({
+                start(controller) {
+                    controller.enqueue(new TextEncoder().encode(big));
+                    controller.close();
+                }
+            }),
+            duplex: "half"
+        },
+        { refusedForSize: true }
+    );
     console.log("/json-limit chunked", await chunked.text());
     process.exit(0);
 });

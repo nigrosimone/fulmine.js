@@ -26,13 +26,17 @@ const cases = [
     ["/json", "application/json", Buffer.from("not zstd at all")],
     ["/text", "text/plain", zstd("hello zstd")],
     ["/limit", "application/octet-stream", zstd("bytes")],
-    ["/limit", "application/octet-stream", zstd("far more than eight bytes once inflated")]
-].map(([path, type, body]) => async () => {
-    const res = await fetchTest("http://localhost:13333" + path, {
-        method: "POST",
-        headers: { "content-type": type, "content-encoding": "zstd" },
-        body
-    });
+    ["/limit", "application/octet-stream", zstd("far more than eight bytes once inflated"), true]
+].map(([path, type, body, refusedForSize = false]) => async () => {
+    const res = await fetchTest(
+        "http://localhost:13333" + path,
+        {
+            method: "POST",
+            headers: { "content-type": type, "content-encoding": "zstd" },
+            body
+        },
+        { refusedForSize }
+    );
     console.log(path, body.length, res.status, await res.text());
 });
 

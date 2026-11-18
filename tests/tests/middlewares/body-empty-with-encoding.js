@@ -62,11 +62,15 @@ for (const body of [Buffer.alloc(0), Buffer.from("{}")]) {
 // 413 for a body that fits once it is inflated. The one over the limit still has to be refused.
 for (const text of ["bytes", "far more than eight bytes once inflated"]) {
     cases.push(async () => {
-        const res = await fetchTest("http://localhost:13333/limit", {
-            method: "POST",
-            headers: { "content-type": "application/octet-stream", "content-encoding": "gzip" },
-            body: require("zlib").gzipSync(Buffer.from(text))
-        });
+        const res = await fetchTest(
+            "http://localhost:13333/limit",
+            {
+                method: "POST",
+                headers: { "content-type": "application/octet-stream", "content-encoding": "gzip" },
+                body: require("zlib").gzipSync(Buffer.from(text))
+            },
+            { refusedForSize: text.length > 8 }
+        );
         console.log("/limit", text.length, res.status, await res.text());
     });
 }

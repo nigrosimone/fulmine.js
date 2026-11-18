@@ -76,16 +76,24 @@ function printInCallOrder(index, line) {
  *
  * Returns the response untouched, so a test can go on to read the body as it would have.
  *
+ * `refusedForSize` marks a request whose body a parser refuses for its size: Express reads the
+ * rest of that body and keeps the connection, Fulmine closes it once the answer is out (see
+ * docs/differences.md), so on that one request `connection` and `keep-alive` are not compared.
+ * tests/unit/body-close-after-refusal.test.js pins the close itself.
+ *
  * @param {string|URL|Request} input
  * @param {RequestInit} [init]
+ * @param {{refusedForSize?: boolean}} [options]
  * @returns {Promise<Response>}
  */
-async function fetchTest(input, init) {
+async function fetchTest(input, init, options) {
+    const refused = options?.refusedForSize === true;
     const line = nextLine++;
     const response = await fetch(input, init);
 
     const shown = [];
     for (const name of COMPARED_HEADERS) {
+        if (refused && name === "connection") continue;
         // getSetCookie keeps several Set-Cookie headers apart, which get() would join
         const value = name === "set-cookie" ? response.headers.getSetCookie().join(" | ") : response.headers.get(name);
         if (value !== null && value !== "") {
@@ -93,6 +101,7 @@ async function fetchTest(input, init) {
         }
     }
     for (const name of PRESENCE_ONLY_HEADERS) {
+        if (refused && name === "keep-alive") continue;
         shown.push(`${name}: ${response.headers.has(name) ? "sent" : "absent"}`);
     }
     printInCallOrder(line, `[${response.status}] ${shown.join(", ")}`);

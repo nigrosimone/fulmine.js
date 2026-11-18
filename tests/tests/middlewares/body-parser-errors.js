@@ -38,11 +38,15 @@ app.use((err, req, res, next) => {
 });
 
 const post = (path, body, type) =>
-    fetchTest("http://localhost:13333" + path, {
-        method: "POST",
-        headers: { "content-type": type || "application/json" },
-        body
-    });
+    fetchTest(
+        "http://localhost:13333" + path,
+        {
+            method: "POST",
+            headers: { "content-type": type || "application/json" },
+            body
+        },
+        { refusedForSize: path.endsWith("limit") }
+    );
 
 app.listen(13333, async () => {
     const cases = [

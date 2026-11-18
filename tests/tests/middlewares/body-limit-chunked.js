@@ -29,14 +29,18 @@ app.listen(13333, async () => {
         }
     });
 
-    const response = await fetchTest("http://localhost:13333/abc", {
-        method: "POST",
-        body,
-        duplex: "half",
-        headers: {
-            "Content-Type": "application/json"
-        }
-    });
+    const response = await fetchTest(
+        "http://localhost:13333/abc",
+        {
+            method: "POST",
+            body,
+            duplex: "half",
+            headers: {
+                "Content-Type": "application/json"
+            }
+        },
+        { refusedForSize: true }
+    );
 
     console.log(response.status);
     console.log(await response.text());

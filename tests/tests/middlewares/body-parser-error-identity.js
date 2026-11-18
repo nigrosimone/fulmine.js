@@ -64,7 +64,11 @@ app.listen(13333, async () => {
     for (const [path, body, type] of cases) {
         const headers = { "content-type": type };
         if (path === "/encoding") headers["content-encoding"] = "brrr";
-        const response = await fetchTest("http://localhost:13333" + path, { method: "POST", headers, body });
+        const response = await fetchTest(
+            "http://localhost:13333" + path,
+            { method: "POST", headers, body },
+            { refusedForSize: path === "/limit" }
+        );
         console.log(path, await response.text());
     }
     process.exit(0);

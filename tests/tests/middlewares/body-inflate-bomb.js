@@ -30,11 +30,15 @@ for (const [path, type] of [
 ]) {
     for (const [encoding, compress] of Object.entries(compressors)) {
         cases.push(async () => {
-            const res = await fetchTest("http://localhost:13333" + path, {
-                method: "POST",
-                headers: { "content-type": type, "content-encoding": encoding },
-                body: compress(bomb)
-            });
+            const res = await fetchTest(
+                "http://localhost:13333" + path,
+                {
+                    method: "POST",
+                    headers: { "content-type": type, "content-encoding": encoding },
+                    body: compress(bomb)
+                },
+                { refusedForSize: true }
+            );
             console.log(path, encoding, res.status, await res.text());
         });
     }
@@ -42,11 +46,15 @@ for (const [path, type] of [
 // exactly the limit inflated is still read, one byte more is not
 for (const size of [1024, 1025]) {
     cases.push(async () => {
-        const res = await fetchTest("http://localhost:13333/raw", {
-            method: "POST",
-            headers: { "content-type": "application/octet-stream", "content-encoding": "gzip" },
-            body: zlib.gzipSync(Buffer.alloc(size, "a"))
-        });
+        const res = await fetchTest(
+            "http://localhost:13333/raw",
+            {
+                method: "POST",
+                headers: { "content-type": "application/octet-stream", "content-encoding": "gzip" },
+                body: zlib.gzipSync(Buffer.alloc(size, "a"))
+            },
+            { refusedForSize: size > 1024 }
+        );
         console.log("/raw", size, res.status, await res.text());
     });
 }

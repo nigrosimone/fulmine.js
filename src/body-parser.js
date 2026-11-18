@@ -307,6 +307,25 @@ function inflateError(inflate, err) {
     return err;
 }
 
+/**
+ * The connection closes once the answer to a body refused for its size is out, the rest of that
+ * body unread. Express reads it to the end first and keeps the connection, which a client sending
+ * gigabytes holds for as long as it likes, and thousands of them fill the kernel's receive buffers
+ * faster than anything drains them: the resilience suite's large-upload, hashdos, multipart-flood
+ * and json-nesting-bomb. µWS writes the Connection: close itself when told to close, so the seeded
+ * keep-alive pair goes, or the head would carry two. See docs/differences.md.
+ *
+ * @param {Request} req
+ * @param {Response} res
+ */
+function closeAfterResponse(req, res) {
+    req._connectionClose = true;
+    if (!res.headersSent && res.headers.connection === "keep-alive") {
+        delete res.headers.connection;
+        delete res.headers["keep-alive"];
+    }
+}
+
 /** @type {{inflate?: Inflater|undefined, error?: HttpError}} nothing to inflate, shared */
 const IDENTITY_ENCODING = Object.freeze({});
 
@@ -512,6 +531,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 try {
                     if (body === null) {
                         // over maxSize: uWS refused it natively
+                        closeAfterResponse(req, res);
                         return next(
                             bodyError("request entity too large", 413, "entity.too.large", {
                                 limit: limit,
@@ -586,6 +606,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 if (err.code === "ERR_BUFFER_TOO_LARGE") {
                     // one call inflated past the limit, see createInflate
                     /** @type {Inflater} */ (inflate).instance?.on?.("error", () => {});
+                    closeAfterResponse(req, res);
                     next(
                         bodyError("request entity too large", 413, "entity.too.large", {
                             limit: limit,
@@ -610,6 +631,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                     finished = true;
                     abs.length = 0;
                     target = null;
+                    closeAfterResponse(req, res);
                     next(
                         bodyError("request entity too large", 413, "entity.too.large", {
                             limit: limit,
@@ -830,6 +852,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
 
                 // not while inflating: content-length counts the compressed bytes, keepChunk counts the rest
                 if (!inflate && lengthNumber > limit) {
+                    closeAfterResponse(req, res);
                     return next(
                         bodyError("request entity too large", 413, "entity.too.large", {
                             expected: lengthNumber,
