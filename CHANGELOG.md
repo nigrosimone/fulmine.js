@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.34.1](https://github.com/nigrosimone/fulmine.js/compare/v5.34.0...v5.34.1) (2026-11-18)
+
+### Bug Fixes
+
+* **body-parser:** close the connection after a body refused for its size with more than 256 KB left ([b70e507](https://github.com/nigrosimone/fulmine.js/commit/b70e507b96478e7a2adf61e7182ad0c6d14e952c))
+* **body-parser:** stop inflating a compressed body at the limit, not after it ([9b2d3a7](https://github.com/nigrosimone/fulmine.js/commit/9b2d3a7fc7e9cee9999815d629e545a54f7dc1f2))
+
 ## [5.34.0](https://github.com/nigrosimone/fulmine.js/compare/v5.33.3...v5.34.0) (2026-11-17)
 
 ### Features
