@@ -307,6 +307,28 @@ function inflateError(inflate, err) {
     return err;
 }
 
+/** As Go's net/http: up to 256 KB left of a refused body is read as Express does, more is not. */
+const MAX_DRAINED_BODY = 256 * 1024;
+
+/**
+ * After a body refused for its size, the connection closes when more than MAX_DRAINED_BODY is left.
+ * µWS writes its own Connection: close, so the keep-alive pair goes. See docs/differences.md.
+ *
+ * @param {Request} req
+ * @param {Response} res
+ * @param {number} left bytes of the body still to come, NaN when unknown
+ */
+function closeAfterResponse(req, res, left) {
+    if (left <= MAX_DRAINED_BODY) {
+        return;
+    }
+    req._connectionClose = true;
+    if (!res.headersSent && res.headers.connection === "keep-alive") {
+        delete res.headers.connection;
+        delete res.headers["keep-alive"];
+    }
+}
+
 /** @type {{inflate?: Inflater|undefined, error?: HttpError}} nothing to inflate, shared */
 const IDENTITY_ENCODING = Object.freeze({});
 
@@ -509,7 +531,8 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 res._corkNeeded = false;
                 try {
                     if (body === null) {
-                        // over maxSize: uWS refused it natively
+                        // over maxSize: uWS refused it natively, only a chunked body gets here
+                        closeAfterResponse(req, res, NaN);
                         return next(
                             bodyError("request entity too large", 413, "entity.too.large", {
                                 limit: limit,
@@ -555,6 +578,8 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
          */
         function collectStreamedBody(req, res, next, encoding, inflate, lengthNumber, length) {
             let totalSize = 0;
+            // the compressed bytes read, which content-length counts
+            let rawSize = 0;
 
             // every chunk is copied out of uWS's neutered ArrayBuffer; with a content-length the
             // chunks go straight into one buffer instead of a concat
@@ -584,6 +609,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 if (err.code === "ERR_BUFFER_TOO_LARGE") {
                     // one call inflated past the limit, see createInflate
                     /** @type {Inflater} */ (inflate).instance?.on?.("error", () => {});
+                    closeAfterResponse(req, res, lengthNumber - rawSize);
                     next(
                         bodyError("request entity too large", 413, "entity.too.large", {
                             limit: limit,
@@ -608,6 +634,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                     finished = true;
                     abs.length = 0;
                     target = null;
+                    closeAfterResponse(req, res, lengthNumber - (inflate ? rawSize : totalSize));
                     next(
                         bodyError("request entity too large", 413, "entity.too.large", {
                             limit: limit,
@@ -645,6 +672,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                     buf = Buffer.from(buf);
                 }
                 if (inflate) {
+                    rawSize += buf.length;
                     try {
                         buf = inflate.process(buf);
                     } catch (e) {
@@ -828,6 +856,7 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
 
                 // not while inflating: content-length counts the compressed bytes, keepChunk counts the rest
                 if (!inflate && lengthNumber > limit) {
+                    closeAfterResponse(req, res, lengthNumber);
                     return next(
                         bodyError("request entity too large", 413, "entity.too.large", {
                             expected: lengthNumber,

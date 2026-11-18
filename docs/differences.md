@@ -21,6 +21,15 @@ against [express](https://www.http-probe.com/servers/express.html).
   here it stays open. The client sees the difference only when the response it got was not what it
   waited for: a middleware that turned a GET into a HEAD, the handler sending and then throwing,
   leaves the client waiting for the body the HEAD does not carry where Express cuts it off.
+- **A body refused for its size can close the connection.** When `express.json()`, `urlencoded()`,
+  `text()`, `raw()` or `multipart()` refuse a body over the limit, Express answers and then reads the
+  rest of the body, however large, to keep the connection. Fulmine does the same when 256 KB or less
+  is left, as Go's `net/http`. With more left, or a chunked body where the rest is unknown, the
+  answer goes out with `Connection: close` and the server closes without reading the rest. Status,
+  body and the error seen by an error handler are the same. A client that is still sending can get a
+  reset before it reads the answer, as with nginx or Kestrel. Reading gigabytes that nobody uses, for
+  thousands of clients, fills the kernel buffers. Through `http.createServer(app)` node decides, as
+  on Express.
 - **A compiled route answers `connection: keep-alive` to a client that sent `Connection: close`.** A handler simple enough to be read at registration time is answered by µWS from a response written once at `listen()`, and that response cannot read the request. The socket still closes, so what is wrong is the header and not the transport. A response that would carry a validator is never compiled, so conditional requests behave as on Express, with one exception: `If-None-Match: *` on a GET needs no validator, and a compiled `send()`, `json()` or `sendStatus()` answers it with the full response where Express answers 304. `app.set("declarative responses", false)` turns compiling off.
 - **Informational responses go nowhere.** `res.writeEarlyHints()`, `res.writeContinue()` and `res.writeProcessing()` are all there, take what node's take and throw what node's throw once the head has gone out, but nothing reaches the wire: µWebSockets.js has no API for a `1xx`. They exist so that code written for Express keeps running rather than dying on "is not a function", which is the only thing a drop-in can honestly promise here. `res.addTrailers()` is the same story, and `res.setTimeout()` and `req.setTimeout()` register the listener without changing anything, since µWS runs its own idle timeout, a fixed 10 seconds.
 - For HTTPS, instead of doing this:
