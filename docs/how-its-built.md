@@ -14,6 +14,8 @@ A request also goes through Node.js, the µWS binding and the µWS server. When 
 
 - A call from native code into JavaScript (`MakeCallback`, Node-API, `AsyncWrap`) went from 202-208 ns to 155-159 ns. [nodejs/node#66316](https://github.com/nodejs/node/pull/66316), landed on 29 September 2026.
 - From Node 24, `AsyncLocalStorage` lost its store in the callbacks of `node::AsyncResource`. Now it keeps it, and the call is 29% to 36% faster. [nodejs/node#66326](https://github.com/nodejs/node/pull/66326), merged on 14 October 2026.
+- `node::MakeCallback` skips some work that the common case does not need: about 15 ns less per call, 9% to 13% faster in the Node-API benchmark. [nodejs/node#66395](https://github.com/nodejs/node/pull/66395), merged on 20 October 2026.
+- On Windows and macOS every callback freed the stack of async resources and allocated it again. With the same pattern in a small program on Windows, a callback went from 136-147 ns to 6 ns. Linux did not have the problem. [nodejs/node#66344](https://github.com/nodejs/node/pull/66344), merged on 17 November 2026.
 
 ## µWebSockets.js
 
