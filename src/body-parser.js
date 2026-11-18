@@ -18,7 +18,7 @@ limitations under the License.
 */
 
 // the global Buffer is a getter, a call on every read
-const { Buffer } = require("buffer");
+const { Buffer, kMaxLength } = require("buffer");
 const bytes = require("bytes");
 const { lazyRequire } = require("./lazy-require.js");
 const zlib = /** @type {() => typeof import("fast-zlib")} */ (lazyRequire("fast-zlib"));
@@ -314,7 +314,7 @@ const IDENTITY_ENCODING = Object.freeze({});
  * What a Content-Encoding means: the decompressor to run, or the 415 it is refused with.
  *
  * @param {string|undefined} rawContentEncoding
- * @param {any} options the parser's options, read loosely: only inflate is looked at
+ * @param {any} options the parser's options, read loosely: only inflate and limit are looked at
  * @returns {{inflate?: Inflater|undefined, error?: HttpError}}
  */
 function encodingFor(rawContentEncoding, options) {
@@ -333,7 +333,7 @@ function encodingFor(rawContentEncoding, options) {
         }
         return IDENTITY_ENCODING;
     }
-    const inflate = createInflate(rawContentEncoding);
+    const inflate = createInflate(rawContentEncoding, options.limit);
     if (inflate === false) {
         return {
             error: bodyError('unsupported content encoding "' + rawContentEncoding + '"', 415, "encoding.unsupported", {
@@ -344,59 +344,67 @@ function encodingFor(rawContentEncoding, options) {
     return { inflate };
 }
 
-/** @type {(new () => Inflater)|null|undefined} built on first use, null where node has no zstd */
+/** @type {(new (options?: {maxOutputLength?: number}) => Inflater)|null|undefined} built on first use, null where node has no zstd */
 let ZstdDecompress;
 
 /**
  * A zstd decompressor on fast-zlib's base class, which has none. body-parser 2.4 inflates zstd
  * where node's zlib can, and answers 415 elsewhere, as here.
  *
- * @returns {(new () => Inflater)|null}
+ * @returns {(new (options?: {maxOutputLength?: number}) => Inflater)|null}
  */
 function zstdDecompress() {
     if (ZstdDecompress === undefined) {
         const Base = Object.getPrototypeOf(zlib().Inflate);
         ZstdDecompress =
             "createZstdDecompress" in require("zlib")
-                ? /** @type {new () => Inflater} */ (
+                ? /** @type {new (options?: {maxOutputLength?: number}) => Inflater} */ (
                       class extends Base {
-                          constructor() {
-                              super("ZstdDecompress", { flush: zlib().constants.ZSTD_e_flush });
+                          /** @param {{maxOutputLength?: number}} [options] */
+                          constructor(options) {
+                              super("ZstdDecompress", { ...options, flush: zlib().constants.ZSTD_e_flush });
                           }
                       }
                   )
                 : null;
     }
-    return /** @type {(new () => Inflater)|null} */ (ZstdDecompress);
+    return /** @type {(new (options?: {maxOutputLength?: number}) => Inflater)|null} */ (ZstdDecompress);
 }
 
 /**
  * The decompressor for a Content-Encoding, undefined for identity, false for one nobody knows.
  *
+ * One chunk from uWS is up to 512 KB, and a bomb inflates that to half a gigabyte in one
+ * synchronous call before the limit is counted. maxOutputLength makes zlib stop and throw as soon
+ * as one call writes more than the limit, which keepChunk would have refused anyway.
+ *
  * @param {string|undefined} contentEncoding
+ * @param {number} limit the parser's limit, on the inflated bytes
  * @returns {Inflater|false|undefined}
  */
-function createInflate(contentEncoding) {
+function createInflate(contentEncoding, limit) {
     const encoding = (contentEncoding || "identity").toLowerCase();
+    if (encoding === "identity") {
+        return;
+    }
+    const options = { maxOutputLength: limit < kMaxLength ? Math.floor(limit) + 1 : kMaxLength };
     let stream;
     switch (encoding) {
-        case "identity":
-            return;
         case "deflate":
-            stream = new (zlib().Inflate)();
+            stream = new (zlib().Inflate)(options);
             break;
         case "gzip":
-            stream = new (zlib().Gunzip)();
+            stream = new (zlib().Gunzip)(options);
             break;
         case "br":
-            stream = new (zlib().BrotliDecompress)();
+            stream = new (zlib().BrotliDecompress)(options);
             break;
         case "zstd": {
             const Zstd = zstdDecompress();
             if (Zstd === null) {
                 return false;
             }
-            stream = new Zstd();
+            stream = new Zstd(options);
             break;
         }
         default:
@@ -575,6 +583,18 @@ function createBodyParser(defaultType, beforeReturn, checkOptions, charsetPolicy
                 finished = true;
                 abs.length = 0;
                 target = null;
+                if (err.code === "ERR_BUFFER_TOO_LARGE") {
+                    // one call inflated past the limit, see createInflate
+                    /** @type {Inflater} */ (inflate).instance?.on?.("error", () => {});
+                    next(
+                        bodyError("request entity too large", 413, "entity.too.large", {
+                            limit: limit,
+                            // at least: that one call alone wrote more than the limit
+                            received: totalSize + limit + 1
+                        })
+                    );
+                    return;
+                }
                 next(inflateError(/** @type {Inflater} */ (inflate), err));
             }
 
