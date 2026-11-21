@@ -49,6 +49,8 @@ jobs:
               uses: actions/upload-pages-artifact@v5
               with:
                   path: site/.vitepress/dist
+                  # .well-known/ard.json is a hidden folder, left out by default
+                  include-hidden-files: true
 
     deploy:
         needs: build
