@@ -7,6 +7,19 @@ import realapps from "./theme/realapps.json";
 const repo = "https://github.com/nigrosimone/fulmine.js";
 const origin = "https://fulmine.sndesign.it";
 
+const softwareJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "SoftwareSourceCode",
+    name: "Fulmine.js",
+    description: "Drop-in Express 5 replacement for Node.js on uWebSockets.js.",
+    url: `${origin}/`,
+    codeRepository: repo,
+    programmingLanguage: "JavaScript",
+    runtimePlatform: "Node.js",
+    license: "https://www.apache.org/licenses/LICENSE-2.0",
+    author: { "@type": "Person", name: "Simone Nigro", url: "https://www.sndesign.it/" }
+};
+
 // The pages are the repository's own docs/, read in place, so there is one copy of everything.
 // A link there that climbs out of docs/ (../examples/x.js, ../README.md) is a file on GitHub
 // and not a page here, so it is pointed at the repository instead.
@@ -35,6 +48,8 @@ export default defineConfig({
             ["meta", { name: "twitter:title", content: title }],
             ["meta", { name: "twitter:description", content: pageData.description }]
         ];
+        // structured data for the search engines, on the home only
+        if (pathname === "") head.push(["script", { type: "application/ld+json" }, JSON.stringify(softwareJsonLd)]);
         pageData.frontmatter.head = [...(pageData.frontmatter.head ?? []), ...head];
     },
     // llms.txt (the index) and llms-full.txt (every page in one file), for the models that read docs
@@ -45,6 +60,8 @@ export default defineConfig({
     },
     head: [
         ["link", { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" }],
+        // the agent skill, for AI agents and registries (docs/public/.well-known/ard.json)
+        ["link", { rel: "ard", href: "/.well-known/ard.json" }],
         ["meta", { name: "theme-color", content: "#ff6b2c" }],
         ["meta", { property: "og:type", content: "website" }],
         ["meta", { property: "og:site_name", content: "Fulmine.js" }],

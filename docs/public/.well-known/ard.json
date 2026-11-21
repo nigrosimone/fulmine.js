@@ -1,0 +1,19 @@
+{
+    "entries": [
+        {
+            "@context": "https://agenticresourcediscovery.org/context/v1",
+            "identifier": "urn:air:fulmine.sndesign.it:skill:fulmine",
+            "displayName": "Fulmine.js",
+            "type": "application/agent-skills+md",
+            "url": "https://raw.githubusercontent.com/nigrosimone/fulmine.js/main/skills/fulmine/SKILL.md",
+            "description": "Agent skill for Fulmine.js, the drop-in Express 5 replacement on uWebSockets.js: migration from Express, install traps, behaviour that differs from Express, performance settings and testing helpers.",
+            "capabilities": ["migrate", "verify", "performance", "testing"],
+            "representativeQueries": [
+                "migrate an Express app to a faster server without rewriting it",
+                "drop-in Express 5 replacement on uWebSockets.js",
+                "why is my Express API slow and how to make it faster",
+                "run Express middleware on uWebSockets.js"
+            ]
+        }
+    ]
+}
