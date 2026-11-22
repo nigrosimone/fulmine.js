@@ -1,379 +1,379 @@
 {
-    "date": "2026-11-01",
-    "total": 81,
-    "rank": 6,
-    "jsRank": 2,
-    "jsTotal": 7,
+    "date": "2026-11-22",
+    "total": 85,
+    "rank": 3,
+    "jsRank": 1,
+    "jsTotal": 8,
     "rows": [
         {
             "slug": "genhttp-ioxide",
             "lang": "C#",
-            "score": 7030,
+            "score": 8332,
             "rank": 1
         },
         {
             "slug": "dusty",
             "lang": "Zig",
-            "score": 7002,
+            "score": 8328,
             "rank": 2
-        },
-        {
-            "slug": "tako",
-            "lang": "Rust",
-            "score": 6659,
-            "rank": 3
-        },
-        {
-            "slug": "spliffy",
-            "lang": "JS",
-            "score": 6584,
-            "rank": 4,
-            "jsRank": 1
-        },
-        {
-            "slug": "actix",
-            "lang": "Rust",
-            "score": 6280,
-            "rank": 5
         },
         {
             "slug": "fulmine.js",
             "lang": "JS",
-            "score": 6204,
-            "rank": 6,
-            "jsRank": 2
-        },
-        {
-            "slug": "fiber",
-            "lang": "Go",
-            "score": 5637,
-            "rank": 8
-        },
-        {
-            "slug": "bun",
-            "lang": "TS",
-            "score": 5497,
-            "rank": 9,
-            "jsRank": 4
-        },
-        {
-            "slug": "vertx",
-            "lang": "Java",
-            "score": 5471,
-            "rank": 10
+            "score": 7856,
+            "rank": 3,
+            "jsRank": 1
         },
         {
             "slug": "ntex",
             "lang": "Rust",
-            "score": 5419,
-            "rank": 11
+            "score": 6549,
+            "rank": 5
+        },
+        {
+            "slug": "fiber",
+            "lang": "Go",
+            "score": 5332,
+            "rank": 8
+        },
+        {
+            "slug": "vertx",
+            "lang": "Java",
+            "score": 5186,
+            "rank": 9
+        },
+        {
+            "slug": "bun",
+            "lang": "TS",
+            "score": 5135,
+            "rank": 10,
+            "jsRank": 4
         },
         {
             "slug": "micronaut",
             "lang": "Java",
-            "score": 4358,
-            "rank": 15
-        },
-        {
-            "slug": "drogon",
-            "lang": "C++",
-            "score": 4240,
-            "rank": 19
+            "score": 4099,
+            "rank": 16
         },
         {
             "slug": "cutelyst",
             "lang": "C++",
-            "score": 4221,
-            "rank": 20
+            "score": 4089,
+            "rank": 17
+        },
+        {
+            "slug": "drogon",
+            "lang": "C++",
+            "score": 4077,
+            "rank": 18
         },
         {
             "slug": "axum",
             "lang": "Rust",
-            "score": 4175,
-            "rank": 22
+            "score": 3928,
+            "rank": 20
         },
         {
             "slug": "micronaut-production",
             "lang": "Java",
-            "score": 4152,
-            "rank": 23
+            "score": 3902,
+            "rank": 22
         },
         {
             "slug": "helidon-production",
             "lang": "Java",
-            "score": 3977,
-            "rank": 25
+            "score": 3723,
+            "rank": 24
         },
         {
             "slug": "elysia",
             "lang": "TS",
-            "score": 3858,
-            "rank": 26,
+            "score": 3586,
+            "rank": 25,
             "jsRank": 5
         },
         {
             "slug": "go-fasthttp",
             "lang": "Go",
-            "score": 3505,
-            "rank": 27
-        },
-        {
-            "slug": "carter",
-            "lang": "C#",
-            "score": 3204,
-            "rank": 30
+            "score": 3374,
+            "rank": 26
         },
         {
             "slug": "ktor",
             "lang": "Kotlin",
-            "score": 3100,
-            "rank": 32
+            "score": 3147,
+            "rank": 28
+        },
+        {
+            "slug": "carter",
+            "lang": "C#",
+            "score": 3014,
+            "rank": 30
+        },
+        {
+            "slug": "rama",
+            "lang": "Rust",
+            "score": 2999,
+            "rank": 31
         },
         {
             "slug": "hono-bun",
             "lang": "TS",
-            "score": 3087,
-            "rank": 33,
+            "score": 2942,
+            "rank": 32,
             "jsRank": 6
+        },
+        {
+            "slug": "armeria",
+            "lang": "Java",
+            "score": 2905,
+            "rank": 33
         },
         {
             "slug": "userver",
             "lang": "C++",
-            "score": 3023,
-            "rank": 34
+            "score": 2832,
+            "rank": 35
         },
         {
             "slug": "aspnet-minimal-11",
             "lang": "C#",
-            "score": 2989,
-            "rank": 35
+            "score": 2828,
+            "rank": 36
         },
         {
             "slug": "aspnet-minimal",
             "lang": "C#",
-            "score": 2950,
-            "rank": 36
+            "score": 2784,
+            "rank": 37
         },
         {
             "slug": "rocket",
             "lang": "Rust",
-            "score": 2856,
-            "rank": 37
+            "score": 2696,
+            "rank": 38
         },
         {
             "slug": "fastendpoints",
             "lang": "C#",
-            "score": 2853,
-            "rank": 38
+            "score": 2693,
+            "rank": 39
         },
         {
             "slug": "codebehind",
             "lang": "C#",
-            "score": 2763,
-            "rank": 39
+            "score": 2610,
+            "rank": 41
         },
         {
             "slug": "node-h3",
             "lang": "JS",
-            "score": 2637,
-            "rank": 40,
-            "jsRank": 7
+            "score": 2471,
+            "rank": 43,
+            "jsRank": 8
         },
         {
             "slug": "salvo",
             "lang": "Rust",
-            "score": 2356,
-            "rank": 42
-        },
-        {
-            "slug": "jooby",
-            "lang": "Java",
-            "score": 2267,
+            "score": 2283,
             "rank": 44
         },
         {
             "slug": "fastify",
             "lang": "JS",
-            "score": 2250,
-            "rank": 45,
-            "jsRank": 8
+            "score": 2151,
+            "rank": 46,
+            "jsRank": 9
+        },
+        {
+            "slug": "jooby",
+            "lang": "Java",
+            "score": 2109,
+            "rank": 47
         },
         {
             "slug": "echo",
             "lang": "Go",
-            "score": 2118,
-            "rank": 47
+            "score": 1988,
+            "rank": 49
         },
         {
             "slug": "gin",
             "lang": "Go",
-            "score": 2105,
-            "rank": 48
+            "score": 1986,
+            "rank": 50
         },
         {
             "slug": "chi",
             "lang": "Go",
-            "score": 2043,
-            "rank": 50
+            "score": 1919,
+            "rank": 52
         },
         {
             "slug": "lapis",
             "lang": "Lua",
-            "score": 1944,
-            "rank": 52
+            "score": 1879,
+            "rank": 53
         },
         {
             "slug": "aiohttp",
             "lang": "Python",
-            "score": 1942,
-            "rank": 53
+            "score": 1859,
+            "rank": 54
         },
         {
-            "slug": "koa",
+            "slug": "hapi",
             "lang": "JS",
-            "score": 1868,
-            "rank": 54,
-            "jsRank": 9
-        },
-        {
-            "slug": "http4k",
-            "lang": "Kotlin",
-            "score": 1784,
-            "rank": 55
-        },
-        {
-            "slug": "express",
-            "lang": "JS",
-            "score": 1734,
+            "score": 1790,
             "rank": 56,
             "jsRank": 10
         },
         {
-            "slug": "reitit",
-            "lang": "Clojure",
-            "score": 1725,
-            "rank": 57
+            "slug": "koa",
+            "lang": "JS",
+            "score": 1790,
+            "rank": 57,
+            "jsRank": 11
         },
         {
-            "slug": "hono-node",
-            "lang": "TS",
-            "score": 1708,
-            "rank": 58,
-            "jsRank": 11
+            "slug": "http4k",
+            "lang": "Kotlin",
+            "score": 1698,
+            "rank": 58
+        },
+        {
+            "slug": "reitit",
+            "lang": "Clojure",
+            "score": 1682,
+            "rank": 59
+        },
+        {
+            "slug": "express",
+            "lang": "JS",
+            "score": 1660,
+            "rank": 60,
+            "jsRank": 12
         },
         {
             "slug": "phoenix-bandit",
             "lang": "Elixir",
-            "score": 1690,
-            "rank": 59
+            "score": 1626,
+            "rank": 61
         },
         {
-            "slug": "spring-boot",
-            "lang": "Java",
-            "score": 1676,
-            "rank": 60
+            "slug": "hono-node",
+            "lang": "TS",
+            "score": 1622,
+            "rank": 62,
+            "jsRank": 13
         },
         {
             "slug": "warp",
             "lang": "Haskell",
-            "score": 1653,
-            "rank": 62
+            "score": 1603,
+            "rank": 64
+        },
+        {
+            "slug": "spring-boot",
+            "lang": "Java",
+            "score": 1578,
+            "rank": 65
         },
         {
             "slug": "hyperf",
             "lang": "PHP",
-            "score": 1642,
-            "rank": 63
+            "score": 1543,
+            "rank": 66
         },
         {
             "slug": "starlette",
             "lang": "Python",
-            "score": 1511,
-            "rank": 65
-        },
-        {
-            "slug": "litestar",
-            "lang": "Python",
-            "score": 1387,
-            "rank": 66
-        },
-        {
-            "slug": "php-fpm",
-            "lang": "PHP",
-            "score": 1266,
-            "rank": 67
-        },
-        {
-            "slug": "plug-cowboy",
-            "lang": "Elixir",
-            "score": 1264,
+            "score": 1431,
             "rank": 68
-        },
-        {
-            "slug": "fastapi",
-            "lang": "Python",
-            "score": 1204,
-            "rank": 69
         },
         {
             "slug": "rage",
             "lang": "Ruby",
-            "score": 1150,
+            "score": 1346,
+            "rank": 69
+        },
+        {
+            "slug": "litestar",
+            "lang": "Python",
+            "score": 1304,
             "rank": 70
         },
         {
-            "slug": "sinatra",
-            "lang": "Ruby",
-            "score": 1110,
+            "slug": "plug-cowboy",
+            "lang": "Elixir",
+            "score": 1208,
             "rank": 71
         },
         {
-            "slug": "http4s",
-            "lang": "Scala",
-            "score": 1092,
+            "slug": "php-fpm",
+            "lang": "PHP",
+            "score": 1197,
             "rank": 72
         },
         {
             "slug": "roda",
             "lang": "Ruby",
-            "score": 1022,
+            "score": 1170,
             "rank": 73
+        },
+        {
+            "slug": "fastapi",
+            "lang": "Python",
+            "score": 1143,
+            "rank": 74
+        },
+        {
+            "slug": "http4s",
+            "lang": "Scala",
+            "score": 1058,
+            "rank": 75
+        },
+        {
+            "slug": "sinatra",
+            "lang": "Ruby",
+            "score": 1038,
+            "rank": 76
         },
         {
             "slug": "hanami",
             "lang": "Ruby",
-            "score": 693,
-            "rank": 76
+            "score": 646,
+            "rank": 79
         },
         {
             "slug": "rails",
             "lang": "Ruby",
-            "score": 635,
-            "rank": 77
+            "score": 595,
+            "rank": 80
         },
         {
             "slug": "mojolicious",
             "lang": "Perl",
-            "score": 393,
-            "rank": 78
+            "score": 382,
+            "rank": 81
         },
         {
             "slug": "flask",
             "lang": "Python",
-            "score": 314,
-            "rank": 79
+            "score": 292,
+            "rank": 82
         },
         {
             "slug": "django",
             "lang": "Python",
-            "score": 211,
-            "rank": 80
+            "score": 201,
+            "rank": 84
         },
         {
             "slug": "servicestack",
             "lang": "C#",
-            "score": 177,
-            "rank": 81
+            "score": 170,
+            "rank": 85
         }
     ]
 }

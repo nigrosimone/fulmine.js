@@ -12,7 +12,7 @@ const [html, data] = await Promise.all([
 // the board lists tuned entries too, the default view (and the badges) keep only the standard ones
 const rows = [];
 const cell =
-    /<tr><td class="n[^"]*">\d+<\/td><td><a href="\/frameworks\/([^/]+)\/">[^<]*<\/a><\/td><td class="sb-lang">([^<]*)<\/td><td class="n">(\d+)<\/td><\/tr>/g;
+    /<tr><td class="n[^"]*">\d+<\/td><td><a href="\/frameworks\/([^/]+)\/">[^<]*<\/a><\/td><td class="sb-lang">([^<]*)<\/td><td class="n">(\d+)<\/td>(?:<td class="n">[^<]*<\/td>)*<\/tr>/g;
 for (const [, slug, lang, score] of html.matchAll(cell)) {
     if (data.meta[slug]?.mode === "standard") rows.push({ slug, lang, score: Number(score) });
 }
