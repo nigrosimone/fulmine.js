@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.34.3](https://github.com/nigrosimone/fulmine.js/compare/v5.34.2...v5.34.3) (2026-11-22)
+
+### Bug Fixes
+
+* **uws-lite:** refuse a declared length over the limit before reading the body ([f2b1208](https://github.com/nigrosimone/fulmine.js/commit/f2b1208c71fcfcbe2fdce17c11cde2dc9d283a82))
+
 ## [5.34.2](https://github.com/nigrosimone/fulmine.js/compare/v5.34.1...v5.34.2) (2026-11-22)
 
 ### Bug Fixes
