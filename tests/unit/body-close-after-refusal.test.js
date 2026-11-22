@@ -161,6 +161,18 @@ for (const body of ["buffer", "lent", "text"]) {
     });
 }
 
+test("app.uwsLite: a declared length over the limit is refused before any byte of the body", async () => {
+    const answer = await refuse(
+        (app) => app.uwsLite.post("/", { body: "lent", limit: "1kb" }, (req, res) => res.send("ok")),
+        "POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 1073741824\r\n\r\n",
+        null
+    );
+    assert.strictEqual(answer.status, 413);
+    assert.strictEqual(answer.body, "Payload Too Large");
+    assert.deepStrictEqual(answer.connection, ["connection: close"]);
+    assert.strictEqual(answer.closedByServer, true);
+});
+
 test("app.uwsLite: a chunked body over the limit gets 413, then the server hangs up", async () => {
     const answer = await refuse(
         (app) => app.uwsLite.post("/", { body: "buffer", limit: "1kb" }, (req, res) => res.send("ok")),

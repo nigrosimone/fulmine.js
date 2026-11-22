@@ -977,6 +977,11 @@ function makeLiteRoute(method, path, options, handler) {
         } else if (multipart && !isMultipart(request.get("content-type"))) {
             // as express.multipart(): another type is not read, and req.body stays undefined
             start(res, request, response);
+        } else if (Number(req.getHeader("content-length")) > limit) {
+            // as raw-body, refused before reading: collectBody reads up to the limit first, a MB per
+            // client under a flood
+            request._req = null;
+            response._refuseTooLarge();
         } else {
             request._req = null;
             res.onAborted(bodyAborted);
