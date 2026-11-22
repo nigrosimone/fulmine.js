@@ -67,7 +67,7 @@ overrides:
 // package.json
 "dependencies": {
     "fulmine.js": "^5",
-    "uWebSockets.js": "github:uNetworking/uWebSockets.js#ea0d00dd9a45b76fa89a9609116973fe5794fc3c"
+    "uWebSockets.js": "github:uNetworking/uWebSockets.js#9cd9c4f885377bbb06e8503349249763b876756d"
 }
 ```
 
@@ -79,8 +79,8 @@ says the two differ, and running `npx fulmine.js pnpm` again writes the new one.
 also a line in the changelog.
 
 The current pin is a commit on upstream's `binaries` branch. Its
-[`source_commit`](https://github.com/uNetworking/uWebSockets.js/blob/ea0d00dd9a45b76fa89a9609116973fe5794fc3c/source_commit)
-records source `139419cece198053af3478e4a367ecac4e006bb9`, also recorded as `uwsSourceCommit` in
+[`source_commit`](https://github.com/uNetworking/uWebSockets.js/blob/9cd9c4f885377bbb06e8503349249763b876756d/source_commit)
+records source `4ab18920aeaef4201572132fdf1f1f301585f58a`, also recorded as `uwsSourceCommit` in
 Fulmine's `package.json`. The binaries still report version `20.71.0`, so that version alone cannot
 identify the build. When updating a commit pin, copy its source marker too; the source branch itself
 does not contain the installable package or binaries. A missing marker is left unreported.
@@ -105,7 +105,7 @@ have turned git dependencies off, or that cannot reach github.com at all:
 ```
 allow-git=none   npm error code EALLOWGIT
                  npm error Fetching packages of type "git" have been disabled
-                 npm error Refusing to fetch "uWebSockets.js@github:uNetworking/uWebSockets.js#ea0d00dd9a45b76fa89a9609116973fe5794fc3c"
+                 npm error Refusing to fetch "uWebSockets.js@github:uNetworking/uWebSockets.js#9cd9c4f885377bbb06e8503349249763b876756d"
 
 allow-git=root   npm error code EALLOWGIT
                  npm error Fetching non-root packages of type "git" have been disabled
@@ -121,7 +121,7 @@ prebuilt binaries included.
 **1. Pack the pinned revision.** No clone needed, npm takes the git spec directly:
 
 ```sh
-npm pack "github:uNetworking/uWebSockets.js#ea0d00dd9a45b76fa89a9609116973fe5794fc3c"
+npm pack "github:uNetworking/uWebSockets.js#9cd9c4f885377bbb06e8503349249763b876756d"
 ```
 
 Read the dependency spec out of [`package.json`](../package.json) rather than copying the one above, since
@@ -169,7 +169,7 @@ registry with an integrity hash, so nothing reaches for git at install time:
 ```
 
 One thing to tell your security team before their scanner does: the lockfile still contains the
-line `"uWebSockets.js": "github:uNetworking/uWebSockets.js#ea0d00dd9a45b76fa89a9609116973fe5794fc3c"`. That is fulmine's declared
+line `"uWebSockets.js": "github:uNetworking/uWebSockets.js#9cd9c4f885377bbb06e8503349249763b876756d"`. That is fulmine's declared
 range, not a resolution, and a scanner that reads what is declared rather than what was installed
 will report a git dependency that the install never used.
 
