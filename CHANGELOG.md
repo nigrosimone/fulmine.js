@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.34.2](https://github.com/nigrosimone/fulmine.js/compare/v5.34.1...v5.34.2) (2026-11-22)
+
+### Bug Fixes
+
+* **uws:** close the connection after an app.uwsLite or uwsUtils body over the limit ([68d3d8f](https://github.com/nigrosimone/fulmine.js/commit/68d3d8f159ffb94e46017222de3eaedcd804d7fb))
+* **uws:** pin the binaries built on the uWebSockets v20.81.0 core ([f2febb4](https://github.com/nigrosimone/fulmine.js/commit/f2febb42561e785475fdd4c931dfb8011aca3ffd))
+
 ## [5.34.1](https://github.com/nigrosimone/fulmine.js/compare/v5.34.0...v5.34.1) (2026-11-18)
 
 ### Bug Fixes
