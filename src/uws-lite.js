@@ -29,7 +29,7 @@ const compression = require("./compression.js");
 const { lazyRequire } = require("./lazy-require.js");
 const parseQuery = require("./parse-query.js");
 const { HEADER_VALUE_BUF, statusLine } = require("./response-utils.js");
-const { compressor, _respond, _respondWhole } = require("./uws-utils.js");
+const { compressor, _respond, _respondWhole, _respondWholeClosing } = require("./uws-utils.js");
 const parseMultipart = /** @type {() => typeof import("./multipart.js")} */ (lazyRequire("./multipart.js"));
 const {
     contentTypeFor,
@@ -496,6 +496,22 @@ class LiteResponse {
         this.statusCode = status;
         this._finish(TEXT, statusLine(status, undefined).slice(4));
     }
+
+    /**
+     * Refuses a body over the limit and closes, as the body parser: µWS would read the rest, 2 GB
+     * of it if the client says so.
+     */
+    _refuseTooLarge() {
+        const flags = this._flags;
+        this._flags = flags | ANSWERED;
+        this.statusCode = 413;
+        if ((flags & ABORTED) === 0) {
+            _respondWholeClosing(this._res, 413, this._headers, TEXT, "Payload Too Large", (flags & LATE) === 0);
+        }
+        if (this._bus !== null) {
+            process.nextTick(finished, this._bus);
+        }
+    }
 }
 
 /**
@@ -709,7 +725,7 @@ function gone(response) {
 function onBody(body) {
     const response = this;
     if (body === null) {
-        response._refuse(413);
+        response._refuseTooLarge();
         return;
     }
     const request = response.req;

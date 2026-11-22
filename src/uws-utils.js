@@ -127,7 +127,8 @@ function collect(res, limit, done) {
         length += chunk.byteLength;
         if (length > limit) {
             finished = true;
-            refuse(res, 413);
+            // and closes: µWS would read the rest, 2 GB of it if the client says so
+            respondWholeClosing(res, 413, null, TEXT_TYPE, "Payload Too Large", false);
             return;
         }
         if (!isLast) {
@@ -313,6 +314,38 @@ function respondWhole(res, status, headers, type, body, corked) {
         writeWhole();
     } else {
         res.cork(writeWhole);
+    }
+    outBody = null;
+}
+
+/** As writeWhole, then µWS closes the connection, which writes its own Connection: close. */
+function writeWholeClosing() {
+    writeHead();
+    outRes.end(outBody, true);
+}
+
+/**
+ * As respondWhole, for a refusal after which the rest of the request is not read.
+ *
+ * @param {GuardedResponse} res
+ * @param {number} status
+ * @param {Record<string, string|string[]>|null|undefined} headers
+ * @param {string} type
+ * @param {string} body
+ * @param {boolean} corked
+ */
+function respondWholeClosing(res, status, headers, type, body, corked) {
+    outRes = res;
+    outStatus = status;
+    outHeaders = headers;
+    outType = HEADER_VALUE_BUF[type] || /** @type {any} */ (type);
+    outEncoding = null;
+    outVary = false;
+    outBody = body;
+    if (corked) {
+        writeWholeClosing();
+    } else {
+        res.cork(writeWholeClosing);
     }
     outBody = null;
 }
@@ -548,5 +581,6 @@ module.exports = {
     send,
     compressor,
     _respond: respond,
-    _respondWhole: respondWhole
+    _respondWhole: respondWhole,
+    _respondWholeClosing: respondWholeClosing
 };

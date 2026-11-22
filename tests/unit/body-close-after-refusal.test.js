@@ -145,3 +145,43 @@ test("a body under the limit keeps the connection", async () => {
     assert.deepStrictEqual(answer.connection, ["connection: keep-alive"]);
     assert.strictEqual(answer.closedByServer, false);
 });
+
+for (const body of ["buffer", "lent", "text"]) {
+    test(`app.uwsLite with body "${body}": a length over the limit gets 413, then the server hangs up`, async () => {
+        const answer = await refuse(
+            (app) => app.uwsLite.post("/", { body, limit: "1kb" }, (req, res) => res.send("ok")),
+            "POST / HTTP/1.1\r\nHost: x\r\nContent-Type: application/octet-stream\r\nContent-Length: 1073741824\r\n\r\n",
+            // µWS refuses once the bytes read pass the limit, not on the declared length
+            "a".repeat(4096)
+        );
+        assert.strictEqual(answer.status, 413);
+        assert.strictEqual(answer.body, "Payload Too Large");
+        assert.deepStrictEqual(answer.connection, ["connection: close"]);
+        assert.strictEqual(answer.closedByServer, true);
+    });
+}
+
+test("app.uwsLite: a chunked body over the limit gets 413, then the server hangs up", async () => {
+    const answer = await refuse(
+        (app) => app.uwsLite.post("/", { body: "buffer", limit: "1kb" }, (req, res) => res.send("ok")),
+        "POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n",
+        "800\r\n" + "a".repeat(2048) + "\r\n"
+    );
+    assert.strictEqual(answer.status, 413);
+    assert.deepStrictEqual(answer.connection, ["connection: close"]);
+    assert.strictEqual(answer.closedByServer, true);
+});
+
+test("express.uwsUtils.readBuffer: a body over the limit gets 413, then the server hangs up", async () => {
+    const answer = await refuse(
+        (app) =>
+            app.uws.post("/", (res) => {
+                express.uwsUtils.readBuffer(res, () => express.uwsUtils.send(res, 200, null, "ok"), { limit: "1kb" });
+            }),
+        "POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 1073741824\r\n\r\n",
+        "a".repeat(4096)
+    );
+    assert.strictEqual(answer.status, 413);
+    assert.deepStrictEqual(answer.connection, ["connection: close"]);
+    assert.strictEqual(answer.closedByServer, true);
+});
