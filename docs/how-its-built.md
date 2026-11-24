@@ -16,6 +16,8 @@ A request also goes through Node.js, the µWS binding and the µWS server. When 
 - From Node 24, `AsyncLocalStorage` lost its store in the callbacks of `node::AsyncResource`. Now it keeps it, and the call is 29% to 36% faster. [nodejs/node#66326](https://github.com/nodejs/node/pull/66326), merged on 14 October 2026.
 - `node::MakeCallback` skips some work that the common case does not need: about 15 ns less per call, 9% to 13% faster in the Node-API benchmark. [nodejs/node#66395](https://github.com/nodejs/node/pull/66395), merged on 20 October 2026.
 - On Windows and macOS every callback freed the stack of async resources and allocated it again. With the same pattern in a small program on Windows, a callback went from 136-147 ns to 6 ns. Linux did not have the problem. [nodejs/node#66344](https://github.com/nodejs/node/pull/66344), merged on 17 November 2026.
+- When no async hook and no `executionAsyncResource()` reads the stack of async ids, a callback swaps the two ids in place instead of pushing and popping them. `MakeCallback` from 128.0 ns to 119.3 ns. [nodejs/node#66511](https://github.com/nodejs/node/pull/66511), merged on 23 November 2026.
+- From Node 26.11 a flowing pipe skipped a `write()` replaced on the destination, so a compression middleware sent a gzip body with plain chunks in it. Now the replaced `write()` runs again. [nodejs/node#66596](https://github.com/nodejs/node/pull/66596), merged on 23 November 2026.
 
 ## µWebSockets.js
 
@@ -26,7 +28,7 @@ identifies source `42aee84b3677747ec7417c406c593898e81f2100`, from 22 November 2
 version remains `20.71.0`; these commits include changes made after the `v20.71.0` release tag.
 The measurements below belong to the linked upstream changes, not to a comparison of Fulmine builds.
 
-Fifteen pull requests merged. Some of them:
+Seventeen pull requests merged. Some of them:
 
 - `res.onAborted` from 91 ns to 45 ns per call: [#1330](https://github.com/uNetworking/uWebSockets.js/pull/1330), [#1331](https://github.com/uNetworking/uWebSockets.js/pull/1331).
 - Strings written as UTF-8 in one pass: a 200 KB ASCII body from 12.0 µs to 6.9 µs. [#1335](https://github.com/uNetworking/uWebSockets.js/pull/1335), [#1337](https://github.com/uNetworking/uWebSockets.js/pull/1337).
@@ -36,6 +38,8 @@ Fifteen pull requests merged. Some of them:
 ## µWebSockets
 
 Four fixes to HTTP/1.1 conformance: a `Host` header with a path is refused, a bare LF in the trailers is a 400, a request target that is not visible ASCII is a 400, and `OPTIONS *` is accepted. [#1949](https://github.com/uNetworking/uWebSockets/pull/1949), [#1950](https://github.com/uNetworking/uWebSockets/pull/1950), [#1951](https://github.com/uNetworking/uWebSockets/pull/1951), [#1952](https://github.com/uNetworking/uWebSockets/pull/1952).
+
+And one crash: with a `dropped` handler that calls `ws->end()`, a client that floods PINGs and never reads got `dropped` again after `close`, a segfault in µWebSockets.js. [#1972](https://github.com/uNetworking/uWebSockets/pull/1972).
 
 µWebSockets and µWebSockets.js are the work of Alex Hultman ([uNetworking](https://github.com/uNetworking)), who reviewed and merged these changes.
 
