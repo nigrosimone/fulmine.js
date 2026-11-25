@@ -67,7 +67,7 @@ overrides:
 // package.json
 "dependencies": {
     "fulmine.js": "^5",
-    "uWebSockets.js": "github:uNetworking/uWebSockets.js#12bce53b636c9959475beaa2d928d177a9811bc8"
+    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.72.0"
 }
 ```
 
@@ -78,12 +78,12 @@ if the installed release version or source marker differs, `npx fulmine.js verif
 says the two differ, and running `npx fulmine.js pnpm` again writes the new one. Each pin change is
 also a line in the changelog.
 
-The current pin is a commit on upstream's `binaries` branch. Its
-[`source_commit`](https://github.com/uNetworking/uWebSockets.js/blob/12bce53b636c9959475beaa2d928d177a9811bc8/source_commit)
+The current pin is the release tag `v20.72.0`. Its
+[`source_commit`](https://github.com/uNetworking/uWebSockets.js/blob/v20.72.0/source_commit)
 records source `42aee84b3677747ec7417c406c593898e81f2100`, also recorded as `uwsSourceCommit` in
-Fulmine's `package.json`. The binaries still report version `20.71.0`, so that version alone cannot
-identify the build. When updating a commit pin, copy its source marker too; the source branch itself
-does not contain the installable package or binaries. A missing marker is left unreported.
+Fulmine's `package.json`. A tag pin is checked by its version. When the pin is a commit on the
+`binaries` branch instead, the version can stay the one of the last release, so the source marker
+is checked: copy it too when updating such a pin. A missing marker is left unreported.
 
 Two other ways through, for completeness. `blockExoticSubdeps: false` in `pnpm-workspace.yaml`
 turns the check off for the whole project, so any dependency of a dependency may then come from
@@ -105,7 +105,7 @@ have turned git dependencies off, or that cannot reach github.com at all:
 ```
 allow-git=none   npm error code EALLOWGIT
                  npm error Fetching packages of type "git" have been disabled
-                 npm error Refusing to fetch "uWebSockets.js@github:uNetworking/uWebSockets.js#12bce53b636c9959475beaa2d928d177a9811bc8"
+                 npm error Refusing to fetch "uWebSockets.js@github:uNetworking/uWebSockets.js#v20.72.0"
 
 allow-git=root   npm error code EALLOWGIT
                  npm error Fetching non-root packages of type "git" have been disabled
@@ -121,7 +121,7 @@ prebuilt binaries included.
 **1. Pack the pinned revision.** No clone needed, npm takes the git spec directly:
 
 ```sh
-npm pack "github:uNetworking/uWebSockets.js#12bce53b636c9959475beaa2d928d177a9811bc8"
+npm pack "github:uNetworking/uWebSockets.js#v20.72.0"
 ```
 
 Read the dependency spec out of [`package.json`](../package.json) rather than copying the one above, since
@@ -130,10 +130,10 @@ it moves with each release of this package.
 **2. Publish it to your registry.**
 
 ```sh
-npm publish uWebSockets.js-20.71.0.tgz --registry https://registry.internal/
+npm publish uWebSockets.js-20.72.0.tgz --registry https://registry.internal/
 ```
 
-If that registry already has another build published as `20.71.0`, give this package a distinct
+If that registry already has another build published as `20.72.0`, give this package a distinct
 private version before packing and publishing it, and use that version in the override below.
 Keep its `source_commit` file: the native build's source identity does not change when repackaged.
 
@@ -153,7 +153,7 @@ max_body_size: 200mb
 ```json
 {
     "dependencies": { "fulmine.js": "^5" },
-    "overrides": { "uWebSockets.js": "20.71.0" }
+    "overrides": { "uWebSockets.js": "20.72.0" }
 }
 ```
 
@@ -162,14 +162,14 @@ registry with an integrity hash, so nothing reaches for git at install time:
 
 ```json
 "node_modules/uWebSockets.js": {
-    "version": "20.71.0",
-    "resolved": "https://registry.internal/uWebSockets.js/-/uWebSockets.js-20.71.0.tgz",
+    "version": "20.72.0",
+    "resolved": "https://registry.internal/uWebSockets.js/-/uWebSockets.js-20.72.0.tgz",
     "integrity": "sha512-kO7bcc/Hy3K6YnAVKBCu9ffYC1tl/ccDzDJqVK/GAO81XRRL+R1VmJP8mReg..."
 }
 ```
 
 One thing to tell your security team before their scanner does: the lockfile still contains the
-line `"uWebSockets.js": "github:uNetworking/uWebSockets.js#12bce53b636c9959475beaa2d928d177a9811bc8"`. That is fulmine's declared
+line `"uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.72.0"`. That is fulmine's declared
 range, not a resolution, and a scanner that reads what is declared rather than what was installed
 will report a git dependency that the install never used.
 

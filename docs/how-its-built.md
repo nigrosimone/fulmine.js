@@ -21,11 +21,9 @@ A request also goes through Node.js, the µWS binding and the µWS server. When 
 
 ## µWebSockets.js
 
-Fulmine pins the installable [`binaries` commit
-`12bce53b636c9959475beaa2d928d177a9811bc8`](https://github.com/uNetworking/uWebSockets.js/tree/12bce53b636c9959475beaa2d928d177a9811bc8).
-Its [`source_commit`](https://github.com/uNetworking/uWebSockets.js/blob/12bce53b636c9959475beaa2d928d177a9811bc8/source_commit)
-identifies source `42aee84b3677747ec7417c406c593898e81f2100`, from 22 November 2026, with the µWebSockets core at `v20.81.0` plus five later commits. Upstream's package
-version remains `20.71.0`; these commits include changes made after the `v20.71.0` release tag.
+Fulmine pins the release [`v20.72.0`](https://github.com/uNetworking/uWebSockets.js/releases/tag/v20.72.0).
+Its [`source_commit`](https://github.com/uNetworking/uWebSockets.js/blob/v20.72.0/source_commit)
+identifies source `42aee84b3677747ec7417c406c593898e81f2100`, from 22 November 2026, with the µWebSockets core at `v20.81.0` plus five later commits.
 The measurements below belong to the linked upstream changes, not to a comparison of Fulmine builds.
 
 Seventeen pull requests merged. Some of them:
