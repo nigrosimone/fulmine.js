@@ -881,7 +881,7 @@ module.exports = class Response extends LazyWritable {
         }
 
         if (this.writingChunk) {
-            (this.#stream ??= new ResponseStream()).deferredEnd = () => this.end(data, cb);
+            (this.#stream ??= new ResponseStream()).deferredEnd = () => Response.prototype.end.call(this, data, cb);
             return this;
         }
         if (this.finished) {
