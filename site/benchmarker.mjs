@@ -6,7 +6,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 const source = "https://raw.githubusercontent.com/the-benchmarker/web-frameworks/master/data.min.json";
 const board = "https://web-frameworks-benchmark.vercel.app/result";
 const LEVEL = 64;
-const ENTRIES = { "fulmine.js": "web-frameworks.json", "fulmine.js-uwslite": "web-frameworks-uwslite.json" };
+const ENTRIES = { "fulmine.js": "web-frameworks.json" };
 
 const data = await fetch(source).then((r) => {
     if (!r.ok) throw new Error(`${source} answered ${r.status}`);
