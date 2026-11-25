@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.34.4](https://github.com/nigrosimone/fulmine.js/compare/v5.34.3...v5.34.4) (2026-11-25)
+
+### Bug Fixes
+
+* **response:** end a held response through Response's own end(), not a wrapped res.end ([#39](https://github.com/nigrosimone/fulmine.js/issues/39)) ([4789124](https://github.com/nigrosimone/fulmine.js/commit/4789124331e84fd332d1b43034ada316ca93bfa9))
+* **uws:** pin the binaries with uWebSockets [#1969](https://github.com/nigrosimone/fulmine.js/issues/1969) and [#1972](https://github.com/nigrosimone/fulmine.js/issues/1972) ([8af9de1](https://github.com/nigrosimone/fulmine.js/commit/8af9de1352d45c7d1e48f44d39b2743c52825b80))
+
 ## [5.34.3](https://github.com/nigrosimone/fulmine.js/compare/v5.34.2...v5.34.3) (2026-11-22)
 
 ### Bug Fixes
