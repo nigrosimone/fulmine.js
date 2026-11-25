@@ -12,9 +12,6 @@ on:
             - "examples/*.js"
             - ".github/workflows/site.yml"
     workflow_dispatch:
-    # the web-frameworks badges follow that board's runs
-    schedule:
-        - cron: "17 5 * * *"
 
 permissions:
     contents: read
@@ -43,11 +40,6 @@ jobs:
 
             - name: Build
               run: npm run build --prefix site
-
-            # a board that changed shape or is not reachable leaves the badges out, never the site
-            - name: Benchmarker badges
-              continue-on-error: true
-              run: npm run benchmarker --prefix site
 
             # the custom domain lives in the repository settings, this only keeps it on a branch publish
             - name: Name the domain
