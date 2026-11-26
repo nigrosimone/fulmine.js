@@ -18,6 +18,7 @@ A request also goes through Node.js, the µWS binding and the µWS server. When 
 - On Windows and macOS every callback freed the stack of async resources and allocated it again. With the same pattern in a small program on Windows, a callback went from 136-147 ns to 6 ns. Linux did not have the problem. [nodejs/node#66344](https://github.com/nodejs/node/pull/66344), merged on 17 November 2026.
 - When no async hook and no `executionAsyncResource()` reads the stack of async ids, a callback swaps the two ids in place instead of pushing and popping them. `MakeCallback` from 128.0 ns to 119.3 ns. [nodejs/node#66511](https://github.com/nodejs/node/pull/66511), merged on 23 November 2026.
 - From Node 26.11 a flowing pipe skipped a `write()` replaced on the destination, so a compression middleware sent a gzip body with plain chunks in it. Now the replaced `write()` runs again. [nodejs/node#66596](https://github.com/nodejs/node/pull/66596), merged on 23 November 2026.
+- `napi_make_callback`, the call from a Node-API addon into JavaScript, finds the Environment once: from 200 ns to 174 ns. [nodejs/node#66509](https://github.com/nodejs/node/pull/66509), merged on 25 November 2026.
 
 ## µWebSockets.js
 
