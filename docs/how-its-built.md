@@ -19,6 +19,7 @@ A request also goes through Node.js, the µWS binding and the µWS server. When 
 - When no async hook and no `executionAsyncResource()` reads the stack of async ids, a callback swaps the two ids in place instead of pushing and popping them. `MakeCallback` from 128.0 ns to 119.3 ns. [nodejs/node#66511](https://github.com/nodejs/node/pull/66511), merged on 23 November 2026.
 - From Node 26.11 a flowing pipe skipped a `write()` replaced on the destination, so a compression middleware sent a gzip body with plain chunks in it. Now the replaced `write()` runs again. [nodejs/node#66596](https://github.com/nodejs/node/pull/66596), merged on 23 November 2026.
 - `napi_make_callback`, the call from a Node-API addon into JavaScript, finds the Environment once: from 200 ns to 174 ns. [nodejs/node#66509](https://github.com/nodejs/node/pull/66509), merged on 25 November 2026.
+- A new `node::MakeCallback()` overload takes the Environment, so an addon that calls into JavaScript many times, as µWS does for every request, takes it once instead of on every call: from 133 ns to 119 ns. [nodejs/node#66510](https://github.com/nodejs/node/pull/66510), merged on 26 November 2026.
 
 ## µWebSockets.js
 
