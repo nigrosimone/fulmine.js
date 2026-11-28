@@ -1,5 +1,5 @@
 ---
-description: 'Read a request body on DELETE or other methods with app.set("body methods", ["DELETE"]), since fulmine.js reads one only for POST, PUT, PATCH and QUERY.'
+description: "Read a request body on DELETE or other methods with app.set('body methods', ['DELETE']), since fulmine.js reads one only for POST, PUT, PATCH and QUERY."
 ---
 
 # DELETE with a JSON body

@@ -1,5 +1,5 @@
 ---
-description: 'Run an Express app on every CPU core, all on the same port, with no primary process in the path: express({ cluster: "auto" }).'
+description: "Run an Express app on every CPU core, all on the same port, with no primary process in the path: express({ cluster: 'auto' })."
 ---
 
 # One process per core on one port

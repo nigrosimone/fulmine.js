@@ -1,5 +1,5 @@
 ---
-description: 'Split a database pool across the workers of express({ cluster: "auto" }) with app.cluster.share(), so all the processes together never open more connections than the database allows.'
+description: "Split a database pool across the workers of express({ cluster: 'auto' }) with app.cluster.share(), so all the processes together never open more connections than the database allows."
 ---
 
 # A database pool per cluster worker

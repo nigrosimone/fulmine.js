@@ -1,5 +1,5 @@
 ---
-description: 'Read the real client address from the PROXY protocol v2 preamble with app.set("trust proxy protocol", true), or from X-Forwarded-For with trust proxy.'
+description: "Read the real client address from the PROXY protocol v2 preamble with app.set('trust proxy protocol', true), or from X-Forwarded-For with trust proxy."
 ---
 
 # Client IP behind HAProxy, AWS NLB, nginx or Envoy

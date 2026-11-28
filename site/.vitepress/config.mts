@@ -37,6 +37,8 @@ export default defineConfig({
     // Store page-specific tags in page data so they also update on client-side navigation.
     transformPageData(pageData) {
         if (pageData.relativePath === "real-apps.md") pageData.description = realAppsDescription();
+        // VitePress writes the description meta without escaping, a double quote breaks the HTML
+        if (pageData.description?.includes('"')) throw new Error(`${pageData.relativePath}: no double quotes in description`);
         const pathname = pageData.relativePath.replace(/(^|\/)index\.md$/, "$1").replace(/\.md$/, "");
         const url = new URL(pathname, `${origin}/`).href;
         const title = pageData.titleTemplate === false ? pageData.title : `${pageData.title} | Fulmine.js`;
