@@ -29,6 +29,9 @@ jobs:
         steps:
             - name: Checkout Source Tree
               uses: actions/checkout@v7
+              # full history, so lastUpdated and the sitemap lastmod are per page and not the last commit
+              with:
+                  fetch-depth: 0
 
             - name: Setup Node.js environment
               uses: actions/setup-node@v7
